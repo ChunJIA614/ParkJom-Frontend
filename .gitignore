@@ -1,0 +1,29 @@
+# Build artifacts
+**/[Bb]in/
+**/[Oo]bj/
+
+# User-specific configuration
+appsettings.Development.json
+appsettings.Local.json
+
+# Visual Studio / VS Code
+*.user
+**/.vs/
+**/.vscode/
+
+# Node
+node_modules/
+
+# Frontend build
+frontend/dist/
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# Environment files
+.env
+
+# Node.js
+**/node_modules/
+**/package-lock.json

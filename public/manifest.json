@@ -1,0 +1,23 @@
+{
+  "name": "ParkJom — Smart Parking",
+  "short_name": "ParkJom",
+  "description": "Malaysia's Peer-to-Peer Transit Parking & IoT Actuation Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait-primary",
+  "background_color": "#f8f9fa",
+  "theme_color": "#007AFF",
+  "scope": "/",
+  "lang": "en-MY",
+  "categories": ["navigation", "travel", "utilities"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/parkjom.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

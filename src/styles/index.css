@@ -1,0 +1,242 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, "JetBrains Mono", monospace;
+
+  /* ParkJom design tokens — iOS / macOS aligned */
+  --color-accent: #007aff;
+  --color-accent-hover: #0066d6;
+  --color-accent-pressed: #0055b3;
+  --color-accent-soft: #e8f0fe;
+  --color-success: #34c759;
+  --color-warning: #ff9500;
+  --color-danger: #ff3b30;
+  --color-text-primary: #1d1d1f;
+  --color-text-secondary: #6e6e73;
+  --color-text-tertiary: #8e8e93;
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f5f5f7;
+  --color-bg-tertiary: #f8f9fa;
+  --color-border: rgba(0, 0, 0, 0.06);
+  --color-border-strong: #d2d2d7;
+  --color-sidebar: #0f1115;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --ease-spring: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ── Base ── */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.01em;
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+:root {
+  --accent-blue: #007aff;
+  --accent-blue-hover: #0066d6;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --bg-secondary: #f5f5f7;
+  --border-light: #d2d2d7;
+}
+
+/* ── Reusable surfaces ── */
+.glass-bar {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.glass-dark {
+  background: rgba(15, 17, 21, 0.85);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+.ios-card {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.25s var(--ease-spring), box-shadow 0.25s var(--ease-spring), transform 0.2s var(--ease-ios);
+}
+
+.ios-card:hover {
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
+}
+
+.ios-card-interactive {
+  cursor: pointer;
+}
+
+.ios-card-interactive:active {
+  transform: scale(0.985);
+}
+
+.ios-button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: background 0.2s, transform 0.15s var(--ease-ios);
+}
+
+.ios-button-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.ios-button-primary:active {
+  background: var(--color-accent-pressed);
+  transform: scale(0.97);
+}
+
+.ios-segmented {
+  display: inline-flex;
+  background: #f1f3f4;
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.ios-segmented button {
+  border-radius: 9999px;
+  padding: 0.5rem 1.25rem;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.25s var(--ease-ios);
+}
+
+.ios-segmented button[data-active="true"] {
+  background: white;
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.ios-segmented button[data-active="false"] {
+  color: var(--color-text-tertiary);
+}
+
+.ios-segmented button[data-active="false"]:hover {
+  color: var(--color-text-secondary);
+}
+
+.bottom-nav-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.page-shell {
+  min-height: 100dvh;
+  background: var(--color-bg-tertiary);
+}
+
+/* ── Animations ── */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes scan-line {
+  0% { top: 0; }
+  50% { top: calc(100% - 2px); }
+  100% { top: 0; }
+}
+
+@keyframes splash-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.9; }
+}
+
+.animate-slide-up { animation: slide-up 0.35s var(--ease-ios) forwards; }
+.animate-fade-in { animation: fade-in 0.4s var(--ease-spring) forwards; }
+.animate-scale-in { animation: scale-in 0.4s var(--ease-ios) forwards; }
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-splash-pulse { animation: splash-pulse 1.8s ease-in-out infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ── Leaflet fixes ── */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  border-radius: var(--radius-lg);
+}
+
+.leaflet-container img,
+.leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+/* ── Scrollbar (macOS style) ── */
+@media (min-width: 1024px) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.28);
+  }
+}
+
+/* ── Focus rings (accessibility) ── */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
