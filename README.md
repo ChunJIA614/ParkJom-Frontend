@@ -147,11 +147,13 @@ npm run build
 
 This writes static assets to `dist/`. Firebase Hosting settings are in [firebase.json](./firebase.json), and the project ID is in [.firebaserc](./.firebaserc).
 
-The existing `npm run deploy` script supports the original parent-workspace deployment layout, where this client is located in a `frontend/` folder. If you deploy this repository as a standalone project, update `firebase.json` to serve `dist` and run:
+The existing `npm run deploy` script builds the app and deploys the `dist/` output to Firebase Hosting:
 
 ```bash
-firebase deploy --only hosting
+npm run deploy
 ```
+
+If you prefer to deploy manually, build first and then run `firebase deploy --only hosting`.
 
 ## Quality checks
 
