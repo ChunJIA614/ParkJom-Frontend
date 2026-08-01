@@ -10,6 +10,23 @@ const API_BASE = import.meta.env.VITE_API_BASE ||
     ? 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api'
     : '/api');
 
+async function readApiError(response: Response, fallback: string) {
+  const responseText = await response.text().catch(() => '');
+  let backendMessage = '';
+
+  if (responseText) {
+    try {
+      const parsed = JSON.parse(responseText);
+      backendMessage = parsed?.message || parsed?.error || parsed?.title || '';
+    } catch {
+      backendMessage = responseText.trim();
+    }
+  }
+
+  const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+  return backendMessage || `${fallback} (HTTP ${status})`;
+}
+
 export default function GoogleLoginButton() {
   const { setUser } = useAuth();
   const [searchParams] = useSearchParams();
@@ -24,6 +41,7 @@ export default function GoogleLoginButton() {
   const [selectedRole, setSelectedRole] = useState<number>(defaultRole);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
   const [phoneError, setPhoneError] = useState('');
+  const [loginError, setLoginError] = useState('');
 
   // ---- Step 1: Google login success ----
   const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
@@ -31,8 +49,11 @@ export default function GoogleLoginButton() {
 
     if (!credential) {
       console.error('No credential received from Google');
+      setLoginError('Google did not return a sign-in credential. Please try again.');
       return;
     }
+
+    setLoginError('');
 
     try {
       const res = await fetch(`${API_BASE}/auth/google`, {
@@ -42,8 +63,7 @@ export default function GoogleLoginButton() {
       });
 
       if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Backend login failed: ${errText}`);
+        throw new Error(await readApiError(res, 'Backend login failed'));
       }
 
       const data = await res.json();
@@ -56,13 +76,14 @@ export default function GoogleLoginButton() {
 
       // Step 1b: Profile complete → login immediately
       finishLogin(data);
-    } catch (err: any) {
-      console.error('❌ Google login failed:', err.message);
-      if (err.message?.includes('Unexpected token') || err.message?.includes('Failed to fetch')) {
-        alert('Backend server not available. Please use the "Quick Demo Access" buttons below to explore the app.');
-      } else {
-        alert('Login failed. Please try again.');
-      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      const isUnavailable = message.includes('Failed to fetch') || message.includes('NetworkError');
+      const displayMessage = isUnavailable
+        ? 'The backend server is unavailable. Please try again shortly.'
+        : message;
+      console.error('❌ Google login failed:', displayMessage);
+      setLoginError(displayMessage);
     }
   };
 
@@ -89,8 +110,7 @@ export default function GoogleLoginButton() {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'Failed to complete profile');
+        throw new Error(await readApiError(res, 'Failed to complete profile'));
       }
 
       const data = await res.json();
@@ -126,7 +146,7 @@ export default function GoogleLoginButton() {
   // ---- Login failure handler ----
   const handleGoogleError = () => {
     console.error('Google Sign-In encountered an error');
-    alert('Google login failed. Please try again.');
+    setLoginError('Google sign-in was cancelled or could not be completed. Please try again.');
   };
 
   // ---- Show phone verification form when profile is incomplete ----
@@ -223,6 +243,11 @@ export default function GoogleLoginButton() {
       <p className="text-[11px] text-[#8e8e93]">
         Use your Google account to sign in to ParkJom
       </p>
+      {loginError && (
+        <p role="alert" className="max-w-sm rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-center text-[12px] text-red-600">
+          {loginError}
+        </p>
+      )}
     </div>
   );
 }

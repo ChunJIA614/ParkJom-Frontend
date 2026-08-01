@@ -1,4 +1,5 @@
 import { motion } from 'motion/react';
+import BrandLogo from './BrandLogo';
 
 export default function SplashScreen() {
   return (
@@ -9,9 +10,7 @@ export default function SplashScreen() {
         transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
         className="flex flex-col items-center gap-4"
       >
-        <div className="w-14 h-14 rounded-[18px] bg-[#007AFF] flex items-center justify-center font-bold text-white text-xl shadow-lg animate-splash-pulse">
-          PJ
-        </div>
+        <BrandLogo className="h-16 w-16 shadow-lg animate-splash-pulse" />
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

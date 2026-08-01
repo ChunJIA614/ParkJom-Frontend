@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, Ban, ShieldAlert, Wifi, Info, Image, UploadCloud, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ParkingBay } from '../types';
@@ -17,15 +17,10 @@ interface AvailabilitySchedulerProps {
   onAddBlock: (block: { dayOfWeek: number; startTime: string; endTime: string; rate: number }) => void;
   onRemoveBlock: (id: string) => void;
   onBlockAll: () => void;
-  onConfigParking?: (parkingSpotId: string, formData: FormData) => Promise<{ success: boolean; message?: string }>;
+  onConfigParking?: (formData: FormData) => Promise<{ success: boolean; message?: string; parkingSpotId?: number }>;
 }
 
-const dayTypeMapping: Record<string, number> = {
-  Everyday: 0,
-  Weekdays: 1,
-  Weekends: 2,
-  Custom: 3,
-};
+type DayType = 'Everyday' | 'Weekday' | 'Weekend';
 
 export default function AvailabilityScheduler({ 
   bays, 
@@ -35,27 +30,55 @@ export default function AvailabilityScheduler({
   onBlockAll,
   onConfigParking,
 }: AvailabilitySchedulerProps) {
-  const [selectedBayId, setSelectedBayId] = useState(bays[0]?.id || '1');
+  const [selectedBayId, setSelectedBayId] = useState(bays[0]?.id || '');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('18:00');
-  const [rate, setRate] = useState('2.00');
+  const [monthlyRate, setMonthlyRate] = useState('100.00');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Config parking API fields
-  const [dateType, setDateType] = useState('Everyday');
+  const [dayType, setDayType] = useState<DayType>('Everyday');
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [effectiveUntil, setEffectiveUntil] = useState('');
-  const [parkingImage, setParkingImage] = useState<File | null>(null);
+  const [parkingImages, setParkingImages] = useState<File[]>([]);
+  const [parkingImageError, setParkingImageError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeBay = bays.find((bay) => bay.id === selectedBayId) || bays[0];
+  const isUpdatingExistingConfiguration = Boolean(activeBay && activeBay.monthlyRate > 0);
 
   const showToast = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
+  const handleParkingImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    const invalidFile = files.find((file) => {
+      const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+      const allowedExtension = extension === 'jpg' || extension === 'jpeg' || extension === 'png';
+      const allowedMimeType = !file.type || file.type === 'image/jpeg' || file.type === 'image/png';
+      return !allowedExtension || !allowedMimeType;
+    });
+
+    if (invalidFile) {
+      setParkingImageError('Parking photos must be JPG, JPEG, or PNG files.');
+      return;
+    }
+
+    setParkingImages(files);
+    setParkingImageError(null);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeBay?.isPublished) {
+      alert('Unpublish this parking spot before changing its configuration.');
+      return;
+    }
     if (!startTime || !endTime) {
       alert('Please select valid start and end times.');
       return;
@@ -69,19 +92,24 @@ export default function AvailabilityScheduler({
       return;
     }
 
-    const rateNum = parseFloat(rate);
-    if (isNaN(rateNum) || rateNum <= 0) {
-      alert('Please configure a valid hourly rate.');
+    const monthlyRateNum = Number(monthlyRate);
+    if (!Number.isFinite(monthlyRateNum) || monthlyRateNum <= 0) {
+      alert('Please enter a valid monthly rental rate.');
       return;
     }
 
-    if (!effectiveFrom || !effectiveUntil) {
-      alert('Please select both effective start and end dates.');
+    if (!effectiveFrom) {
+      alert('Please select the date when availability starts.');
       return;
     }
 
-    if (new Date(effectiveUntil) < new Date(effectiveFrom)) {
+    if (effectiveUntil && new Date(effectiveUntil) < new Date(effectiveFrom)) {
       alert('Effective Until date must be after Effective From date.');
+      return;
+    }
+
+    if (parkingImages.length === 0 && !isUpdatingExistingConfiguration) {
+      setParkingImageError('Upload at least one parking photo.');
       return;
     }
 
@@ -89,22 +117,25 @@ export default function AvailabilityScheduler({
     if (onConfigParking && activeBay) {
       setIsSubmitting(true);
       try {
-        // Extract numeric parkingSpotId from bay id (e.g. "b-15" → "15")
-        const spotId = activeBay.id.replace(/^b-/, '');
+        const spotId = String(activeBay.parkingSpotId);
 
         const formData = new FormData();
-        if (parkingImage) formData.append('parkingImage', parkingImage);
-        formData.append('dayType', dayTypeMapping[dateType].toString());
+        formData.append('parkingSpotId', spotId);
+        parkingImages.forEach((image) => formData.append('parkingImage', image));
+        formData.append('dayType', dayType);
         formData.append('startTime', startTime + ':00');
         formData.append('endTime', endTime + ':00');
-        formData.append('hourlyRate', rateNum.toString());
         formData.append('effectiveFrom', effectiveFrom);
-        formData.append('effectiveUntil', effectiveUntil);
+        if (effectiveUntil) formData.append('effectiveUntil', effectiveUntil);
+        formData.append('monthlyRate', monthlyRateNum.toFixed(2));
 
-        const result = await onConfigParking(spotId, formData);
+        const result = await onConfigParking(formData);
         if (result.success) {
-          showToast(`Parking configured! Rate: RM ${rate}/hr · ${dateType} · ${effectiveFrom} → ${effectiveUntil}`);
-          setParkingImage(null);
+          showToast(result.message || `Parking spot #${result.parkingSpotId ?? spotId} configured successfully.`);
+          setParkingImages([]);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        } else {
+          alert(result.message || 'Failed to save the parking configuration.');
         }
       } catch {
         alert('Failed to configure parking.');
@@ -118,7 +149,24 @@ export default function AvailabilityScheduler({
     setSelectedBayId(bayId);
   };
 
-  const activeBay = bays.find(b => b.id === selectedBayId) || bays[0];
+  useEffect(() => {
+    if (bays.length > 0 && !bays.some((bay) => bay.id === selectedBayId)) {
+      setSelectedBayId(bays[0].id);
+    }
+  }, [bays, selectedBayId]);
+
+  useEffect(() => {
+    if (!activeBay) return;
+    setStartTime('08:00');
+    setEndTime('18:00');
+    setMonthlyRate(activeBay.monthlyRate > 0 ? activeBay.monthlyRate.toFixed(2) : '100.00');
+    setDayType('Everyday');
+    setEffectiveFrom('');
+    setEffectiveUntil('');
+    setParkingImages([]);
+    setParkingImageError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [activeBay?.parkingSpotId]);
 
   const dayStats = useMemo(() => {
     const total = scheduleBlocks.length;
@@ -145,9 +193,9 @@ export default function AvailabilityScheduler({
 
       {/* Title */}
       <div>
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Parking Availability Configuration</h1>
+        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Configure Parking</h1>
         <p className="text-slate-500 text-xs mt-1 leading-normal">
-          Configure your parking spot availability with a date range, schedule type, time window, and hourly rate.
+          Add or update photos, availability, and pricing while your parking spot is unpublished.
         </p>
       </div>
 
@@ -167,8 +215,10 @@ export default function AvailabilityScheduler({
                 <select
                   value={selectedBayId}
                   onChange={(e) => handleBayChange(e.target.value)}
+                  disabled={bays.length === 0}
                   className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
                 >
+                  {bays.length === 0 && <option value="">No unpublished parking spots</option>}
                   {bays.map((bay) => (
                     <option key={bay.id} value={bay.id}>
                       {bay.bayNumber} ({bay.propertyName})
@@ -181,14 +231,13 @@ export default function AvailabilityScheduler({
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase font-mono tracking-wider">Schedule Type</label>
                 <select
-                  value={dateType}
-                  onChange={(e) => setDateType(e.target.value)}
+                  value={dayType}
+                  onChange={(e) => setDayType(e.target.value as DayType)}
                   className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
                 >
                   <option value="Everyday">Everyday</option>
-                  <option value="Weekdays">Weekdays Only</option>
-                  <option value="Weekends">Weekends Only</option>
-                  <option value="Custom">Custom Range</option>
+                  <option value="Weekday">Weekdays Only</option>
+                  <option value="Weekend">Weekends Only</option>
                 </select>
               </div>
 
@@ -213,8 +262,8 @@ export default function AvailabilityScheduler({
                       value={effectiveUntil}
                       onChange={(e) => setEffectiveUntil(e.target.value)}
                       className="w-full text-xs border border-slate-200 rounded-lg px-2 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
-                      required
                     />
+                    <span className="mt-1 block text-[9px] text-slate-400">Optional — leave blank for no end date</span>
                   </div>
                 </div>
               </div>
@@ -243,31 +292,36 @@ export default function AvailabilityScheduler({
                 </div>
               </div>
 
-              {/* Hourly Rate */}
+              {/* Monthly Rate */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase font-mono tracking-wider">Hourly Rate (RM)</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase font-mono tracking-wider">Monthly Rate (RM)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold font-mono text-xs">RM</span>
                   <input
                     type="number"
-                    step="0.10"
-                    value={rate}
-                    onChange={(e) => setRate(e.target.value)}
+                    min="0.01"
+                    step="0.01"
+                    value={monthlyRate}
+                    onChange={(e) => setMonthlyRate(e.target.value)}
                     className="w-full pl-9 pr-12 py-2.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-mono font-bold"
                     required
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-medium font-mono">/hr</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-medium font-mono">/month</span>
                 </div>
               </div>
 
               {/* Parking Image Upload */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase font-mono tracking-wider">Parking Photo (optional)</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase font-mono tracking-wider">
+                  Parking Photos
+                  {isUpdatingExistingConfiguration && <span className="ml-2 normal-case tracking-normal text-slate-400">Optional when updating</span>}
+                </label>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
-                  onChange={(e) => setParkingImage(e.target.files?.[0] ?? null)}
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  multiple
+                  onChange={handleParkingImageChange}
                   className="hidden"
                 />
                 <button
@@ -275,31 +329,34 @@ export default function AvailabilityScheduler({
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full flex items-center gap-2 text-xs border border-dashed border-slate-300 rounded-lg px-3 py-3 hover:border-blue-400 hover:bg-blue-50/30 transition-all text-slate-500"
                 >
-                  {parkingImage ? (
+                  {parkingImages.length > 0 ? (
                     <>
                       <Image className="w-4 h-4 text-emerald-500" />
-                      <span className="text-emerald-600 font-medium truncate">{parkingImage.name}</span>
+                      <span className="text-emerald-600 font-medium truncate">
+                        {parkingImages.length === 1 ? parkingImages[0].name : `${parkingImages.length} photos selected`}
+                      </span>
                     </>
                   ) : (
                     <>
                       <UploadCloud className="w-4 h-4 text-slate-400" />
-                      <span>Upload parking spot photo</span>
+                      <span>{isUpdatingExistingConfiguration ? 'Upload only if you want to add new photos' : 'Upload one or more parking spot photos'}</span>
                     </>
                   )}
                 </button>
+                {parkingImageError && <p role="alert" className="mt-1.5 text-[10px] font-semibold text-rose-600">{parkingImageError}</p>}
               </div>
 
               {/* Action Buttons */}
               <div className="pt-3 space-y-2">
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !activeBay}
                   className="w-full bg-[#0f172a] hover:bg-[#1e293b] text-white font-bold text-xs py-3 rounded-xl transition-all duration-150 flex items-center justify-center gap-1.5 shadow disabled:opacity-60"
                 >
                   {isSubmitting ? (
-                    <span className="animate-pulse">Configuring...</span>
+                    <span className="animate-pulse">{isUpdatingExistingConfiguration ? 'Updating...' : 'Configuring...'}</span>
                   ) : (
-                    <>Save Configuration</>
+                    <>{isUpdatingExistingConfiguration ? 'Update Configuration' : 'Save Configuration'}</>
                   )}
                 </button>
                 <button
@@ -351,11 +408,11 @@ export default function AvailabilityScheduler({
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">Schedule Type</span>
-                <span className="text-slate-800 font-bold">{dateType}</span>
+                <span className="text-slate-800 font-bold">{dayType}</span>
               </div>
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">Hourly Rate</span>
-                <span className="text-emerald-600 font-bold">RM {rate}/hr</span>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">Monthly Rate</span>
+                <span className="text-emerald-600 font-bold">RM {monthlyRate}/month</span>
               </div>
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">Time Window</span>
@@ -364,14 +421,23 @@ export default function AvailabilityScheduler({
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">Date Range</span>
                 <span className="text-slate-800 font-mono text-xs">
-                  {effectiveFrom ? effectiveFrom : '—'} → {effectiveUntil ? effectiveUntil : '—'}
+                  {effectiveFrom ? effectiveFrom : '—'} → {effectiveUntil || 'No end date'}
                 </span>
               </div>
             </div>
 
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">Parking Photos</span>
+              <span className="text-slate-800 font-bold">
+                {parkingImages.length > 0
+                  ? `${parkingImages.length} selected`
+                  : isUpdatingExistingConfiguration ? 'Keeping existing photos' : 'At least one required'}
+              </span>
+            </div>
+
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-xs text-blue-700">
               <Info className="w-4 h-4 inline-block mr-1 text-blue-500" />
-              Configuration is saved to the backend and will be immediately applied to your parking spot. Commuters will see updated availability within seconds.
+              You can return and update this configuration whenever the spot is unpublished. Publish it only when the information is ready for commuters.
             </div>
           </div>
         </div>

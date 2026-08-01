@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import BrandLogo from '@/shared/ui/BrandLogo';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -16,9 +17,7 @@ export default function Navbar() {
       <div className="max-w-screen-2xl mx-auto px-5 md:px-8 h-14 flex items-center justify-between">
         {/* Brand — clickable to go to dashboard */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-[#2563eb] flex items-center justify-center font-extrabold text-white text-sm">
-            PJ
-          </div>
+          <BrandLogo alt="" className="h-8 w-8 shadow-sm" />
           <span className="font-bold text-[#111] text-[15px] tracking-[-0.02em]">ParkJom</span>
         </div>
 

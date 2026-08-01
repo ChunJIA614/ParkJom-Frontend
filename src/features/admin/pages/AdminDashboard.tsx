@@ -2,18 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, ShieldCheck, Radio, AlertOctagon, 
-  Landmark, LifeBuoy, Menu, X, LogOut,
+  Landmark, LifeBuoy, X, LogOut,
   ShieldAlert, Lock
 } from 'lucide-react';
 import DashboardHeader from '@/shared/components/DashboardHeader';
 import BottomNav from '@/shared/ui/BottomNav';
+import BrandLogo from '@/shared/ui/BrandLogo';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 
 import { 
   initialStats
 } from '../data/mockData';
-import { IoTBollard, ListingRequest, OwnerPayout, Transaction, OverstayRecord, SupportTicket } from '../types';
+import { IoTBollard, ListingRequest, OwnerPayout, Transaction, OverstayRecord, SupportTicket, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse } from '../types';
 
 import DashboardHome from '../components/DashboardHome';
 import ListingGovernance from '../components/ListingGovernance';
@@ -51,6 +52,9 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(initialStats);
   const [bollards, setBollards] = useState<IoTBollard[]>([]);
   const [listings, setListings] = useState<ListingRequest[]>([]);
+  const [listingsLoading, setListingsLoading] = useState(false);
+  const [listingsError, setListingsError] = useState<string | null>(null);
+  const [listingsMessage, setListingsMessage] = useState('');
   const [payouts, setPayouts] = useState<OwnerPayout[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overstays, setOverstays] = useState<OverstayRecord[]>([]);
@@ -86,38 +90,116 @@ export default function AdminDashboard() {
 
   // ---- Fetch verification requests from backend (pending + moderated) ----
   const fetchListings = React.useCallback(async () => {
+    if (!token) return;
+
+    setListingsLoading(true);
+    setListingsError(null);
+
     try {
       const res = await fetch(`${API_BASE}/parking/verification-requests`, {
-        headers: { Authorization: `Bearer ${token}` },
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
       });
-      if (!res.ok) return;
-      const body = await res.json();
-      const data: any[] = body.data ?? (Array.isArray(body) ? body : []);
+      const body = await res.json().catch(() => null) as ParkingVerificationRequestsResponse | ParkingVerificationRequestResponse | ParkingVerificationRequestDto[] | null;
+      const isEnvelope = body !== null && !Array.isArray(body);
 
-      const statusMap: Record<string, ListingRequest['status']> = {
+      if (!res.ok || (isEnvelope && body.success === false)) {
+        throw new Error((isEnvelope && body.message) || `Unable to load verification requests (${res.status})`);
+      }
+
+      const responsePayload = Array.isArray(body) ? body : body?.data;
+      const responseData = Array.isArray(responsePayload)
+        ? responsePayload
+        : responsePayload
+          ? [responsePayload]
+          : null;
+      if (!responseData) throw new Error('The verification request response did not contain verification data.');
+
+      const textStatusMap: Record<string, Exclude<ListingRequest['status'], 'unknown'>> = {
         pending: 'pending',
         approved: 'approved',
         rejected: 'rejected',
       };
+      const numericStatusMap: Record<number, Exclude<ListingRequest['status'], 'unknown'>> = {
+        0: 'pending',
+        1: 'pending',
+        2: 'approved',
+        3: 'rejected',
+      };
+      const statusLabels: Record<Exclude<ListingRequest['status'], 'unknown'>, string> = {
+        pending: 'Pending',
+        approved: 'Approved',
+        rejected: 'Rejected',
+      };
 
-      // Map VerificationRequestDTO → ListingRequest for the admin UI
-      const mapped: ListingRequest[] = data.map((v: any) => ({
-        id: v.verificationRequestId.toString(),
-        verificationRequestId: v.verificationRequestId,
-        parkingSpotId: v.parkingSpotId,
-        propertyId: v.propertyId,
-        ownerName: v.submittedByName ?? 'Unknown',
-        ownerEmail: v.submittedByEmail ?? '-',
-        location: v.propertyName ?? `Property #${v.propertyId}`,
-        bayNumber: v.parkingLabel ?? `Spot #${v.parkingSpotId}`,
-        hourlyRate: v.hourlyRate ?? 0,
-        documents: { titleDeed: '-', utilityBill: '-', identityCard: '-' },
-        submittedAt: v.submittedAt,
-        status: statusMap[(v.verificationStatus ?? '').toLowerCase()] ?? 'pending',
-      }));
+      const mapped: ListingRequest[] = responseData.map((v) => {
+        const numericStatus = typeof v.verificationStatus === 'number'
+          ? v.verificationStatus
+          : Number(v.verificationStatus);
+        const status = Number.isNaN(numericStatus)
+          ? textStatusMap[String(v.verificationStatus).toLowerCase()] ?? 'unknown'
+          : numericStatusMap[numericStatus] ?? 'unknown';
+
+        return {
+          ...v,
+          documents: Array.isArray(v.documents) ? v.documents : [],
+          id: String(v.verificationRequestId),
+          verificationStatusLabel: status === 'unknown'
+            ? String(v.verificationStatus)
+            : statusLabels[status],
+          status,
+        };
+      });
       setListings(mapped);
+      setListingsMessage(isEnvelope
+        ? `${body.message} (API ${body.code})`
+        : `${mapped.length} verification request${mapped.length === 1 ? '' : 's'} retrieved successfully`);
       setStats(prev => ({ ...prev, pendingListingsCount: mapped.filter(l => l.status === 'pending').length }));
-    } catch { /* API not available yet */ }
+    } catch (error) {
+      setListingsError(error instanceof Error ? error.message : 'Unable to load verification requests.');
+    } finally {
+      setListingsLoading(false);
+    }
+  }, [token]);
+
+  const fetchPrivateDocument = React.useCallback(async (document: ParkingVerificationDocumentDto) => {
+    if (!token) throw new Error('Your admin session is missing an authorization token.');
+
+    const normalizedFormat = document.format.trim().toLowerCase();
+    const requestedContentType = normalizedFormat === 'pdf'
+      ? 'application/pdf'
+      : normalizedFormat === 'png'
+        ? 'image/png'
+        : 'image/jpeg';
+
+    const res = await fetch(`${API_BASE}/media/view/document/${document.mediaFileId}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Accept-Language': 'en-US,en;q=0.9',
+        Accept: requestedContentType,
+      },
+    });
+
+    if (!res.ok) {
+      const contentType = res.headers.get('content-type') ?? '';
+      const errorBody = contentType.includes('application/json')
+        ? await res.json().catch(() => null)
+        : null;
+      throw new Error(errorBody?.message || `Unable to load document ${document.mediaFileId} (${res.status})`);
+    }
+
+    const file = await res.blob();
+    if (file.size === 0) throw new Error(`Document ${document.mediaFileId} was empty.`);
+
+    return file.type === requestedContentType
+      ? file
+      : new Blob([file], { type: requestedContentType });
   }, [token]);
 
   // Fetch on mount + when token becomes available
@@ -134,63 +216,61 @@ export default function AdminDashboard() {
 
   // ---- Admin actions ----
 
-  const handleApproveListing = async (id: string) => {
+  const submitVerificationDecision = async (
+    id: string,
+    decision: ParkingVerificationDecision,
+    reviewNotes: string,
+  ): Promise<ParkingVerificationDecisionResult> => {
+    const actionLabel = decision === 'approved' ? 'approve' : 'reject';
+
     try {
       const listing = listings.find(l => l.id === id);
-      if (!listing) return;
+      if (!listing) return { success: false, message: `Verification request ${id} was not found.` };
+      if (!token) return { success: false, message: 'Your admin session is missing an authorization token.' };
 
-      const res = await fetch(`${API_BASE}/parking/verification-requests/${listing.verificationRequestId}/approve`, {
+      const res = await fetch(`${API_BASE}/parking/verification-requests/${listing.verificationRequestId}/decision`, {
         method: 'POST',
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
         body: JSON.stringify({
-          isApproved: true,
+          decision,
+          review_notes: reviewNotes,
         }),
       });
-      const data = await res.json().catch(() => null);
+      const data = await res.json().catch(() => null) as ParkingVerificationDecisionResponse | null;
 
-      if (res.ok && data?.success !== false) {
+      if (res.ok && data?.success === true) {
         await fetchListings();
-        addActivityLog('governance',
-          data?.message || `Approved verification request #${listing.verificationRequestId} → parking spot #${data?.parkingSpotId ?? listing.parkingSpotId}`,
-          "Admin");
-      } else {
-        addActivityLog('governance', `Failed to approve listing ID: ${id} — ${data?.message || 'API error'}`, "Admin");
+        const message = data?.message || `Verification request #${listing.verificationRequestId} ${decision} successfully.`;
+        addActivityLog(
+          'governance',
+          `${message} Request #${data?.verificationRequestId ?? listing.verificationRequestId}; parking spot #${data?.parkingSpotId ?? listing.parkingSpotId}; status ${data?.verificationStatus ?? decision}; updated ${data?.updatedAt ?? 'now'}.`,
+          'Admin',
+        );
+        return { success: true, message };
       }
-    } catch (err: any) {
-      addActivityLog('governance', `Network error approving listing ID: ${id}`, "Admin");
+
+      const message = data?.message || `Unable to ${actionLabel} verification request ${id} (${res.status}).`;
+      addActivityLog('governance', message, 'Admin');
+      return { success: false, message };
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : `Network error while attempting to ${actionLabel} verification request ${id}.`;
+      addActivityLog('governance', message, 'Admin');
+      return { success: false, message };
     }
   };
 
-  const handleRejectListing = async (id: string, reason: string) => {
-    try {
-      const listing = listings.find(l => l.id === id);
-      if (!listing) return;
+  const handleApproveListing = (id: string) =>
+    submitVerificationDecision(id, 'approved', 'Ownership document approved.');
 
-      const res = await fetch(`${API_BASE}/parking/verification-requests/${listing.verificationRequestId}/reject`, {
-        method: 'POST',
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify({ reason }),
-      });
-      const data = await res.json().catch(() => null);
-
-      if (res.ok && data?.success !== false) {
-        await fetchListings();
-        addActivityLog('governance',
-          data?.message || `Rejected verification request #${listing.verificationRequestId} — reason: ${reason}`,
-          "Admin");
-      } else {
-        addActivityLog('governance', `Failed to reject listing ID: ${id} — ${data?.message || 'API error'}`, "Admin");
-      }
-    } catch (err: any) {
-      addActivityLog('governance', `Network error rejecting listing ID: ${id}`, "Admin");
-    }
-  };
+  const handleRejectListing = (id: string, reason: string) =>
+    submitVerificationDecision(id, 'rejected', reason);
 
   // Trigger from support component to lower a bollard
   const handleLowerBollard = (bollardId: string) => {
@@ -228,6 +308,11 @@ export default function AdminDashboard() {
         return (
           <ListingGovernance 
             listings={listings} 
+            isLoading={listingsLoading}
+            error={listingsError}
+            responseMessage={listingsMessage}
+            onRefresh={fetchListings}
+            onViewDocument={fetchPrivateDocument}
             onApprove={handleApproveListing} 
             onReject={handleRejectListing}
             addActivityLog={addActivityLog}
@@ -292,104 +377,97 @@ export default function AdminDashboard() {
     }
   };
 
+  const viewMeta: Record<ActiveView, { title: string; description: string }> = {
+    home: { title: 'Operations overview', description: 'Monitor the queues and systems that affect today’s parking journeys.' },
+    governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
+    iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
+    settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
+    enforcement: { title: 'Overstay enforcement', description: 'Resolve sessions that exceeded their confirmed parking window.' },
+    support: { title: 'Disputes and support', description: 'Keep commuter and owner issues moving toward a clear resolution.' },
+    audit: { title: 'System audit', description: 'Review operational actions and changes across the platform.' },
+    system: { title: 'System configuration', description: 'Manage the controls that affect platform-wide behavior.' },
+  };
+  const currentViewMeta = viewMeta[activeView];
+
   return (
-    <div id="parkjom-root" className="page-shell font-sans text-[#1d1d1f] flex">
+    <div id="parkjom-root" className="app-workspace font-sans text-[#1d1d1f] flex">
       
-      {/* 1. Sidebar — Dark Meta-style */}
-      <aside className="hidden lg:flex flex-col w-[240px] bg-[#0f1115] text-[#9ca3af] border-r border-white/[0.06] shrink-0 select-none">
-        {/* Brand */}
-        <div className="px-5 py-5 border-b border-white/[0.06] flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center font-extrabold text-[#111] text-[13px]">PJ</div>
-          <div>
-            <span className="text-white font-bold text-[15px] tracking-[-0.02em]">ParkJom</span>
-            <span className="text-[10px] text-[#6b7280] font-medium tracking-wider uppercase block leading-none mt-0.5">Admin Console</span>
+      <aside className="workspace-sidebar hidden lg:flex">
+        <div className="workspace-sidebar__brand">
+          <div className="workspace-wordmark">
+            <BrandLogo alt="" className="workspace-wordmark__mark" />
+            <div><strong>ParkJom</strong><span>Admin workspace</span></div>
           </div>
         </div>
 
-        {/* Dev badge */}
-        <div className="mx-4 my-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] text-[11px]">
-          <span className="text-[10px] font-semibold text-[#60a5fa] uppercase tracking-wider">Lead Developer</span>
-          <p className="text-[#d1d5db] font-medium mt-0.5">Chaw Chun Jia</p>
-          <span className="text-[10px] text-[#6b7280]">Student B • Backend &amp; IoT</span>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-2 space-y-0.5">
+        <nav className="workspace-nav" aria-label="Admin workspace">
           {mainMenuItems.map((item) => {
             const IconComponent = item.icon;
             const isActive = activeView === item.id;
             return (
               <button
                 key={item.id}
+                type="button"
                 onClick={() => setActiveView(item.id as ActiveView)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[12px] font-medium transition-all duration-150 ${
-                  isActive
-                    ? 'bg-white text-[#111]'
-                    : 'text-[#9ca3af] hover:bg-white/[0.04] hover:text-[#d1d5db]'
-                }`}
+                className={isActive ? 'is-active' : ''}
               >
-                <div className="flex items-center gap-2.5">
-                  <IconComponent size={15} className={isActive ? 'text-[#007AFF]' : 'text-[#6b7280]'} />
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <IconComponent size={15} />
                   <span>{item.label}</span>
                 </div>
                 {item.count !== null && item.count !== 0 && (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive ? 'bg-[#e8f0fe] text-[#007AFF]' : 'bg-white/[0.06] text-[#9ca3af]'}`}>
+                  <span className="ml-auto text-[10px] font-semibold text-[#6e6e73]">
                     {item.count}
                   </span>
                 )}
               </button>
             );
           })}
-        </nav>
-
-        <div className="flex-1" />
-
-        {/* Bottom section */}
-        <div className="px-3 py-2 border-t border-white/[0.06]">
-          <span className="text-[9px] font-semibold text-[#6b7280] uppercase tracking-wider px-3 pb-1.5 block">Administration</span>
+          <div className="mt-auto pt-3 border-t border-black/[0.06]">
           {bottomMenuItems.map((item) => {
             const IconComponent = item.icon;
             const isActive = activeView === item.id;
             return (
               <button
                 key={item.id}
+                type="button"
                 onClick={() => setActiveView(item.id as ActiveView)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12px] font-medium transition-all duration-150 ${isActive ? 'bg-[#fef3c7]/10 text-[#fbbf24]' : 'text-[#6b7280] hover:bg-white/[0.04] hover:text-[#9ca3af]'}`}
+                className={isActive ? 'is-active' : ''}
               >
                 <IconComponent size={15} /> {item.label}
               </button>
             );
           })}
-        </div>
+          </div>
+        </nav>
 
-        {/* Sign out + version */}
-        <div className="px-3 py-2 border-t border-white/[0.06]">
+        <div className="workspace-sidebar__footer">
           <button
+            type="button"
             onClick={() => { logout(); navigate('/'); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12px] font-medium text-[#9ca3af] hover:bg-white/[0.04] hover:text-[#d1d5db] transition-all duration-150"
+            className="w-full flex items-center gap-2.5 text-left hover:text-[#1d1d1f]"
           >
             <LogOut size={15} /> Sign out
           </button>
-          <div className="px-3 pt-2 text-[10px] text-[#4b5563] font-medium">
-            v1.0.4 &middot; System stable
-          </div>
         </div>
       </aside>
 
       {/* 2. Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 pb-16 lg:pb-0">
-        {/* Header visible on mobile only — sidebar replaces it on desktop */}
-        <div className="lg:hidden">
-          <DashboardHeader
-            role="admin"
-            showMenuButton
-            onMenuClick={() => setSidebarOpen(true)}
-            statusText="All systems operational"
-          />
-        </div>
+      <div className="flex-1 flex flex-col min-w-0 pb-16 lg:pb-0 lg:ml-60">
+        <DashboardHeader
+          role="admin"
+          showMenuButton
+          onMenuClick={() => setSidebarOpen(true)}
+          statusText="Operations workspace"
+        />
 
         {/* Main Workspace Frame */}
-        <main className="flex-1 p-6 overflow-y-auto max-w-[1500px] w-full mx-auto">
+        <main className="workspace-frame flex-1 overflow-y-auto">
+          {activeView === 'home' && (
+            <div className="workspace-heading">
+              <div><h1>{currentViewMeta.title}</h1><p>{currentViewMeta.description}</p></div>
+            </div>
+          )}
           <AnimatePresence mode="wait">
             <motion.div
               key={activeView}
@@ -417,68 +495,60 @@ export default function AdminDashboard() {
               className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
             />
 
-            {/* Slide Drawer — Dark style matching desktop */}
             <motion.aside 
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 180 }}
-              className="relative flex flex-col w-[260px] max-w-xs bg-[#0f1115] text-[#9ca3af] h-full border-r border-white/[0.06]"
+              className="workspace-sidebar is-open"
             >
-              <div className="px-5 py-5 border-b border-white/[0.06] flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center font-extrabold text-[#111] text-[13px]">PJ</div>
-                  <div>
-                    <span className="text-white font-bold text-[15px] tracking-[-0.02em]">ParkJom</span>
-                    <span className="text-[10px] text-[#6b7280] font-medium tracking-wider uppercase block leading-none mt-0.5">Admin</span>
-                  </div>
+              <div className="workspace-sidebar__brand">
+                <div className="workspace-wordmark">
+                  <BrandLogo alt="" className="workspace-wordmark__mark" />
+                  <div><strong>ParkJom</strong><span>Admin workspace</span></div>
                 </div>
-                <button onClick={() => setSidebarOpen(false)} className="text-[#6b7280] hover:text-white p-1">
+                <button type="button" onClick={() => setSidebarOpen(false)} className="text-[#6e6e73] p-1.5" aria-label="Close menu">
                   <X size={18} />
                 </button>
               </div>
 
-              <div className="mx-4 my-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] text-[11px]">
-                <span className="text-[10px] font-semibold text-[#60a5fa] uppercase tracking-wider">Lead Developer</span>
-                <p className="text-[#d1d5db] font-medium mt-0.5">Chaw Chun Jia (Student B)</p>
-              </div>
-
-              <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
+              <nav className="workspace-nav" aria-label="Admin workspace">
                 {mainMenuItems.map((item) => {
                   const IconComponent = item.icon;
                   const isActive = activeView === item.id;
                   return (
                     <button
                       key={item.id}
+                      type="button"
                       onClick={() => { setActiveView(item.id as ActiveView); setSidebarOpen(false); }}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[12px] font-medium transition-all duration-150 ${isActive ? 'bg-white text-[#111]' : 'text-[#9ca3af] hover:bg-white/[0.04] hover:text-[#d1d5db]'}`}
+                      className={isActive ? 'is-active' : ''}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <IconComponent size={15} className={isActive ? 'text-[#007AFF]' : 'text-[#6b7280]'} />
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <IconComponent size={15} />
                         <span>{item.label}</span>
                       </div>
                       {item.count !== null && item.count !== 0 && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive ? 'bg-[#e8f0fe] text-[#007AFF]' : 'bg-white/[0.06] text-[#9ca3af]'}`}>{item.count}</span>
+                        <span className="ml-auto text-[10px] font-semibold text-[#6e6e73]">{item.count}</span>
                       )}
                     </button>
                   );
                 })}
-                <div className="border-t border-white/[0.06] pt-2 mt-2">
-                  <span className="text-[9px] font-semibold text-[#6b7280] uppercase tracking-wider px-3 pb-1.5 block">Administration</span>
+                <div className="mt-auto pt-3 border-t border-black/[0.06]">
                   {bottomMenuItems.map((item) => {
                     const IconComponent = item.icon;
                     const isActive = activeView === item.id;
                     return (
                       <button
                         key={item.id}
+                        type="button"
                         onClick={() => { setActiveView(item.id as ActiveView); setSidebarOpen(false); }}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12px] font-medium transition-all duration-150 ${isActive ? 'bg-[#fef3c7]/10 text-[#fbbf24]' : 'text-[#6b7280] hover:bg-white/[0.04] hover:text-[#9ca3af]'}`}
+                        className={isActive ? 'is-active' : ''}
                       >
                         <IconComponent size={15} /> {item.label}
                       </button>
                     );
                   })}
-                </div>
+                  </div>
               </nav>
             </motion.aside>
           </div>

@@ -14,9 +14,9 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icons/parkjom.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/branding/parkjom-logo.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

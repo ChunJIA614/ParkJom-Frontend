@@ -1,5 +1,16 @@
 export interface ParkingBay {
   id: string;
+  parkingSpotId: number;
+  propertyId: number;
+  ownerId: number;
+  parkingLabel: string;
+  availabilityStatus: string;
+  verificationStatus: string | number;
+  monthlyRate: number;
+  dailyRate: number | null;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
   propertyName: string;
   stationName: string;
   bayNumber: string;
@@ -9,6 +20,32 @@ export interface ParkingBay {
   verificationDocName?: string;
   verificationProgress?: number;
   verificationSubmittedAt?: string;
+}
+
+export type ParkingAvailabilityStatus = 'Inactive' | 'Available' | 'Reserved' | 'Occupied';
+
+export interface ParkingActionResult {
+  success: boolean;
+  message: string;
+}
+
+export interface MyParkingResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data: Array<{
+    parkingSpotId: number;
+    propertyId: number;
+    ownerId: number;
+    parkingLabel: string;
+    availabilityStatus: string | number;
+    verificationStatus: string | number;
+    monthlyRate: number;
+    dailyRate: number | null;
+    isPublished: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }>;
 }
 
 export interface Booking {

@@ -9,7 +9,7 @@
     "lint": "tsc --noEmit",
     "gtfs": "node convert-gtfs.cjs",
     "build": "vite build",
-    "deploy": "vite build && cd .. && firebase deploy --only hosting"
+    "deploy": "vite build && firebase deploy --only hosting"
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.5",

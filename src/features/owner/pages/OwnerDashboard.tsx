@@ -10,12 +10,51 @@ import AvailabilityScheduler from '../components/AvailabilityScheduler';
 import PropertyOnboarding from '../components/PropertyOnboarding';
 import SettingsPanel from '../components/SettingsPanel';
 import SupportTickets from '../components/SupportTickets';
-import { ParkingBay, Booking, Notification, WalletTransaction } from '../types';
+import {
+  ParkingBay,
+  Booking,
+  Notification,
+  WalletTransaction,
+  MyParkingResponse,
+  ParkingActionResult,
+  ParkingAvailabilityStatus,
+} from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ||
   (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
     ? 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api'
     : '/api');
+
+function deriveParkingStatus(
+  verificationStatus: string | number,
+  isPublished: boolean,
+): ParkingBay['status'] {
+  const normalizedVerification = String(verificationStatus ?? '').toLowerCase();
+  if (normalizedVerification === 'rejected' || normalizedVerification === '3') return 'Rejected';
+  if (isPublished) return 'Active';
+  if (
+    normalizedVerification === 'approved'
+    || normalizedVerification === 'verified'
+    || normalizedVerification === '2'
+  ) return 'Approved';
+  return 'Pending Verification';
+}
+
+function normalizeParkingAvailability(value: string | number): ParkingAvailabilityStatus {
+  const normalized = String(value ?? '').toLowerCase();
+  const numericStatuses: Record<string, ParkingAvailabilityStatus> = {
+    '0': 'Inactive',
+    '1': 'Available',
+    '2': 'Reserved',
+    '3': 'Occupied',
+  };
+  const namedStatus = ['Inactive', 'Available', 'Reserved', 'Occupied'].find(
+    (status) => status.toLowerCase() === normalized,
+  );
+  if (numericStatuses[normalized]) return numericStatuses[normalized];
+  if (namedStatus) return namedStatus as ParkingAvailabilityStatus;
+  return 'Inactive';
+}
 
 function loadNotifications(): Notification[] {
   try { const s = localStorage.getItem('parkjom_owner_notifs'); return s ? JSON.parse(s) : []; }
@@ -45,6 +84,8 @@ export default function OwnerDashboard() {
   // 2. Active Registered Parking Bays — fetched from backend
   const [bays, setBays] = useState<ParkingBay[]>([]);
   const [baysLoading, setBaysLoading] = useState(true);
+  const [baysError, setBaysError] = useState<string | null>(null);
+  const [baysMessage, setBaysMessage] = useState('');
 
   // 3. Recent Bookings History — TODO: fetch from backend
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -61,50 +102,48 @@ export default function OwnerDashboard() {
   // ---- Fetch parking spots from backend ----
   const fetchMyParking = useCallback(async () => {
     setBaysLoading(true);
+    setBaysError(null);
     try {
       const token = user?.token ?? '';
-      if (!token) { setBaysLoading(false); return; }
+      if (!token) throw new Error('Your owner session is missing an authorization token.');
       
       const res = await fetch(`${API_BASE}/parking/my-parking`, {
-        headers: { Authorization: `Bearer ${token}` },
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Accept-Language': 'en-US,en;q=0.9',
+          Accept: 'application/json',
+        },
       });
-      if (!res.ok) { setBaysLoading(false); return; }
-
-      const data = await res.json();
-      if (data.success && data.data) {
-        const mapped: ParkingBay[] = data.data.map((ps: any) => {
-          // Extract level from parkingLabel (e.g. "2-90/Level 2" → "Level 2")
-          const levelMatch = ps.parkingLabel?.match(/Level\s*\d+/i);
-          const level = levelMatch ? levelMatch[0] : '-';
-
-          // Determine status using backend enum: Pending=1, Approved=2, Rejected=3
-          const vs = typeof ps.verificationStatus === 'string'
-            ? { Pending: 1, Approved: 2, Rejected: 3 }[ps.verificationStatus] ?? 1
-            : (ps.verificationStatus ?? 1);
-          let status: ParkingBay['status'] = 'Pending Verification';
-          if (ps.isPublished) {
-            status = 'Active';
-          } else if (vs === 3) {
-            status = 'Rejected';
-          } else if (vs === 2) {
-            status = 'Approved'; // admin approved, waiting for owner to publish
-          }
-
-          return {
-            id: `b-${ps.parkingSpotId}`,
-            propertyName: ps.propertyName ?? `Property #${ps.propertyId}`,
-            stationName: '-',
-            bayNumber: ps.parkingLabel ?? `Spot #${ps.parkingSpotId}`,
-            level,
-            status,
-            hourlyRate: ps.dailyRate ?? ps.monthlyRate ?? 0,
-            verificationRequestId: ps.verificationRequestId,
-            verificationSubmittedAt: ps.verificationSubmittedAt,
-          };
-        });
-        setBays(mapped);
+      const body = await res.json().catch(() => null) as MyParkingResponse | null;
+      if (!res.ok || !body?.success) {
+        throw new Error(body?.message || `Unable to retrieve parking spots (${res.status})`);
       }
-    } catch { /* API not available */ }
+      if (!Array.isArray(body.data)) {
+        throw new Error('The parking response did not contain a data list.');
+      }
+
+      const mapped: ParkingBay[] = body.data.map((ps) => {
+        const [labelBay = '', labelLevel = ''] = String(ps.parkingLabel ?? '').split('/', 2);
+
+        return {
+          ...ps,
+          availabilityStatus: normalizeParkingAvailability(ps.availabilityStatus),
+          id: `b-${ps.parkingSpotId}`,
+          propertyName: `Property #${ps.propertyId}`,
+          stationName: '—',
+          bayNumber: labelBay || ps.parkingLabel || `Spot #${ps.parkingSpotId}`,
+          level: labelLevel ? `Level ${labelLevel}` : 'Level —',
+          status: deriveParkingStatus(ps.verificationStatus, ps.isPublished),
+          hourlyRate: ps.dailyRate ?? 0,
+          verificationSubmittedAt: ps.createdAt,
+        };
+      });
+      setBays(mapped);
+      setBaysMessage(`${body.message} (API ${body.code})`);
+    } catch (error) {
+      setBaysError(error instanceof Error ? error.message : 'Unable to retrieve your parking spots.');
+    }
     finally { setBaysLoading(false); }
   }, [user?.token]);
 
@@ -213,44 +252,181 @@ export default function OwnerDashboard() {
   };
 
   // Configure Parking — POST to backend API
-  const handleConfigParking = async (parkingSpotId: string, formData: FormData) => {
+  const handleConfigParking = async (formData: FormData) => {
     const token = user?.token ?? '';
     if (!token) {
       alert('Authentication required. Please log in again.');
       return { success: false, message: 'No auth token' };
     }
 
+    const parkingSpotId = Number(formData.get('parkingSpotId'));
+    const editableBay = bays.find((bay) => bay.parkingSpotId === parkingSpotId);
+    if (!Number.isInteger(parkingSpotId) || !editableBay) {
+      return { success: false, message: 'Select one of your parking spots before saving.' };
+    }
+    if (editableBay.isPublished) {
+      return { success: false, message: 'Unpublish this parking spot before changing its configuration.' };
+    }
+
     try {
-      const res = await fetch(`${API_BASE}/parking/config-parking/${parkingSpotId.replace('b-', '')}`, {
+      const res = await fetch(`${API_BASE}/parking/configuration`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
         body: formData,
       });
-      const data = await res.json().catch(() => null);
+      const data = await res.json().catch(() => null) as {
+        code?: number;
+        success?: boolean;
+        message?: string;
+        parkingSpotId?: number;
+      } | null;
 
-      if (res.ok && data?.success !== false) {
+      if (res.ok && data?.success === true) {
         const newNotif: Notification = {
           id: `n-${Date.now()}`,
           title: 'Parking Configured',
-          message: data?.message || `Parking spot #${data?.parkingSpotId ?? parkingSpotId} configured successfully.`,
+          message: data.message || `Parking spot #${data.parkingSpotId ?? formData.get('parkingSpotId')} configured successfully.`,
           time: 'Just now',
           unread: true,
           type: 'system',
         };
         setNotifications(prev => [newNotif, ...prev]);
-        return { success: true, message: data?.message };
+        await fetchMyParking();
+        return { success: true, message: data.message, parkingSpotId: data.parkingSpotId };
       } else {
         alert(data?.message || 'Failed to configure parking. Please try again.');
-        return { success: false, message: data?.message };
+        return { success: false, message: data?.message || `Configuration failed (${res.status}).` };
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       alert('Network error. Please check your connection.');
-      return { success: false, message: err.message };
+      return { success: false, message: err instanceof Error ? err.message : 'Network error' };
+    }
+  };
+
+  const handleUpdateParkingAvailability = async (
+    parkingSpotId: number,
+    availabilityStatus: ParkingAvailabilityStatus,
+  ): Promise<ParkingActionResult> => {
+    const token = user?.token ?? '';
+    if (!token) return { success: false, message: 'Authentication required. Please log in again.' };
+
+    try {
+      const res = await fetch(`${API_BASE}/parking/availability`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ parkingSpotId, availabilityStatus }),
+      });
+      const data = await res.json().catch(() => null) as {
+        code?: number;
+        success?: boolean;
+        message?: string;
+        parkingSpotId?: number;
+        availabilityStatus?: ParkingAvailabilityStatus;
+      } | null;
+
+      if (!res.ok || data?.success !== true) {
+        return {
+          success: false,
+          message: data?.message || `Unable to update parking availability (${res.status}).`,
+        };
+      }
+
+      const confirmedStatus = data.availabilityStatus ?? availabilityStatus;
+      setBays((current) => current.map((bay) => bay.parkingSpotId === parkingSpotId
+        ? { ...bay, availabilityStatus: confirmedStatus, updatedAt: new Date().toISOString() }
+        : bay));
+      setNotifications((current) => [{
+        id: `n-${Date.now()}`,
+        title: 'Availability Updated',
+        message: data.message || `Parking spot #${parkingSpotId} is now ${confirmedStatus}.`,
+        time: 'Just now',
+        unread: true,
+        type: 'system',
+      }, ...current]);
+
+      return {
+        success: true,
+        message: data.message || `Parking spot #${parkingSpotId} is now ${confirmedStatus}.`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unable to update parking availability.',
+      };
+    }
+  };
+
+  const handleUpdateParkingPublication = async (
+    parkingSpotId: number,
+    isPublished: boolean,
+  ): Promise<ParkingActionResult> => {
+    const token = user?.token ?? '';
+    if (!token) return { success: false, message: 'Authentication required. Please log in again.' };
+
+    try {
+      const res = await fetch(`${API_BASE}/parking/publish`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ parkingSpotId, isPublished }),
+      });
+      const data = await res.json().catch(() => null) as {
+        code?: number;
+        success?: boolean;
+        message?: string;
+        parkingSpotId?: number;
+        isPublished?: boolean;
+      } | null;
+
+      if (!res.ok || data?.success !== true) {
+        return {
+          success: false,
+          message: data?.message || `Unable to update parking publication (${res.status}).`,
+        };
+      }
+
+      const confirmedPublication = data.isPublished ?? isPublished;
+      setBays((current) => current.map((bay) => bay.parkingSpotId === parkingSpotId
+        ? {
+            ...bay,
+            isPublished: confirmedPublication,
+            status: deriveParkingStatus(bay.verificationStatus, confirmedPublication),
+            updatedAt: new Date().toISOString(),
+          }
+        : bay));
+      setNotifications((current) => [{
+        id: `n-${Date.now()}`,
+        title: confirmedPublication ? 'Parking Published' : 'Parking Unpublished',
+        message: data.message || `Parking spot #${parkingSpotId} was ${confirmedPublication ? 'published' : 'unpublished'}.`,
+        time: 'Just now',
+        unread: true,
+        type: 'system',
+      }, ...current]);
+
+      return {
+        success: true,
+        message: data.message || `Parking spot #${parkingSpotId} was ${confirmedPublication ? 'published' : 'unpublished'}.`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unable to update parking publication.',
+      };
     }
   };
 
   // Register New Parking Spot Near Transit Stations
-  // Property creation is now handled by POST /api/property/create-property in PropertyOnboarding
+  // Parking creation is handled by POST /api/parking/create-parking in PropertyOnboarding.
   const handleOnboardProperty = (property: {
     propertyName: string;
     stationName: string;
@@ -258,9 +434,6 @@ export default function OwnerDashboard() {
     level: string;
     docName: string;
   }) => {
-    // TODO: Refresh bays list from backend after successful property creation
-    // const newBay = await fetch('/api/parking-spots', { ... })
-
     const newNotif: Notification = {
       id: `n-${Date.now()}`,
       title: 'Registration Submitted',
@@ -270,6 +443,7 @@ export default function OwnerDashboard() {
       type: 'system'
     };
     setNotifications(prev => [newNotif, ...prev]);
+    fetchMyParking();
   };
 
   // Save payout Bank Account settings
@@ -282,8 +456,17 @@ export default function OwnerDashboard() {
     setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
   };
 
+  const viewMeta: Record<string, { title: string; description: string }> = {
+    dashboard: { title: 'Overview', description: 'Today’s bays, bookings, and settlement status.' },
+    availability: { title: 'Configure parking', description: 'Add or update photos, pricing, and availability for any unpublished bay.' },
+    registration: { title: 'Register a property', description: 'Submit a bay for verification and configure it for bookings.' },
+    tickets: { title: 'Support', description: 'Track booking, access, and settlement issues.' },
+    settings: { title: 'Settings', description: 'Manage payout details and workspace preferences.' },
+  };
+  const currentViewMeta = viewMeta[activeView] ?? viewMeta.dashboard;
+
   return (
-    <div className="page-shell font-sans text-[#1d1d1f] flex">
+    <div className="app-workspace font-sans text-[#1d1d1f] flex">
       {/* Responsive Sidebar */}
       <Sidebar 
         activeView={activeView} 
@@ -293,7 +476,7 @@ export default function OwnerDashboard() {
       />
 
       {/* Main content viewport wrapper */}
-      <div className="flex-1 flex flex-col lg:ml-64 min-h-screen pb-16 lg:pb-0">
+      <div className="flex-1 flex flex-col lg:ml-60 min-h-screen pb-16 lg:pb-0">
         {/* Top Navbar */}
         <Header
           notifications={notifications}
@@ -302,7 +485,15 @@ export default function OwnerDashboard() {
         />
 
         {/* Render View Panels */}
-        <main className="flex-1 p-4 md:p-8 max-w-7xl w-full mx-auto">
+        <main className="workspace-frame flex-1">
+          {activeView === 'dashboard' && (
+            <div className="workspace-heading">
+              <div>
+                <h1>{currentViewMeta.title}</h1>
+                <p>{currentViewMeta.description}</p>
+              </div>
+            </div>
+          )}
           <PageTransition transitionKey={activeView}>
           {activeView === 'dashboard' && (
             <DashboardHome 
@@ -311,6 +502,11 @@ export default function OwnerDashboard() {
               bookings={bookings}
               bays={bays}
               baysLoading={baysLoading}
+              baysError={baysError}
+              baysMessage={baysMessage}
+              onRefreshBays={fetchMyParking}
+              onUpdateAvailability={handleUpdateParkingAvailability}
+              onUpdatePublication={handleUpdateParkingPublication}
               activeBank={activeBank}
               onResolveDispute={handleResolveDispute}
             />
@@ -318,7 +514,7 @@ export default function OwnerDashboard() {
 
           {activeView === 'availability' && (
             <AvailabilityScheduler 
-              bays={bays.filter(b => b.status !== 'Pending Verification' && b.status !== 'Rejected')}
+              bays={bays.filter((bay) => !bay.isPublished)}
               scheduleBlocks={scheduleBlocks}
               onAddBlock={handleAddScheduleSlot}
               onRemoveBlock={handleRemoveScheduleSlot}
@@ -346,16 +542,12 @@ export default function OwnerDashboard() {
           </PageTransition>
         </main>
 
-        {/* Global Footer */}
-        <footer className="bg-white border-t border-slate-200 py-5 text-center text-slate-400 text-xs">
-          <p className="font-medium">&copy; 2026 ParkJom Malaysia. All Rights Reserved.</p>
-        </footer>
       </div>
 
       <BottomNav
         items={[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Overview' },
-          { id: 'availability', icon: CalendarDays, label: 'Schedule' },
+          { id: 'availability', icon: CalendarDays, label: 'Configure' },
           { id: 'registration', icon: PlusSquare, label: 'Register' },
           { id: 'tickets', icon: ClipboardList, label: 'Support' },
           { id: 'settings', icon: Sliders, label: 'Settings' },

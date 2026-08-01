@@ -21,6 +21,11 @@ frontend/dist/
 .firebase/
 firebase-debug.log
 
+# Local AI/design tooling
+.agents/
+.codex/
+.impeccable/
+
 # Environment files
 .env
 

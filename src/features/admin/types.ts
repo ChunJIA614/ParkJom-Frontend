@@ -10,24 +10,65 @@ export interface IoTBollard {
   firmwareVersion: string;
 }
 
-export interface ListingRequest {
-  id: string;                      // verificationRequestId as string
-  verificationRequestId: number;   // from backend verification endpoint
-  parkingSpotId: number;           // from backend
-  propertyId: number;              // from backend
-  ownerName: string;               // submittedByName
-  ownerEmail: string;              // submittedByEmail
-  location: string;                // propertyName (since address not in verification response)
-  bayNumber: string;               // parkingLabel
-  hourlyRate: number;
-  documents: {
-    titleDeed: string;
-    utilityBill: string;
-    identityCard: string;
-  };
+export interface ParkingVerificationDocumentDto {
+  verificationDocumentId: number;
+  documentType: number;
+  mediaFileId: number;
+  resourceType: string;
+  format: string;
+  originalFileName: string;
+  uploadedAt: string;
+}
+
+export interface ParkingVerificationRequestDto {
+  verificationRequestId: number;
+  parkingSpotId: number;
+  parkingLabel: string;
+  propertyId: number;
+  propertyName: string;
+  submittedByUserId: number;
+  submittedByEmail: string;
+  submittedByName: string;
+  verificationStatus: string | number;
   submittedAt: string;
-  status: 'pending' | 'approved' | 'rejected';
-  rejectionReason?: string;
+  documents: ParkingVerificationDocumentDto[];
+}
+
+export interface ListingRequest extends ParkingVerificationRequestDto {
+  id: string;
+  verificationStatusLabel: string;
+  status: 'pending' | 'approved' | 'rejected' | 'unknown';
+}
+
+export interface ParkingVerificationRequestsResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data: ParkingVerificationRequestDto[];
+}
+
+export interface ParkingVerificationRequestResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data: ParkingVerificationRequestDto;
+}
+
+export type ParkingVerificationDecision = 'approved' | 'rejected';
+
+export interface ParkingVerificationDecisionResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  verificationRequestId: number;
+  parkingSpotId: number;
+  verificationStatus: number;
+  updatedAt: string;
+}
+
+export interface ParkingVerificationDecisionResult {
+  success: boolean;
+  message: string;
 }
 
 export interface OwnerPayout {

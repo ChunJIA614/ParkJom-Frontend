@@ -93,8 +93,7 @@ export default function Header({ notifications, onMarkAllRead, onToggleSidebar }
       role="owner"
       showMenuButton
       onMenuClick={onToggleSidebar}
-      statusText="Wangsa Maju, KL"
-      badge={{ label: 'Active', variant: 'success' }}
+      statusText="Owner workspace"
       actions={notificationActions}
     />
   );

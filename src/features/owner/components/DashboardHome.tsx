@@ -21,10 +21,21 @@ import {
   Activity,
   AlertTriangle,
   Loader2,
+  Info,
 } from 'lucide-react';
-import { Booking } from '../types';
+import {
+  Booking,
+  ParkingActionResult,
+  ParkingAvailabilityStatus,
+  ParkingBay,
+} from '../types';
 
-import { ParkingBay } from '../types';
+const parkingAvailabilityOptions: ParkingAvailabilityStatus[] = [
+  'Inactive',
+  'Available',
+  'Reserved',
+  'Occupied',
+];
 
 interface DashboardHomeProps {
   walletBalance: number;
@@ -32,6 +43,11 @@ interface DashboardHomeProps {
   bookings: Booking[];
   bays: ParkingBay[];
   baysLoading?: boolean;
+  baysError?: string | null;
+  baysMessage?: string;
+  onRefreshBays?: () => void | Promise<void>;
+  onUpdateAvailability?: (parkingSpotId: number, availabilityStatus: ParkingAvailabilityStatus) => Promise<ParkingActionResult>;
+  onUpdatePublication?: (parkingSpotId: number, isPublished: boolean) => Promise<ParkingActionResult>;
   activeBank: { name: string; accNo: string; holder: string };
   onResolveDispute: (id: string) => void;
 }
@@ -42,6 +58,11 @@ export default function DashboardHome({
   bookings, 
   bays,
   baysLoading = false,
+  baysError = null,
+  baysMessage = '',
+  onRefreshBays,
+  onUpdateAvailability,
+  onUpdatePublication,
   activeBank,
   onResolveDispute 
 }: DashboardHomeProps) {
@@ -51,6 +72,16 @@ export default function DashboardHome({
   const [withdrawAmount, setWithdrawAmount] = useState('150');
   const [agreeTerms, setWithdrawAgreeTerms] = useState(false);
   const [activeDispute, setActiveDispute] = useState<Booking | null>(null);
+  const [parkingActionKey, setParkingActionKey] = useState<string | null>(null);
+
+  const formatParkingDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value || '—';
+    return new Intl.DateTimeFormat('en-MY', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date);
+  };
 
   interface IoTDevice {
     id: string;
@@ -239,20 +270,35 @@ export default function DashboardHome({
     .filter(b => b.status === 'Completed')
     .reduce((acc, b) => acc + b.commissionPaid, 0);
 
+  const updateAvailability = async (parkingSpotId: number, availabilityStatus: ParkingAvailabilityStatus) => {
+    if (!onUpdateAvailability) return;
+    const actionKey = `availability-${parkingSpotId}`;
+    setParkingActionKey(actionKey);
+    try {
+      const result = await onUpdateAvailability(parkingSpotId, availabilityStatus);
+      showToast(result.message, result.success ? 'success' : 'warning');
+    } finally {
+      setParkingActionKey(null);
+    }
+  };
+
+  const updatePublication = async (parkingSpotId: number, isPublished: boolean) => {
+    if (!onUpdatePublication) return;
+    const actionKey = `publication-${parkingSpotId}`;
+    setParkingActionKey(actionKey);
+    try {
+      const result = await onUpdatePublication(parkingSpotId, isPublished);
+      showToast(result.message, result.success ? 'success' : 'warning');
+    } finally {
+      setParkingActionKey(null);
+    }
+  };
+
   return (
     <div className="space-y-4 md:space-y-6">
-      {/* Welcome Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 md:gap-4">
-        <div>
-          <h1 className="text-lg md:text-2xl font-black text-slate-900 tracking-tight">Supply &amp; Earnings</h1>
-          <p className="text-slate-500 text-[10px] md:text-xs mt-0.5 leading-normal hidden md:block">
-            Verify bookings, track cash flows, and manage payouts near TODs.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-800 px-2.5 md:px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-semibold w-fit">
-          <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-blue-600 animate-pulse"></span>
-          <span>Gateway: Online</span>
-        </div>
+      <div className="flex items-start gap-3 rounded-xl bg-[#f2f2f7] px-4 py-3 text-[12px] text-[#6e6e73]">
+        <Info size={16} className="mt-0.5 shrink-0 text-[#007AFF]" />
+        <p>Balances, bays, and bookings use connected workspace state. Device examples remain illustrative until the owner IoT endpoint is connected.</p>
       </div>
 
       {/* Overview stats cards */}
@@ -264,9 +310,6 @@ export default function DashboardHome({
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
                 <Wallet className="w-4 h-4 text-blue-600" />
                 Withdrawable
-              </span>
-              <span className="bg-blue-50 border border-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
-                Verified Host
               </span>
             </div>
             <span className="text-slate-400 text-xs font-medium block mb-1">Current Balance</span>
@@ -325,9 +368,31 @@ export default function DashboardHome({
       <div className="space-y-3 md:space-y-4">
         <div className="flex items-center gap-2">
           <Building className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
-          <h2 className="font-bold text-sm md:text-base text-slate-900">My Parking Bays</h2>
+          <div>
+            <h2 className="font-bold text-sm md:text-base text-slate-900">My Parking Bays</h2>
+            {baysMessage && !baysError && <p className="text-[10px] text-emerald-600">{baysMessage}</p>}
+          </div>
           <span className="text-[10px] font-medium text-slate-400 ml-auto">{bays.length} bay{bays.length !== 1 ? 's' : ''}</span>
+          {onRefreshBays && (
+            <button
+              type="button"
+              onClick={onRefreshBays}
+              disabled={baysLoading}
+              className="rounded-lg border border-slate-200 p-1.5 text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-50"
+              aria-label="Refresh parking spots"
+              title="Refresh parking spots"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${baysLoading ? 'animate-spin' : ''}`} />
+            </button>
+          )}
         </div>
+
+        {baysError && (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+            <span>{baysError}</span>
+            {onRefreshBays && <button type="button" onClick={onRefreshBays} className="font-semibold underline">Retry</button>}
+          </div>
+        )}
 
         {baysLoading ? (
           <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
@@ -342,26 +407,126 @@ export default function DashboardHome({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {bays.map((bay) => (
-              <div key={bay.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4 shadow-sm">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
-                  <Building className="w-5 h-5 text-blue-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-bold text-slate-900 truncate">{bay.propertyName}</p>
-                  <p className="text-[11px] text-slate-500">{bay.bayNumber} &middot; {bay.level} &middot; {bay.stationName}</p>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-[12px] font-bold text-emerald-600">RM {bay.hourlyRate.toFixed(2)}/hr</span>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      bay.status === 'Active' ? 'bg-emerald-50 text-emerald-700' :
-                      bay.status === 'Approved' ? 'bg-blue-50 text-blue-700' :
-                      bay.status === 'Rejected' ? 'bg-rose-50 text-rose-700' :
-                      'bg-amber-50 text-amber-700'
-                    }`}>{bay.status}</span>
+            {bays.map((bay) => {
+              const normalizedVerification = String(bay.verificationStatus).toLowerCase();
+              const isApproved = normalizedVerification === 'approved'
+                || normalizedVerification === 'verified'
+                || normalizedVerification === '2';
+              const isConfigured = bay.monthlyRate > 0;
+              const canManageListing = isApproved && isConfigured;
+              const canChangePublication = bay.isPublished || canManageListing;
+              const normalizedAvailability = String(bay.availabilityStatus).toLowerCase();
+              const availabilityActionKey = `availability-${bay.parkingSpotId}`;
+              const publicationActionKey = `publication-${bay.parkingSpotId}`;
+              const isAvailabilityUpdating = parkingActionKey === availabilityActionKey;
+              const isPublicationUpdating = parkingActionKey === publicationActionKey;
+              const matchingAvailability = parkingAvailabilityOptions.find(
+                (status) => status.toLowerCase() === String(bay.availabilityStatus).toLowerCase(),
+              );
+
+              return (
+              <div key={bay.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+                    <Building className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-[13px] font-bold text-slate-900">Property #{bay.propertyId}</p>
+                        <p className="text-[10px] font-mono text-slate-400">Parking Spot #{bay.parkingSpotId} · Owner #{bay.ownerId}</p>
+                      </div>
+                      <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                        bay.isPublished ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                      }`}>{bay.isPublished ? 'Published' : 'Not published'}</span>
+                    </div>
+                    <p className="mt-1.5 text-[11px] font-semibold text-slate-600">Parking label: <span className="font-mono text-blue-600">{bay.parkingLabel}</span></p>
                   </div>
                 </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    normalizedAvailability === 'available'
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : normalizedAvailability === 'occupied'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'bg-slate-100 text-slate-600'
+                  }`}>Availability: {bay.availabilityStatus}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    String(bay.verificationStatus).toLowerCase() === 'rejected' || String(bay.verificationStatus) === '3'
+                      ? 'bg-rose-50 text-rose-700'
+                      : String(bay.verificationStatus).toLowerCase() === 'pending' || String(bay.verificationStatus) === '1'
+                        ? 'bg-amber-50 text-amber-700'
+                        : 'bg-blue-50 text-blue-700'
+                  }`}>Verification: {bay.verificationStatus}</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border-t border-slate-100 pt-3">
+                  <label className="space-y-1">
+                    <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Booking availability</span>
+                    <div className="relative">
+                      <select
+                        value={matchingAvailability ?? bay.availabilityStatus}
+                        onChange={(event) => updateAvailability(
+                          bay.parkingSpotId,
+                          event.target.value as ParkingAvailabilityStatus,
+                        )}
+                        disabled={!canManageListing || parkingActionKey !== null || !onUpdateAvailability}
+                        className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-2.5 py-2 pr-8 text-[11px] font-semibold text-slate-700 outline-none transition focus:border-blue-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        {!matchingAvailability && (
+                          <option value={bay.availabilityStatus}>{bay.availabilityStatus}</option>
+                        )}
+                        {parkingAvailabilityOptions.map((status) => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                      {isAvailabilityUpdating && (
+                        <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-blue-600" />
+                      )}
+                    </div>
+                  </label>
+
+                  <div className="space-y-1">
+                    <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Listing visibility</span>
+                    <button
+                      type="button"
+                      onClick={() => updatePublication(bay.parkingSpotId, !bay.isPublished)}
+                      disabled={!canChangePublication || parkingActionKey !== null || !onUpdatePublication}
+                      className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        bay.isPublished
+                          ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          : 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                    >
+                      {isPublicationUpdating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {isPublicationUpdating
+                        ? 'Updating…'
+                        : bay.isPublished ? 'Unpublish listing' : 'Publish listing'}
+                    </button>
+                  </div>
+                </div>
+
+                {!canManageListing && !bay.isPublished && (
+                  <p className="text-[9px] leading-relaxed text-amber-600">
+                    {isApproved
+                      ? 'Complete the initial parking configuration before publishing or changing availability.'
+                      : 'Parking controls unlock after verification is approved.'}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-2.5 text-[10px]">
+                  <div><span className="text-slate-400">Monthly rate</span><p className="font-bold text-slate-700">RM {bay.monthlyRate.toFixed(2)}</p></div>
+                  <div><span className="text-slate-400">Daily rate</span><p className="font-bold text-slate-700">{bay.dailyRate === null ? '—' : `RM ${bay.dailyRate.toFixed(2)}`}</p></div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-2 text-[9px] text-slate-400 space-y-0.5">
+                  <p>Created: {formatParkingDate(bay.createdAt)}</p>
+                  <p>Updated: {formatParkingDate(bay.updatedAt)}</p>
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

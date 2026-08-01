@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, useMap, GeoJSON } from 'react-leaflet';
+import { GeoJSON, MapContainer, Marker, Polyline, Popup, TileLayer, useMap, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import stationData from '../data/mrt_lrt_stations.json';
@@ -30,14 +30,13 @@ interface GeoJsonCollection<T> {
 const stationIcon = L.divIcon({
   className: 'custom-station-icon',
   html: `<div style="
-    background: #2563EB; 
-    width: 16px; height: 16px; 
+    background: #007AFF;
+    width: 22px; height: 22px;
     border-radius: 50%; 
     border: 3px solid white;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.22);
     display: flex; align-items: center; justify-content: center;
-    font-size: 8px;
-  ">🚇</div>`,
+  "><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="14" rx="3"/><path d="M8 20l2-3m6 3-2-3M9 8h6m-6 4h.01m5.99 0h.01"/></svg></div>`,
   iconSize: [22, 22],
   iconAnchor: [11, 11],
   popupAnchor: [0, -14],
@@ -46,14 +45,13 @@ const stationIcon = L.divIcon({
 const parkingIcon = L.divIcon({
   className: 'custom-parking-icon',
   html: `<div style="
-    background: #10B981;
+    background: #34C759;
     width: 28px; height: 28px;
     border-radius: 50%;
     border: 3px solid white;
     box-shadow: 0 2px 8px rgba(0,0,0,0.25);
     display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 900; color: white;
-  ">P</div>`,
+  "><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 20V4h5.5a4 4 0 010 8H8"/></svg></div>`,
   iconSize: [34, 34],
   iconAnchor: [17, 17],
   popupAnchor: [0, -18],
@@ -62,14 +60,13 @@ const parkingIcon = L.divIcon({
 const selectedStationIcon = L.divIcon({
   className: 'custom-selected-station-icon',
   html: `<div style="
-    background: #EF4444;
-    width: 20px; height: 20px;
+    background: #007AFF;
+    width: 24px; height: 24px;
     border-radius: 50%;
     border: 3px solid white;
-    box-shadow: 0 0 0 4px rgba(239,68,68,0.3), 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 0 0 5px rgba(0,122,255,0.22), 0 2px 8px rgba(0,0,0,0.24);
     display: flex; align-items: center; justify-content: center;
-    font-size: 9px;
-  ">🚇</div>`,
+  "><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="14" rx="3"/><path d="M8 20l2-3m6 3-2-3M9 8h6m-6 4h.01m5.99 0h.01"/></svg></div>`,
   iconSize: [28, 28],
   iconAnchor: [14, 14],
   popupAnchor: [0, -18],
@@ -80,6 +77,7 @@ interface CommuterMapProps {
   spots: ParkingSpot[];
   onStationSelect: (stationName: string, lat: number, lng: number) => void;
   selectedStation: string | null;
+  selectedSpot: ParkingSpot | null;
   onSpotClick: (spot: ParkingSpot) => void;
   distanceRadius: number;
   onDistanceRadiusChange: (radius: number) => void;
@@ -93,6 +91,25 @@ function FlyToStation({ lat, lng }: { lat: number; lng: number }) {
   useEffect(() => {
     map.flyTo([lat, lng], 15, { duration: 0.6 });
   }, [lat, lng, map]);
+  return null;
+}
+
+function FocusSelectedRoute({
+  station,
+  spot,
+}: {
+  station: { lat: number; lon: number };
+  spot: ParkingSpot;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.fitBounds(
+      [[station.lat, station.lon], [spot.lat, spot.lng]],
+      { padding: [72, 72], maxZoom: 16, animate: false },
+    );
+  }, [map, spot.id, spot.lat, spot.lng, station.lat, station.lon]);
+
   return null;
 }
 
@@ -133,7 +150,7 @@ function LineControlPanel({
 }) {
   return (
     <div
-      className={`${showHeader ? 'absolute top-[68px] left-4 z-[1000]' : ''} bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 text-xs min-w-[180px] w-auto`}
+      className={`${showHeader ? 'absolute top-[68px] left-4 z-[1000]' : ''} line-control-panel bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 text-xs min-w-[180px] w-auto`}
     >
       {showHeader && (
         <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-100">
@@ -174,7 +191,7 @@ function LineControlPanel({
 // ---- Legend Overlay ----
 function MapLegend() {
   return (
-    <div className="absolute bottom-[100px] right-6 z-[1000] bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 text-[10px] space-y-2">
+    <div className="map-legend absolute bottom-[100px] right-6 z-[1000] bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 text-[10px] space-y-2">
       <div className="flex items-center gap-2">
         <div className="w-5 h-1 rounded-full bg-[#3388ff]" />
         <span className="text-slate-600 font-medium">Rail Line</span>
@@ -184,15 +201,15 @@ function MapLegend() {
         <span className="text-slate-600 font-medium">Rail Stop</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="w-4 h-4 rounded-full bg-[#2563EB] border-2 border-white shadow flex items-center justify-center text-[7px]">🚇</div>
+        <div className="w-4 h-4 rounded-full bg-[#007AFF] border-2 border-white shadow flex items-center justify-center" aria-hidden="true"><Train size={8} className="text-white" /></div>
         <span className="text-slate-600 font-medium">LRT/MRT Station</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="w-4 h-4 rounded-full bg-[#EF4444] border-2 border-white shadow flex items-center justify-center text-[7px]">🚇</div>
+        <div className="w-4 h-4 rounded-full bg-[#007AFF] ring-2 ring-[#007AFF]/20 border-2 border-white shadow flex items-center justify-center" aria-hidden="true"><Train size={8} className="text-white" /></div>
         <span className="text-slate-600 font-medium">Selected Station</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="w-4 h-4 rounded-full bg-[#10B981] border-2 border-white shadow flex items-center justify-center text-[7px] text-white font-black">P</div>
+        <div className="w-4 h-4 rounded-full bg-[#34C759] border-2 border-white shadow flex items-center justify-center text-[8px] text-white font-black">P</div>
         <span className="text-slate-600 font-medium">Available Parking</span>
       </div>
     </div>
@@ -204,6 +221,7 @@ export default function CommuterMap({
   spots,
   onStationSelect,
   selectedStation,
+  selectedSpot,
   onSpotClick,
   distanceRadius,
   onDistanceRadiusChange,
@@ -371,7 +389,7 @@ export default function CommuterMap({
   const shouldShowParking = !!selectedStation && selectedStation.length > 0 && spots.length > 0;
 
   return (
-    <div className="relative w-full h-full min-h-[400px] rounded-2xl overflow-hidden border border-slate-200 shadow-lg">
+    <div className="commuter-map relative w-full h-full min-h-[400px] overflow-hidden">
       {/* Map Container */}
       <MapContainer
         center={klCenter}
@@ -425,13 +443,20 @@ export default function CommuterMap({
           />
         )}
 
-        {/* Zoom Control (positioned left) */}
-        <div className="leaflet-top leaflet-left" style={{ top: '80px' }}>
-          <div className="leaflet-control leaflet-bar">
-            <a href="#" onClick={(e) => { e.preventDefault(); }} title="Zoom in">+</a>
-            <a href="#" onClick={(e) => { e.preventDefault(); }} title="Zoom out">−</a>
-          </div>
-        </div>
+        <ZoomControl position="bottomright" />
+
+        {selectedStationCoords && selectedSpot && (
+          <>
+            <Polyline
+              positions={[
+                [selectedStationCoords.lat, selectedStationCoords.lon],
+                [selectedSpot.lat, selectedSpot.lng],
+              ]}
+              pathOptions={{ color: '#007AFF', weight: 4, opacity: 0.9, dashArray: '8 10' }}
+            />
+            <FocusSelectedRoute station={selectedStationCoords} spot={selectedSpot} />
+          </>
+        )}
 
         {/* Render Transit Station Markers */}
         {transitStations.map((feature: any, idx: number) => {
@@ -476,35 +501,41 @@ export default function CommuterMap({
             key={spot.id}
             position={[spot.lat, spot.lng]}
             icon={parkingIcon}
+            eventHandlers={{ click: () => onSpotClick(spot) }}
           >
             <Popup>
               <div className="text-xs min-w-[180px]">
                 <strong className="text-slate-800">{spot.name}</strong>
                 <div className="flex items-center gap-1 text-slate-500 mt-1">
                   <Clock className="w-3 h-3" />
-                  <span>RM {spot.pricePerHour.toFixed(2)}/hr</span>
+                  <span>{spot.dailyRate !== null
+                    ? `RM ${spot.dailyRate.toFixed(2)}/day`
+                    : spot.monthlyRate > 0
+                      ? `RM ${spot.monthlyRate.toFixed(2)}/month`
+                      : 'Rate not set'}</span>
                 </div>
                 <div className="flex items-center gap-1 text-slate-500 mt-0.5">
                   <Navigation className="w-3 h-3" />
-                  <span>{spot.distance}m from station</span>
+                  <span>{spot.distanceToStation.toFixed(2)} km · {spot.timeToStationInMinutes} min</span>
                 </div>
                 <div className="flex items-center gap-1 text-slate-500 mt-0.5">
                   <Car className="w-3 h-3" />
-                  <span>{spot.type} &middot; {spot.owner}</span>
+                  <span>Bay {spot.parkingLabel} · {spot.availabilityStatus}</span>
                 </div>
+                <p className="mt-1 text-[10px] text-slate-400">{spot.address}</p>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onSpotClick(spot);
                     navigate(`/commuter/parking/${spot.id}`, {
                       state: {
-                        spot: { id: spot.id, lat: spot.lat, lon: spot.lng, address: spot.name, photoUrl: 'https://images.unsplash.com/photo-1590674899484-d5640d9da574?w=400&h=250&fit=crop', price: spot.pricePerHour },
+                        spot: { ...spot, id: spot.id, lat: spot.lat, lon: spot.lng, address: spot.address, photoUrl: spot.primaryImageUrl ?? '', price: spot.pricePerHour },
                         stationCoords: selectedStationCoords,
                         stationName: spot.station,
                       },
                     });
                   }}
-                  className="mt-2 w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-[10px] font-bold py-1.5 px-3 rounded-lg transition-colors"
+                  className="mt-2 w-full bg-[#007AFF] hover:bg-[#0066D6] text-white text-[10px] font-bold py-1.5 px-3 rounded-lg transition-colors"
                 >
                   View Details &amp; Book
                 </button>
@@ -624,6 +655,8 @@ export default function CommuterMap({
           <option value={500}>Within 500m</option>
           <option value={1000}>Within 1km</option>
           <option value={2000}>Within 2km</option>
+          <option value={3000}>Within 3km</option>
+          <option value={5000}>Within 5km</option>
         </select>
 
         {/* Find Nearby Button */}

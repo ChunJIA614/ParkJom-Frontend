@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Clock, Navigation, ShieldCheck,
-  Car, Home, Wifi, Video, Zap, CreditCard, User,
-  Loader2, Calendar, AlertTriangle, Star,
+  Car, Wifi, CreditCard,
+  Loader2, Calendar, AlertTriangle,
 } from 'lucide-react';
 import DashboardHeader from '@/shared/components/DashboardHeader';
+import type { Booking, ParkingSpot } from '../types';
+import { clearJourneySession, saveJourneySession } from '../lib/journeySession';
 
 /* ================================================================
    ParkingDetail — Parking spot detail page
@@ -13,11 +15,8 @@ import DashboardHeader from '@/shared/components/DashboardHeader';
    ================================================================ */
 
 // ── Types ──
-interface MockParkingSpot {
-  id: string;
-  lat: number;
+interface MockParkingSpot extends ParkingSpot {
   lon: number;
-  address: string;
   photoUrl: string;
   price: number;
 }
@@ -91,6 +90,7 @@ export default function ParkingDetail() {
   const [selectedDate, setSelectedDate] = useState(dateOptions[0].value);
   const [startTime, setStartTime] = useState('09:00');
   const [durationHours, setDurationHours] = useState(2);
+  const [reservationReady, setReservationReady] = useState(false);
 
   useEffect(() => {
     if (!spot || !stationCoords) return;
@@ -123,39 +123,89 @@ export default function ParkingDetail() {
   const isDateToday = selectedDate === new Date().toISOString().slice(0, 10);
   const conflict = isDateToday && isPastTime;
   const subtotal = spot.price * durationHours;
-  const serviceFee = 1.0;
-  const total = subtotal + serviceFee;
+  const total = subtotal;
 
   // ── Confirm booking ──
   const handleBook = () => {
     if (conflict) { alert('Please select a future time slot before booking.'); return; }
-    alert(
-      `Redirecting to Payment Gateway\n\n` +
-      `Spot: ${spot.address}\nDate: ${selectedDate}\n` +
-      `Time: ${startTime} - ${endTimeStr}\nDuration: ${durationHours}h\n` +
-      `Total: RM ${total.toFixed(2)}\n` +
-      (walkingInfo ? `Walk: ${walkingInfo.distanceText} · ${walkingInfo.durationText}` : '')
-    );
+
+    const parkingSpot: ParkingSpot = {
+      ...spot,
+      station: stationName || 'Klang Valley transit area',
+      name: spot.address,
+      pricePerHour: spot.price,
+      distance: walkingInfo?.rawDistance ? Math.round(walkingInfo.rawDistance) : 0,
+      lat: spot.lat,
+      lng: spot.lon,
+      available: false,
+      type: 'Condo Bay',
+      owner: 'Private bay owner',
+    };
+    const booking: Booking = {
+      id: `BK-${Date.now().toString().slice(-6)}`,
+      spot: parkingSpot,
+      startTime: selectedStart,
+      endTime: new Date(selectedStart.getTime() + durationHours * 60 * 60 * 1000),
+      vehiclePlate: 'VGV 8899',
+      status: 'Active',
+      totalPaid: total,
+    };
+
+    saveJourneySession(booking);
+    setReservationReady(true);
   };
+
+  if (reservationReady) {
+    return (
+      <div className="page-shell text-[#1d1d1f]">
+        <DashboardHeader role="commuter" />
+        <main className="max-w-xl mx-auto px-4 py-10 md:py-16">
+          <div className="bg-white rounded-2xl border border-black/[0.08] overflow-hidden">
+            <div className="bg-[#1c1c1e] text-white p-6 md:p-8">
+              <div className="w-11 h-11 rounded-xl bg-[#34c759] flex items-center justify-center mb-6">
+                <ShieldCheck size={23} />
+              </div>
+              <h1 className="text-2xl md:text-3xl font-semibold tracking-[-0.03em]">Parking Pass ready</h1>
+              <p className="text-[#c7c7cc] text-[13px] mt-2 leading-relaxed">Your selected bay and booking time are collected in one pass for arrival and access.</p>
+            </div>
+            <div className="p-6 md:p-8 space-y-5">
+              <div>
+                <p className="text-[11px] text-[#6e6e73]">Bay</p>
+                <p className="font-semibold mt-1">{spot.address}</p>
+                <p className="text-[12px] text-[#6e6e73] mt-1">{stationName || 'Klang Valley transit area'}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4 py-4 border-y border-black/[0.08]">
+                <div><p className="text-[11px] text-[#6e6e73]">Arrival</p><p className="text-[13px] font-semibold mt-1">{selectedDate} · {startTime}</p></div>
+                <div><p className="text-[11px] text-[#6e6e73]">Parking window</p><p className="text-[13px] font-semibold mt-1">{durationHours}h · until {endTimeStr}</p></div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] text-[#6e6e73]">Reservation total</span>
+                <strong>RM {total.toFixed(2)}</strong>
+              </div>
+              <p className="text-[11px] text-[#6e6e73] leading-relaxed">This prototype stores the pass on this device. Live payment and final backend confirmation still depend on connected ParkJom services.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                <button type="button" onClick={() => { clearJourneySession(); setReservationReady(false); }} className="min-h-11 rounded-xl border border-black/[0.12] text-[13px] font-semibold">Edit booking</button>
+                <button type="button" onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })} className="min-h-11 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold">Continue to arrival</button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="page-shell text-[#1d1d1f] pb-24">
       <DashboardHeader role="commuter" />
 
-      {/* ── Top image ── */}
-      <div className="relative w-full h-64 md:h-80 bg-[#e8eaed]">
-        <img src={spot.photoUrl} alt={spot.address} className="w-full h-full object-cover" />
-        <button onClick={() => navigate(-1)}
-          className="absolute top-4 left-4 bg-white/90 hover:bg-white border border-[#e8eaed] rounded-full p-2.5 text-[#5f6368] transition-colors shadow-sm">
-          <ArrowLeft size={20} />
+      <div className="max-w-3xl mx-auto px-4 md:px-6 pt-6 md:pt-10">
+        <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-[13px] font-medium text-[#6e6e73] hover:text-[#1d1d1f]">
+          <ArrowLeft size={17} /> Back to map
         </button>
-        <span className="absolute top-4 right-4 bg-[#007AFF] text-white text-[13px] font-semibold px-4 py-2 rounded-xl shadow-sm">
-          RM {spot.price.toFixed(2)} <span className="text-[10px] opacity-70 font-normal">/hr</span>
-        </span>
       </div>
 
       {/* ── Content card ── */}
-      <div className="max-w-3xl mx-auto px-4 md:px-6 -mt-6 relative z-10">
+      <div className="max-w-3xl mx-auto px-4 md:px-6 mt-5 relative z-10">
         <div className="bg-white rounded-2xl border border-[#e8eaed] p-6 md:p-8 space-y-6">
 
           {/* Title */}
@@ -198,12 +248,9 @@ export default function ParkingDetail() {
             <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-3">Parking Space Details</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {[
-                { icon: Car, label: 'Covered Bay' },
-                { icon: Home, label: 'Residential' },
-                { icon: ShieldCheck, label: '24/7 Security' },
-                { icon: Wifi, label: 'IoT Actuator' },
-                { icon: Video, label: 'CCTV Monitored' },
-                { icon: Zap, label: 'EV Charger Nearby' },
+                { icon: Car, label: 'Private parking bay' },
+                { icon: Wifi, label: 'Smart bollard access' },
+                { icon: Navigation, label: 'Transit-adjacent' },
               ].map(({ icon: Icon, label }) => (
                 <div key={label} className="flex items-center gap-2 text-[13px] text-[#5f6368] bg-[#f8f9fa] rounded-xl p-3">
                   <Icon size={15} className="text-[#007AFF] shrink-0" /> {label}
@@ -267,26 +314,8 @@ export default function ParkingDetail() {
           <div>
             <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-2">About This Space</h3>
             <p className="text-[13px] text-[#5f6368] leading-relaxed">
-              A private parking bay in a secured residential compound, just a short walk from {stationName || 'the nearby LRT/MRT station'}.
-              Perfect for daily commuters seeking a safe, affordable, and convenient parking solution.
-              The space is well-lit, covered, and monitored 24/7 by CCTV and IoT smart bollard actuation.
+              A private parking bay offered near {stationName || 'an LRT/MRT station'}. ParkJom coordinates the reservation and smart-bollard access flow for the parking session.
             </p>
-          </div>
-
-          <div className="h-px bg-[#e8eaed]" />
-
-          {/* Host */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#eff6ff] flex items-center justify-center shrink-0">
-              <User size={18} className="text-[#007AFF]" />
-            </div>
-            <div className="flex-1">
-              <p className="text-[13px] font-semibold text-[#111]">Verified Host</p>
-              <p className="text-[12px] text-[#5f6368]">ParkJom Verified &middot; 4.8 &starf; &middot; 12 bookings</p>
-            </div>
-            <div className="flex items-center gap-1 text-[#f59e0b] text-[13px] font-bold">
-              <Star size={14} className="fill-current" /> 4.8
-            </div>
           </div>
 
           <div className="h-px bg-[#e8eaed]" />
@@ -298,11 +327,6 @@ export default function ParkingDetail() {
                 <span className="text-[#5f6368]">RM {spot.price.toFixed(2)} x {durationHours}h <span className="text-[#9ca3af] ml-1">({startTime} &ndash; {endTimeStr})</span></span>
                 <span className="font-semibold text-[#111]">RM {subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[#5f6368]">Service fee</span>
-                <span className="font-semibold text-[#111]">RM {serviceFee.toFixed(2)}</span>
-              </div>
-              <div className="h-px bg-[#e8eaed]" />
               <div className="flex justify-between font-bold text-[15px]">
                 <span>Total</span>
                 <span>RM {total.toFixed(2)}</span>
@@ -324,7 +348,7 @@ export default function ParkingDetail() {
               conflict ? 'bg-[#e8eaed] text-[#9ca3af] cursor-not-allowed' : 'bg-[#007AFF] text-white hover:bg-[#1d4ed8] active:scale-[0.98]'
             }`}>
             <CreditCard size={16} />
-            {conflict ? 'Select a Valid Time' : `Reserve (RM ${total.toFixed(2)})`}
+            {conflict ? 'Select a Valid Time' : `Create Parking Pass · RM ${total.toFixed(2)}`}
           </button>
         </div>
       </div>

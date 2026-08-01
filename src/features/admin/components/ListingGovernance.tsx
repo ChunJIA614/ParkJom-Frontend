@@ -1,20 +1,30 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  ShieldCheck, AlertOctagon, FileText, CheckCircle, XCircle, 
-  Search, Eye, HelpCircle, ArrowUpRight, ShieldAlert, BadgeAlert 
+  AlertOctagon, CheckCircle, XCircle, Search, Eye, BadgeAlert,
+  RefreshCw, Clock3, FileText, Download
 } from 'lucide-react';
-import { ListingRequest } from '../types';
+import { ListingRequest, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto } from '../types';
 
 interface ListingGovernanceProps {
   listings: ListingRequest[];
-  onApprove: (id: string) => void;
-  onReject: (id: string, reason: string) => void;
+  isLoading: boolean;
+  error: string | null;
+  responseMessage: string;
+  onRefresh: () => void | Promise<void>;
+  onViewDocument: (document: ParkingVerificationDocumentDto) => Promise<Blob>;
+  onApprove: (id: string) => Promise<ParkingVerificationDecisionResult>;
+  onReject: (id: string, reason: string) => Promise<ParkingVerificationDecisionResult>;
   addActivityLog: (type: string, message: string, user: string) => void;
 }
 
 export default function ListingGovernance({ 
-  listings, 
+  listings,
+  isLoading,
+  error,
+  responseMessage,
+  onRefresh,
+  onViewDocument,
   onApprove, 
   onReject,
   addActivityLog 
@@ -22,8 +32,15 @@ export default function ListingGovernance({
   const [activeTab, setActiveTab] = useState<'pending' | 'moderated'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedListing, setSelectedListing] = useState<ListingRequest | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<ParkingVerificationDocumentDto | null>(null);
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [documentLoadingId, setDocumentLoadingId] = useState<number | null>(null);
+  const [documentError, setDocumentError] = useState<string | null>(null);
   const [rejectingListingId, setRejectingListingId] = useState<string | null>(null);
-  const [customRejectionReason, setCustomRejectionReason] = useState('Deed name mismatch with registration profile');
+  const [selectedRejectionReason, setSelectedRejectionReason] = useState('Deed name mismatch with registration profile');
+  const [customRejectionNote, setCustomRejectionNote] = useState('');
+  const [decisionLoadingId, setDecisionLoadingId] = useState<string | null>(null);
+  const [decisionFeedback, setDecisionFeedback] = useState<{ success: boolean; message: string } | null>(null);
   
   // Whitelist/Blacklist state for testing governance controls
   const [blacklist, setBlacklist] = useState<string[]>([
@@ -40,10 +57,64 @@ export default function ListingGovernance({
     "Bay number mismatch with title registration deed"
   ];
 
+  const formatSubmittedAt = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value || '—';
+
+    return new Intl.DateTimeFormat('en-MY', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date);
+  };
+
+  const documentTypeLabels: Record<number, string> = {
+    1: 'SPA / Sale and Purchase Agreement',
+    2: 'Utility Bill',
+    3: 'Parking Photo',
+    4: 'Identity Card',
+    5: 'Other Supporting Document',
+  };
+
+  const isImageDocument = (document: ParkingVerificationDocumentDto) => {
+    const format = document.format.trim().toLowerCase();
+    return document.resourceType.trim().toLowerCase() === 'image'
+      || format === 'jpg'
+      || format === 'jpeg'
+      || format === 'png';
+  };
+
+  const getDocumentFileName = (document: ParkingVerificationDocumentDto) => {
+    const name = document.originalFileName.trim() || `verification-document-${document.verificationDocumentId}`;
+    const extension = document.format.trim().toLowerCase();
+    return extension && !name.toLowerCase().endsWith(`.${extension}`) ? `${name}.${extension}` : name;
+  };
+
   const filteredListings = listings.filter(l => {
-    const matchesSearch = l.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          l.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          l.ownerEmail.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchableValues = [
+      l.verificationRequestId,
+      l.parkingSpotId,
+      l.parkingLabel,
+      l.propertyId,
+      l.propertyName,
+      l.submittedByUserId,
+      l.submittedByEmail,
+      l.submittedByName,
+      l.verificationStatus,
+      l.submittedAt,
+      ...l.documents.flatMap((document) => [
+        document.verificationDocumentId,
+        document.documentType,
+        document.mediaFileId,
+        document.resourceType,
+        document.format,
+        document.originalFileName,
+        document.uploadedAt,
+      ]),
+    ];
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const matchesSearch = searchableValues.some((value) =>
+      String(value).toLowerCase().includes(normalizedQuery)
+    );
     
     if (activeTab === 'pending') {
       return l.status === 'pending' && matchesSearch;
@@ -52,20 +123,78 @@ export default function ListingGovernance({
     }
   });
 
-  const handleApproveClick = (listing: ListingRequest) => {
-    onApprove(listing.id);
-    addActivityLog('governance', `Approved property listing ${listing.bayNumber} at ${listing.location}`, "Admin");
-    if (selectedListing?.id === listing.id) {
-      setSelectedListing(null);
+  const handleApproveClick = async (listing: ListingRequest) => {
+    setDecisionLoadingId(listing.id);
+    setDecisionFeedback(null);
+    const result = await onApprove(listing.id);
+    setDecisionLoadingId(null);
+    setDecisionFeedback(result);
+    if (result.success && selectedListing?.id === listing.id) closeSelectedListing();
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!rejectingListingId) return;
+    const reviewNotes = selectedRejectionReason === 'custom'
+      ? customRejectionNote.trim()
+      : selectedRejectionReason;
+    if (!reviewNotes) {
+      setDecisionFeedback({ success: false, message: 'Review notes are required when rejecting a request.' });
+      return;
+    }
+
+    setDecisionLoadingId(rejectingListingId);
+    setDecisionFeedback(null);
+    const result = await onReject(rejectingListingId, reviewNotes);
+    setDecisionLoadingId(null);
+    setDecisionFeedback(result);
+    if (result.success) {
+      setRejectingListingId(null);
+      closeSelectedListing();
     }
   };
 
-  const handleRejectSubmit = () => {
-    if (!rejectingListingId) return;
-    onReject(rejectingListingId, customRejectionReason);
-    addActivityLog('governance', `Rejected property listing ${rejectingListingId} due to: ${customRejectionReason}`, "Admin");
-    setRejectingListingId(null);
+  const rejectingListing = listings.find((listing) => listing.id === rejectingListingId);
+
+  const openRejectDialog = (id: string) => {
+    setRejectingListingId(id);
+    setCustomRejectionNote('');
+    setDecisionFeedback(null);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (documentUrl) URL.revokeObjectURL(documentUrl);
+    };
+  }, [documentUrl]);
+
+  const closeSelectedListing = () => {
     setSelectedListing(null);
+    setSelectedDocument(null);
+    setDocumentUrl(null);
+    setDocumentError(null);
+  };
+
+  const openSelectedListing = (listing: ListingRequest) => {
+    setSelectedListing(listing);
+    setSelectedDocument(null);
+    setDocumentUrl(null);
+    setDocumentError(null);
+  };
+
+  const handleViewDocument = async (document: ParkingVerificationDocumentDto) => {
+    setDocumentLoadingId(document.mediaFileId);
+    setSelectedDocument(document);
+    setDocumentError(null);
+    setDocumentUrl(null);
+
+    try {
+      const file = await onViewDocument(document);
+      setDocumentUrl(URL.createObjectURL(file));
+    } catch (loadError) {
+      setDocumentError(loadError instanceof Error ? loadError.message : 'Unable to load this private document.');
+    } finally {
+      setDocumentLoadingId(null);
+    }
   };
 
   const handleAddToBlacklist = (e: React.FormEvent) => {
@@ -93,9 +222,47 @@ export default function ListingGovernance({
     <div id="listing-governance" className="space-y-6">
       {/* Header */}
       <div>
-        <h2 id="governance-title" className="text-2xl font-bold text-slate-800 tracking-tight">Property & Listing Governance</h2>
-        <p className="text-slate-500 text-sm">Review proof of strata ownership, coordinate approvals, and moderate platform hosts.</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 id="governance-title" className="text-2xl font-bold text-slate-800 tracking-tight">Parking Verification Requests</h2>
+            <p className="text-slate-500 text-sm">Review every parking-space verification submitted by property owners.</p>
+            {responseMessage && !error && (
+              <p className="mt-1 text-[11px] font-medium text-emerald-700">{responseMessage}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isLoading}
+            className="inline-flex items-center justify-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Refreshing…' : 'Refresh requests'}
+          </button>
+        </div>
       </div>
+
+      {error && (
+        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          <button type="button" onClick={onRefresh} className="self-start font-semibold underline underline-offset-2 sm:self-auto">
+            Try again
+          </button>
+        </div>
+      )}
+
+      {decisionFeedback && (
+        <div
+          role={decisionFeedback.success ? 'status' : 'alert'}
+          className={`rounded-xl border px-4 py-3 text-sm ${
+            decisionFeedback.success
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
+          }`}
+        >
+          {decisionFeedback.message}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
@@ -123,7 +290,7 @@ export default function ListingGovernance({
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input 
                 type="text" 
-                placeholder="Search by owner, location..." 
+                placeholder="Search any request field..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs w-full sm:w-64 focus:outline-hidden focus:ring-1 focus:ring-[#2563EB]"
@@ -133,7 +300,11 @@ export default function ListingGovernance({
 
           {/* Table list of listings */}
           <div className="overflow-x-auto">
-            {filteredListings.length === 0 ? (
+            {isLoading && listings.length === 0 ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+                <RefreshCw className="h-4 w-4 animate-spin" /> Loading verification requests…
+              </div>
+            ) : filteredListings.length === 0 ? (
               <div className="py-12 text-center text-slate-400 text-sm">
                 No property listings found matching the current criteria.
               </div>
@@ -141,10 +312,9 @@ export default function ListingGovernance({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                    <th className="py-3 px-2">Verification ID</th>
-                    <th className="py-3 px-2">Owner Profile</th>
+                    <th className="py-3 px-2">Verification</th>
+                    <th className="py-3 px-2">Submitted By</th>
                     <th className="py-3 px-2">Property & Bay</th>
-                    <th className="py-3 px-2">Rate</th>
                     <th className="py-3 px-2">Status</th>
                     <th className="py-3 px-2 text-right">Actions</th>
                   </tr>
@@ -152,38 +322,60 @@ export default function ListingGovernance({
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {filteredListings.map((listing) => (
                     <tr key={listing.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3.5 px-2 font-mono text-[#2563EB] font-bold">VR-{listing.id}</td>
                       <td className="py-3.5 px-2">
-                        <div className="font-semibold text-slate-800">{listing.ownerName}</div>
-                        <div className="text-[10px] text-slate-400">{listing.ownerEmail}</div>
+                        <div className="font-mono font-bold text-[#2563EB]">VR-{listing.verificationRequestId}</div>
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                          <Clock3 className="h-3 w-3" /> {formatSubmittedAt(listing.submittedAt)}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                          <FileText className="h-3 w-3" /> {listing.documents.length} document{listing.documents.length === 1 ? '' : 's'}
+                        </div>
                       </td>
                       <td className="py-3.5 px-2">
-                        <div className="text-slate-700 font-medium line-clamp-1">{listing.location}</div>
-                        <div className="text-[10px] text-[#2563EB] font-mono font-bold bg-[#2563EB]/5 px-1.5 py-0.2 rounded inline-block mt-0.5">{listing.bayNumber}</div>
+                        <div className="font-semibold text-slate-800">{listing.submittedByName}</div>
+                        <div className="text-[10px] text-slate-400">{listing.submittedByEmail}</div>
+                        <div className="mt-0.5 text-[10px] font-mono text-slate-400">User #{listing.submittedByUserId}</div>
                       </td>
-                      <td className="py-3.5 px-2 font-semibold text-slate-700">
-                        {listing.hourlyRate > 0 ? `RM ${listing.hourlyRate.toFixed(2)}/hr` : '—'}
+                      <td className="py-3.5 px-2">
+                        <div className="text-slate-700 font-medium line-clamp-1">{listing.propertyName}</div>
+                        <div className="text-[10px] text-slate-400">Property #{listing.propertyId}</div>
+                        <div className="text-[10px] text-[#2563EB] font-mono font-bold bg-[#2563EB]/5 px-1.5 py-0.5 rounded inline-block mt-1">
+                          Bay {listing.parkingLabel} · Spot #{listing.parkingSpotId}
+                        </div>
                       </td>
                       <td className="py-3.5 px-2">
                         {listing.status === 'pending' && (
-                          <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Pending Review</span>
+                          <div>
+                            <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                            <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
+                          </div>
                         )}
                         {listing.status === 'approved' && (
-                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Approved</span>
+                          <div>
+                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                            <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
+                          </div>
                         )}
                         {listing.status === 'rejected' && (
-                          <div className="space-y-0.5">
-                            <span className="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Rejected</span>
-                            <p className="text-[9px] text-rose-500 italic line-clamp-1">{listing.rejectionReason}</p>
+                          <div>
+                            <span className="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                            <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
+                          </div>
+                        )}
+                        {listing.status === 'unknown' && (
+                          <div>
+                            <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                            <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
                           </div>
                         )}
                       </td>
                       <td className="py-3.5 px-2 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button 
-                            onClick={() => setSelectedListing(listing)}
+                            onClick={() => openSelectedListing(listing)}
                             className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-[#2563EB] transition-colors"
-                            title="Inspect Documents"
+                            title="View verification details"
+                            aria-label={`View verification request ${listing.verificationRequestId}`}
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -192,14 +384,18 @@ export default function ListingGovernance({
                             <>
                               <button 
                                 onClick={() => handleApproveClick(listing)}
-                                className="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors"
+                                disabled={decisionLoadingId !== null}
+                                className="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                                 title="Approve Verification"
                               >
-                                <CheckCircle className="w-4 h-4" />
+                                {decisionLoadingId === listing.id
+                                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                  : <CheckCircle className="w-4 h-4" />}
                               </button>
                               <button 
-                                onClick={() => setRejectingListingId(listing.id)}
-                                className="p-1.5 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                                onClick={() => openRejectDialog(listing.id)}
+                                disabled={decisionLoadingId !== null}
+                                className="p-1.5 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                                 title="Reject Verification"
                               >
                                 <XCircle className="w-4 h-4" />
@@ -275,7 +471,7 @@ export default function ListingGovernance({
         </div>
       </div>
 
-      {/* Document View Drawer / Modal overlay */}
+      {/* Verification request details */}
       <AnimatePresence>
         {selectedListing && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -283,26 +479,33 @@ export default function ListingGovernance({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-xl border border-slate-200 p-6 shadow-xl max-w-2xl w-full space-y-4 max-h-[85vh] overflow-y-auto"
+              className="bg-white rounded-xl border border-slate-200 p-6 shadow-xl max-w-4xl w-full space-y-5 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-start justify-between border-b border-slate-100 pb-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-[#2563EB] font-bold bg-[#2563EB]/5 px-2 py-0.5 rounded">Ownership Verification</span>
-                    <span className="text-xs text-slate-400">ID: {selectedListing.id}</span>
+                    <span className="text-xs font-mono text-[#2563EB] font-bold bg-[#2563EB]/5 px-2 py-0.5 rounded">VR-{selectedListing.verificationRequestId}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                      selectedListing.status === 'pending'
+                        ? 'border-amber-100 bg-amber-50 text-amber-700'
+                        : selectedListing.status === 'approved'
+                          ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                          : selectedListing.status === 'rejected'
+                            ? 'border-rose-100 bg-rose-50 text-rose-700'
+                            : 'border-slate-200 bg-slate-100 text-slate-700'
+                    }`}>{selectedListing.verificationStatusLabel} · Code {selectedListing.verificationStatus}</span>
                   </div>
-                  <h3 className="text-md font-bold text-slate-800 mt-1">{selectedListing.ownerName}'s Strata Submission</h3>
+                  <h3 className="text-md font-bold text-slate-800 mt-1">Verification request details</h3>
                 </div>
                 <button 
-                  onClick={() => setSelectedListing(null)}
+                  onClick={closeSelectedListing}
                   className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600"
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Physical Details */}
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3.5 rounded-lg border border-slate-100 text-xs">
+              <div className="grid grid-cols-1 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100 text-xs sm:grid-cols-2">
                 <div>
                   <span className="text-slate-400 font-medium">Verification ID:</span>
                   <p className="text-slate-700 font-mono font-semibold">#{selectedListing.verificationRequestId}</p>
@@ -312,71 +515,140 @@ export default function ListingGovernance({
                   <p className="text-[#2563EB] font-bold font-mono">#{selectedListing.parkingSpotId}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Host Email:</span>
-                  <p className="text-slate-700 font-semibold">{selectedListing.ownerEmail}</p>
+                  <span className="text-slate-400 font-medium">Parking Label:</span>
+                  <p className="text-[#2563EB] font-bold font-mono">{selectedListing.parkingLabel}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Designated Bay:</span>
-                  <p className="text-[#2563EB] font-bold font-mono">{selectedListing.bayNumber}</p>
+                  <span className="text-slate-400 font-medium">Property ID:</span>
+                  <p className="text-slate-700 font-mono font-semibold">#{selectedListing.propertyId}</p>
                 </div>
-                <div className="col-span-2">
-                  <span className="text-slate-400 font-medium">Physical Location:</span>
-                  <p className="text-slate-700 font-medium">{selectedListing.location}</p>
+                <div>
+                  <span className="text-slate-400 font-medium">Property Name:</span>
+                  <p className="text-slate-700 font-semibold">{selectedListing.propertyName}</p>
                 </div>
-              </div>
-
-              {/* Uploaded Documents */}
-              <div className="space-y-3">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Uploaded Legal Proof Documents</span>
-                
-                {/* Strata Title Deed Doc */}
-                <div className="p-3 border border-slate-100 rounded-lg flex items-start gap-3 bg-white hover:border-[#2563EB]/20 transition-all">
-                  <FileText className="w-8 h-8 text-[#2563EB] shrink-0" />
-                  <div className="text-xs space-y-0.5">
-                    <span className="font-semibold text-slate-700">Strata Land Title Deed Certificate</span>
-                    <p className="text-[11px] text-slate-500">{selectedListing.documents.titleDeed}</p>
-                    <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1 mt-1">
-                      <ShieldCheck className="w-3.5 h-3.5" /> Legally Encrypted & Sealed
-                    </span>
-                  </div>
+                <div>
+                  <span className="text-slate-400 font-medium">Verification Status:</span>
+                  <p className="text-slate-700 font-semibold">{selectedListing.verificationStatusLabel}</p>
+                  <p className="mt-0.5 font-mono text-[10px] text-slate-400">API value: {selectedListing.verificationStatus}</p>
                 </div>
-
-                {/* Utility Bill Doc */}
-                <div className="p-3 border border-slate-100 rounded-lg flex items-start gap-3 bg-white hover:border-[#2563EB]/20 transition-all">
-                  <FileText className="w-8 h-8 text-blue-500 shrink-0" />
-                  <div className="text-xs space-y-0.5">
-                    <span className="font-semibold text-slate-700">Municipal Utility Statement (Water/Electric)</span>
-                    <p className="text-[11px] text-slate-500">{selectedListing.documents.utilityBill}</p>
-                    <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1 mt-1">
-                      <ShieldCheck className="w-3.5 h-3.5" /> Matches Host Name & Bay Address
-                    </span>
-                  </div>
+                <div>
+                  <span className="text-slate-400 font-medium">Submitted By User ID:</span>
+                  <p className="text-slate-700 font-mono font-semibold">#{selectedListing.submittedByUserId}</p>
                 </div>
-
-                {/* Identity Doc */}
-                <div className="p-3 border border-slate-100 rounded-lg flex items-start gap-3 bg-white hover:border-[#2563EB]/20 transition-all">
-                  <FileText className="w-8 h-8 text-slate-500 shrink-0" />
-                  <div className="text-xs space-y-0.5">
-                    <span className="font-semibold text-slate-700">Government Identity Card Scan</span>
-                    <p className="text-[11px] text-slate-500">{selectedListing.documents.identityCard}</p>
-                  </div>
+                <div>
+                  <span className="text-slate-400 font-medium">Submitted By Name:</span>
+                  <p className="text-slate-700 font-semibold">{selectedListing.submittedByName}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-slate-400 font-medium">Submitted By Email:</span>
+                  <p className="break-all text-slate-700 font-semibold">{selectedListing.submittedByEmail}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-slate-400 font-medium">Submitted At:</span>
+                  <p className="text-slate-700 font-semibold">{formatSubmittedAt(selectedListing.submittedAt)}</p>
+                  <p className="mt-0.5 break-all font-mono text-[10px] text-slate-400">{selectedListing.submittedAt}</p>
                 </div>
               </div>
+
+              <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="private-document-title">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-blue-50 p-2 text-[#2563EB]">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 id="private-document-title" className="text-sm font-bold text-slate-800">
+                      Private verification documents ({selectedListing.documents.length})
+                    </h4>
+                    <p className="text-[11px] text-slate-500">Files are loaded securely using the media IDs returned with this verification request.</p>
+                  </div>
+                </div>
+
+                {selectedListing.documents.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500">
+                    No supporting documents were returned for this request.
+                  </div>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {selectedListing.documents.map((document) => (
+                      <article key={document.verificationDocumentId} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-slate-800">{getDocumentFileName(document)}</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500">
+                              {documentTypeLabels[document.documentType] || `Document type ${document.documentType}`}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-2 py-0.5 font-mono text-[9px] font-semibold uppercase text-slate-600 ring-1 ring-slate-200">
+                            {document.format}
+                          </span>
+                        </div>
+                        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[10px]">
+                          <div><dt className="text-slate-400">Verification document ID</dt><dd className="font-mono font-semibold text-slate-700">#{document.verificationDocumentId}</dd></div>
+                          <div><dt className="text-slate-400">Media file ID</dt><dd className="font-mono font-semibold text-slate-700">#{document.mediaFileId}</dd></div>
+                          <div><dt className="text-slate-400">Resource type</dt><dd className="font-semibold text-slate-700">{document.resourceType}</dd></div>
+                          <div><dt className="text-slate-400">Document type code</dt><dd className="font-mono font-semibold text-slate-700">{document.documentType}</dd></div>
+                          <div className="col-span-2"><dt className="text-slate-400">Uploaded at</dt><dd className="font-semibold text-slate-700">{formatSubmittedAt(document.uploadedAt)}</dd><dd className="mt-0.5 break-all font-mono text-[9px] text-slate-400">{document.uploadedAt}</dd></div>
+                        </dl>
+                        <button
+                          type="button"
+                          onClick={() => handleViewDocument(document)}
+                          disabled={documentLoadingId !== null}
+                          className="mt-3 w-full rounded-lg bg-[#2563EB] px-3 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {documentLoadingId === document.mediaFileId ? 'Loading file…' : `View ${isImageDocument(document) ? 'image' : 'PDF'}`}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                {documentError && <p role="alert" className="text-xs font-medium text-rose-600">{documentError}</p>}
+
+                {documentUrl && selectedDocument && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-xs font-semibold text-slate-700">Preview: {getDocumentFileName(selectedDocument)}</p>
+                      <a
+                        href={documentUrl}
+                        download={getDocumentFileName(selectedDocument)}
+                        className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[#2563EB] hover:underline"
+                      >
+                        <Download className="h-3.5 w-3.5" /> Download file
+                      </a>
+                    </div>
+                    {isImageDocument(selectedDocument) ? (
+                      <img
+                        src={documentUrl}
+                        alt={`Verification document ${selectedDocument.verificationDocumentId}`}
+                        className="max-h-[560px] w-full rounded-lg border border-slate-200 bg-slate-50 object-contain"
+                      />
+                    ) : (
+                      <iframe
+                        src={documentUrl}
+                        title={`Private verification document ${selectedDocument.verificationDocumentId}`}
+                        className="h-[480px] w-full rounded-lg border border-slate-200 bg-slate-50"
+                      />
+                    )}
+                  </div>
+                )}
+              </section>
 
               {/* Action bar inside modal */}
               {selectedListing.status === 'pending' && (
                 <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
                   <button 
-                    onClick={() => setRejectingListingId(selectedListing.id)}
-                    className="px-4 py-2 bg-rose-50 text-rose-700 font-semibold rounded-lg text-xs hover:bg-rose-100 transition-colors"
+                    onClick={() => openRejectDialog(selectedListing.id)}
+                    disabled={decisionLoadingId !== null}
+                    className="px-4 py-2 bg-rose-50 text-rose-700 font-semibold rounded-lg text-xs hover:bg-rose-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Reject Application
                   </button>
                   <button 
                     onClick={() => handleApproveClick(selectedListing)}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors"
+                    disabled={decisionLoadingId !== null}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Approve Verification
+                    {decisionLoadingId === selectedListing.id ? 'Submitting…' : 'Approve Verification'}
                   </button>
                 </div>
               )}
@@ -411,8 +683,8 @@ export default function ListingGovernance({
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Select Rejection Reason</label>
                   <select 
-                    value={customRejectionReason}
-                    onChange={(e) => setCustomRejectionReason(e.target.value)}
+                    value={selectedRejectionReason}
+                    onChange={(e) => setSelectedRejectionReason(e.target.value)}
                     className="w-full mt-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-rose-500"
                   >
                     {rejectionOptions.map((opt, i) => (
@@ -422,34 +694,42 @@ export default function ListingGovernance({
                   </select>
                 </div>
 
-                {customRejectionReason === 'custom' && (
+                {selectedRejectionReason === 'custom' && (
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Custom Explanatory Note</label>
                     <textarea 
                       placeholder="Write exact legal reason why this Strata proof was rejected..."
-                      onChange={(e) => setCustomRejectionReason(e.target.value)}
+                      value={customRejectionNote}
+                      onChange={(e) => setCustomRejectionNote(e.target.value)}
                       className="w-full mt-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 h-20 focus:outline-hidden focus:ring-1 focus:ring-rose-500"
                     />
                   </div>
                 )}
 
                 <p className="text-[10px] text-slate-400 leading-relaxed bg-slate-50 p-2.5 rounded border border-slate-100">
-                  Submitting a rejection triggers an automated email notification with details explaining the corrective action required to the host Tan Kah Seng.
+                  Submitting a rejection triggers an automated email notification with corrective-action details for {rejectingListing?.submittedByName ?? 'this owner'}.
                 </p>
+                {decisionFeedback && !decisionFeedback.success && (
+                  <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-[11px] font-medium text-rose-700">
+                    {decisionFeedback.message}
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button 
                   onClick={() => setRejectingListingId(null)}
+                  disabled={decisionLoadingId !== null}
                   className="px-3.5 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={handleRejectSubmit}
-                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold"
+                  disabled={decisionLoadingId !== null}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Confirm Rejection
+                  {decisionLoadingId === rejectingListingId ? 'Submitting…' : 'Confirm Rejection'}
                 </button>
               </div>
             </motion.div>

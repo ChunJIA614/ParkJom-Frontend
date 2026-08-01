@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Menu } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import BrandLogo from '@/shared/ui/BrandLogo';
 
 export type DashboardRole = 'commuter' | 'owner' | 'admin';
 
@@ -10,6 +11,8 @@ interface DashboardHeaderProps {
   showMenuButton?: boolean;
   /** Extra controls rendered before the user / sign-out area (e.g. notifications) */
   actions?: React.ReactNode;
+  /** Optional primary navigation rendered in the center on desktop */
+  navigation?: React.ReactNode;
   /** Optional status line shown on sm+ screens (admin: system status, owner: location) */
   statusText?: string;
   /** Optional badge next to title (owner: Active) */
@@ -22,7 +25,7 @@ const ROLE_META: Record<
 > = {
   commuter: { portal: 'Transit Parking', accent: '#007AFF', homePath: '/commuter' },
   owner: { portal: 'Owner Portal', accent: '#007AFF', homePath: '/owner' },
-  admin: { portal: 'Admin Console', accent: '#0f1115', homePath: '/admin' },
+  admin: { portal: 'Admin Console', accent: '#007AFF', homePath: '/admin' },
 };
 
 const BADGE_STYLES = {
@@ -36,6 +39,7 @@ export default function DashboardHeader({
   onMenuClick,
   showMenuButton = false,
   actions,
+  navigation,
   statusText,
   badge,
 }: DashboardHeaderProps) {
@@ -60,7 +64,7 @@ export default function DashboardHeader({
       className="sticky top-0 z-50 shrink-0 glass-bar"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
-      <div className="max-w-screen-2xl mx-auto h-14 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
+      <div className="relative max-w-screen-2xl mx-auto h-14 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3">
         {/* Left: menu + brand */}
         <div className="flex items-center gap-2.5 min-w-0">
           {showMenuButton && onMenuClick && (
@@ -79,12 +83,7 @@ export default function DashboardHeader({
             onClick={handleBrandClick}
             className="flex items-center gap-2.5 min-w-0 group"
           >
-            <div
-              className="w-8 h-8 rounded-[10px] flex items-center justify-center font-extrabold text-white text-[13px] shadow-sm shrink-0 transition-transform group-active:scale-95"
-              style={{ backgroundColor: role === 'admin' ? '#0f1115' : '#007AFF' }}
-            >
-              PJ
-            </div>
+            <BrandLogo alt="" className="h-8 w-8 shadow-sm transition-transform group-active:scale-95" />
             <div className="min-w-0 text-left">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-[15px] text-[#111] tracking-[-0.02em] truncate">
@@ -106,6 +105,12 @@ export default function DashboardHeader({
             </div>
           </button>
         </div>
+
+        {navigation && (
+          <nav className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-1" aria-label="Primary">
+            {navigation}
+          </nav>
+        )}
 
         {/* Center status — desktop only */}
         {statusText && (

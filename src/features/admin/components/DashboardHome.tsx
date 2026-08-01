@@ -128,16 +128,9 @@ export default function DashboardHome({
 
   return (
     <div id="dashboard-home" className="space-y-6">
-      {/* Title Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 id="home-title" className="text-2xl font-bold text-slate-800 tracking-tight">Executive Dashboard</h2>
-          <p className="text-slate-500 text-sm">Real-time oversight of smart parking shares, IoT status, and transactions.</p>
-        </div>
-        <div className="flex items-center gap-2 text-xs font-mono bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          Live Stream Connected
-        </div>
+      <div className="flex items-start gap-3 rounded-xl bg-[#f2f2f7] px-4 py-3 text-[12px] text-[#6e6e73]">
+        <Activity size={16} className="mt-0.5 shrink-0 text-[#007AFF]" />
+        <p>Live counters use connected platform state. Trend charts are clearly illustrative until analytics endpoints are connected.</p>
       </div>
 
       {/* KPI Cards Grid */}
