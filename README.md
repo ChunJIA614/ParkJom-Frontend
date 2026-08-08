@@ -79,14 +79,25 @@ Notes:
 | `npm run preview` | Preview the production build locally. |
 | `npm run build` | Create a production build in `dist/`. |
 | `npm run lint` | Type-check the project with TypeScript. |
-| `npm run gtfs` | Run the GTFS conversion utility. |
 | `npm run deploy` | Build and deploy the site to Firebase Hosting. |
 
 ## Deploy
 
-Firebase Hosting is configured for SPA routing in [firebase.json](./firebase.json). The project alias is defined in [.firebaserc](./.firebaserc).
+Firebase Hosting is configured for SPA routing in [firebase.json](./firebase.json). The default Firebase project is `united-perigee-400000`, defined in [.firebaserc](./.firebaserc).
 
-Deploy with:
+### GitHub
+
+Commit and push changes to the main branch:
+
+```bash
+git add README.md
+git commit -m "Update README"
+git push origin main
+```
+
+### Firebase
+
+Deploy the production build to Firebase Hosting with:
 
 ```bash
 npm run deploy
@@ -105,13 +116,17 @@ src/
 │   ├── commuter/
 │   ├── landing/
 │   └── owner/
-├── shared/               # Reusable UI and shared components
-├── styles/               # Global styles and theme tokens
+├── components/           # Reusable UI, layout, and common components
+│   ├── ui/
+│   ├── layout/
+│   └── common/
+├── services/             # Shared API and external-service clients
+├── app/styles/           # Global styles and theme tokens
 ├── types/                # Global TypeScript declarations
 └── main.tsx              # Vite entry point
 
-public/                   # PWA assets, icons, images, and service worker
-data/                     # Source datasets and rail data
+public/                   # PWA assets, icons, images, service worker, and rail data
+.github/skills/           # Project-local Codex/Copilot architecture skill
 ```
 
 ## Build Check
@@ -124,4 +139,3 @@ npm run build
 ```
 
 Both commands should finish without errors.
-
