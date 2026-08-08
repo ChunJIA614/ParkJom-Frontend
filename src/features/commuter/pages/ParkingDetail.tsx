@@ -5,9 +5,11 @@ import {
   Car, Wifi, CreditCard,
   Loader2, Calendar, AlertTriangle,
 } from 'lucide-react';
-import DashboardHeader from '@/shared/components/DashboardHeader';
+import DashboardHeader from '@/components/layout/DashboardHeader';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import type { Booking, ParkingSpot } from '../types';
 import { clearJourneySession, saveJourneySession } from '../lib/journeySession';
+import { getWalkingRoute } from '@/services/walkingRoutes';
 
 /* ================================================================
    ParkingDetail — Parking spot detail page
@@ -26,33 +28,9 @@ interface WalkingInfo {
   rawDistance: number;
 }
 
-// ── OSRM Walking Distance Query ──
-async function getWalkingDistance(
-  startLat: number, startLon: number,
-  endLat: number, endLon: number,
-): Promise<WalkingInfo | null> {
-  try {
-    const url = `https://router.project-osrm.org/route/v1/foot/${startLon},${startLat};${endLon},${endLat}?overview=false`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.code === 'Ok' && data.routes.length > 0) {
-      const route = data.routes[0];
-      const d = route.distance;
-      return {
-        distanceText: d > 1000 ? `${(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`,
-        durationText: `${Math.round(route.duration / 60)} mins walk`,
-        rawDistance: d,
-      };
-    }
-    throw new Error('No route');
-  } catch (e) {
-    console.error('OSRM error:', e);
-    return null;
-  }
-}
-
 export default function ParkingDetail() {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const { state } = useLocation() as {
     state?: { spot: MockParkingSpot; stationCoords: { lat: number; lon: number } | null; stationName: string };
   };
@@ -95,7 +73,7 @@ export default function ParkingDetail() {
   useEffect(() => {
     if (!spot || !stationCoords) return;
     setIsLoadingRoute(true);
-    getWalkingDistance(spot.lat, spot.lon, stationCoords.lat, stationCoords.lon)
+    getWalkingRoute(spot.lat, spot.lon, stationCoords.lat, stationCoords.lon)
       .then(setWalkingInfo).finally(() => setIsLoadingRoute(false));
   }, [spot, stationCoords]);
 
@@ -158,7 +136,12 @@ export default function ParkingDetail() {
   if (reservationReady) {
     return (
       <div className="page-shell text-[#1d1d1f]">
-        <DashboardHeader role="commuter" />
+        <DashboardHeader
+          role="commuter"
+          user={user}
+          onSignOut={() => { logout(); navigate('/'); }}
+          onBrandClick={() => navigate('/commuter', { replace: true, state: { activeTab: 'home' } })}
+        />
         <main className="max-w-xl mx-auto px-4 py-10 md:py-16">
           <div className="bg-white rounded-2xl border border-black/[0.08] overflow-hidden">
             <div className="bg-[#1c1c1e] text-white p-6 md:p-8">
@@ -196,7 +179,12 @@ export default function ParkingDetail() {
 
   return (
     <div className="page-shell text-[#1d1d1f] pb-24">
-      <DashboardHeader role="commuter" />
+      <DashboardHeader
+        role="commuter"
+        user={user}
+        onSignOut={() => { logout(); navigate('/'); }}
+        onBrandClick={() => navigate('/commuter', { replace: true, state: { activeTab: 'home' } })}
+      />
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 pt-6 md:pt-10">
         <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-[13px] font-medium text-[#6e6e73] hover:text-[#1d1d1f]">

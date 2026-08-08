@@ -6,6 +6,8 @@ interface ParkingPassProps {
   vehiclePlate?: string;
   onReserve?: () => void;
   compact?: boolean;
+  stationName?: string | null;
+  isNearbyLoading?: boolean;
 }
 
 export default function ParkingPass({
@@ -13,6 +15,8 @@ export default function ParkingPass({
   vehiclePlate,
   onReserve,
   compact = false,
+  stationName,
+  isNearbyLoading = false,
 }: ParkingPassProps) {
   return (
     <section className={`parking-pass ${compact ? 'parking-pass--compact' : ''}`} aria-label="Parking Pass">
@@ -62,8 +66,12 @@ export default function ParkingPass({
           </>
         ) : (
           <div className="parking-pass__empty">
-            <MapPin size={22} />
-            <p>Select a station, then choose an available bay from the map or nearby list.</p>
+            {isNearbyLoading ? <Radio size={22} className="animate-pulse" /> : <MapPin size={22} />}
+            <p>
+              {isNearbyLoading && stationName
+                ? `Loading parking details for ${stationName}...`
+                : 'Select a station, then choose an available bay from the map or nearby list.'}
+            </p>
           </div>
         )}
       </div>

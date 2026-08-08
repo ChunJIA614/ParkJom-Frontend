@@ -3,13 +3,19 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, ShieldCheck, Radio, AlertOctagon, 
   Landmark, LifeBuoy, X, LogOut,
-  ShieldAlert, Lock
+  ShieldAlert, Lock, Menu
 } from 'lucide-react';
-import DashboardHeader from '@/shared/components/DashboardHeader';
-import BottomNav from '@/shared/ui/BottomNav';
-import BrandLogo from '@/shared/ui/BrandLogo';
+import DashboardHeader from '@/components/layout/DashboardHeader';
+import BottomNav from '@/components/layout/BottomNav';
+import PageTransition from '@/components/ui/PageTransition';
+import BrandLogo from '@/components/ui/BrandLogo';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import {
+  fetchVerificationDocument,
+  listVerificationRequests,
+  submitVerificationDecision as postVerificationDecision,
+} from '../api/verificationApi';
 
 import { 
   initialStats
@@ -25,11 +31,6 @@ import SupportDispute from '../components/SupportDispute';
 import SystemAudit from '../components/SystemAudit';
 import SystemConfiguration from '../components/SystemConfiguration';
 
-const API_BASE = import.meta.env.VITE_API_BASE ||
-  (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-    ? 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api'
-    : '/api');
-
 type ActiveView = 'home' | 'governance' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system';
 
 export default function AdminDashboard() {
@@ -39,10 +40,27 @@ export default function AdminDashboard() {
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  useEffect(() => {
+    if (!sidebarOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [sidebarOpen]);
+
   // App core states — all data fetched from backend
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     const saved = localStorage.getItem('parkjom_admin_view');
-    return (saved as ActiveView) || 'home';
+    const validViews: ActiveView[] = ['home', 'governance', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system'];
+    return saved && validViews.includes(saved as ActiveView) ? saved as ActiveView : 'home';
   });
 
   // Persist active view to localStorage
@@ -96,15 +114,7 @@ export default function AdminDashboard() {
     setListingsError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/parking/verification-requests`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-      });
+      const res = await listVerificationRequests(token);
       const body = await res.json().catch(() => null) as ParkingVerificationRequestsResponse | ParkingVerificationRequestResponse | ParkingVerificationRequestDto[] | null;
       const isEnvelope = body !== null && !Array.isArray(body);
 
@@ -177,14 +187,7 @@ export default function AdminDashboard() {
         ? 'image/png'
         : 'image/jpeg';
 
-    const res = await fetch(`${API_BASE}/media/view/document/${document.mediaFileId}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Accept-Language': 'en-US,en;q=0.9',
-        Accept: requestedContentType,
-      },
-    });
+    const res = await fetchVerificationDocument(token, document.mediaFileId, requestedContentType);
 
     if (!res.ok) {
       const contentType = res.headers.get('content-type') ?? '';
@@ -228,19 +231,7 @@ export default function AdminDashboard() {
       if (!listing) return { success: false, message: `Verification request ${id} was not found.` };
       if (!token) return { success: false, message: 'Your admin session is missing an authorization token.' };
 
-      const res = await fetch(`${API_BASE}/parking/verification-requests/${listing.verificationRequestId}/decision`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          decision,
-          review_notes: reviewNotes,
-        }),
-      });
+      const res = await postVerificationDecision(token, listing.verificationRequestId, decision, reviewNotes);
       const data = await res.json().catch(() => null) as ParkingVerificationDecisionResponse | null;
 
       if (res.ok && data?.success === true) {
@@ -390,7 +381,7 @@ export default function AdminDashboard() {
   const currentViewMeta = viewMeta[activeView];
 
   return (
-    <div id="parkjom-root" className="app-workspace font-sans text-[#1d1d1f] flex">
+    <div id="parkjom-root" className="app-workspace font-sans text-[#1d1d1f] flex" data-workspace-role="admin">
       
       <aside className="workspace-sidebar hidden lg:flex">
         <div className="workspace-sidebar__brand">
@@ -408,8 +399,9 @@ export default function AdminDashboard() {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setActiveView(item.id as ActiveView)}
-                className={isActive ? 'is-active' : ''}
+              onClick={() => setActiveView(item.id as ActiveView)}
+              className={isActive ? 'is-active' : ''}
+              aria-current={isActive ? 'page' : undefined}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <IconComponent size={15} />
@@ -433,6 +425,7 @@ export default function AdminDashboard() {
                 type="button"
                 onClick={() => setActiveView(item.id as ActiveView)}
                 className={isActive ? 'is-active' : ''}
+                aria-current={isActive ? 'page' : undefined}
               >
                 <IconComponent size={15} /> {item.label}
               </button>
@@ -453,11 +446,16 @@ export default function AdminDashboard() {
       </aside>
 
       {/* 2. Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 pb-16 lg:pb-0 lg:ml-60">
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-60">
         <DashboardHeader
           role="admin"
+          user={user}
+          onSignOut={() => { logout(); navigate('/'); }}
+          onBrandClick={() => { setActiveView('home'); navigate('/admin', { replace: true }); }}
           showMenuButton
           onMenuClick={() => setSidebarOpen(true)}
+          menuExpanded={sidebarOpen}
+          menuControls="admin-mobile-navigation"
           statusText="Operations workspace"
         />
 
@@ -468,38 +466,34 @@ export default function AdminDashboard() {
               <div><h1>{currentViewMeta.title}</h1><p>{currentViewMeta.description}</p></div>
             </div>
           )}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeView}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.15 }}
-            >
-              {renderActiveView()}
-            </motion.div>
-          </AnimatePresence>
+          <PageTransition transitionKey={activeView}>
+            {renderActiveView()}
+          </PageTransition>
         </main>
       </div>
 
       {/* 3. Mobile Sidebar Drawer Overlay */}
       <AnimatePresence>
         {sidebarOpen && (
-          <div className="fixed inset-0 z-50 flex lg:hidden select-none">
+          <div className="fixed inset-0 z-[60] flex lg:hidden select-none">
             {/* Dimmer backdrop */}
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
+              className="fixed inset-0 bg-slate-950/35 backdrop-blur-[2px]"
             />
 
             <motion.aside 
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+              transition={{ type: 'spring', bounce: 0, duration: 0.38 }}
+              id="admin-mobile-navigation"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Admin navigation"
               className="workspace-sidebar is-open"
             >
               <div className="workspace-sidebar__brand">
@@ -522,6 +516,7 @@ export default function AdminDashboard() {
                       type="button"
                       onClick={() => { setActiveView(item.id as ActiveView); setSidebarOpen(false); }}
                       className={isActive ? 'is-active' : ''}
+                      aria-current={isActive ? 'page' : undefined}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <IconComponent size={15} />
@@ -543,6 +538,7 @@ export default function AdminDashboard() {
                         type="button"
                         onClick={() => { setActiveView(item.id as ActiveView); setSidebarOpen(false); }}
                         className={isActive ? 'is-active' : ''}
+                        aria-current={isActive ? 'page' : undefined}
                       >
                         <IconComponent size={15} /> {item.label}
                       </button>
@@ -561,10 +557,16 @@ export default function AdminDashboard() {
           { id: 'governance', icon: ShieldCheck, label: 'Listings', count: listings.filter((l) => l.status === 'pending').length },
           { id: 'iot', icon: Radio, label: 'Bollards', count: bollards.filter((b) => b.status === 'offline').length },
           { id: 'settlement', icon: Landmark, label: 'Finance' },
-          { id: 'support', icon: LifeBuoy, label: 'Support', count: tickets.filter((t) => t.status !== 'resolved').length },
+          { id: 'more', icon: Menu, label: 'More', count: tickets.filter((t) => t.status !== 'resolved').length },
         ]}
-        activeId={activeView}
-        onChange={(id) => setActiveView(id as ActiveView)}
+        activeId={['enforcement', 'support', 'audit', 'system'].includes(activeView) ? 'more' : activeView}
+        onChange={(id) => {
+          if (id === 'more') {
+            setSidebarOpen(true);
+            return;
+          }
+          setActiveView(id as ActiveView);
+        }}
       />
 
     </div>

@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import GoogleLoginButton from '../components/GoogleLoginButton';
-import BrandLogo from '@/shared/ui/BrandLogo';
+import BrandLogo from '@/components/ui/BrandLogo';
 
 export default function LoginPage() {
   return (

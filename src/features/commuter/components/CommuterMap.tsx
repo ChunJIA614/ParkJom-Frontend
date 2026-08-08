@@ -5,6 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import stationData from '../data/mrt_lrt_stations.json';
 import { ParkingSpot } from '../types';
+import { loadRailNetworkData } from '@/services/transitData';
 import { 
   Search, Navigation, MapPin, Car, Train, X, 
   Clock, DollarSign, ChevronRight, Layers, Loader2
@@ -57,19 +58,51 @@ const parkingIcon = L.divIcon({
   popupAnchor: [0, -18],
 });
 
-const selectedStationIcon = L.divIcon({
-  className: 'custom-selected-station-icon',
-  html: `<div style="
-    background: #007AFF;
-    width: 24px; height: 24px;
-    border-radius: 50%;
-    border: 3px solid white;
-    box-shadow: 0 0 0 5px rgba(0,122,255,0.22), 0 2px 8px rgba(0,0,0,0.24);
-    display: flex; align-items: center; justify-content: center;
-  "><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="14" rx="3"/><path d="M8 20l2-3m6 3-2-3M9 8h6m-6 4h.01m5.99 0h.01"/></svg></div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 14],
-  popupAnchor: [0, -18],
+const normalizeStationKey = (value: string) => value.trim().toLowerCase().replace(/\s+(lrt|mrt)$/i, '');
+
+const stationStatusPalette = {
+  default: '#007AFF',
+  selected: '#0A84FF',
+  available: '#248a3d',
+  full: '#d97706',
+  unknown: '#94a3b8',
+} as const;
+
+type StationParkingCondition = 'available' | 'full' | 'unknown';
+
+const buildStationIcon = (isSelected: boolean, condition: StationParkingCondition) => {
+  const fillColor = isSelected
+    ? stationStatusPalette.selected
+    : condition === 'available'
+      ? stationStatusPalette.available
+      : condition === 'full'
+        ? stationStatusPalette.full
+        : stationStatusPalette.unknown;
+  const ringColor = isSelected ? 'rgba(10,132,255,0.25)' : 'rgba(0,0,0,0.12)';
+
+  return L.divIcon({
+    className: 'custom-station-icon',
+    html: `<div style="
+      background: ${fillColor};
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 0 0 5px ${ringColor}, 0 2px 8px rgba(0,0,0,0.24);
+      display: flex; align-items: center; justify-content: center;
+    "><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="14" rx="3"/><path d="M8 20l2-3m6 3-2-3M9 8h6m-6 4h.01m5.99 0h.01"/></svg></div>`,
+    // Keep a generous invisible hit area around the small visual marker. This
+    // makes desktop pointer selection as forgiving as the mobile touch target.
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+    popupAnchor: [0, -18],
+  });
+};
+
+const createStationIconSet = () => ({
+  selected: buildStationIcon(true, 'unknown'),
+  available: buildStationIcon(false, 'available'),
+  full: buildStationIcon(false, 'full'),
+  unknown: buildStationIcon(false, 'unknown'),
 });
 
 // ---- Props ----
@@ -85,11 +118,11 @@ interface CommuterMapProps {
   nearbyError: string | null;
 }
 
-// ---- FlyTo component — flies to station when clicked, no snap-back on scroll ----
+// ---- Focus component — jumps to the selected station without a bounce animation ----
 function FlyToStation({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo([lat, lng], 15, { duration: 0.6 });
+    map.setView([lat, lng], 15, { animate: false });
   }, [lat, lng, map]);
   return null;
 }
@@ -120,7 +153,22 @@ function RailPane() {
     if (!map.getPane('railPane')) {
       map.createPane('railPane');
       const pane = map.getPane('railPane');
-      if (pane) pane.style.zIndex = '625'; // above markerPane (600), below popupPane (700)
+      if (pane) {
+        pane.style.zIndex = '625'; // above markerPane (600), below popupPane (700)
+        pane.style.pointerEvents = 'none';
+      }
+    }
+  }, [map]);
+  return null;
+}
+
+function StationPane() {
+  const map = useMap();
+  useEffect(() => {
+    if (!map.getPane('stationPane')) {
+      map.createPane('stationPane');
+      const pane = map.getPane('stationPane');
+      if (pane) pane.style.zIndex = '650';
     }
   }, [map]);
   return null;
@@ -136,6 +184,24 @@ const ROUTE_NAME_MAP: Record<string, string> = {
   MRL: 'KL Monorail',
   BRT: 'BRT Sunway Line',
   SAL: 'Shah Alam Line',
+};
+
+const getStationKeys = (feature: any) => {
+  const coordinates = feature.geometry?.coordinates;
+  const rawName = String(feature.properties?.name || feature.properties?.['name:en'] || '');
+  const rawRef = String(feature.properties?.ref || '');
+  const keys = new Set<string>();
+
+  [rawRef, rawName].forEach((value) => {
+    const normalized = normalizeStationKey(value);
+    if (normalized) keys.add(normalized);
+  });
+
+  if (Array.isArray(coordinates) && coordinates.length >= 2) {
+    keys.add(`${coordinates[1]?.toFixed?.(5) ?? coordinates[1]}:${coordinates[0]?.toFixed?.(5) ?? coordinates[0]}`);
+  }
+
+  return [...keys];
 };
 
 // ---- LineControlPanel: rail line visibility control panel ----
@@ -246,7 +312,6 @@ export default function CommuterMap({
   // ---- Line visibility map: route_name → boolean, all visible by default ----
   const [visibleLines, setVisibleLines] = useState<Record<string, boolean>>({});
 
-  const [railStops, setRailStops] = useState<GeoJsonCollection<RailStopFeature> | null>(null);
   const [gtfsLoading, setGtfsLoading] = useState(true);
   const [gtfsError, setGtfsError] = useState<string | null>(null);
 
@@ -254,15 +319,8 @@ export default function CommuterMap({
   useEffect(() => {
     async function loadGtfsData() {
       try {
-        const [linesRes, stopsRes] = await Promise.all([
-          fetch('/data/kl_rail_lines.json'),
-          fetch('/data/kl_rail_stops.json'),
-        ]);
-        if (!linesRes.ok || !stopsRes.ok) throw new Error('Failed to fetch GTFS data');
-        const [linesData, stopsData] = await Promise.all([
-          linesRes.json(),
-          stopsRes.json(),
-        ]);
+        const { lines } = await loadRailNetworkData();
+        const linesData = lines as GeoJsonCollection<RailLineFeature>;
         setAllLines(linesData);
 
         // Extract all unique route_names from data, all enabled by default
@@ -275,7 +333,6 @@ export default function CommuterMap({
         });
         setVisibleLines(initVisible);
 
-        setRailStops(stopsData);
         setGtfsLoading(false);
       } catch (err: any) {
         setGtfsError(err.message);
@@ -294,12 +351,13 @@ export default function CommuterMap({
     return { type: 'FeatureCollection', features: filtered };
   }, [allLines, visibleLines]);
 
+  const stationIcons = React.useMemo(createStationIconSet, []);
+
   // Filter stations: only LRT, MRT, Monorail (exclude KTM Komuter, ERL, etc.)
-  const transitStations = (stationData as any).features.filter((f: any) => {
+  const transitStations = React.useMemo(() => (stationData as any).features.filter((f: any) => {
     const name = f.properties?.name || '';
     const network = f.properties?.network || '';
     const station = f.properties?.station || '';
-    const railway = f.properties?.railway || '';
 
     // Keep only LRT, MRT, Monorail stations
     return (
@@ -310,7 +368,58 @@ export default function CommuterMap({
       name?.includes('MRT') ||
       name?.match(/^(AG|SP|KJ|KG|PY|MR)\d/) // LRT/MRT/Monorail station codes
     );
-  });
+  }), []);
+
+  const stationFeatures = React.useMemo(() => {
+    const deduped = new Map<string, any>();
+
+    transitStations.forEach((feature: any) => {
+      const coordinates = feature.geometry?.coordinates;
+      const rawName = String(feature.properties?.name || feature.properties?.['name:en'] || '');
+      const rawRef = String(feature.properties?.ref || '');
+      const key = normalizeStationKey(rawRef || rawName)
+        || (Array.isArray(coordinates) ? `${coordinates[1]?.toFixed?.(5) ?? coordinates[1]}:${coordinates[0]?.toFixed?.(5) ?? coordinates[0]}` : rawName);
+
+      if (!deduped.has(key)) {
+        deduped.set(key, feature);
+      }
+    });
+
+    return [...deduped.values()];
+  }, [transitStations]);
+
+  const stationParkingConditions = React.useMemo(() => {
+    const conditionByStation = new Map<string, StationParkingCondition>();
+    const groupedByStation = new Map<string, ParkingSpot[]>();
+
+    spots.forEach((spot) => {
+      const stationKeys = [spot.stationName, spot.station].flatMap((value) => {
+        const normalized = normalizeStationKey(value || '');
+        return normalized ? [normalized] : [];
+      });
+
+      stationKeys.forEach((key) => {
+        const current = groupedByStation.get(key) ?? [];
+        current.push(spot);
+        groupedByStation.set(key, current);
+      });
+    });
+
+    groupedByStation.forEach((stationSpots, key) => {
+      const hasAvailable = stationSpots.some((spot) => spot.available);
+      conditionByStation.set(key, hasAvailable ? 'available' : 'full');
+    });
+
+    stationFeatures.forEach((feature: any) => {
+      getStationKeys(feature).forEach((key) => {
+        if (!conditionByStation.has(key)) {
+          conditionByStation.set(key, 'unknown');
+        }
+      });
+    });
+
+    return conditionByStation;
+  }, [spots, stationFeatures]);
 
   // Get unique station names for the list
   const allNames: string[] = transitStations
@@ -324,6 +433,7 @@ export default function CommuterMap({
 
   // Currently selected station name (to pass to detail page)
   const [clickedStationName, setClickedStationName] = useState<string>('');
+  const selectedStationKey = normalizeStationKey(selectedStation || '');
 
   const handleStationClick = (feature: any) => {
     const coords = feature.geometry.coordinates;
@@ -342,9 +452,8 @@ export default function CommuterMap({
   };
 
   const handleListStationClick = (name: string) => {
-    const feature = transitStations.find((f: any) =>
-      f.properties?.name === name || f.properties?.['name:en'] === name
-    );
+    const normalizedTarget = normalizeStationKey(name);
+    const feature = stationFeatures.find((f: any) => getStationKeys(f).includes(normalizedTarget));
     if (feature) {
       const coords = feature.geometry.coordinates;
       if (!coords || coords.length < 2) return;
@@ -382,14 +491,15 @@ export default function CommuterMap({
     }));
   };
 
-  // ---- Mobile rail lines panel toggle ----
+  // ---- Rail lines panel toggles ----
+  const [showDesktopLines, setShowDesktopLines] = useState(false);
   const [showMobileLines, setShowMobileLines] = useState(false);
 
   // Don't show parking spots until a station is explicitly selected
   const shouldShowParking = !!selectedStation && selectedStation.length > 0 && spots.length > 0;
 
   return (
-    <div className="commuter-map relative w-full h-full min-h-[400px] overflow-hidden">
+    <div className={`commuter-map relative w-full h-full min-h-[400px] overflow-hidden ${selectedStation ? 'has-selected-station' : ''}`}>
       {/* Map Container */}
       <MapContainer
         center={klCenter}
@@ -405,6 +515,8 @@ export default function CommuterMap({
 
         {/* Custom pane: z-index 625, above markers so rail renders on top of station icons */}
         <RailPane />
+        {/* Station markers sit above rail geometry for reliable desktop clicks. */}
+        <StationPane />
 
         {/* ---- GTFS Rail Lines (GeoJSON LineStrings) ----
              Use dynamic key={JSON.stringify(visibleLines)} to force React-Leaflet
@@ -419,27 +531,6 @@ export default function CommuterMap({
               weight: 5,
               opacity: 0.85,
             })}
-          />
-        )}
-
-        {/* ---- GTFS Rail Stops (GeoJSON Points → CircleMarkers) ---- */}
-        {railStops && (
-          <GeoJSON
-            data={railStops}
-            pane="railPane"
-            pointToLayer={(_feature, latlng) =>
-              L.circleMarker(latlng, {
-                radius: 4,
-                fillColor: '#ffffff',
-                fillOpacity: 1,
-                color: '#1e293b',
-                weight: 1.5,
-              })
-            }
-            onEachFeature={(feature, layer) => {
-              const name = feature.properties?.stop_name;
-              if (name) layer.bindPopup(`<strong>${name}</strong>`);
-            }}
           />
         )}
 
@@ -459,11 +550,15 @@ export default function CommuterMap({
         )}
 
         {/* Render Transit Station Markers */}
-        {transitStations.map((feature: any, idx: number) => {
+        {stationFeatures.map((feature: any, idx: number) => {
           const coords = feature.geometry.coordinates;
           const name = feature.properties?.name || feature.properties?.['name:en'] || '';
           const network = feature.properties?.network || '';
-          const isSelected = selectedStation === name;
+          const stationKeys = getStationKeys(feature);
+          const isSelected = stationKeys.includes(selectedStationKey);
+          const stationCondition = stationKeys
+            .map((key) => stationParkingConditions.get(key))
+            .find((value): value is StationParkingCondition => Boolean(value)) ?? 'unknown';
 
           if (!coords || coords.length < 2) return null;
 
@@ -471,7 +566,8 @@ export default function CommuterMap({
             <Marker
               key={`station-${idx}`}
               position={[coords[1], coords[0]]}
-              icon={isSelected ? selectedStationIcon : stationIcon}
+              pane="stationPane"
+              icon={isSelected ? stationIcons.selected : stationIcons[stationCondition]}
               eventHandlers={{
                 click: () => handleStationClick(feature),
               }}
@@ -485,7 +581,7 @@ export default function CommuterMap({
                       e.stopPropagation();
                       handleStationClick(feature);
                     }}
-                    className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg transition-colors"
+                    className="find-parking-action mt-2 w-full text-white text-[10px] font-bold py-1.5 px-3 rounded-lg transition-colors"
                   >
                     Find Parking Nearby
                   </button>
@@ -551,20 +647,13 @@ export default function CommuterMap({
       {/* Map Legend */}
       <MapLegend />
 
-      {/* Line visibility control panel — desktop floats top-left, mobile bottom sheet */}
-      {/* Desktop: always visible at top-left */}
-      <div className="hidden md:block">
-        <LineControlPanel
-          visibleLines={visibleLines}
-          onToggle={handleLineToggle}
-        />
-      </div>
-
       {/* Mobile: Rail lines toggle button & dropdown panel (inside the map container) */}
-      <div className="md:hidden absolute top-[72px] right-4 z-[1000] flex flex-col items-end">
+      <div className="map-lines-mobile md:hidden absolute top-[72px] right-4 z-[1000] flex flex-col items-end">
         <button
           onClick={() => setShowMobileLines(!showMobileLines)}
-          className="bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-3 py-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 active:scale-95 transition-all"
+          aria-expanded={showMobileLines}
+          aria-controls="mobile-rail-lines"
+          className="workspace-map-control bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-3 py-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
         >
           <Layers className="w-4 h-4 text-blue-600" />
           Lines
@@ -573,7 +662,7 @@ export default function CommuterMap({
 
         {/* Dropdown expanded lines panel */}
         {showMobileLines && (
-          <div className="mt-2 animate-slide-up origin-top-right">
+          <div id="mobile-rail-lines" className="mt-2 animate-slide-up origin-top-right">
             <LineControlPanel
               visibleLines={visibleLines}
               onToggle={handleLineToggle}
@@ -585,7 +674,7 @@ export default function CommuterMap({
 
       {/* ---- No nearby parking message ---- (centered to avoid blocking top-right buttons) */}
       {clickedStationName && isNearbyLoading && (
-        <div className="absolute top-[80px] left-1/2 -translate-x-1/2 z-[1001] animate-slide-up w-[90%] max-w-[320px]">
+        <div className="map-status-banner absolute top-[80px] left-1/2 -translate-x-1/2 z-[1001] animate-slide-up w-[90%] max-w-[320px]">
           <div className="bg-blue-50/95 backdrop-blur border border-blue-200 rounded-xl px-4 py-3 shadow-lg flex items-start gap-2.5">
             <Loader2 size={16} className="text-blue-600 shrink-0 mt-0.5 animate-spin" />
             <div className="text-[11px] text-blue-900 leading-relaxed">
@@ -597,7 +686,7 @@ export default function CommuterMap({
       )}
 
       {clickedStationName && !isNearbyLoading && !nearbyError && spots.length === 0 && (
-        <div className="absolute top-[80px] left-1/2 -translate-x-1/2 z-[1001] animate-slide-up w-[90%] max-w-[300px]">
+        <div className="map-status-banner absolute top-[80px] left-1/2 -translate-x-1/2 z-[1001] animate-slide-up w-[90%] max-w-[300px]">
           <div className="bg-amber-50/95 backdrop-blur border border-amber-200 rounded-xl px-4 py-3 shadow-lg flex items-start gap-2.5">
             <MapPin size={16} className="text-amber-500 shrink-0 mt-0.5" />
             <div className="text-[11px] text-amber-800 leading-relaxed">
@@ -632,14 +721,16 @@ export default function CommuterMap({
       )}
 
       {/* Top Bar: Station Search & Filter */}
-      <div className="absolute top-4 left-4 right-4 z-[1000] flex gap-2">
+      <div className="map-toolbar absolute top-4 left-4 right-4 z-[1000] flex gap-2">
         {/* Station Selector Button */}
         <button
           onClick={() => setShowStationList(!showStationList)}
-          className="bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-4 py-2.5 flex items-center gap-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+          aria-expanded={showStationList}
+          aria-controls="station-picker"
+          className="map-toolbar__station bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-4 py-2.5 flex items-center gap-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
         >
           <Train className="w-4 h-4 text-blue-600" />
-          {selectedStation || 'Select Station'}
+          <span className="truncate">{selectedStation || 'Select Station'}</span>
           <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showStationList ? 'rotate-90' : ''}`} />
         </button>
 
@@ -649,7 +740,8 @@ export default function CommuterMap({
           onChange={(e) => {
             onDistanceRadiusChange(Number(e.target.value));
           }}
-          className="bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-3 py-2.5 text-xs font-semibold text-slate-600 focus:outline-none"
+          aria-label="Parking search radius"
+          className="map-toolbar__radius bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-3 py-2.5 text-xs font-semibold text-slate-600 focus:outline-none"
         >
           <option value={300}>Within 300m</option>
           <option value={500}>Within 500m</option>
@@ -659,11 +751,37 @@ export default function CommuterMap({
           <option value={5000}>Within 5km</option>
         </select>
 
+        {/* Desktop: keep Rail Lines beside the radius filter so the collapsed control
+            remains discoverable even when the line list is closed. */}
+        <div className="map-lines-desktop hidden md:flex relative flex-col items-start">
+          <button
+            type="button"
+            onClick={() => setShowDesktopLines((isOpen) => !isOpen)}
+            aria-expanded={showDesktopLines}
+            aria-controls="desktop-rail-lines"
+            className="workspace-map-control flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur hover:bg-slate-50"
+          >
+            <Layers className="h-4 w-4 text-blue-600" />
+            Lines
+            <ChevronRight className={`h-3.5 w-3.5 text-slate-400 transition-transform ${showDesktopLines ? 'rotate-90' : ''}`} />
+          </button>
+
+          {showDesktopLines && (
+            <div id="desktop-rail-lines" className="map-lines-desktop__panel origin-top-left animate-slide-up">
+              <LineControlPanel
+                visibleLines={visibleLines}
+                onToggle={handleLineToggle}
+                showHeader={false}
+              />
+            </div>
+          )}
+        </div>
+
         {/* Find Nearby Button */}
         {selectedStation && (
           <button
             onClick={handleFindNearby}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-1.5 text-xs font-bold transition-colors"
+            className="map-toolbar__find find-parking-action text-white rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-1.5 text-xs font-bold transition-colors"
           >
             <Search className="w-3.5 h-3.5" />
             Find Parking
@@ -673,7 +791,7 @@ export default function CommuterMap({
 
       {/* Station List Dropdown */}
       {showStationList && (
-        <div className="absolute top-[60px] left-4 z-[1000] w-72 max-h-80 bg-white/98 backdrop-blur rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+        <div id="station-picker" className="map-station-dropdown absolute top-[60px] left-4 z-[1000] w-72 bg-white/98 backdrop-blur rounded-xl border border-slate-200 shadow-xl overflow-hidden">
           <div className="p-3 border-b border-slate-100">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -686,7 +804,7 @@ export default function CommuterMap({
               />
             </div>
           </div>
-          <div className="overflow-y-auto max-h-64">
+          <div className="map-station-dropdown__list overflow-y-auto">
             {filteredList.slice(0, 50).map((name) => (
               <button
                 key={name}

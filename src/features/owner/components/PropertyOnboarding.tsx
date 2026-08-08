@@ -1,12 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UploadCloud, CheckCircle, FileText, Landmark, ShieldCheck, HelpCircle, FileCheck, Loader2, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
-
-// Backend API URL — matches the pattern used in GoogleLoginButton
-const API_BASE = import.meta.env.VITE_API_BASE ||
-  (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-    ? 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api'
-    : '/api');
+import { createParking, searchMalaysiaLocations } from '../api/propertyApi';
+import { loadRailStops } from '@/services/transitData';
 
 const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_DOCUMENT_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'pdf']);
@@ -84,10 +80,14 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
   useEffect(() => {
     async function loadStops() {
       try {
-        const res = await fetch('/data/kl_rail_stops.json');
-        const data = await res.json();
-        const stops: { name: string; lat: number; lon: number }[] = data.features.map((f: any) => ({
-          name: f.properties.stop_name,
+        const data = await loadRailStops() as {
+          features: Array<{
+            properties?: { stop_name?: string };
+            geometry: { coordinates: [number, number] };
+          }>;
+        };
+        const stops: { name: string; lat: number; lon: number }[] = data.features.map((f) => ({
+          name: f.properties?.stop_name ?? 'Unknown station',
           lat: f.geometry.coordinates[1],
           lon: f.geometry.coordinates[0],
         }));
@@ -126,8 +126,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
 
     try {
       // 1. Geocode the property address via Nominatim
-      const geoUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=my&limit=3`;
-      const geoRes = await fetch(geoUrl);
+      const geoRes = await searchMalaysiaLocations(q);
       const geoData = await geoRes.json();
 
       if (!geoData || geoData.length === 0) {
@@ -270,16 +269,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       formData.append('DocumentType', String(documentType));
       formData.append('Document', uploadedFileObject);
 
-      const parkRes = await fetch(`${API_BASE}/parking/create-parking`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Accept-Language': 'en-US,en;q=0.9',
-          Accept: 'application/json',
-          // Do not set Content-Type; the browser adds the multipart boundary.
-        },
-        body: formData,
-      });
+      const parkRes = await createParking(token, formData);
 
       const responseText = await parkRes.text();
       let parkResult: any = null;

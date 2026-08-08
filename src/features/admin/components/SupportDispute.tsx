@@ -189,7 +189,7 @@ export default function SupportDispute({
       )}
 
       {/* Split Window */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[72vh]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-[72vh]">
         
         {/* Left: Tickets Queue List (1 col) */}
         <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between overflow-hidden">

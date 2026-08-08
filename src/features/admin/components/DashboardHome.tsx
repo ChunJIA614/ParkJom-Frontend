@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { 
   TrendingUp, Users, Radio, AlertTriangle, ShieldCheck, 
   Clock, DollarSign, ArrowUpRight, CheckCircle,
@@ -27,6 +27,7 @@ export default function DashboardHome({
   activityLogs, 
   systemConfig,
 }: DashboardHomeProps) {
+  const prefersReducedMotion = useReducedMotion();
 
   // Revenue & Booking History over past week
   const weeklyChartData = [
@@ -138,9 +139,11 @@ export default function DashboardHome({
         {statCards.map((card, i) => (
           <motion.div
             key={i}
-            initial={{ opacity: 0, y: 15 }}
+            initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
+            transition={prefersReducedMotion
+              ? { duration: 0.12, ease: 'linear' }
+              : { type: 'spring', bounce: 0, duration: 0.34 }}
             className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs hover:shadow-sm hover:border-slate-300 transition-all duration-200 group relative overflow-hidden"
           >
             <div className="flex justify-between items-start">
@@ -161,12 +164,12 @@ export default function DashboardHome({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Revenue & Booking Area Chart */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-md font-semibold text-slate-800">Financial Growth & Booking Volume</h3>
               <p className="text-xs text-slate-500">Weekly platform growth trend and calculated net commission</p>
             </div>
-            <div className="flex items-center gap-4 text-xs font-medium">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-sm bg-[#2563EB]"></span>
                 <span>Gross Revenue (RM)</span>

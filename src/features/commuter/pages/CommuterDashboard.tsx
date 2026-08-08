@@ -39,9 +39,9 @@ import { ParkingSpot, ParkingSearchResponse, WalletTopUpResponse, Booking, Vehic
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
 import JourneyStrip from '../components/JourneyStrip';
-import DashboardHeader from '@/shared/components/DashboardHeader';
-import BottomNav from '@/shared/ui/BottomNav';
-import PageTransition from '@/shared/ui/PageTransition';
+import DashboardHeader from '@/components/layout/DashboardHeader';
+import BottomNav from '@/components/layout/BottomNav';
+import PageTransition from '@/components/ui/PageTransition';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
   clearJourneySession,
@@ -50,11 +50,8 @@ import {
   updateJourneyStage,
 } from '../lib/journeySession';
 import type { JourneyStage } from '../lib/journeySession';
-
-const API_BASE = import.meta.env.VITE_API_BASE ||
-  (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-    ? 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api'
-    : '/api');
+import { getNearbyParking, searchParking } from '../api/parkingApi';
+import { createWalletTopUp } from '../api/walletApi';
 
 type ParkingResultDto = ParkingSearchResponse['data'][number];
 
@@ -144,7 +141,7 @@ const formatUserDistance = (distanceKm: number) =>
 export default function CommuterDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const prefersReducedMotion = useReducedMotion();
   const [initialJourney] = useState(loadJourneySession);
   type CommuterTab = 'home' | 'active' | 'wallet' | 'profile' | 'map';
@@ -158,11 +155,21 @@ export default function CommuterDashboard() {
     ? queryTab
     : undefined;
   const requestedTab = requestedTabFromQuery || (location.state as { activeTab?: CommuterTab } | null)?.activeTab;
+  const persistedTab = (() => {
+    try {
+      const stored = localStorage.getItem('parkjom_commuter_tab');
+      return stored === 'home' || stored === 'active' || stored === 'wallet' || stored === 'profile' || stored === 'map'
+        ? stored as CommuterTab
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
   const topUpReturnStatus = locationParams.get('topup');
   const returnedCheckoutSessionId = locationParams.get('session_id');
 
   // App Navigation and Module States
-  const [activeTab, setActiveTab] = useState<CommuterTab>(requestedTab || (initialJourney ? 'active' : 'home'));
+  const [activeTab, setActiveTab] = useState<CommuterTab>(requestedTab || persistedTab || (initialJourney ? 'active' : 'home'));
   const [selectedStation, setSelectedStation] = useState<string>('');
   const [selectedStationCoords, setSelectedStationCoords] = useState<StationCoordinates | null>(null);
   const [distanceFilter, setDistanceFilter] = useState<number>(3000); // meters
@@ -172,6 +179,7 @@ export default function CommuterDashboard() {
   const [isNearbyLoading, setIsNearbyLoading] = useState<boolean>(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
   const [nearbyMessage, setNearbyMessage] = useState('');
+  const [nearbySpotCache, setNearbySpotCache] = useState<Record<string, ParkingSpot[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [searchSpots, setSearchSpots] = useState<ParkingSpot[]>([]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
@@ -226,6 +234,14 @@ export default function CommuterDashboard() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotificationsDrawer, setShowNotificationsDrawer] = useState<boolean>(false);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('parkjom_commuter_tab', activeTab);
+    } catch {
+      // Continue when browser storage is unavailable.
+    }
+  }, [activeTab]);
+
   // Booking history — TODO: fetch from backend
   const [history, setHistory] = useState<Booking[]>([]);
 
@@ -259,6 +275,8 @@ export default function CommuterDashboard() {
 
   const lensSpots = mapNearbySpots;
   const lensSelectedSpot = selectedSpot ?? lensSpots[0] ?? null;
+  const getStationCacheKey = (stationName: string, lat: number, lng: number) =>
+    `${stationName.trim().toLowerCase()}::${lat.toFixed(5)}:${lng.toFixed(5)}`;
   const journeyStep = activeBooking
     ? journeyStage === 'parked'
       ? 3
@@ -372,14 +390,7 @@ export default function CommuterDashboard() {
       setSuggestionsError(null);
 
       try {
-        const params = new URLSearchParams({
-          latitude: currentLocation.lat.toString(),
-          longitude: currentLocation.lng.toString(),
-        });
-        const response = await fetch(`${API_BASE}/parking/nearby?${params.toString()}`, {
-          signal: controller.signal,
-          headers: { Accept: 'application/json' },
-        });
+        const response = await getNearbyParking(currentLocation.lat, currentLocation.lng, controller.signal);
         const data = await response.json().catch(() => null) as ParkingSearchResponse | null;
 
         if (!response.ok || !data?.success) {
@@ -416,6 +427,19 @@ export default function CommuterDashboard() {
       return;
     }
 
+    const cacheKey = selectedStation
+      ? getStationCacheKey(selectedStation, selectedStationCoords.lat, selectedStationCoords.lng)
+      : '';
+
+    if (cacheKey && nearbySpotCache[cacheKey]) {
+      setNearbySpots(nearbySpotCache[cacheKey]);
+      setNearbyError(null);
+      setNearbyMessage('');
+      setIsNearbyLoading(false);
+      setSelectedSpot(nearbySpotCache[cacheKey][0] ?? null);
+      return;
+    }
+
     const controller = new AbortController();
 
     async function loadNearbySpots() {
@@ -423,15 +447,7 @@ export default function CommuterDashboard() {
       setNearbyError(null);
 
       try {
-        const params = new URLSearchParams({
-          latitude: selectedStationCoords.lat.toString(),
-          longitude: selectedStationCoords.lng.toString(),
-        });
-
-        const res = await fetch(`${API_BASE}/parking/nearby?${params.toString()}`, {
-          signal: controller.signal,
-          headers: { Accept: 'application/json' },
-        });
+        const res = await getNearbyParking(selectedStationCoords.lat, selectedStationCoords.lng, controller.signal);
 
         const data = await res.json().catch(() => null) as ParkingSearchResponse | null;
         if (!res.ok || !data?.success) throw new Error(data?.message || `Nearby search failed (${res.status})`);
@@ -440,6 +456,11 @@ export default function CommuterDashboard() {
         const fetchedSpots = data.data.map(mapParkingResult);
 
         setNearbySpots(fetchedSpots);
+        setNearbySpotCache((previousCache) => ({
+          ...previousCache,
+          [cacheKey || getStationCacheKey(selectedStation || '', selectedStationCoords.lat, selectedStationCoords.lng)]: fetchedSpots,
+        }));
+        setSelectedSpot(fetchedSpots[0] ?? null);
         setNearbyMessage(`${data.message} · Page ${data.page} of ${Math.max(1, Math.ceil(data.totalCount / data.pageSize))}`);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -455,7 +476,7 @@ export default function CommuterDashboard() {
     loadNearbySpots();
 
     return () => controller.abort();
-  }, [selectedStationCoords]);
+  }, [nearbySpotCache, selectedStation, selectedStationCoords]);
 
   const handleParkingSearch = async (event: FormEvent) => {
     event.preventDefault();
@@ -470,11 +491,7 @@ export default function CommuterDashboard() {
     setSearchMeta(null);
 
     try {
-      const params = new URLSearchParams({ query });
-      const res = await fetch(`${API_BASE}/parking/search?${params.toString()}`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
+      const res = await searchParking(query);
       const data = await res.json().catch(() => null) as ParkingSearchResponse | null;
       if (!res.ok || !data?.success) throw new Error(data?.message || `Parking search failed (${res.status})`);
       if (!Array.isArray(data.data)) throw new Error('Parking search returned an invalid data list.');
@@ -498,6 +515,12 @@ export default function CommuterDashboard() {
     setSelectedStation(name);
     setSelectedStationCoords({ lat, lng });
     setSelectedSpot(null);
+  };
+
+  const handleCommuterBrandClick = () => {
+    setActiveTab('home');
+    setSelectedSpot(null);
+    navigate('/commuter', { replace: true, state: { activeTab: 'home' } });
   };
 
   const openParkingDetail = (
@@ -604,19 +627,7 @@ export default function CommuterDashboard() {
     setTopUpError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/wallet/topup`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${user.token}`,
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          amount: Number(amount.toFixed(2)),
-          ...(description ? { description } : {}),
-        }),
-      });
+      const response = await createWalletTopUp(user.token, Number(amount.toFixed(2)), description);
       const data = await response.json().catch(() => null) as WalletTopUpResponse | null;
 
       if (!response.ok || !data?.success) {
@@ -893,6 +904,12 @@ export default function CommuterDashboard() {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
+  const commuterViewMeta = {
+    home: { title: 'Parking near you', description: 'Compare verified bays around your route and choose with confidence.' },
+    active: { title: 'My parking pass', description: 'Everything you need to arrive, unlock, park, and leave.' },
+    wallet: { title: 'Wallet', description: 'Top up securely and keep track of every parking payment.' },
+    profile: { title: 'Vehicles', description: 'Choose the vehicle attached to your next parking session.' },
+  } as const;
 
   const notificationActions = (
     <button
@@ -911,22 +928,28 @@ export default function CommuterDashboard() {
   );
 
   return (
-    <div className="app-workspace page-shell text-[#1d1d1f] flex flex-col pb-16 lg:pb-0">
+    <div className="app-workspace commuter-workspace page-shell text-[#1d1d1f] flex flex-col" data-workspace-role="commuter" data-commuter-tab={activeTab}>
       <DashboardHeader
         role="commuter"
+        user={user}
+        onSignOut={() => { logout(); navigate('/'); }}
+        onBrandClick={handleCommuterBrandClick}
         actions={notificationActions}
-        navigation={(
+        navigation={activeTab === 'map' ? (
           <>
             {[
               { id: 'map' as const, label: 'Find a Bay' },
+              { id: 'home' as const, label: 'Browse' },
               { id: 'active' as const, label: 'My Pass' },
               { id: 'wallet' as const, label: 'Wallet' },
+              { id: 'profile' as const, label: 'Vehicles' },
             ].map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setActiveTab(item.id)}
-                className={`px-3 py-2 rounded-lg text-[12px] font-medium transition-colors ${
+                aria-current={activeTab === item.id ? 'page' : undefined}
+                className={`commuter-primary-nav__item px-3 py-2 rounded-lg text-[12px] font-medium transition-colors ${
                   activeTab === item.id ? 'text-[#007AFF] bg-[#e8f0fe]' : 'text-[#6e6e73] hover:text-[#1d1d1f]'
                 }`}
               >
@@ -934,17 +957,17 @@ export default function CommuterDashboard() {
               </button>
             ))}
           </>
-        )}
+        ) : undefined}
       />
 
       {/* ─── Main Layout ─── */}
       <div className={activeTab === 'map'
         ? 'flex-1 w-full min-h-0'
-        : 'flex-1 max-w-[1400px] w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 grid grid-cols-1 lg:grid-cols-12 gap-6'}>
+        : 'commuter-content-grid flex-1 max-w-[1400px] w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 grid grid-cols-1 lg:grid-cols-12 gap-6'}>
 
         {/* Desktop Sidebar */}
         {activeTab !== 'map' && (
-        <aside className="hidden lg:flex lg:col-span-3 flex-col gap-4 h-fit sticky top-[calc(3.5rem+1rem)]">
+        <aside className="commuter-rail hidden lg:flex lg:col-span-3 flex-col gap-4 h-fit sticky top-[calc(3.5rem+1rem)]">
           {/* Quick actions: wallet + notifications */}
           <div className="flex items-center gap-2">
             <button onClick={() => setActiveTab('wallet')}
@@ -978,6 +1001,7 @@ export default function CommuterDashboard() {
                 { id: 'profile' as const, icon: Car, label: 'Vehicles' },
               ].map(({ id, icon: Icon, label, dot }) => (
                 <button key={id} onClick={() => { setActiveTab(id); setSelectedSpot(null); }}
+                  aria-current={activeTab === id ? 'page' : undefined}
                   className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${
                     activeTab === id ? 'bg-[#007AFF] text-white' : 'text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#111]'
                   }`}>
@@ -997,6 +1021,14 @@ export default function CommuterDashboard() {
 
         {/* Main Content */}
         <main className={activeTab === 'map' ? 'min-h-0' : 'lg:col-span-9 min-h-0'}>
+          {activeTab !== 'map' && (
+            <div className="workspace-heading workspace-heading--compact">
+              <div>
+                <h1>{commuterViewMeta[activeTab].title}</h1>
+                <p>{commuterViewMeta[activeTab].description}</p>
+              </div>
+            </div>
+          )}
           <PageTransition transitionKey={activeTab}>
 
           {/* Active booking banner */}
@@ -1015,7 +1047,7 @@ export default function CommuterDashboard() {
           {activeTab === 'home' && (
             <div className="space-y-4">
               <section className="bg-white rounded-2xl border border-[#e8eaed] p-4" aria-live="polite">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eff6ff] text-[#007AFF]">
                       {locationStatus === 'locating' ? <Loader2 size={18} className="animate-spin" /> : <Navigation size={18} />}
@@ -1034,7 +1066,7 @@ export default function CommuterDashboard() {
                   <button
                     type="button"
                     onClick={() => setLocationRequestKey((request) => request + 1)}
-                    className="shrink-0 rounded-xl border border-[#dadce0] px-3 py-2 text-[11px] font-semibold text-[#5f6368] hover:border-[#007AFF] hover:text-[#007AFF]"
+                    className="w-full sm:w-auto shrink-0 rounded-xl border border-[#dadce0] px-3 py-2 text-[11px] font-semibold text-[#5f6368] hover:border-[#007AFF] hover:text-[#007AFF]"
                   >
                     {locationStatus === 'ready' ? 'Refresh location' : 'Use my location'}
                   </button>
@@ -1046,7 +1078,7 @@ export default function CommuterDashboard() {
               <div className="bg-white rounded-2xl border border-[#e8eaed] p-4">
                 <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Going somewhere else?</h3>
                 <p className="mt-1 text-[11px] text-[#9ca3af]">Search a different property, address, area, or station.</p>
-                <form onSubmit={handleParkingSearch} className="mt-3 flex gap-2">
+                <form onSubmit={handleParkingSearch} className="mt-3 flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9ca3af]" />
                     <input
@@ -1138,19 +1170,19 @@ export default function CommuterDashboard() {
                       )}
                       className="w-full bg-white rounded-2xl border p-4 text-left cursor-pointer transition-all duration-150 border-[#e8eaed] hover:border-[#d2d5d9]"
                     >
-                      <div className="flex items-start gap-4">
+                      <div className="flex flex-col sm:flex-row items-start gap-4">
                         {spot.primaryImageUrl ? (
-                          <img src={spot.primaryImageUrl} alt="" className="h-20 w-24 shrink-0 rounded-xl object-cover" />
+                          <img src={spot.primaryImageUrl} alt="" className="h-36 sm:h-20 w-full sm:w-24 shrink-0 rounded-xl object-cover" />
                         ) : (
-                          <div className="h-20 w-24 rounded-xl bg-[#eff6ff] flex items-center justify-center shrink-0"><Home size={20} className="text-[#007AFF]" /></div>
+                          <div className="h-28 sm:h-20 w-full sm:w-24 rounded-xl bg-[#eff6ff] flex items-center justify-center shrink-0"><Home size={20} className="text-[#007AFF]" /></div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3">
                             <div>
                               <p className="text-[13px] font-semibold text-[#111]">{spot.propertyName}</p>
                               <p className="text-[10px] font-mono text-[#9ca3af]">Spot #{spot.parkingSpotId} · Property #{spot.propertyId} · Bay {spot.parkingLabel}</p>
                             </div>
-                            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                            <div className="flex shrink-0 flex-wrap sm:justify-end gap-1">
                               {!searchMeta && userDistance !== null && (
                                 <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-[#007AFF]">
                                   {index === 0 ? 'Nearest · ' : ''}{formatUserDistance(userDistance)}
@@ -1167,7 +1199,7 @@ export default function CommuterDashboard() {
                             <span>{spot.primaryImageUrl ? 'Photo available' : 'No primary photo'}</span>
                           </div>
                         </div>
-                        <ChevronRight size={18} className="mt-1 shrink-0 text-[#9ca3af]" />
+                        <ChevronRight size={18} className="hidden sm:block mt-1 shrink-0 text-[#9ca3af]" />
                       </div>
                     </button>
                   );
@@ -1196,7 +1228,11 @@ export default function CommuterDashboard() {
               <aside className="map-lens__results nearby-sheet" aria-label="Nearby parking bays">
                 <div className="nearby-sheet__header">
                   <h2>Nearby bays</h2>
-                  <span>{nearbyMessage || (selectedStation ? selectedStation.replace(' LRT', '').replace(' MRT', '') : 'Select a station')}</span>
+                  <span>
+                    {selectedStation
+                      ? `${mapNearbySpots.length} available · ${selectedStation.replace(' LRT', '').replace(' MRT', '')}`
+                      : `${locationSuggestedSpots.length} available near you · Select a station`}
+                  </span>
                 </div>
                 <div className="nearby-sheet__list">
                   {isNearbyLoading ? (
@@ -1240,6 +1276,8 @@ export default function CommuterDashboard() {
                   vehiclePlate={vehicles.find((vehicle) => vehicle.active)?.plate}
                   onReserve={lensSelectedSpot ? () => openParkingDetail(lensSelectedSpot) : undefined}
                   compact
+                  stationName={selectedStation}
+                  isNearbyLoading={isNearbyLoading}
                 />
               </div>
 
@@ -1270,7 +1308,7 @@ export default function CommuterDashboard() {
                       <p className="text-[15px] font-bold text-[#111]">{activeBooking.spot.name}</p>
                       <p className="text-[12px] text-[#5f6368] mt-0.5">{activeBooking.spot.station} &middot; Plate: {activeBooking.vehiclePlate}</p>
                     </div>
-                    <div className="flex items-center gap-6">
+                    <div className="flex flex-wrap items-center gap-4 sm:gap-6">
                       <div className="flex items-center gap-2">
                         <Clock size={15} className="text-[#5f6368]" />
                         <span className="text-[13px] font-semibold text-[#111]">{formatTime(secondsRemaining)}</span>
@@ -1307,26 +1345,26 @@ export default function CommuterDashboard() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {!isBollardUnlocked ? (
                         <>
                           <button onClick={triggerGPSCheck}
-                            className={`px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#f0fdf4] text-[#16a34a]' : 'bg-[#f8f9fa] text-[#5f6368] hover:bg-[#f1f3f4]'}`}>
+                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#f0fdf4] text-[#16a34a]' : 'bg-[#f8f9fa] text-[#5f6368] hover:bg-[#f1f3f4]'}`}>
                             {gpsVerified === 'verified' ? 'GPS Verified' : gpsVerified === 'checking' ? 'Checking...' : 'Verify GPS'}
                           </button>
                           <button onClick={startQRScanner}
-                            className="px-4 py-2.5 rounded-xl bg-[#f8f9fa] text-[#5f6368] text-[12px] font-semibold hover:bg-[#f1f3f4] transition-colors flex items-center gap-1.5">
+                            className="w-full px-4 py-2.5 rounded-xl bg-[#f8f9fa] text-[#5f6368] text-[12px] font-semibold hover:bg-[#f1f3f4] transition-colors flex items-center justify-center gap-1.5">
                             <Camera size={14} /> Scan QR
                           </button>
                           <button onClick={handleUnlockBollard}
                             disabled={gpsVerified !== 'verified'}
-                            className={`px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#007AFF] text-white hover:bg-[#0066d6]' : 'bg-[#e8eaed] text-[#9ca3af] cursor-not-allowed'}`}>
+                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#007AFF] text-white hover:bg-[#0066d6]' : 'bg-[#e8eaed] text-[#9ca3af] cursor-not-allowed'}`}>
                             Unlock Bollard
                           </button>
                         </>
                       ) : (
                         <button onClick={handleLockBollard}
-                          className="px-4 py-2.5 rounded-xl bg-[#fef2f2] text-[#dc2626] text-[12px] font-semibold hover:bg-[#fee2e2] transition-colors flex items-center gap-1.5">
+                          className="w-full sm:col-span-3 px-4 py-2.5 rounded-xl bg-[#fef2f2] text-[#dc2626] text-[12px] font-semibold hover:bg-[#fee2e2] transition-colors flex items-center justify-center gap-1.5">
                           <Lock size={14} /> Lock Bollard
                         </button>
                       )}
@@ -1408,21 +1446,21 @@ export default function CommuterDashboard() {
                   </button>
                 </div>
                 {vehicles.map((v) => (
-                  <div key={v.plate} onClick={() => setActiveVehicle(v.plate)}
-                    className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${v.active ? 'bg-[#eff6ff] border border-[#bfdbfe]' : 'hover:bg-[#f8f9fa] border border-transparent'}`}>
+                  <button key={v.plate} type="button" onClick={() => setActiveVehicle(v.plate)} aria-pressed={v.active}
+                    className={`w-full text-left flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${v.active ? 'bg-[#eff6ff] border border-[#bfdbfe]' : 'hover:bg-[#f8f9fa] border border-transparent'}`}>
                     <Car size={18} className={v.active ? 'text-[#007AFF]' : 'text-[#9ca3af]'} />
                     <div className="flex-1">
                       <p className="text-[13px] font-semibold text-[#111]">{v.plate}</p>
                       <p className="text-[11px] text-[#5f6368]">{v.model} &middot; {v.color}</p>
                     </div>
                     {v.active && <span className="text-[10px] font-semibold bg-[#007AFF] text-white px-2 py-0.5 rounded-full">Active</span>}
-                  </div>
+                  </button>
                 ))}
                 {showAddVehicle && (
                   <form onSubmit={handleAddVehicle} className="mt-3 p-4 bg-[#f8f9fa] rounded-xl space-y-2">
                     <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="Plate (e.g. VGV 8899)"
                       className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF]" />
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <input type="text" value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="Model"
                         className="flex-1 px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF]" />
                       <input type="text" value={newColor} onChange={(e) => setNewColor(e.target.value)} placeholder="Color"
@@ -1455,20 +1493,22 @@ export default function CommuterDashboard() {
         </main>
       </div>
 
-      <BottomNav
-        items={[
-          { id: 'map', icon: Map, label: 'Find' },
-          { id: 'home', icon: Compass, label: 'Browse' },
-          { id: 'active', icon: Unlock, label: 'Pass', dot: !!activeBooking },
-          { id: 'wallet', icon: Wallet, label: 'Wallet' },
-          { id: 'profile', icon: Car, label: 'Vehicles' },
-        ]}
-        activeId={activeTab}
-        onChange={(id) => {
-          setActiveTab(id as typeof activeTab);
-          setSelectedSpot(null);
-        }}
-      />
+      {activeTab !== 'map' && (
+        <BottomNav
+          items={[
+            { id: 'map', icon: Map, label: 'Find' },
+            { id: 'home', icon: Compass, label: 'Browse' },
+            { id: 'active', icon: Unlock, label: 'Pass', dot: !!activeBooking },
+            { id: 'wallet', icon: Wallet, label: 'Wallet' },
+            { id: 'profile', icon: Car, label: 'Vehicles' },
+          ]}
+          activeId={activeTab}
+          onChange={(id) => {
+            setActiveTab(id as typeof activeTab);
+            setSelectedSpot(null);
+          }}
+        />
+      )}
 
       {/* ─── Notifications Drawer ─── */}
       <AnimatePresence>

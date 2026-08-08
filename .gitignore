@@ -16,6 +16,7 @@ node_modules/
 
 # Frontend build
 frontend/dist/
+dist/
 
 # Firebase
 .firebase/

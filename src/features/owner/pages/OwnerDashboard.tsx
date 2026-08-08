@@ -1,10 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, CalendarDays, PlusSquare, ClipboardList, Sliders } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import {
+  configureParking,
+  getMyParking,
+  updateParkingAvailability,
+  updateParkingPublication,
+} from '../api/parkingApi';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
-import BottomNav from '@/shared/ui/BottomNav';
-import PageTransition from '@/shared/ui/PageTransition';
+import BottomNav from '@/components/layout/BottomNav';
+import PageTransition from '@/components/ui/PageTransition';
 import DashboardHome from '../components/DashboardHome';
 import AvailabilityScheduler from '../components/AvailabilityScheduler';
 import PropertyOnboarding from '../components/PropertyOnboarding';
@@ -19,11 +26,6 @@ import {
   ParkingActionResult,
   ParkingAvailabilityStatus,
 } from '../types';
-
-const API_BASE = import.meta.env.VITE_API_BASE ||
-  (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-    ? 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api'
-    : '/api');
 
 function deriveParkingStatus(
   verificationStatus: string | number,
@@ -64,12 +66,16 @@ function saveNotifications(notifs: Notification[]) {
   localStorage.setItem('parkjom_owner_notifs', JSON.stringify(notifs));
 }
 
+type OwnerView = 'dashboard' | 'availability' | 'registration' | 'settings' | 'tickets';
+
 export default function OwnerDashboard() {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   // Navigation View Router — persist across reloads
-  const [activeView, setActiveView] = useState(() => {
+  const [activeView, setActiveView] = useState<OwnerView>(() => {
     const saved = localStorage.getItem('parkjom_owner_view');
-    return saved || 'dashboard';
+    const validViews: OwnerView[] = ['dashboard', 'availability', 'registration', 'settings', 'tickets'];
+    return saved && validViews.includes(saved as OwnerView) ? saved as OwnerView : 'dashboard';
   });
 
   // Persist active view to localStorage
@@ -77,6 +83,22 @@ export default function OwnerDashboard() {
     localStorage.setItem('parkjom_owner_view', activeView);
   }, [activeView]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsSidebarOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isSidebarOpen]);
 
   // 1. Wallet Balance (RM) — TODO: fetch from backend
   const [walletBalance, setWalletBalance] = useState(0);
@@ -107,14 +129,7 @@ export default function OwnerDashboard() {
       const token = user?.token ?? '';
       if (!token) throw new Error('Your owner session is missing an authorization token.');
       
-      const res = await fetch(`${API_BASE}/parking/my-parking`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Accept-Language': 'en-US,en;q=0.9',
-          Accept: 'application/json',
-        },
-      });
+      const res = await getMyParking(token);
       const body = await res.json().catch(() => null) as MyParkingResponse | null;
       if (!res.ok || !body?.success) {
         throw new Error(body?.message || `Unable to retrieve parking spots (${res.status})`);
@@ -269,14 +284,7 @@ export default function OwnerDashboard() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/parking/configuration`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
-        body: formData,
-      });
+      const res = await configureParking(token, formData);
       const data = await res.json().catch(() => null) as {
         code?: number;
         success?: boolean;
@@ -314,15 +322,7 @@ export default function OwnerDashboard() {
     if (!token) return { success: false, message: 'Authentication required. Please log in again.' };
 
     try {
-      const res = await fetch(`${API_BASE}/parking/availability`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({ parkingSpotId, availabilityStatus }),
-      });
+      const res = await updateParkingAvailability(token, parkingSpotId, availabilityStatus);
       const data = await res.json().catch(() => null) as {
         code?: number;
         success?: boolean;
@@ -371,15 +371,7 @@ export default function OwnerDashboard() {
     if (!token) return { success: false, message: 'Authentication required. Please log in again.' };
 
     try {
-      const res = await fetch(`${API_BASE}/parking/publish`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({ parkingSpotId, isPublished }),
-      });
+      const res = await updateParkingPublication(token, parkingSpotId, isPublished);
       const data = await res.json().catch(() => null) as {
         code?: number;
         success?: boolean;
@@ -466,22 +458,26 @@ export default function OwnerDashboard() {
   const currentViewMeta = viewMeta[activeView] ?? viewMeta.dashboard;
 
   return (
-    <div className="app-workspace font-sans text-[#1d1d1f] flex">
+    <div className="app-workspace font-sans text-[#1d1d1f] flex" data-workspace-role="owner">
       {/* Responsive Sidebar */}
       <Sidebar 
         activeView={activeView} 
-        onViewChange={setActiveView} 
+        onViewChange={(view) => setActiveView(view as OwnerView)}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
       />
 
       {/* Main content viewport wrapper */}
-      <div className="flex-1 flex flex-col lg:ml-60 min-h-screen pb-16 lg:pb-0">
+      <div className="flex-1 flex flex-col lg:ml-60 min-h-screen min-w-0">
         {/* Top Navbar */}
         <Header
           notifications={notifications}
+          user={user}
+          onSignOut={() => { logout(); navigate('/'); }}
+          onBrandClick={() => { setActiveView('dashboard'); navigate('/owner', { replace: true }); }}
           onMarkAllRead={handleMarkAllRead}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          isSidebarOpen={isSidebarOpen}
         />
 
         {/* Render View Panels */}
@@ -553,7 +549,7 @@ export default function OwnerDashboard() {
           { id: 'settings', icon: Sliders, label: 'Settings' },
         ]}
         activeId={activeView}
-        onChange={setActiveView}
+        onChange={(id) => setActiveView(id as OwnerView)}
       />
     </div>
   );

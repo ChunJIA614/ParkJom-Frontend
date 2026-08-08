@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import SplashScreen from '@/shared/ui/SplashScreen';
+import SplashScreen from '@/components/common/SplashScreen';
 import { RequireRole } from './RequireRole';
 import { getDashboardPath } from './roleRouting';
 

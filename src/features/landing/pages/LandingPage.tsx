@@ -3,6 +3,7 @@ import {
   motion,
   useInView,
   useMotionValueEvent,
+  useMotionValue,
   useReducedMotion,
   useScroll,
   useSpring,
@@ -25,7 +26,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import BrandLogo from '@/shared/ui/BrandLogo';
+import BrandLogo from '@/components/ui/BrandLogo';
 
 const navigation = [
   { label: 'How it feels', href: '#journey' },
@@ -299,7 +300,13 @@ function Header() {
 
 function HeroSection() {
   const sectionRef = useRef<HTMLElement>(null);
+  const supportsPointerMotion = useRef(false);
   const reduceMotion = useReducedMotion();
+  const pointerX = useMotionValue(0);
+  const pointerY = useMotionValue(0);
+  const pointerClientX = useMotionValue(0);
+  const pointerClientY = useMotionValue(0);
+  const pointerPresence = useMotionValue(0);
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ['start start', 'end start'],
@@ -309,18 +316,79 @@ function HeroSection() {
   const mediaScale = useTransform(progress, [0, 1], [1.015, 1.075]);
   const contentY = useTransform(progress, [0, 0.8], [0, -34]);
   const contentOpacity = useTransform(progress, [0, 0.72], [1, 0.72]);
+  const smoothPointerX = useSpring(pointerX, { stiffness: 90, damping: 22, mass: 0.35 });
+  const smoothPointerY = useSpring(pointerY, { stiffness: 90, damping: 22, mass: 0.35 });
+  const smoothClientX = useSpring(pointerClientX, { stiffness: 115, damping: 24, mass: 0.3 });
+  const smoothClientY = useSpring(pointerClientY, { stiffness: 115, damping: 24, mass: 0.3 });
+  const smoothPointerPresence = useSpring(pointerPresence, { stiffness: 150, damping: 25, mass: 0.25 });
+  const mediaPointerX = useTransform(smoothPointerX, [-1, 1], [6, -6]);
+  const mediaPointerY = useTransform(smoothPointerY, [-1, 1], [4, -4]);
+
+  useEffect(() => {
+    const pointerQuery = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const updatePointerSupport = () => {
+      supportsPointerMotion.current = pointerQuery.matches;
+    };
+
+    updatePointerSupport();
+    pointerQuery.addEventListener('change', updatePointerSupport);
+    return () => pointerQuery.removeEventListener('change', updatePointerSupport);
+  }, []);
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    if (
+      reduceMotion
+      || event.pointerType !== 'mouse'
+      || !supportsPointerMotion.current
+    ) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const localX = event.clientX - bounds.left;
+    const localY = event.clientY - bounds.top;
+    const normalizedX = Math.min(1, Math.max(-1, (localX / bounds.width - 0.5) * 2));
+    const normalizedY = Math.min(1, Math.max(-1, (localY / bounds.height - 0.5) * 2));
+
+    pointerX.set(normalizedX);
+    pointerY.set(normalizedY);
+    pointerClientX.set(localX);
+    pointerClientY.set(localY);
+    pointerPresence.set(1);
+  };
+
+  const handlePointerLeave = () => {
+    pointerX.set(0);
+    pointerY.set(0);
+    pointerPresence.set(0);
+  };
 
   return (
-    <section ref={sectionRef} id="intro" className="landing-hero relative min-h-[760px] overflow-hidden bg-[#071827] text-white md:min-h-[100svh]">
-      <motion.img
-        src="/images/parkjom-hero-campaign.webp"
-        alt="A commuter walking from a parked car towards an elevated rail station in Kuala Lumpur"
-        className="landing-hero-media absolute inset-0 h-[112%] w-full object-cover object-[58%_center]"
-        style={reduceMotion ? undefined : { y: mediaY, scale: mediaScale }}
-        fetchPriority="high"
-      />
+    <section
+      ref={sectionRef}
+      id="intro"
+      className="landing-hero relative min-h-[760px] overflow-hidden bg-[#071827] text-white md:min-h-[100svh]"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      onPointerCancel={handlePointerLeave}
+    >
+      <motion.div
+        className="landing-hero-interactive-media absolute inset-0"
+        style={reduceMotion ? undefined : { x: mediaPointerX, y: mediaPointerY }}
+      >
+        <motion.img
+          src="/images/parkjom-hero-campaign.webp"
+          alt="A commuter walking from a parked car towards an elevated rail station in Kuala Lumpur"
+          className="landing-hero-media absolute inset-0 h-[112%] w-full object-cover object-[58%_center]"
+          style={reduceMotion ? undefined : { y: mediaY, scale: mediaScale }}
+          fetchPriority="high"
+        />
+      </motion.div>
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(4,17,30,0.94)_0%,rgba(4,17,30,0.75)_42%,rgba(4,17,30,0.14)_78%),linear-gradient(0deg,rgba(4,17,30,0.68)_0%,transparent_44%)]" />
       <div className="landing-hero-glow absolute inset-0" />
+      <motion.div
+        className="landing-pointer-field"
+        style={{ x: smoothClientX, y: smoothClientY, opacity: smoothPointerPresence }}
+        aria-hidden="true"
+      />
 
       <motion.div
         className="relative mx-auto flex min-h-[760px] max-w-[1240px] flex-col justify-end px-5 pb-8 pt-32 md:min-h-[100svh] md:px-8 md:pb-9"

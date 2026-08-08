@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vite React Architecture"
+  short_description: "Keep Vite React TypeScript projects well structured"
+  default_prompt: "Use $vite-react-architecture to place or refactor frontend files into the correct architectural boundaries."

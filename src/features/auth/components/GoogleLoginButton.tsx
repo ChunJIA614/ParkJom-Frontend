@@ -3,29 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import { useAuth, type UserRole } from '../context/AuthContext';
 import { motion } from 'motion/react';
-
-// Backend API URL — uses Vite proxy in dev, env var or Azure URL in production
-const API_BASE = import.meta.env.VITE_API_BASE ||
-  (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-    ? 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api'
-    : '/api');
-
-async function readApiError(response: Response, fallback: string) {
-  const responseText = await response.text().catch(() => '');
-  let backendMessage = '';
-
-  if (responseText) {
-    try {
-      const parsed = JSON.parse(responseText);
-      backendMessage = parsed?.message || parsed?.error || parsed?.title || '';
-    } catch {
-      backendMessage = responseText.trim();
-    }
-  }
-
-  const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
-  return backendMessage || `${fallback} (HTTP ${status})`;
-}
+import { completeUserProfile, signInWithGoogle } from '../api/authApi';
+import { readApiError } from '@/services/apiClient';
 
 export default function GoogleLoginButton() {
   const { setUser } = useAuth();
@@ -56,11 +35,7 @@ export default function GoogleLoginButton() {
     setLoginError('');
 
     try {
-      const res = await fetch(`${API_BASE}/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ googleToken: credential }),
-      });
+      const res = await signInWithGoogle(credential);
 
       if (!res.ok) {
         throw new Error(await readApiError(res, 'Backend login failed'));
@@ -99,14 +74,10 @@ export default function GoogleLoginButton() {
     setIsSubmittingPhone(true);
 
     try {
-      const res = await fetch(`${API_BASE}/auth/complete-profile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: pendingUserId,
-          phoneNumber: trimmed,
-          userType: selectedRole, // 2=Owner, 3=Commuter
-        }),
+      const res = await completeUserProfile({
+        userId: pendingUserId,
+        phoneNumber: trimmed,
+        userType: selectedRole, // 2=Owner, 3=Commuter
       });
 
       if (!res.ok) {

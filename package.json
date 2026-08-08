@@ -7,7 +7,6 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "gtfs": "node convert-gtfs.cjs",
     "build": "vite build",
     "deploy": "vite build && firebase deploy --only hosting"
   },

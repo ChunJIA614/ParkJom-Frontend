@@ -1,17 +1,38 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bell, Wallet, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
-import DashboardHeader from '@/shared/components/DashboardHeader';
+import DashboardHeader, { type DashboardHeaderUser } from '@/components/layout/DashboardHeader';
 import { Notification } from '../types';
 
 interface HeaderProps {
   notifications: Notification[];
+  user: DashboardHeaderUser | null;
+  onSignOut: () => void;
+  onBrandClick: () => void;
   onMarkAllRead: () => void;
   onToggleSidebar: () => void;
+  isSidebarOpen: boolean;
 }
 
-export default function Header({ notifications, onMarkAllRead, onToggleSidebar }: HeaderProps) {
+export default function Header({
+  notifications,
+  user,
+  onSignOut,
+  onBrandClick,
+  onMarkAllRead,
+  onToggleSidebar,
+  isSidebarOpen,
+}: HeaderProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const unreadCount = notifications.filter((n) => n.unread).length;
+
+  useEffect(() => {
+    if (!showNotifications) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowNotifications(false);
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showNotifications]);
 
   const iconFor = (type: string) => {
     switch (type) {
@@ -32,6 +53,8 @@ export default function Header({ notifications, onMarkAllRead, onToggleSidebar }
         type="button"
         onClick={() => setShowNotifications(!showNotifications)}
         aria-label="Notifications"
+        aria-expanded={showNotifications}
+        aria-controls="owner-notifications"
         className="relative p-2 text-[#5f6368] hover:text-[#111] hover:bg-black/[0.04] active:bg-black/[0.06] rounded-xl transition-colors"
       >
         <Bell size={18} strokeWidth={2} />
@@ -49,7 +72,12 @@ export default function Header({ notifications, onMarkAllRead, onToggleSidebar }
             onClick={() => setShowNotifications(false)}
             aria-hidden
           />
-          <div className="absolute right-0 mt-2 w-[min(20rem,calc(100vw-2rem))] bg-white border border-black/[0.08] rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] py-2 z-50 overflow-hidden">
+          <div
+            id="owner-notifications"
+            role="dialog"
+            aria-label="Owner notifications"
+            className="workspace-popover absolute right-0 mt-2 w-[min(20rem,calc(100vw-2rem))] bg-white border border-black/[0.08] rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] py-2 z-50 overflow-hidden"
+          >
             <div className="px-4 py-2.5 border-b border-[#f1f3f4] flex items-center justify-between">
               <span className="text-[13px] font-semibold text-[#111]">Notifications</span>
               {unreadCount > 0 && (
@@ -91,8 +119,13 @@ export default function Header({ notifications, onMarkAllRead, onToggleSidebar }
   return (
     <DashboardHeader
       role="owner"
+      user={user}
+      onSignOut={onSignOut}
+      onBrandClick={onBrandClick}
       showMenuButton
       onMenuClick={onToggleSidebar}
+      menuExpanded={isSidebarOpen}
+      menuControls="owner-workspace-navigation"
       statusText="Owner workspace"
       actions={notificationActions}
     />

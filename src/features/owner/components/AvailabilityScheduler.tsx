@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, Ban, ShieldAlert, Wifi, Info, Image, UploadCloud, Check } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { ParkingBay } from '../types';
 
 interface ScheduleBlockDisplay {
@@ -30,6 +30,7 @@ export default function AvailabilityScheduler({
   onBlockAll,
   onConfigParking,
 }: AvailabilitySchedulerProps) {
+  const prefersReducedMotion = useReducedMotion();
   const [selectedBayId, setSelectedBayId] = useState(bays[0]?.id || '');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('18:00');
@@ -180,9 +181,14 @@ export default function AvailabilityScheduler({
       <AnimatePresence>
         {successMsg && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: prefersReducedMotion ? 0 : -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
+            exit={{ opacity: 0, y: prefersReducedMotion ? 0 : -4 }}
+            transition={prefersReducedMotion
+              ? { duration: 0.12, ease: 'linear' }
+              : { type: 'spring', bounce: 0, duration: 0.32 }}
+            role="status"
+            aria-live="polite"
             className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl flex items-center gap-2 text-sm shadow-sm"
           >
             <Check className="w-4 h-4 text-emerald-600" />
@@ -244,7 +250,7 @@ export default function AvailabilityScheduler({
               {/* Effective Date Range */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase font-mono tracking-wider">Effective Date Range</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <span className="block text-[9px] text-slate-500 mb-0.5">From</span>
                     <input
@@ -269,7 +275,7 @@ export default function AvailabilityScheduler({
               </div>
 
               {/* Time Inputs */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase font-mono tracking-wider">Start Time</label>
                   <input
@@ -405,7 +411,7 @@ export default function AvailabilityScheduler({
           </div>
 
           <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold block">Schedule Type</span>
                 <span className="text-slate-800 font-bold">{dayType}</span>

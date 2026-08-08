@@ -7,7 +7,7 @@ import {
   ClipboardList,
   X,
 } from 'lucide-react';
-import BrandLogo from '@/shared/ui/BrandLogo';
+import BrandLogo from '@/components/ui/BrandLogo';
 
 interface SidebarProps {
   activeView: string;
@@ -26,9 +26,18 @@ export default function Sidebar({ activeView, onViewChange, isOpen, setIsOpen }:
   ];
 
   return (
-    <aside
-      className={`workspace-sidebar ${isOpen ? 'is-open' : ''}`}
-    >
+    <>
+      <button
+        type="button"
+        className={`workspace-scrim lg:hidden ${isOpen ? 'is-visible' : ''}`}
+        onClick={() => setIsOpen(false)}
+        aria-label="Close owner navigation"
+        tabIndex={isOpen ? 0 : -1}
+      />
+      <aside
+        id="owner-workspace-navigation"
+        className={`workspace-sidebar ${isOpen ? 'is-open' : ''}`}
+      >
       <div className="workspace-sidebar__brand">
         <div className="workspace-wordmark">
           <BrandLogo alt="" className="workspace-wordmark__mark" />
@@ -52,6 +61,7 @@ export default function Sidebar({ activeView, onViewChange, isOpen, setIsOpen }:
               type="button"
               onClick={() => { onViewChange(item.id); setIsOpen(false); }}
               className={isActive ? 'is-active' : ''}
+              aria-current={isActive ? 'page' : undefined}
             >
               <Icon size={17} />
               <span>{item.label}</span>
@@ -63,6 +73,7 @@ export default function Sidebar({ activeView, onViewChange, isOpen, setIsOpen }:
       <div className="workspace-sidebar__footer">
         Parking supply, availability, and settlement in one workspace.
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
