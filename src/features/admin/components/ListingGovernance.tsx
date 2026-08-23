@@ -1,16 +1,27 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
+import {
   AlertOctagon, CheckCircle, XCircle, Search, Eye, BadgeAlert,
-  RefreshCw, Clock3, FileText, Download
+  RefreshCw, Clock3, FileText, Download, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { ListingRequest, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto } from '../types';
+import {
+  ListingRequest,
+  ParkingVerificationDecisionResult,
+  ParkingVerificationDocumentDto,
+  VerificationRequestListStatus,
+  VerificationRequestPaginationState,
+} from '../types';
 
 interface ListingGovernanceProps {
   listings: ListingRequest[];
   isLoading: boolean;
   error: string | null;
   responseMessage: string;
+  statusFilter: VerificationRequestListStatus;
+  pagination: VerificationRequestPaginationState;
+  onStatusChange: (status: VerificationRequestListStatus) => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
   onRefresh: () => void | Promise<void>;
   onViewDocument: (document: ParkingVerificationDocumentDto) => Promise<Blob>;
   onApprove: (id: string) => Promise<ParkingVerificationDecisionResult>;
@@ -23,13 +34,18 @@ export default function ListingGovernance({
   isLoading,
   error,
   responseMessage,
+  statusFilter,
+  pagination,
+  onStatusChange,
+  onPageChange,
+  onPageSizeChange,
   onRefresh,
   onViewDocument,
   onApprove, 
   onReject,
   addActivityLog 
 }: ListingGovernanceProps) {
-  const [activeTab, setActiveTab] = useState<'pending' | 'moderated'>('pending');
+  const activeTab = statusFilter === 'pending' ? 'pending' : 'moderated';
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedListing, setSelectedListing] = useState<ListingRequest | null>(null);
   const [selectedDocument, setSelectedDocument] = useState<ParkingVerificationDocumentDto | null>(null);
@@ -122,6 +138,25 @@ export default function ListingGovernance({
       return l.status !== 'pending' && matchesSearch;
     }
   });
+  // Keep the UI limit authoritative even if an API response unexpectedly
+  // contains more records than the selected page size.
+  const visibleListings = filteredListings.slice(0, pagination.pageSize);
+
+  const changeStatusTab = (status: VerificationRequestListStatus) => {
+    setSearchQuery('');
+    setSelectedListing(null);
+    setSelectedDocument(null);
+    setDocumentUrl(null);
+    setDocumentError(null);
+    onStatusChange(status);
+  };
+
+  const firstResult = visibleListings.length === 0
+    ? 0
+    : (pagination.page - 1) * pagination.pageSize + 1;
+  const lastResult = visibleListings.length === 0
+    ? 0
+    : firstResult + visibleListings.length - 1;
 
   const handleApproveClick = async (listing: ListingRequest) => {
     setDecisionLoadingId(listing.id);
@@ -272,13 +307,17 @@ export default function ListingGovernance({
             {/* Tabs */}
             <div className="flex bg-slate-100 p-1 rounded-lg self-start">
               <button 
-                onClick={() => setActiveTab('pending')}
+                type="button"
+                onClick={() => changeStatusTab('pending')}
+                aria-pressed={activeTab === 'pending'}
                 className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${activeTab === 'pending' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
               >
-                Pending Review ({listings.filter(l => l.status === 'pending').length})
+                Pending Review
               </button>
               <button 
-                onClick={() => setActiveTab('moderated')}
+                type="button"
+                onClick={() => changeStatusTab('completed')}
+                aria-pressed={activeTab === 'moderated'}
                 className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${activeTab === 'moderated' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
               >
                 Moderation History
@@ -304,7 +343,7 @@ export default function ListingGovernance({
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
                 <RefreshCw className="h-4 w-4 animate-spin" /> Loading verification requests…
               </div>
-            ) : filteredListings.length === 0 ? (
+            ) : visibleListings.length === 0 ? (
               <div className="py-12 text-center text-slate-400 text-sm">
                 No property listings found matching the current criteria.
               </div>
@@ -320,7 +359,7 @@ export default function ListingGovernance({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {filteredListings.map((listing) => (
+                  {visibleListings.map((listing) => (
                     <tr key={listing.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3.5 px-2">
                         <div className="font-mono font-bold text-[#2563EB]">VR-{listing.verificationRequestId}</div>
@@ -409,6 +448,62 @@ export default function ListingGovernance({
                 </tbody>
               </table>
             )}
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-[11px] text-slate-500" aria-live="polite">
+              {pagination.totalCount !== null ? (
+                <>
+                  Showing <span className="font-semibold text-slate-700">{firstResult}-{Math.min(lastResult, pagination.totalCount)}</span>
+                  {' '}of <span className="font-semibold text-slate-700">{pagination.totalCount}</span> requests
+                </>
+              ) : (
+                <>
+                  Page <span className="font-semibold text-slate-700">{pagination.page}</span>
+                  {' '}· {listings.length} request{listings.length === 1 ? '' : 's'} returned
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                Rows per page
+                <select
+                  value={pagination.pageSize}
+                  onChange={(event) => onPageSizeChange(Number(event.target.value))}
+                  disabled={isLoading}
+                  className="min-h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden transition-colors hover:border-slate-300 focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Rows per page"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+              </label>
+
+              <nav className="flex items-center gap-2" aria-label="Verification request pagination">
+                <button
+                  type="button"
+                  onClick={() => onPageChange(pagination.page - 1)}
+                  disabled={isLoading || pagination.page <= 1}
+                  className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                </button>
+                <span className="min-w-20 text-center text-xs font-semibold text-slate-700">
+                  Page {pagination.page}
+                  {pagination.totalPages !== null ? ` of ${pagination.totalPages}` : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onPageChange(pagination.page + 1)}
+                  disabled={isLoading || !pagination.hasNextPage}
+                  className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </nav>
+            </div>
           </div>
         </div>
 

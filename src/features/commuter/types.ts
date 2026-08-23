@@ -111,7 +111,9 @@ export interface Booking {
 }
 
 export interface Vehicle {
+  vehicleId: number | null;
   plate: string;
+  brand: string;
   model: string;
   color: string;
   active: boolean;

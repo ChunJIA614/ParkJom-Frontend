@@ -1959,9 +1959,9 @@ html {
 }
 
 .app-workspace[data-workspace-role="owner"] {
-  --workspace-accent: #248a3d;
-  --workspace-accent-soft: #eaf7ed;
-  --workspace-accent-rgb: 36, 138, 61;
+  --workspace-accent: #007aff;
+  --workspace-accent-soft: #e8f2ff;
+  --workspace-accent-rgb: 0, 122, 255;
 }
 
 .app-workspace[data-workspace-role="admin"] {

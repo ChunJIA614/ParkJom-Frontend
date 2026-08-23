@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, ShieldCheck, Radio, AlertOctagon, 
   Landmark, LifeBuoy, X, LogOut,
-  ShieldAlert, Lock, Menu
+  ShieldAlert, Lock, Menu, Car
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import BottomNav from '@/components/layout/BottomNav';
@@ -16,11 +16,13 @@ import {
   listVerificationRequests,
   submitVerificationDecision as postVerificationDecision,
 } from '../api/verificationApi';
+import { getAccessLogs } from '../api/accessLogApi';
+import { getAllVehicles } from '../api/vehicleApi';
 
 import { 
   initialStats
 } from '../data/mockData';
-import { IoTBollard, ListingRequest, OwnerPayout, Transaction, OverstayRecord, SupportTicket, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse } from '../types';
+import { AccessLogDto, AccessLogPaginationState, AdminVehicleDto, IoTBollard, ListingRequest, OwnerPayout, Transaction, OverstayRecord, SupportTicket, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse, VerificationRequestListStatus, VerificationRequestPaginationState } from '../types';
 
 import DashboardHome from '../components/DashboardHome';
 import ListingGovernance from '../components/ListingGovernance';
@@ -30,8 +32,9 @@ import OverstayEnforcement from '../components/OverstayEnforcement';
 import SupportDispute from '../components/SupportDispute';
 import SystemAudit from '../components/SystemAudit';
 import SystemConfiguration from '../components/SystemConfiguration';
+import VehicleManagement from '../components/VehicleManagement';
 
-type ActiveView = 'home' | 'governance' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system';
+type ActiveView = 'home' | 'governance' | 'vehicles' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -59,7 +62,7 @@ export default function AdminDashboard() {
   // App core states — all data fetched from backend
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     const saved = localStorage.getItem('parkjom_admin_view');
-    const validViews: ActiveView[] = ['home', 'governance', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system'];
+    const validViews: ActiveView[] = ['home', 'governance', 'vehicles', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system'];
     return saved && validViews.includes(saved as ActiveView) ? saved as ActiveView : 'home';
   });
 
@@ -73,11 +76,40 @@ export default function AdminDashboard() {
   const [listingsLoading, setListingsLoading] = useState(false);
   const [listingsError, setListingsError] = useState<string | null>(null);
   const [listingsMessage, setListingsMessage] = useState('');
+  const [listingsStatus, setListingsStatus] = useState<VerificationRequestListStatus>('pending');
+  const [listingsPage, setListingsPage] = useState(1);
+  const [listingsPageSize, setListingsPageSize] = useState(10);
+  const [listingsPagination, setListingsPagination] = useState<VerificationRequestPaginationState>({
+    source: 'client',
+    page: 1,
+    pageSize: 10,
+    totalCount: null,
+    totalPages: null,
+    hasNextPage: false,
+  });
   const [payouts, setPayouts] = useState<OwnerPayout[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overstays, setOverstays] = useState<OverstayRecord[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [activityLogs, setActivityLogs] = useState<{ id: string; type: string; message: string; timestamp: string; user: string }[]>([]);
+  const [accessLogs, setAccessLogs] = useState<AccessLogDto[]>([]);
+  const [accessLogsLoading, setAccessLogsLoading] = useState(false);
+  const [accessLogsError, setAccessLogsError] = useState<string | null>(null);
+  const [accessLogsMessage, setAccessLogsMessage] = useState('');
+  const [accessLogsTotal, setAccessLogsTotal] = useState(0);
+  const [accessLogsSearch, setAccessLogsSearch] = useState('');
+  const [accessLogsPagination, setAccessLogsPagination] = useState<AccessLogPaginationState>({
+    source: 'client',
+    page: 1,
+    pageSize: 10,
+    totalCount: 0,
+    totalPages: 1,
+    hasNextPage: false,
+  });
+  const [adminVehicles, setAdminVehicles] = useState<AdminVehicleDto[]>([]);
+  const [adminVehiclesLoading, setAdminVehiclesLoading] = useState(false);
+  const [adminVehiclesError, setAdminVehiclesError] = useState<string | null>(null);
+  const [adminVehiclesMessage, setAdminVehiclesMessage] = useState('');
 
   // Global system configs (live-wired into widgets)
   const [systemConfig, setSystemConfig] = useState({
@@ -114,7 +146,11 @@ export default function AdminDashboard() {
     setListingsError(null);
 
     try {
-      const res = await listVerificationRequests(token);
+      const res = await listVerificationRequests(token, {
+        status: listingsStatus,
+        page: listingsPage,
+        pageSize: listingsPageSize,
+      });
       const body = await res.json().catch(() => null) as ParkingVerificationRequestsResponse | ParkingVerificationRequestResponse | ParkingVerificationRequestDto[] | null;
       const isEnvelope = body !== null && !Array.isArray(body);
 
@@ -129,6 +165,9 @@ export default function AdminDashboard() {
           ? [responsePayload]
           : null;
       if (!responseData) throw new Error('The verification request response did not contain verification data.');
+      const listEnvelope = isEnvelope && Array.isArray(body.data)
+        ? body as ParkingVerificationRequestsResponse
+        : null;
 
       const textStatusMap: Record<string, Exclude<ListingRequest['status'], 'unknown'>> = {
         pending: 'pending',
@@ -165,15 +204,187 @@ export default function AdminDashboard() {
           status,
         };
       });
-      setListings(mapped);
+      const pagination = listEnvelope?.pagination;
+      const hasPaginationMetadata = Boolean(
+        pagination
+        || typeof listEnvelope?.page === 'number'
+        || typeof listEnvelope?.pageSize === 'number'
+        || typeof listEnvelope?.totalCount === 'number'
+        || typeof listEnvelope?.totalPages === 'number'
+        || typeof listEnvelope?.hasNextPage === 'boolean',
+      );
+      // The current backend returns the complete list, even when page/pageSize
+      // are supplied. Treat an oversized response as unpaginated so the UI
+      // always honors the selected rows-per-page limit.
+      const hasServerPagination = hasPaginationMetadata && responseData.length <= listingsPageSize;
+      const pageSize = listingsPageSize;
+      const statusFiltered = mapped.filter((listing) => listingsStatus === 'pending'
+        ? listing.status === 'pending'
+        : listing.status !== 'pending');
+      const serverTotalCount = typeof listEnvelope?.totalCount === 'number'
+        ? listEnvelope.totalCount
+        : typeof pagination?.totalCount === 'number'
+          ? pagination.totalCount
+          : null;
+      const serverTotalPages = typeof listEnvelope?.totalPages === 'number'
+        ? listEnvelope.totalPages
+        : typeof pagination?.totalPages === 'number'
+          ? pagination.totalPages
+          : serverTotalCount === null
+            ? null
+            : Math.max(1, Math.ceil(serverTotalCount / pageSize));
+      const serverPage = listEnvelope?.page
+        || pagination?.page
+        || pagination?.currentPage
+        || listingsPage;
+      const clientTotalPages = Math.max(1, Math.ceil(statusFiltered.length / pageSize));
+      const responsePage = hasServerPagination
+        ? serverPage
+        : Math.min(listingsPage, clientTotalPages);
+      const totalCount = hasServerPagination ? serverTotalCount : statusFiltered.length;
+      const totalPages = hasServerPagination ? serverTotalPages : clientTotalPages;
+      const hasNextPage = hasServerPagination
+        ? typeof listEnvelope?.hasNextPage === 'boolean'
+          ? listEnvelope.hasNextPage
+          : typeof pagination?.hasNextPage === 'boolean'
+            ? pagination.hasNextPage
+            : totalPages !== null
+              ? responsePage < totalPages
+              : statusFiltered.length >= pageSize
+        : responsePage < clientTotalPages;
+      const displayedListings = hasServerPagination
+        ? statusFiltered
+        : statusFiltered.slice((responsePage - 1) * pageSize, responsePage * pageSize);
+
+      setListings(displayedListings);
+
+      setListingsPagination({
+        source: hasServerPagination ? 'server' : 'client',
+        page: responsePage,
+        pageSize,
+        totalCount,
+        totalPages,
+        hasNextPage,
+      });
       setListingsMessage(isEnvelope
-        ? `${body.message} (API ${body.code})`
-        : `${mapped.length} verification request${mapped.length === 1 ? '' : 's'} retrieved successfully`);
-      setStats(prev => ({ ...prev, pendingListingsCount: mapped.filter(l => l.status === 'pending').length }));
+        ? `${body.message} (API ${body.code}, page ${responsePage})`
+        : `${displayedListings.length} verification request${displayedListings.length === 1 ? '' : 's'} retrieved successfully`);
+      if (listingsStatus === 'pending') {
+        setStats(prev => ({ ...prev, pendingListingsCount: totalCount ?? displayedListings.length }));
+      }
     } catch (error) {
       setListingsError(error instanceof Error ? error.message : 'Unable to load verification requests.');
     } finally {
       setListingsLoading(false);
+    }
+  }, [listingsPage, listingsPageSize, listingsStatus, token]);
+
+  const changeListingsStatus = React.useCallback((status: VerificationRequestListStatus) => {
+    setListingsStatus(status);
+    setListingsPage(1);
+  }, []);
+
+  const changeListingsPage = React.useCallback((page: number) => {
+    setListingsPage(Math.max(1, Math.floor(page)));
+  }, []);
+
+  const changeListingsPageSize = React.useCallback((pageSize: number) => {
+    if (![10, 20, 50].includes(pageSize)) return;
+    setListingsPageSize(pageSize);
+    setListingsPage(1);
+    setListingsPagination((current) => ({
+      ...current,
+      page: 1,
+      pageSize,
+    }));
+  }, []);
+
+  const fetchAccessLogs = React.useCallback(async () => {
+    if (!token) return;
+
+    setAccessLogsLoading(true);
+    setAccessLogsError(null);
+    try {
+      const normalizedSearch = accessLogsSearch.trim().toLowerCase();
+      const result = await getAccessLogs(token, {
+        search: accessLogsSearch,
+        // The endpoint can repeat page one for later page requests. Load a
+        // broad result set once and make the visible pagination client-side.
+        page: 1,
+        pageSize: 100,
+      });
+      const matchingLogs = !normalizedSearch ? result.data : result.data.filter((log) => [
+        log.actions,
+        log.userName,
+        log.userEmail,
+        log.accessLogId,
+        log.userId,
+        log.bookingId,
+        log.ioTDeviceId,
+      ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch)));
+
+      setAccessLogs(result.data);
+      setAccessLogsTotal(matchingLogs.length);
+      setAccessLogsPagination((current) => {
+        const totalPages = Math.max(1, Math.ceil(matchingLogs.length / current.pageSize));
+        const page = Math.min(current.page, totalPages);
+        return {
+          source: 'client',
+          page,
+          pageSize: current.pageSize,
+          totalCount: matchingLogs.length,
+          totalPages,
+          hasNextPage: page < totalPages,
+        };
+      });
+      setAccessLogsMessage(`${result.message} (${matchingLogs.length} matching)`);
+    } catch (error) {
+      setAccessLogsError(error instanceof Error ? error.message : 'Unable to load access logs.');
+    } finally {
+      setAccessLogsLoading(false);
+    }
+  }, [accessLogsSearch, token]);
+
+  const changeAccessLogsSearch = React.useCallback((search: string) => {
+    setAccessLogsSearch(search);
+    setAccessLogsPagination((current) => ({ ...current, page: 1 }));
+  }, []);
+
+  const changeAccessLogsPage = React.useCallback((page: number) => {
+    setAccessLogsPagination((current) => {
+      const nextPage = Math.min(current.totalPages, Math.max(1, Math.floor(page)));
+      return {
+        ...current,
+        page: nextPage,
+        hasNextPage: nextPage < current.totalPages,
+      };
+    });
+  }, []);
+
+  const changeAccessLogsPageSize = React.useCallback((pageSize: number) => {
+    if (![10, 20, 50].includes(pageSize)) return;
+    setAccessLogsPagination((current) => ({
+      ...current,
+      page: 1,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(current.totalCount / pageSize)),
+      hasNextPage: current.totalCount > pageSize,
+    }));
+  }, []);
+
+  const fetchAdminVehicles = React.useCallback(async () => {
+    if (!token) return;
+
+    setAdminVehiclesLoading(true);
+    setAdminVehiclesError(null);
+    try {
+      const result = await getAllVehicles(token);
+      setAdminVehicles(result.data);
+      setAdminVehiclesMessage(`${result.message} (${result.data.length} loaded)`);
+    } catch (error) {
+      setAdminVehiclesError(error instanceof Error ? error.message : 'Unable to load all vehicles.');
+    } finally {
+      setAdminVehiclesLoading(false);
     }
   }, [token]);
 
@@ -210,12 +421,18 @@ export default function AdminDashboard() {
     if (token) fetchListings();
   }, [fetchListings]);
 
-  // Refresh every time the Listing Governance page is opened
   useEffect(() => {
-    if (activeView === 'governance') {
-      fetchListings();
-    }
-  }, [activeView, fetchListings]);
+    if (!token || activeView !== 'audit') return;
+    const timer = window.setTimeout(() => {
+      void fetchAccessLogs();
+    }, accessLogsSearch.trim() ? 300 : 0);
+    return () => window.clearTimeout(timer);
+  }, [accessLogsSearch, activeView, fetchAccessLogs, token]);
+
+  useEffect(() => {
+    if (!token || activeView !== 'vehicles') return;
+    void fetchAdminVehicles();
+  }, [activeView, fetchAdminVehicles, token]);
 
   // ---- Admin actions ----
 
@@ -272,6 +489,7 @@ export default function AdminDashboard() {
   const mainMenuItems = [
     { id: 'home', label: 'Platform Dashboard', icon: TrendingUp, count: null },
     { id: 'governance', label: 'Listing Governance', icon: ShieldCheck, count: listings.filter(l => l.status === 'pending').length },
+    { id: 'vehicles', label: 'Vehicle Management', icon: Car, count: null },
     { id: 'iot', label: 'IoT Smart Bollards', icon: Radio, count: bollards.filter(b => b.status === 'offline').length ? `${bollards.filter(b => b.status === 'offline').length} offline` : null, countColor: 'bg-rose-100 text-rose-700' },
     { id: 'settlement', label: 'Financial Settlement', icon: Landmark, count: payouts.filter(p => p.status === 'pending').length },
     { id: 'enforcement', label: 'Overstay Enforcement', icon: AlertOctagon, count: overstays.filter(o => o.status !== 'resolved').length, countColor: 'bg-rose-100 text-rose-700' },
@@ -302,6 +520,11 @@ export default function AdminDashboard() {
             isLoading={listingsLoading}
             error={listingsError}
             responseMessage={listingsMessage}
+            statusFilter={listingsStatus}
+            pagination={listingsPagination}
+            onStatusChange={changeListingsStatus}
+            onPageChange={changeListingsPage}
+            onPageSizeChange={changeListingsPageSize}
             onRefresh={fetchListings}
             onViewDocument={fetchPrivateDocument}
             onApprove={handleApproveListing} 
@@ -350,9 +573,28 @@ export default function AdminDashboard() {
         );
       case 'audit':
         return (
-          <SystemAudit 
-            activityLogs={activityLogs}
-            addActivityLog={addActivityLog}
+          <SystemAudit
+            accessLogs={accessLogs}
+            isLoading={accessLogsLoading}
+            error={accessLogsError}
+            responseMessage={accessLogsMessage}
+            totalCount={accessLogsTotal}
+            searchQuery={accessLogsSearch}
+            pagination={accessLogsPagination}
+            onSearchChange={changeAccessLogsSearch}
+            onPageChange={changeAccessLogsPage}
+            onPageSizeChange={changeAccessLogsPageSize}
+            onRefresh={fetchAccessLogs}
+          />
+        );
+      case 'vehicles':
+        return (
+          <VehicleManagement
+            vehicles={adminVehicles}
+            isLoading={adminVehiclesLoading}
+            error={adminVehiclesError}
+            responseMessage={adminVehiclesMessage}
+            onRefresh={fetchAdminVehicles}
           />
         );
       case 'system':
@@ -371,6 +613,7 @@ export default function AdminDashboard() {
   const viewMeta: Record<ActiveView, { title: string; description: string }> = {
     home: { title: 'Operations overview', description: 'Monitor the queues and systems that affect today’s parking journeys.' },
     governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
+    vehicles: { title: 'Vehicle management', description: 'Review commuter vehicles registered across the platform.' },
     iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
     settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
     enforcement: { title: 'Overstay enforcement', description: 'Resolve sessions that exceeded their confirmed parking window.' },
@@ -559,7 +802,7 @@ export default function AdminDashboard() {
           { id: 'settlement', icon: Landmark, label: 'Finance' },
           { id: 'more', icon: Menu, label: 'More', count: tickets.filter((t) => t.status !== 'resolved').length },
         ]}
-        activeId={['enforcement', 'support', 'audit', 'system'].includes(activeView) ? 'more' : activeView}
+        activeId={['vehicles', 'enforcement', 'support', 'audit', 'system'].includes(activeView) ? 'more' : activeView}
         onChange={(id) => {
           if (id === 'more') {
             setSidebarOpen(true);
