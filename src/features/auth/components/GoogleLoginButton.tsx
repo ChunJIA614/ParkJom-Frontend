@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
+import { Capacitor } from '@capacitor/core';
 import { useAuth, type UserRole } from '../context/AuthContext';
 import { motion } from 'motion/react';
 import { completeUserProfile, signInWithGoogle } from '../api/authApi';
+import { isGoogleLoginCancellation, signInWithNativeGoogle } from '../googleAuth';
 import { readApiError } from '@/services/apiClient';
 
 export default function GoogleLoginButton() {
@@ -19,13 +21,11 @@ export default function GoogleLoginButton() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [selectedRole, setSelectedRole] = useState<number>(defaultRole);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
+  const [isNativeLoginPending, setIsNativeLoginPending] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // ---- Step 1: Google login success ----
-  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
-    const { credential } = credentialResponse;
-
+  const handleGoogleCredential = async (credential?: string) => {
     if (!credential) {
       console.error('No credential received from Google');
       setLoginError('Google did not return a sign-in credential. Please try again.');
@@ -59,6 +59,25 @@ export default function GoogleLoginButton() {
         : message;
       console.error('❌ Google login failed:', displayMessage);
       setLoginError(displayMessage);
+    }
+  };
+
+  // ---- Step 1: Google login success ----
+  const handleGoogleSuccess = ({ credential }: CredentialResponse) => handleGoogleCredential(credential);
+
+  const handleNativeGoogleLogin = async () => {
+    setIsNativeLoginPending(true);
+    setLoginError('');
+    try {
+      await handleGoogleCredential(await signInWithNativeGoogle());
+    } catch (error) {
+      if (!isGoogleLoginCancellation(error)) {
+        const message = error instanceof Error ? error.message : 'Google sign-in failed. Please try again.';
+        console.error('Google sign-in failed:', message);
+        setLoginError(message);
+      }
+    } finally {
+      setIsNativeLoginPending(false);
     }
   };
 
@@ -203,14 +222,27 @@ export default function GoogleLoginButton() {
   // ---- Default: show Google Sign-In button ----
   return (
     <div className="flex flex-col items-center gap-3">
-      <GoogleLogin
-        onSuccess={handleGoogleSuccess}
-        onError={handleGoogleError}
-        theme="outline"
-        size="large"
-        shape="pill"
-        text="signin_with"
-      />
+      {Capacitor.isNativePlatform() ? (
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.97 }}
+          onClick={handleNativeGoogleLogin}
+          disabled={isNativeLoginPending}
+          className="flex min-h-11 items-center justify-center gap-3 rounded-full border border-black/10 bg-white px-6 text-[14px] font-semibold text-[#1d1d1f] shadow-sm disabled:opacity-60"
+        >
+          <span aria-hidden="true" className="text-[17px] font-bold text-[#4285f4]">G</span>
+          {isNativeLoginPending ? 'Signing in…' : 'Sign in with Google'}
+        </motion.button>
+      ) : (
+        <GoogleLogin
+          onSuccess={handleGoogleSuccess}
+          onError={handleGoogleError}
+          theme="outline"
+          size="large"
+          shape="pill"
+          text="signin_with"
+        />
+      )}
       <p className="text-[11px] text-[#8e8e93]">
         Use your Google account to sign in to ParkJom
       </p>

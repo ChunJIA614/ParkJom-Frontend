@@ -6,9 +6,9 @@ import 'leaflet/dist/leaflet.css';
 import stationData from '../data/mrt_lrt_stations.json';
 import { ParkingSpot } from '../types';
 import { loadRailNetworkData } from '@/services/transitData';
-import { 
-  Search, Navigation, MapPin, Car, Train, X, 
-  Clock, DollarSign, ChevronRight, Layers, Loader2
+import {
+  Search, Navigation, Car, Train,
+  Clock, ChevronRight, Layers, Loader2
 } from 'lucide-react';
 
 // ---- GTFS GeoJSON types ----
@@ -28,21 +28,6 @@ interface GeoJsonCollection<T> {
 }
 
 // ---- Custom Marker Icons ----
-const stationIcon = L.divIcon({
-  className: 'custom-station-icon',
-  html: `<div style="
-    background: #007AFF;
-    width: 22px; height: 22px;
-    border-radius: 50%; 
-    border: 3px solid white;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.22);
-    display: flex; align-items: center; justify-content: center;
-  "><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="14" rx="3"/><path d="M8 20l2-3m6 3-2-3M9 8h6m-6 4h.01m5.99 0h.01"/></svg></div>`,
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
-  popupAnchor: [0, -14],
-});
-
 const parkingIcon = L.divIcon({
   className: 'custom-parking-icon',
   html: `<div style="
@@ -77,7 +62,7 @@ const buildStationIcon = (isSelected: boolean, condition: StationParkingConditio
       ? stationStatusPalette.available
       : condition === 'full'
         ? stationStatusPalette.full
-        : stationStatusPalette.unknown;
+        : stationStatusPalette.default;
   const ringColor = isSelected ? 'rgba(10,132,255,0.25)' : 'rgba(0,0,0,0.12)';
 
   return L.divIcon({
@@ -110,12 +95,11 @@ interface CommuterMapProps {
   spots: ParkingSpot[];
   onStationSelect: (stationName: string, lat: number, lng: number) => void;
   selectedStation: string | null;
+  selectedStationCoords: { lat: number; lng: number } | null;
   selectedSpot: ParkingSpot | null;
   onSpotClick: (spot: ParkingSpot) => void;
   distanceRadius: number;
   onDistanceRadiusChange: (radius: number) => void;
-  isNearbyLoading: boolean;
-  nearbyError: string | null;
 }
 
 // ---- Focus component — jumps to the selected station without a bounce animation ----
@@ -287,21 +271,16 @@ export default function CommuterMap({
   spots,
   onStationSelect,
   selectedStation,
+  selectedStationCoords,
   selectedSpot,
   onSpotClick,
   distanceRadius,
   onDistanceRadiusChange,
-  isNearbyLoading,
-  nearbyError,
 }: CommuterMapProps) {
   const klCenter: [number, number] = [3.1390, 101.6869];
   const [flyToCoords, setFlyToCoords] = useState<[number, number] | null>(null);
-  const [showStationList, setShowStationList] = useState(false);
+  const [openPanel, setOpenPanel] = useState<'stations' | 'lines' | null>(null);
   const [stationFilter, setStationFilter] = useState('');
-
-  // ---- Find parking flow state ----
-  // Station coordinates clicked by user (for passing to detail page for walking distance calc)
-  const [selectedStationCoords, setSelectedStationCoords] = useState<{ lat: number; lon: number } | null>(null);
 
   // react-router navigation
   const navigate = useNavigate();
@@ -431,8 +410,6 @@ export default function CommuterMap({
     n.toLowerCase().includes(stationFilter.toLowerCase())
   );
 
-  // Currently selected station name (to pass to detail page)
-  const [clickedStationName, setClickedStationName] = useState<string>('');
   const selectedStationKey = normalizeStationKey(selectedStation || '');
 
   const handleStationClick = (feature: any) => {
@@ -444,11 +421,7 @@ export default function CommuterMap({
     }
     setFlyToCoords([coords[1], coords[0]]);
     onStationSelect(name, coords[1], coords[0]);
-
-    const stationLat = coords[1];
-    const stationLon = coords[0];
-    setSelectedStationCoords({ lat: stationLat, lon: stationLon });
-    setClickedStationName(name);
+    setOpenPanel(null);
   };
 
   const handleListStationClick = (name: string) => {
@@ -459,28 +432,8 @@ export default function CommuterMap({
       if (!coords || coords.length < 2) return;
       setFlyToCoords([coords[1], coords[0]]);
       onStationSelect(name, coords[1], coords[0]);
-
-      // Also trigger Haversine filtering
-      const stationLat = coords[1];
-      const stationLon = coords[0];
-      setSelectedStationCoords({ lat: stationLat, lon: stationLon });
-      setClickedStationName(name);
-
-      setShowStationList(false);
+      setOpenPanel(null);
     }
-  };
-
-  const handleFindNearby = () => {
-    if (!selectedStation) {
-      alert('Please select an LRT/MRT station first (click on a station marker).');
-      return;
-    }
-    if (!selectedStationCoords) {
-      alert('Please click on a station marker on the map to set its coordinates.');
-      return;
-    }
-    // Re-trigger parent station selection to ensure filtered spots render
-    onStationSelect(selectedStation, selectedStationCoords.lat, selectedStationCoords.lon);
   };
 
   // ---- Toggle visibility of a line ----
@@ -491,15 +444,31 @@ export default function CommuterMap({
     }));
   };
 
-  // ---- Rail lines panel toggles ----
-  const [showDesktopLines, setShowDesktopLines] = useState(false);
-  const [showMobileLines, setShowMobileLines] = useState(false);
-
   // Don't show parking spots until a station is explicitly selected
   const shouldShowParking = !!selectedStation && selectedStation.length > 0 && spots.length > 0;
 
+  useEffect(() => {
+    if (!openPanel) return;
+
+    const closeOpenPanel = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-map-control]')) return;
+      setOpenPanel(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenPanel(null);
+    };
+
+    document.addEventListener('pointerdown', closeOpenPanel);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOpenPanel);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [openPanel]);
+
   return (
-    <div className={`commuter-map relative w-full h-full min-h-[400px] overflow-hidden ${selectedStation ? 'has-selected-station' : ''}`}>
+    <div className="commuter-map relative w-full h-full min-h-[400px] overflow-hidden">
       {/* Map Container */}
       <MapContainer
         center={klCenter}
@@ -540,12 +509,15 @@ export default function CommuterMap({
           <>
             <Polyline
               positions={[
-                [selectedStationCoords.lat, selectedStationCoords.lon],
+                [selectedStationCoords.lat, selectedStationCoords.lng],
                 [selectedSpot.lat, selectedSpot.lng],
               ]}
               pathOptions={{ color: '#007AFF', weight: 4, opacity: 0.9, dashArray: '8 10' }}
             />
-            <FocusSelectedRoute station={selectedStationCoords} spot={selectedSpot} />
+            <FocusSelectedRoute
+              station={{ lat: selectedStationCoords.lat, lon: selectedStationCoords.lng }}
+              spot={selectedSpot}
+            />
           </>
         )}
 
@@ -576,15 +548,7 @@ export default function CommuterMap({
                 <div className="text-xs min-w-[140px]">
                   <strong className="text-slate-800">{name}</strong>
                   <p className="text-slate-500 mt-0.5">{network || 'Transit Station'}</p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStationClick(feature);
-                    }}
-                    className="find-parking-action mt-2 w-full text-white text-[10px] font-bold py-1.5 px-3 rounded-lg transition-colors"
-                  >
-                    Find Parking Nearby
-                  </button>
+                  <p className="mt-2 text-[10px] font-semibold text-[#007AFF]">Finding nearby bays…</p>
                 </div>
               </Popup>
             </Marker>
@@ -626,7 +590,9 @@ export default function CommuterMap({
                     navigate(`/commuter/parking/${spot.id}`, {
                       state: {
                         spot: { ...spot, id: spot.id, lat: spot.lat, lon: spot.lng, address: spot.address, photoUrl: spot.primaryImageUrl ?? '', price: spot.pricePerHour },
-                        stationCoords: selectedStationCoords,
+                        stationCoords: selectedStationCoords
+                          ? { lat: selectedStationCoords.lat, lon: selectedStationCoords.lng }
+                          : null,
                         stationName: spot.station,
                       },
                     });
@@ -647,56 +613,6 @@ export default function CommuterMap({
       {/* Map Legend */}
       <MapLegend />
 
-      {/* Mobile: Rail lines toggle button & dropdown panel (inside the map container) */}
-      <div className="map-lines-mobile md:hidden absolute top-[72px] right-4 z-[1000] flex flex-col items-end">
-        <button
-          onClick={() => setShowMobileLines(!showMobileLines)}
-          aria-expanded={showMobileLines}
-          aria-controls="mobile-rail-lines"
-          className="workspace-map-control bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-3 py-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          <Layers className="w-4 h-4 text-blue-600" />
-          Lines
-          <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showMobileLines ? 'rotate-90' : ''}`} />
-        </button>
-
-        {/* Dropdown expanded lines panel */}
-        {showMobileLines && (
-          <div id="mobile-rail-lines" className="mt-2 animate-slide-up origin-top-right">
-            <LineControlPanel
-              visibleLines={visibleLines}
-              onToggle={handleLineToggle}
-              showHeader={false}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* ---- No nearby parking message ---- (centered to avoid blocking top-right buttons) */}
-      {clickedStationName && isNearbyLoading && (
-        <div className="map-status-banner absolute top-[80px] left-1/2 -translate-x-1/2 z-[1001] animate-slide-up w-[90%] max-w-[320px]">
-          <div className="bg-blue-50/95 backdrop-blur border border-blue-200 rounded-xl px-4 py-3 shadow-lg flex items-start gap-2.5">
-            <Loader2 size={16} className="text-blue-600 shrink-0 mt-0.5 animate-spin" />
-            <div className="text-[11px] text-blue-900 leading-relaxed">
-              <strong className="block text-xs font-bold">Searching nearby parking</strong>
-              <span>Looking for available spaces within <strong>{distanceRadius}m</strong> of this station.</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {clickedStationName && !isNearbyLoading && !nearbyError && spots.length === 0 && (
-        <div className="map-status-banner absolute top-[80px] left-1/2 -translate-x-1/2 z-[1001] animate-slide-up w-[90%] max-w-[300px]">
-          <div className="bg-amber-50/95 backdrop-blur border border-amber-200 rounded-xl px-4 py-3 shadow-lg flex items-start gap-2.5">
-            <MapPin size={16} className="text-amber-500 shrink-0 mt-0.5" />
-            <div className="text-[11px] text-amber-800 leading-relaxed">
-              <strong className="block text-xs font-bold">No parking spots nearby</strong>
-              <span>No available spaces within <strong>{distanceRadius}m</strong> of this station. Try a larger radius or a different station.</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* GTFS Data Loading Overlay */}
       {gtfsLoading && (
         <div className="absolute inset-0 z-[1001] bg-white/70 backdrop-blur-sm flex items-center justify-center rounded-2xl">
@@ -714,24 +630,20 @@ export default function CommuterMap({
         </div>
       )}
 
-      {nearbyError && (
-        <div className="absolute top-16 left-4 right-4 z-[1001] bg-red-50 border border-red-200 text-red-700 text-xs px-4 py-2 rounded-lg shadow">
-          ⚠️ Nearby parking search failed: {nearbyError}
-        </div>
-      )}
-
       {/* Top Bar: Station Search & Filter */}
       <div className="map-toolbar absolute top-4 left-4 right-4 z-[1000] flex gap-2">
         {/* Station Selector Button */}
         <button
-          onClick={() => setShowStationList(!showStationList)}
-          aria-expanded={showStationList}
+          type="button"
+          data-map-control
+          onClick={() => setOpenPanel((panel) => panel === 'stations' ? null : 'stations')}
+          aria-expanded={openPanel === 'stations'}
           aria-controls="station-picker"
           className="map-toolbar__station bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-4 py-2.5 flex items-center gap-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
         >
           <Train className="w-4 h-4 text-blue-600" />
           <span className="truncate">{selectedStation || 'Select Station'}</span>
-          <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showStationList ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${openPanel === 'stations' ? 'rotate-90' : ''}`} />
         </button>
 
         {/* Radius Filter — auto-refilters nearby spots on change */}
@@ -751,23 +663,21 @@ export default function CommuterMap({
           <option value={5000}>Within 5km</option>
         </select>
 
-        {/* Desktop: keep Rail Lines beside the radius filter so the collapsed control
-            remains discoverable even when the line list is closed. */}
-        <div className="map-lines-desktop hidden md:flex relative flex-col items-start">
+        <div className="map-lines-control relative flex flex-col items-start" data-map-control>
           <button
             type="button"
-            onClick={() => setShowDesktopLines((isOpen) => !isOpen)}
-            aria-expanded={showDesktopLines}
-            aria-controls="desktop-rail-lines"
+            onClick={() => setOpenPanel((panel) => panel === 'lines' ? null : 'lines')}
+            aria-expanded={openPanel === 'lines'}
+            aria-controls="rail-lines-panel"
             className="workspace-map-control flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur hover:bg-slate-50"
           >
             <Layers className="h-4 w-4 text-blue-600" />
             Lines
-            <ChevronRight className={`h-3.5 w-3.5 text-slate-400 transition-transform ${showDesktopLines ? 'rotate-90' : ''}`} />
+            <ChevronRight className={`h-3.5 w-3.5 text-slate-400 transition-transform ${openPanel === 'lines' ? 'rotate-90' : ''}`} />
           </button>
 
-          {showDesktopLines && (
-            <div id="desktop-rail-lines" className="map-lines-desktop__panel origin-top-left animate-slide-up">
+          {openPanel === 'lines' && (
+            <div id="rail-lines-panel" className="map-lines-control__panel origin-top-left animate-slide-up">
               <LineControlPanel
                 visibleLines={visibleLines}
                 onToggle={handleLineToggle}
@@ -776,22 +686,11 @@ export default function CommuterMap({
             </div>
           )}
         </div>
-
-        {/* Find Nearby Button */}
-        {selectedStation && (
-          <button
-            onClick={handleFindNearby}
-            className="map-toolbar__find find-parking-action text-white rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-1.5 text-xs font-bold transition-colors"
-          >
-            <Search className="w-3.5 h-3.5" />
-            Find Parking
-          </button>
-        )}
       </div>
 
       {/* Station List Dropdown */}
-      {showStationList && (
-        <div id="station-picker" className="map-station-dropdown absolute top-[60px] left-4 z-[1000] w-72 bg-white/98 backdrop-blur rounded-xl border border-slate-200 shadow-xl overflow-hidden">
+      {openPanel === 'stations' && (
+        <div id="station-picker" data-map-control className="map-station-dropdown absolute top-[60px] left-4 z-[1000] w-72 bg-white/98 backdrop-blur rounded-xl border border-slate-200 shadow-xl overflow-hidden">
           <div className="p-3 border-b border-slate-100">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />

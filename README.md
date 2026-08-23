@@ -13,6 +13,7 @@ This repository is frontend-only. The API, auth backend, data persistence, and I
 - Owner onboarding, availability scheduling, support, settings, and parking management views
 - Admin governance, settlement, IoT health, enforcement, support, audit, and configuration views
 - PWA metadata, service worker, and Firebase Hosting deployment
+- Android and iOS builds through Capacitor, using the same web application code
 
 ## Stack
 
@@ -26,6 +27,7 @@ This repository is frontend-only. The API, auth backend, data persistence, and I
 | Maps | Leaflet + React Leaflet |
 | Charts | Recharts |
 | Authentication | Google OAuth (`@react-oauth/google`) |
+| Mobile wrapper | Capacitor 8 |
 | Hosting | Firebase Hosting |
 
 ## App Flow
@@ -68,8 +70,34 @@ Notes:
 - `VITE_API_BASE` overrides the API base URL used by feature code.
 - If `VITE_API_BASE` is absent, the app falls back to the local `/api` proxy in development.
 - `VITE_API_PROXY_TARGET` controls the Vite dev-server proxy target. If it is not set, the default proxy target is the Azure backend URL in [vite.config.ts](./vite.config.ts).
-- The Google OAuth client ID is currently hardcoded in [src/app/providers/AppProviders.tsx](./src/app/providers/AppProviders.tsx).
+- `VITE_GOOGLE_WEB_CLIENT_ID` is the web OAuth client ID and the server audience used by Android sign-in.
+- `VITE_GOOGLE_IOS_CLIENT_ID` must be set before iOS Google sign-in can work.
 - Client state is persisted in `localStorage` for auth and some dashboard/session views.
+
+## Mobile Apps
+
+The mobile apps are thin Capacitor wrappers around the existing PWA. Feature screens remain in `src/`; native projects live in `android/` and `ios/`.
+
+The current application ID is `com.parkjom.app`. Confirm this ID before publishing because changing it after release creates a separate store application.
+
+The Android build requires Android Studio and JDK 21. The iOS build requires macOS and Xcode. iOS dependencies, signing, and simulator/device testing cannot be completed on Windows.
+
+After installing dependencies, sync the web build into the native projects:
+
+```bash
+npm install
+npm run mobile:sync
+```
+
+Open a native project with `npm run mobile:android` or `npm run mobile:ios`. Run `npm run mobile:sync` again after web-code changes.
+
+Native configuration still required:
+
+- Android Google sign-in: create an Android OAuth client in the same Google Cloud project as `VITE_GOOGLE_WEB_CLIENT_ID`, using package `com.parkjom.app` and the SHA-1 certificate for each build key. Run `gradlew signingReport` inside `android/` to read the local certificate; release and Play App Signing certificates must be registered separately.
+- iOS Google sign-in: create an iOS OAuth client for bundle ID `com.parkjom.app`, set `VITE_GOOGLE_IOS_CLIENT_ID`, and add its reversed client ID as a URL scheme in `ios/App/App/Info.plist`.
+- App Store distribution: Apple may require Sign in with Apple when Google sign-in is offered. This also needs backend token validation and is not enabled yet.
+- Native wallet checkout: the top-up request sends `returnTarget: "native"`; the API bridge redirects successful and cancelled Stripe sessions to `parkjom://commuter?tab=wallet&topup=success&session_id=...` or `parkjom://commuter?tab=wallet&topup=cancelled`. Web checkout uses the configured Firebase `/commuter` return URL instead.
+- Wallet recovery: the Wallet view reads `GET /api/wallet` and verifies saved Stripe sessions with `GET /api/wallet/topup/status?sessionId=...`. Only an authenticated, owner-matched session that Stripe reports as open can be resumed; completed or expired sessions are reconciled instead of reopening a terminal Checkout page.
 
 ## Scripts
 
@@ -79,6 +107,9 @@ Notes:
 | `npm run preview` | Preview the production build locally. |
 | `npm run build` | Create a production build in `dist/`. |
 | `npm run lint` | Type-check the project with TypeScript. |
+| `npm run mobile:sync` | Build the web app and copy it into Android and iOS projects. |
+| `npm run mobile:android` | Sync and open the Android project in Android Studio. |
+| `npm run mobile:ios` | Sync and open the iOS project in Xcode. |
 | `npm run deploy` | Build and deploy the site to Firebase Hosting. |
 
 ## Deploy

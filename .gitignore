@@ -17,6 +17,7 @@ node_modules/
 # Frontend build
 frontend/dist/
 dist/
+/assets/
 
 # Firebase
 .firebase/
@@ -33,3 +34,4 @@ firebase-debug.log
 # Node.js
 **/node_modules/
 **/package-lock.json
+!/package-lock.json

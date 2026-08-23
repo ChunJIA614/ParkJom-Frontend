@@ -1245,15 +1245,24 @@ html {
 
 /* Map Lens */
 .map-lens {
-  position: relative;
-  min-height: calc(100dvh - 3.5rem);
-  overflow: hidden;
-  background: #eef1f4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 21rem);
+  grid-template-rows: auto auto;
+  align-items: start;
+  gap: 1rem;
+  min-width: 0;
 }
 
 .map-lens__map {
-  position: absolute;
-  inset: 0 0 8.6rem;
+  grid-column: 1;
+  grid-row: 1;
+  height: clamp(32rem, calc(100dvh - 13.5rem), 46rem);
+  min-height: 32rem;
+  overflow: hidden;
+  border: 1px solid var(--workspace-border);
+  border-radius: 1rem;
+  background: var(--workspace-surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.025), 0 8px 28px rgba(28, 28, 30, 0.035);
 }
 
 .map-lens__map .commuter-map,
@@ -1266,19 +1275,20 @@ html {
 
 .map-lens__results,
 .map-lens__pass {
-  position: absolute;
-  z-index: 30;
-  bottom: 10.2rem;
-  width: min(31rem, calc(50vw - 2rem));
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  width: auto;
+  min-width: 0;
 }
 
-.map-lens__results {
-  left: clamp(1rem, 3vw, 3rem);
-}
-
-.map-lens__pass {
-  right: clamp(1rem, 3vw, 3rem);
-  width: min(25rem, calc(42vw - 2rem));
+.map-lens__rail {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .nearby-sheet {
@@ -1286,9 +1296,7 @@ html {
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 16px 42px rgba(28, 39, 49, 0.16);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.025), 0 8px 28px rgba(28, 28, 30, 0.035);
 }
 
 .nearby-sheet__header {
@@ -1338,7 +1346,8 @@ html {
 }
 
 .nearby-bay.is-selected {
-  box-shadow: inset 0 0 0 1px #34c759;
+  background: var(--workspace-accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(var(--workspace-accent-rgb), 0.32);
 }
 
 .nearby-bay__mark {
@@ -1399,11 +1408,197 @@ html {
   text-align: center;
 }
 
+/* Wallet top-up return state */
+.wallet-topup-result {
+  display: flex;
+  gap: 1rem;
+  padding: clamp(1.15rem, 2.5vw, 1.6rem);
+  overflow: hidden;
+  border: 1px solid rgba(var(--workspace-accent-rgb), 0.2);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(var(--workspace-accent-rgb), 0.12), transparent 36%),
+    var(--workspace-surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.025), 0 8px 28px rgba(28, 28, 30, 0.04);
+}
+
+.wallet-topup-result--warning {
+  border-color: rgba(255, 149, 0, 0.24);
+  background: radial-gradient(circle at 100% 0%, rgba(255, 149, 0, 0.12), transparent 36%), #fff;
+}
+
+.wallet-topup-result--success {
+  border-color: rgba(52, 199, 89, 0.24);
+  background: radial-gradient(circle at 100% 0%, rgba(52, 199, 89, 0.12), transparent 36%), #fff;
+}
+
+.wallet-topup-result--info {
+  border-color: var(--workspace-border);
+  background: var(--workspace-surface);
+}
+
+.wallet-topup-result__icon {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 1rem;
+  background: var(--workspace-accent-soft);
+  color: var(--workspace-accent);
+}
+
+.wallet-topup-result--warning .wallet-topup-result__icon {
+  background: #fff4df;
+  color: #a15c00;
+}
+
+.wallet-topup-result--success .wallet-topup-result__icon {
+  background: #eaf8ee;
+  color: #248a3d;
+}
+
+.wallet-topup-result--info .wallet-topup-result__icon {
+  background: #f2f2f7;
+  color: #6e6e73;
+}
+
+.wallet-topup-result__content {
+  min-width: 0;
+  flex: 1;
+}
+
+.wallet-topup-result__eyebrow {
+  margin: 0 0 0.2rem;
+  color: var(--workspace-accent) !important;
+  font-size: 0.72rem !important;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.wallet-topup-result h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.wallet-topup-result__content > p:not(.wallet-topup-result__eyebrow) {
+  max-width: 62ch;
+  margin: 0.45rem 0 0;
+  color: var(--workspace-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.wallet-topup-result__receipt {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+}
+
+.wallet-topup-result__receipt div {
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.75rem;
+  background: rgba(245, 245, 247, 0.86);
+}
+
+.wallet-topup-result__receipt dt {
+  color: var(--workspace-text-tertiary);
+  font-size: 0.68rem;
+}
+
+.wallet-topup-result__receipt dd {
+  margin: 0.15rem 0 0;
+  overflow: hidden;
+  color: var(--workspace-text);
+  font-size: 0.8rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet-topup-result__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wallet-topup-result__steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--workspace-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.wallet-topup-result__steps .is-complete { color: #248a3d; }
+.wallet-topup-result__steps .is-current { color: var(--workspace-accent); }
+
+.wallet-topup-result__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.wallet-topup-result__actions button {
+  display: inline-flex;
+  min-height: 2.55rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0 1rem;
+  border: 1px solid var(--workspace-border);
+  border-radius: 0.75rem;
+  background: #fff;
+  color: var(--workspace-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.wallet-topup-result__actions button.is-primary {
+  border-color: var(--workspace-accent);
+  background: var(--workspace-accent);
+  color: #fff;
+}
+
+.wallet-topup-result__actions button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.wallet-topup-dialog {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  border-color: var(--workspace-border) !important;
+  box-shadow: 0 24px 70px rgba(28, 28, 30, 0.2);
+}
+
+.wallet-topup-dialog__mark {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.85rem;
+  background: var(--workspace-accent-soft);
+  color: var(--workspace-accent);
+}
+
 .parking-pass {
   overflow: hidden;
   border-radius: 1rem;
   background: #fff;
-  box-shadow: 0 16px 42px rgba(28, 39, 49, 0.18);
+  border: 1px solid var(--workspace-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.025), 0 8px 28px rgba(28, 28, 30, 0.035);
 }
 
 .parking-pass__header {
@@ -1587,9 +1782,9 @@ html {
 }
 
 .journey-strip {
-  position: absolute;
-  z-index: 31;
-  inset: auto 0 0;
+  position: relative;
+  z-index: 1;
+  inset: auto;
   display: grid;
   min-height: 8.6rem;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1597,10 +1792,14 @@ html {
   margin: 0;
   padding: 1.15rem clamp(1rem, 10vw, 10rem);
   list-style: none;
-  background: rgba(255, 255, 255, 0.96);
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid var(--workspace-border);
+  border-radius: 1rem;
+  background: var(--workspace-surface);
+}
+
+.map-lens > .journey-strip {
+  grid-column: 1 / -1;
+  grid-row: 2;
 }
 
 .journey-strip li {
@@ -1653,36 +1852,34 @@ html {
   box-shadow: 0 6px 20px rgba(28, 39, 49, 0.12) !important;
 }
 
-.map-lens .map-legend,
-.map-lens .line-control-panel {
+.map-lens .map-legend {
   display: none;
 }
 
-@media (max-width: 1023px) {
-  .workspace-sidebar { transform: translateX(-100%); }
-  .workspace-sidebar.is-open { transform: translateX(0); }
-
+@media (max-width: 1279px) {
   .map-lens {
-    min-height: auto;
-    overflow: visible;
-    padding-bottom: 5rem;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
   }
 
   .map-lens__map {
-    position: relative;
-    inset: auto;
-    height: min(58vh, 34rem);
+    grid-column: 1;
+    grid-row: auto;
+    height: clamp(28rem, 58dvh, 36rem);
+    min-height: 28rem;
   }
 
   .map-lens__results,
   .map-lens__pass {
-    position: relative;
-    inset: auto;
-    width: auto;
-    margin: 0.85rem;
+    margin: 0;
   }
 
-  .map-lens__pass { margin-top: 0; }
+  .map-lens__rail {
+    grid-column: 1;
+    grid-row: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
   .journey-strip {
     position: relative;
@@ -1704,12 +1901,52 @@ html {
   .journey-strip small { display: none; }
 }
 
+@media (max-width: 1023px) {
+  .workspace-sidebar { transform: translateX(-100%); }
+  .workspace-sidebar.is-open { transform: translateX(0); }
+}
+
 @media (max-width: 640px) {
   .workspace-heading { align-items: flex-start; flex-direction: column; }
-  .map-lens__map { height: 55vh; min-height: 25rem; }
+  .map-lens__map { height: clamp(30rem, 64dvh, 36rem); min-height: 30rem; }
   .nearby-sheet__list { max-height: 12rem; }
   .parking-pass__price { display: none; }
   .journey-strip strong { font-size: 0.68rem; }
+
+  .wallet-topup-result {
+    flex-direction: column;
+  }
+
+  .wallet-topup-result__receipt {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wallet-topup-result__receipt div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .wallet-topup-result__actions button {
+    flex: 1 1 auto;
+  }
+
+  .map-lens__rail {
+    grid-template-columns: 1fr;
+  }
+
+  .wallet-topup-modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .wallet-topup-dialog {
+    max-width: none;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 1rem);
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+  }
 }
 
 /* ── Adaptive workspace system ──────────────────────────────────────────────
@@ -1916,18 +2153,6 @@ html {
   .dashboard-bottom-nav {
     display: none !important;
   }
-
-  /* The transit map keeps its primary navigation visible on desktop. */
-  .commuter-workspace[data-commuter-tab="map"] .workspace-header__navigation {
-    display: flex !important;
-  }
-}
-
-@media (max-width: 1023px) {
-  /* Map mode uses the header navigation instead of the fixed bottom nav. */
-  .commuter-workspace[data-commuter-tab="map"] {
-    padding-bottom: 0;
-  }
 }
 
 .workspace-frame {
@@ -2130,11 +2355,10 @@ html {
 
 .map-lens__results,
 .map-lens__pass {
-  z-index: 1100;
+  z-index: 1;
 }
 
-/* Keep the rail-line control functional; only the legend is intentionally
-   hidden inside the full-screen commuter map lens. */
+/* Compact map filters share the same surface language as the dashboard. */
 .map-lens .line-control-panel {
   z-index: 1000;
   max-width: min(24rem, calc(100% - 2rem));
@@ -2148,15 +2372,15 @@ html {
   overflow-y: auto;
 }
 
-.map-lines-desktop {
+.map-lines-control {
   flex: 0 0 auto;
 }
 
-.map-lines-desktop > button {
+.map-lines-control > button {
   white-space: nowrap;
 }
 
-.map-lines-desktop__panel {
+.map-lines-control__panel {
   position: absolute;
   top: calc(100% + 0.5rem);
   left: 0;
@@ -2164,7 +2388,7 @@ html {
   min-width: 12rem;
 }
 
-.map-lines-desktop__panel .line-control-panel {
+.map-lines-control__panel .line-control-panel {
   max-height: min(16rem, calc(100vh - 9rem));
 }
 
@@ -2190,8 +2414,13 @@ html {
 }
 
 .map-lens > .journey-strip {
-  position: absolute;
-  inset: auto 0 0;
+  position: relative;
+  inset: auto;
+}
+
+.custom-station-icon {
+  display: grid !important;
+  place-items: center;
 }
 
 @media (max-width: 1023px) {
@@ -2264,38 +2493,20 @@ html {
     padding-inline: 0.55rem;
   }
 
-  .map-toolbar__find {
+  .map-lines-control {
     grid-column: 1 / -1;
-    width: 100%;
-    justify-content: center;
+    justify-self: start;
   }
 
   .map-station-dropdown {
-    top: 4.25rem;
+    top: 7.35rem;
     right: 0.75rem;
     left: 0.75rem;
     width: auto;
   }
 
-  .commuter-map.has-selected-station .map-station-dropdown {
-    top: 7.45rem;
-  }
-
-  .map-lines-mobile {
-    top: 4.25rem;
-    right: 0.75rem;
-  }
-
-  .commuter-map.has-selected-station .map-lines-mobile {
-    top: 7.45rem;
-  }
-
   .map-status-banner {
-    top: 7.75rem;
-  }
-
-  .commuter-map.has-selected-station .map-status-banner {
-    top: 10.8rem;
+    top: 10.65rem;
   }
 
   .journey-strip {

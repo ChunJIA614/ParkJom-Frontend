@@ -1,12 +1,8 @@
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 const DEFAULT_API_BASE = 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api';
-
-const isLocalDevelopment = typeof window !== 'undefined'
-  && LOCAL_HOSTS.has(window.location.hostname);
 
 /** Resolve the backend once so feature APIs do not duplicate environment logic. */
 export const API_BASE = import.meta.env.VITE_API_BASE
-  || (isLocalDevelopment ? '/api' : DEFAULT_API_BASE);
+  || (import.meta.env.DEV ? '/api' : DEFAULT_API_BASE);
 
 export function apiRequest(path: string, init?: RequestInit): Promise<Response> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -19,8 +15,21 @@ export async function readApiError(response: Response, fallback: string): Promis
 
   if (responseText) {
     try {
-      const parsed = JSON.parse(responseText) as { message?: string; error?: string; title?: string };
-      backendMessage = parsed.message || parsed.error || parsed.title || '';
+      const parsed = JSON.parse(responseText) as {
+        message?: string;
+        error?: string;
+        title?: string;
+        Message?: string;
+        Error?: string;
+        Title?: string;
+      };
+      backendMessage = parsed.message
+        || parsed.Message
+        || parsed.error
+        || parsed.Error
+        || parsed.title
+        || parsed.Title
+        || '';
     } catch {
       backendMessage = responseText.trim();
     }

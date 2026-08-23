@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -35,7 +35,15 @@ import {
   Navigation,
   Loader2
 } from 'lucide-react';
-import { ParkingSpot, ParkingSearchResponse, WalletTopUpResponse, Booking, Vehicle, AppNotification } from '../types';
+import {
+  ParkingSpot,
+  ParkingSearchResponse,
+  Booking,
+  Vehicle,
+  AppNotification,
+  WalletTopUpStatus,
+  WalletTopUpState,
+} from '../types';
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
 import JourneyStrip from '../components/JourneyStrip';
@@ -51,7 +59,9 @@ import {
 } from '../lib/journeySession';
 import type { JourneyStage } from '../lib/journeySession';
 import { getNearbyParking, searchParking } from '../api/parkingApi';
-import { createWalletTopUp } from '../api/walletApi';
+import { createWalletTopUp, getWalletSummary, getWalletTopUpStatus } from '../api/walletApi';
+import { isNativeApp, watchDeviceLocation } from '@/services/deviceCapabilities';
+import { openExternalUrl } from '@/services/externalNavigation';
 
 type ParkingResultDto = ParkingSearchResponse['data'][number];
 
@@ -77,9 +87,17 @@ const formatParkingRate = (spot: ParkingSpot) => {
 
 type StationCoordinates = { lat: number; lng: number };
 type LocationStatus = 'locating' | 'ready' | 'denied' | 'unavailable';
-type WalletTopUpFeedback = { tone: 'success' | 'warning' | 'info'; title: string; message: string };
+type WalletTopUpFeedback = {
+  tone: 'success' | 'processing' | 'warning' | 'info';
+  title: string;
+  message: string;
+  payment?: PendingWalletTopUp | null;
+  action?: 'new-topup' | 'retry-status';
+  allowNewTopUp?: boolean;
+};
 
 interface PendingWalletTopUp {
+  userId: number;
   paymentId: number;
   sessionId: string;
   checkoutUrl: string;
@@ -87,32 +105,61 @@ interface PendingWalletTopUp {
   description: string;
   message: string;
   createdAt: string;
+  stage: 'checkout' | 'confirming';
 }
 
-const PENDING_WALLET_TOP_UP_KEY = 'parkjom.pendingWalletTopUp';
+const PENDING_WALLET_TOP_UP_KEY = (userId: number) => `parkjom.pendingWalletTopUp.${userId}`;
+const WALLET_TOP_UP_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
-const loadPendingWalletTopUp = (): PendingWalletTopUp | null => {
+const clearPendingWalletTopUp = (userId?: number) => {
+  if (!userId) return;
   try {
-    const rawValue = sessionStorage.getItem(PENDING_WALLET_TOP_UP_KEY);
+    localStorage.removeItem(PENDING_WALLET_TOP_UP_KEY(userId));
+  } catch {
+    // In-memory state still works when browser storage is unavailable.
+  }
+};
+
+const savePendingWalletTopUp = (value: PendingWalletTopUp) => {
+  try {
+    localStorage.setItem(PENDING_WALLET_TOP_UP_KEY(value.userId), JSON.stringify(value));
+  } catch {
+    // Checkout can continue when browser storage is unavailable.
+  }
+};
+
+const loadPendingWalletTopUp = (userId?: number): PendingWalletTopUp | null => {
+  if (!userId) return null;
+  try {
+    const rawValue = localStorage.getItem(PENDING_WALLET_TOP_UP_KEY(userId));
     if (!rawValue) return null;
     const value = JSON.parse(rawValue) as Partial<PendingWalletTopUp>;
     if (
-      typeof value.paymentId !== 'number'
+      value.userId !== userId
+      || typeof value.paymentId !== 'number'
       || typeof value.sessionId !== 'string'
       || typeof value.checkoutUrl !== 'string'
       || typeof value.amount !== 'number'
     ) {
-      sessionStorage.removeItem(PENDING_WALLET_TOP_UP_KEY);
+      clearPendingWalletTopUp(userId);
+      return null;
+    }
+    const createdAt = value.createdAt || new Date().toISOString();
+    const createdAtTime = Date.parse(createdAt);
+    if (!Number.isFinite(createdAtTime) || Date.now() - createdAtTime > WALLET_TOP_UP_EXPIRY_MS) {
+      clearPendingWalletTopUp(userId);
       return null;
     }
     return {
+      userId,
       paymentId: value.paymentId,
       sessionId: value.sessionId,
       checkoutUrl: value.checkoutUrl,
       amount: value.amount,
       description: value.description || 'Top up my wallet',
       message: value.message || 'Wallet top-up checkout created.',
-      createdAt: value.createdAt || new Date().toISOString(),
+      createdAt,
+      stage: value.stage === 'confirming' ? 'confirming' : 'checkout',
     };
   } catch {
     return null;
@@ -195,15 +242,20 @@ export default function CommuterDashboard() {
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [suggestionsMessage, setSuggestionsMessage] = useState('');
   
-  // Wallet state — TODO: fetch from backend
-  const [walletBalance, setWalletBalance] = useState<number>(0);
+  // The supplied API creates top-up sessions but does not expose a wallet
+  // summary endpoint, so an unknown balance is never presented as RM 0.00.
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [showTopUpModal, setShowTopUpModal] = useState<boolean>(false);
   const [topUpAmount, setTopUpAmount] = useState<string>('');
   const [topUpDescription, setTopUpDescription] = useState('');
   const [isTopUpLoading, setIsTopUpLoading] = useState(false);
+  const [isWalletRefreshing, setIsWalletRefreshing] = useState(false);
+  const [walletLoadError, setWalletLoadError] = useState<string | null>(null);
   const [topUpError, setTopUpError] = useState<string | null>(null);
-  const [pendingTopUp, setPendingTopUp] = useState<PendingWalletTopUp | null>(loadPendingWalletTopUp);
+  const [pendingTopUp, setPendingTopUp] = useState<PendingWalletTopUp | null>(() => loadPendingWalletTopUp(user?.userId));
   const [walletTopUpFeedback, setWalletTopUpFeedback] = useState<WalletTopUpFeedback | null>(null);
+  const handledTopUpReturnRef = useRef<string | null>(null);
+  const walletReconciliationRef = useRef(false);
 
   // Vehicles state — TODO: fetch from backend
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -240,7 +292,12 @@ export default function CommuterDashboard() {
     } catch {
       // Continue when browser storage is unavailable.
     }
-  }, [activeTab]);
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('tab') === activeTab) return;
+    params.set('tab', activeTab);
+    navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: true });
+  }, [activeTab, location.pathname, location.search, navigate]);
 
   // Booking history — TODO: fetch from backend
   const [history, setHistory] = useState<Booking[]>([]);
@@ -288,9 +345,16 @@ export default function CommuterDashboard() {
     : 0;
 
   useEffect(() => {
-    if (topUpReturnStatus !== 'success' && topUpReturnStatus !== 'cancelled' && topUpReturnStatus !== 'cancel') return;
+    if (topUpReturnStatus !== 'success' && topUpReturnStatus !== 'cancelled' && topUpReturnStatus !== 'cancel') {
+      handledTopUpReturnRef.current = null;
+      return;
+    }
 
-    const pendingPayment = loadPendingWalletTopUp();
+    const returnKey = `${topUpReturnStatus}:${returnedCheckoutSessionId || 'no-session'}`;
+    if (handledTopUpReturnRef.current === returnKey) return;
+    handledTopUpReturnRef.current = returnKey;
+
+    const pendingPayment = loadPendingWalletTopUp(user?.userId);
     setActiveTab('wallet');
     setShowTopUpModal(false);
     setIsTopUpLoading(false);
@@ -305,29 +369,33 @@ export default function CommuterDashboard() {
         ? {
             tone: 'warning',
             title: 'Payment return could not be matched',
-            message: 'No balance was added. Please refresh your wallet after the server confirms the Stripe payment.',
+            message: 'We kept your pending payment reference, but could not match this Stripe return. Your balance has not been changed in the app.',
+            payment: pendingPayment,
           }
         : {
-            tone: 'success',
-            title: 'Payment submitted',
-            message: `${pendingPayment ? `RM ${pendingPayment.amount.toFixed(2)} was submitted. ` : ''}Your balance will update only after the backend confirms the Stripe payment.`,
+            tone: 'processing',
+            title: 'Checkout completed',
+            message: 'Stripe returned you to ParkJom. The wallet credit is now waiting for secure webhook confirmation from the server.',
+            payment: pendingPayment,
           });
+
+      if (!hasMismatchedSession && pendingPayment) {
+        const confirmingPayment = { ...pendingPayment, stage: 'confirming' as const };
+        savePendingWalletTopUp(confirmingPayment);
+        setPendingTopUp(confirmingPayment);
+      }
     } else {
       setWalletTopUpFeedback({
         tone: 'info',
         title: 'Top-up cancelled',
         message: 'No payment was confirmed and your wallet balance was not changed.',
+        payment: pendingPayment,
       });
+      clearPendingWalletTopUp(user?.userId);
+      setPendingTopUp(null);
     }
-
-    try {
-      sessionStorage.removeItem(PENDING_WALLET_TOP_UP_KEY);
-    } catch {
-      // The in-memory state is still cleared when browser storage is blocked.
-    }
-    setPendingTopUp(null);
-    navigate('/commuter', { replace: true, state: { activeTab: 'wallet' } });
-  }, [navigate, returnedCheckoutSessionId, topUpReturnStatus]);
+    navigate(`${location.pathname}?tab=wallet`, { replace: true });
+  }, [location.pathname, navigate, returnedCheckoutSessionId, topUpReturnStatus, user?.userId]);
 
   useEffect(() => {
     if (activeTab !== 'home') return;
@@ -335,18 +403,11 @@ export default function CommuterDashboard() {
     setLocationError(null);
     setLocationStatus('locating');
 
-    if (!navigator.geolocation) {
-      setLocationStatus('unavailable');
-      setLocationError('Location services are not supported by this browser.');
-      return;
-    }
-
-    const watchId = navigator.geolocation.watchPosition(
+    let isActive = true;
+    let stopWatching: (() => void) | undefined;
+    void watchDeviceLocation(
       (position) => {
-        const nextLocation = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
+        const nextLocation = { lat: position.lat, lng: position.lng };
 
         setCurrentLocation((previousLocation) => {
           if (previousLocation && distanceBetweenKm(previousLocation, nextLocation) < 0.05) {
@@ -354,12 +415,12 @@ export default function CommuterDashboard() {
           }
           return nextLocation;
         });
-        setLocationAccuracy(position.coords.accuracy);
+        setLocationAccuracy(position.accuracy);
         setLocationStatus('ready');
         setLocationError(null);
       },
       (error) => {
-        if (error.code === 1) {
+        if (error.code === 1 || error.code === 'PERMISSION_DENIED') {
           setLocationStatus('denied');
           setLocationError('Location access is off. Allow location access to receive nearby parking suggestions.');
         } else if (error.code === 2) {
@@ -370,14 +431,15 @@ export default function CommuterDashboard() {
           setLocationError('Location tracking timed out. Please try again.');
         }
       },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 30_000,
-        timeout: 12_000,
-      },
-    );
+    ).then((stop) => {
+      if (isActive) stopWatching = stop;
+      else stop();
+    });
 
-    return () => navigator.geolocation.clearWatch(watchId);
+    return () => {
+      isActive = false;
+      stopWatching?.();
+    };
   }, [activeTab, locationRequestKey]);
 
   useEffect(() => {
@@ -571,31 +633,141 @@ export default function CommuterDashboard() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const resumePendingTopUp = () => {
-    if (!pendingTopUp) return;
+  const refreshWalletBalance = useCallback(async (showLoading = true) => {
+    if (!user?.token) return;
+    if (showLoading) setIsWalletRefreshing(true);
 
     try {
-      const checkoutUrl = new URL(pendingTopUp.checkoutUrl);
-      if (checkoutUrl.protocol !== 'https:') throw new Error('The stored checkout URL is not secure.');
-      window.location.assign(checkoutUrl.toString());
-    } catch {
-      try {
-        sessionStorage.removeItem(PENDING_WALLET_TOP_UP_KEY);
-      } catch {
-        // Continue clearing the in-memory pending state.
+      const wallet = await getWalletSummary(user.token);
+      setWalletBalance(wallet.balance);
+      setWalletLoadError(null);
+    } catch (error) {
+      setWalletLoadError(error instanceof Error ? error.message : 'Unable to load your wallet balance.');
+    } finally {
+      if (showLoading) setIsWalletRefreshing(false);
+    }
+  }, [user?.token]);
+
+  const reconcilePendingTopUp = useCallback(async (
+    payment: PendingWalletTopUp,
+    options: { openWhenAvailable?: boolean; silent?: boolean } = {},
+  ): Promise<WalletTopUpState | 'error'> => {
+    if (!user?.token || walletReconciliationRef.current) return 'error';
+    walletReconciliationRef.current = true;
+    if (!options.silent) setIsWalletRefreshing(true);
+
+    try {
+      const status: WalletTopUpStatus = await getWalletTopUpStatus(user.token, payment.sessionId);
+      setWalletBalance(status.walletBalance);
+      setWalletLoadError(null);
+
+      const reconciledPayment: PendingWalletTopUp = {
+        ...payment,
+        paymentId: status.paymentId,
+        sessionId: status.sessionId,
+        amount: status.amount > 0 ? status.amount : payment.amount,
+        checkoutUrl: status.checkoutUrl || payment.checkoutUrl,
+        stage: status.state === 'open' ? 'checkout' : 'confirming',
+      };
+
+      if (status.state === 'completed' && status.isCredited) {
+        clearPendingWalletTopUp(user.userId);
+        setPendingTopUp(null);
+        setWalletTopUpFeedback({
+          tone: 'success',
+          title: 'Top-up completed',
+          message: `${status.currency} ${status.amount.toFixed(2)} has been credited to your wallet.`,
+          payment: reconciledPayment,
+        });
+        return status.state;
       }
+
+      if (status.state === 'processing') {
+        // A completed Stripe session cannot be reopened. Keep its receipt in the
+        // verification card, but do not let that terminal link block a new top-up.
+        clearPendingWalletTopUp(user.userId);
+        setPendingTopUp(null);
+        setWalletTopUpFeedback({
+          tone: 'processing',
+          title: 'Confirming your payment',
+          message: 'Stripe received the payment. ParkJom is waiting for the verified webhook before showing it in your balance; this completed checkout will not block another top-up.',
+          payment: reconciledPayment,
+        });
+        return status.state;
+      }
+
+      if (status.state === 'open' && status.canContinue && status.checkoutUrl) {
+        const checkoutUrl = new URL(status.checkoutUrl);
+        if (checkoutUrl.protocol !== 'https:') throw new Error('The checkout URL was not secure.');
+
+        reconciledPayment.checkoutUrl = checkoutUrl.toString();
+        savePendingWalletTopUp(reconciledPayment);
+        setPendingTopUp(reconciledPayment);
+
+        if (options.openWhenAvailable) {
+          await openExternalUrl(checkoutUrl.toString());
+          setWalletTopUpFeedback({
+            tone: 'info',
+            title: 'Checkout reopened',
+            message: 'This Stripe session is still active. Complete it there, then ParkJom will verify the payment automatically.',
+            payment: reconciledPayment,
+          });
+        }
+        return status.state;
+      }
+
+      clearPendingWalletTopUp(user.userId);
       setPendingTopUp(null);
       setWalletTopUpFeedback({
         tone: 'warning',
-        title: 'Checkout session unavailable',
-        message: 'The previous checkout link could not be reopened. You can start a new top-up.',
+        title: status.state === 'expired'
+          ? 'Checkout expired'
+          : status.state === 'cancelled'
+            ? 'Top-up cancelled'
+            : status.state === 'failed'
+              ? 'Top-up failed'
+              : 'Checkout cannot continue',
+        message: status.message || 'The saved Stripe session can no longer be used. Start a new top-up to continue.',
+        payment: reconciledPayment,
+        action: 'new-topup',
       });
+      return status.state;
+    } catch (error) {
+      if (!options.silent) {
+        setWalletTopUpFeedback({
+          tone: 'warning',
+          title: 'Could not check this checkout',
+          message: `${error instanceof Error ? error.message : 'The checkout status is temporarily unavailable.'} You can retry, or remove only this saved link to start again. Removing it does not cancel or reverse a Stripe payment.`,
+          payment,
+          action: 'retry-status',
+          allowNewTopUp: true,
+        });
+      }
+      return 'error';
+    } finally {
+      walletReconciliationRef.current = false;
+      if (!options.silent) setIsWalletRefreshing(false);
     }
+  }, [user?.token, user?.userId]);
+
+  const startNewTopUp = () => {
+    clearPendingWalletTopUp(user?.userId);
+    setPendingTopUp(null);
+    setWalletTopUpFeedback(null);
+    setTopUpAmount('');
+    setTopUpDescription('');
+    setTopUpError(null);
+    setShowTopUpModal(true);
+  };
+
+  const resumePendingTopUp = async () => {
+    if (!pendingTopUp) return;
+    await reconcilePendingTopUp(pendingTopUp, { openWhenAvailable: true });
   };
 
   const openTopUpModal = () => {
     if (pendingTopUp) {
-      resumePendingTopUp();
+      void resumePendingTopUp();
       return;
     }
     setTopUpError(null);
@@ -603,10 +775,50 @@ export default function CommuterDashboard() {
     setShowTopUpModal(true);
   };
 
+  useEffect(() => {
+    if (activeTab !== 'wallet' || !user?.token) return;
+
+    void refreshWalletBalance();
+    const storedPayment = loadPendingWalletTopUp(user.userId);
+    if (storedPayment) void reconcilePendingTopUp(storedPayment);
+  }, [activeTab, reconcilePendingTopUp, refreshWalletBalance, user?.token, user?.userId]);
+
+  useEffect(() => {
+    const processingPayment = walletTopUpFeedback?.tone === 'processing'
+      ? walletTopUpFeedback.payment
+      : null;
+    if (activeTab !== 'wallet' || !processingPayment) return;
+
+    const payment = processingPayment;
+    let disposed = false;
+    let attempts = 0;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      attempts += 1;
+      const state = await reconcilePendingTopUp(payment, { silent: true });
+      if (!disposed && state === 'processing' && attempts < 6) {
+        timer = window.setTimeout(poll, 3000);
+      }
+    };
+
+    timer = window.setTimeout(poll, 2500);
+    return () => {
+      disposed = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [
+    activeTab,
+    reconcilePendingTopUp,
+    walletTopUpFeedback?.payment?.sessionId,
+    walletTopUpFeedback?.tone,
+  ]);
+
   // Create the authenticated Stripe Checkout session. The wallet balance is
   // updated only after the backend confirms payment, never optimistically here.
   const handleTopUp = async (event: FormEvent) => {
     event.preventDefault();
+    if (isTopUpLoading) return;
     const amount = Number(topUpAmount);
     const description = topUpDescription.trim();
 
@@ -627,20 +839,18 @@ export default function CommuterDashboard() {
     setTopUpError(null);
 
     try {
-      const response = await createWalletTopUp(user.token, Number(amount.toFixed(2)), description);
-      const data = await response.json().catch(() => null) as WalletTopUpResponse | null;
-
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.message || `Unable to create a wallet top-up session (${response.status}).`);
-      }
-      if (!data.paymentId || !data.sessionId || !data.checkoutUrl) {
-        throw new Error('The top-up response was missing its payment or checkout details.');
-      }
+      const data = await createWalletTopUp(
+        user.token,
+        Number(amount.toFixed(2)),
+        description,
+        isNativeApp ? 'native' : 'web',
+      );
 
       const checkoutUrl = new URL(data.checkoutUrl);
       if (checkoutUrl.protocol !== 'https:') throw new Error('The payment checkout URL was not secure.');
 
       const pendingPayment: PendingWalletTopUp = {
+        userId: user.userId,
         paymentId: data.paymentId,
         sessionId: data.sessionId,
         checkoutUrl: checkoutUrl.toString(),
@@ -648,14 +858,19 @@ export default function CommuterDashboard() {
         description: description || 'Wallet top-up',
         message: data.message,
         createdAt: new Date().toISOString(),
+        stage: 'checkout',
       };
       setPendingTopUp(pendingPayment);
-      try {
-        sessionStorage.setItem(PENDING_WALLET_TOP_UP_KEY, JSON.stringify(pendingPayment));
-      } catch {
-        // Checkout must still proceed when browser storage is unavailable.
-      }
-      window.location.assign(checkoutUrl.toString());
+      savePendingWalletTopUp(pendingPayment);
+      await openExternalUrl(checkoutUrl.toString());
+      setShowTopUpModal(false);
+      setIsTopUpLoading(false);
+      setWalletTopUpFeedback({
+        tone: 'info',
+        title: 'Checkout opened',
+        message: 'Complete the secure Stripe checkout. If you close it, you can continue this pending payment from your wallet.',
+        payment: pendingPayment,
+      });
     } catch (error) {
       setTopUpError(error instanceof Error ? error.message : 'Unable to start wallet checkout.');
       setIsTopUpLoading(false);
@@ -692,6 +907,11 @@ export default function CommuterDashboard() {
   // Booking action
   const handleBookSpot = (spot: ParkingSpot) => {
     const activeVeh = vehicles.find(v => v.active)?.plate || 'VGV 8899';
+    if (walletBalance === null) {
+      alert('Your wallet balance is not available yet. Open Wallet to review or top up your account.');
+      setActiveTab('wallet');
+      return;
+    }
     if (walletBalance < spot.pricePerHour * 2) {
       alert('Insufficient wallet balance. Please top up your wallet (minimum RM 10.00 required for reserve hold).');
       openTopUpModal();
@@ -700,7 +920,7 @@ export default function CommuterDashboard() {
 
     // Deduct 2 hours advance deposit
     const cost = spot.pricePerHour * 2;
-    setWalletBalance(prev => prev - cost);
+    setWalletBalance(prev => prev === null ? null : prev - cost);
 
     const booking: Booking = {
       id: 'BK-' + Math.floor(1000 + Math.random() * 9000),
@@ -906,6 +1126,7 @@ export default function CommuterDashboard() {
   const unreadCount = notifications.filter(n => !n.read).length;
   const commuterViewMeta = {
     home: { title: 'Parking near you', description: 'Compare verified bays around your route and choose with confidence.' },
+    map: { title: 'Transit map', description: 'Choose a rail station and compare nearby verified parking bays.' },
     active: { title: 'My parking pass', description: 'Everything you need to arrive, unlock, park, and leave.' },
     wallet: { title: 'Wallet', description: 'Top up securely and keep track of every parking payment.' },
     profile: { title: 'Vehicles', description: 'Choose the vehicle attached to your next parking session.' },
@@ -935,44 +1156,18 @@ export default function CommuterDashboard() {
         onSignOut={() => { logout(); navigate('/'); }}
         onBrandClick={handleCommuterBrandClick}
         actions={notificationActions}
-        navigation={activeTab === 'map' ? (
-          <>
-            {[
-              { id: 'map' as const, label: 'Find a Bay' },
-              { id: 'home' as const, label: 'Browse' },
-              { id: 'active' as const, label: 'My Pass' },
-              { id: 'wallet' as const, label: 'Wallet' },
-              { id: 'profile' as const, label: 'Vehicles' },
-            ].map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveTab(item.id)}
-                aria-current={activeTab === item.id ? 'page' : undefined}
-                className={`commuter-primary-nav__item px-3 py-2 rounded-lg text-[12px] font-medium transition-colors ${
-                  activeTab === item.id ? 'text-[#007AFF] bg-[#e8f0fe]' : 'text-[#6e6e73] hover:text-[#1d1d1f]'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </>
-        ) : undefined}
       />
 
       {/* ─── Main Layout ─── */}
-      <div className={activeTab === 'map'
-        ? 'flex-1 w-full min-h-0'
-        : 'commuter-content-grid flex-1 max-w-[1400px] w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 grid grid-cols-1 lg:grid-cols-12 gap-6'}>
+      <div className="commuter-content-grid flex-1 max-w-[1400px] w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
         {/* Desktop Sidebar */}
-        {activeTab !== 'map' && (
         <aside className="commuter-rail hidden lg:flex lg:col-span-3 flex-col gap-4 h-fit sticky top-[calc(3.5rem+1rem)]">
           {/* Quick actions: wallet + notifications */}
           <div className="flex items-center gap-2">
             <button onClick={() => setActiveTab('wallet')}
               className="flex-1 flex items-center justify-center gap-1.5 bg-white hover:bg-[#f8f9fa] px-3 py-2.5 rounded-xl border border-[#e8eaed] text-[12px] font-semibold text-[#333] transition">
-              <Wallet size={14} className="text-[#007AFF]" /> RM {walletBalance.toFixed(2)}
+              <Wallet size={14} className="text-[#007AFF]" /> {walletBalance === null ? 'Wallet' : `RM ${walletBalance.toFixed(2)}`}
             </button>
             <button onClick={() => setShowNotificationsDrawer(!showNotificationsDrawer)}
               className="relative p-2.5 bg-white hover:bg-[#f8f9fa] rounded-xl border border-[#e8eaed] text-[#5f6368] transition">
@@ -994,9 +1189,9 @@ export default function CommuterDashboard() {
             {/* Nav */}
             <nav className="flex flex-col gap-0.5">
               {[
-                { id: 'home' as const, icon: Compass, label: 'Discover' },
+                { id: 'home' as const, icon: Compass, label: 'Browse' },
                 { id: 'map' as const, icon: Map, label: 'Transit Map' },
-                { id: 'active' as const, icon: Unlock, label: 'Active Session', dot: !!activeBooking },
+                { id: 'active' as const, icon: Unlock, label: 'My Pass', dot: !!activeBooking },
                 { id: 'wallet' as const, icon: Wallet, label: 'Wallet' },
                 { id: 'profile' as const, icon: Car, label: 'Vehicles' },
               ].map(({ id, icon: Icon, label, dot }) => (
@@ -1017,18 +1212,15 @@ export default function CommuterDashboard() {
             <p className="text-[12px] text-[#5f6368] leading-relaxed">Optimizing vacant parking near transit — reducing emissions and congestion in Greater KL.</p>
           </div>
         </aside>
-        )}
 
         {/* Main Content */}
-        <main className={activeTab === 'map' ? 'min-h-0' : 'lg:col-span-9 min-h-0'}>
-          {activeTab !== 'map' && (
-            <div className="workspace-heading workspace-heading--compact">
-              <div>
-                <h1>{commuterViewMeta[activeTab].title}</h1>
-                <p>{commuterViewMeta[activeTab].description}</p>
-              </div>
+        <main className="lg:col-span-9 min-h-0">
+          <div className="workspace-heading workspace-heading--compact">
+            <div>
+              <h1>{commuterViewMeta[activeTab].title}</h1>
+              <p>{commuterViewMeta[activeTab].description}</p>
             </div>
-          )}
+          </div>
           <PageTransition transitionKey={activeTab}>
 
           {/* Active booking banner */}
@@ -1216,72 +1408,73 @@ export default function CommuterDashboard() {
                   spots={lensSpots}
                   onStationSelect={handleMapStationSelect}
                   selectedStation={selectedStation}
+                  selectedStationCoords={selectedStationCoords}
                   selectedSpot={lensSelectedSpot}
                   onSpotClick={(spot) => setSelectedSpot(spot)}
                   distanceRadius={distanceFilter}
                   onDistanceRadiusChange={setDistanceFilter}
-                  isNearbyLoading={isNearbyLoading}
-                  nearbyError={nearbyError}
                 />
               </div>
 
-              <aside className="map-lens__results nearby-sheet" aria-label="Nearby parking bays">
-                <div className="nearby-sheet__header">
-                  <h2>Nearby bays</h2>
-                  <span>
-                    {selectedStation
-                      ? `${mapNearbySpots.length} available · ${selectedStation.replace(' LRT', '').replace(' MRT', '')}`
-                      : `${locationSuggestedSpots.length} available near you · Select a station`}
-                  </span>
-                </div>
-                <div className="nearby-sheet__list">
-                  {isNearbyLoading ? (
-                    <div className="nearby-sheet__state">
-                      <Loader2 size={20} className="animate-spin" />
-                      <p>Finding parking within {distanceFilter}m…</p>
-                    </div>
-                  ) : nearbyError ? (
-                    <div className="nearby-sheet__state" role="alert">
-                      <AlertCircle size={20} />
-                      <p>{nearbyError} Select another station or try again.</p>
-                    </div>
-                  ) : lensSpots.length === 0 ? (
-                    <div className="nearby-sheet__state">
-                      <MapPin size={20} />
-                      <p>{selectedStation ? `No available bays within ${distanceFilter}m.` : 'Choose an LRT or MRT station on the map to see nearby parking.'}</p>
-                    </div>
-                  ) : (
-                    lensSpots.map((spot) => (
-                      <button
-                        key={spot.id}
-                        type="button"
-                        onClick={() => setSelectedSpot(spot)}
-                        className={`nearby-bay ${lensSelectedSpot?.id === spot.id ? 'is-selected' : ''}`}
-                      >
-                        <span className="nearby-bay__mark">P</span>
-                        <div className="nearby-bay__content min-w-0">
-                          <strong>{spot.name}</strong>
-                          <span>Bay {spot.parkingLabel} · {spot.distanceToStation.toFixed(2)} km · {spot.timeToStationInMinutes} min</span>
-                        </div>
-                        <span className="nearby-bay__rate">{formatParkingRate(spot)}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </aside>
+              <div className="map-lens__rail">
+                <aside className="map-lens__results nearby-sheet" aria-label="Nearby parking bays">
+                  <div className="nearby-sheet__header">
+                    <h2>Nearby bays</h2>
+                    <span>
+                      {selectedStation
+                        ? `${mapNearbySpots.length} available · ${selectedStation.replace(' LRT', '').replace(' MRT', '')}`
+                        : `${locationSuggestedSpots.length} available near you · Select a station`}
+                    </span>
+                  </div>
+                  <div className="nearby-sheet__list">
+                    {isNearbyLoading ? (
+                      <div className="nearby-sheet__state">
+                        <Loader2 size={20} className="animate-spin" />
+                        <p>Finding parking within {distanceFilter}m…</p>
+                      </div>
+                    ) : nearbyError ? (
+                      <div className="nearby-sheet__state" role="alert">
+                        <AlertCircle size={20} />
+                        <p>{nearbyError} Select another station or try again.</p>
+                      </div>
+                    ) : lensSpots.length === 0 ? (
+                      <div className="nearby-sheet__state">
+                        <MapPin size={20} />
+                        <p>{selectedStation ? `No available bays within ${distanceFilter}m.` : 'Choose an LRT or MRT station on the map to see nearby parking.'}</p>
+                      </div>
+                    ) : (
+                      lensSpots.map((spot) => (
+                        <button
+                          key={spot.id}
+                          type="button"
+                          onClick={() => setSelectedSpot(spot)}
+                          className={`nearby-bay ${lensSelectedSpot?.id === spot.id ? 'is-selected' : ''}`}
+                        >
+                          <span className="nearby-bay__mark">P</span>
+                          <div className="nearby-bay__content min-w-0">
+                            <strong>{spot.name}</strong>
+                            <span>Bay {spot.parkingLabel} · {spot.distanceToStation.toFixed(2)} km · {spot.timeToStationInMinutes} min</span>
+                          </div>
+                          <span className="nearby-bay__rate">{formatParkingRate(spot)}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </aside>
 
-              <div className="map-lens__pass">
-                <ParkingPass
-                  spot={lensSelectedSpot}
-                  vehiclePlate={vehicles.find((vehicle) => vehicle.active)?.plate}
-                  onReserve={lensSelectedSpot ? () => openParkingDetail(lensSelectedSpot) : undefined}
-                  compact
-                  stationName={selectedStation}
-                  isNearbyLoading={isNearbyLoading}
-                />
+                <div className="map-lens__pass">
+                  <ParkingPass
+                    spot={lensSelectedSpot}
+                    vehiclePlate={vehicles.find((vehicle) => vehicle.active)?.plate}
+                    onReserve={lensSelectedSpot ? () => openParkingDetail(lensSelectedSpot) : undefined}
+                    compact
+                    stationName={selectedStation}
+                    isNearbyLoading={isNearbyLoading}
+                  />
+                </div>
               </div>
 
-              <JourneyStrip activeStep={journeyStep} />
+              {activeBooking && <JourneyStrip activeStep={journeyStep} />}
             </div>
           )}
 
@@ -1387,49 +1580,181 @@ export default function CommuterDashboard() {
           {activeTab === 'wallet' && (
             <div className="space-y-4">
               {walletTopUpFeedback && (
-                <div
+                <section
                   role="status"
-                  className={`flex items-start gap-3 rounded-2xl border p-4 ${
-                    walletTopUpFeedback.tone === 'success'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                      : walletTopUpFeedback.tone === 'warning'
-                        ? 'border-amber-200 bg-amber-50 text-amber-800'
-                        : 'border-blue-200 bg-blue-50 text-blue-800'
-                  }`}
+                  aria-live="polite"
+                  className={`wallet-topup-result wallet-topup-result--${walletTopUpFeedback.tone}`}
                 >
-                  {walletTopUpFeedback.tone === 'success'
-                    ? <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
-                    : <Info size={18} className="mt-0.5 shrink-0" />}
-                  <div>
-                    <p className="text-[12px] font-semibold">{walletTopUpFeedback.title}</p>
-                    <p className="mt-1 text-[11px] leading-relaxed">{walletTopUpFeedback.message}</p>
+                  <div className="wallet-topup-result__icon" aria-hidden="true">
+                    {walletTopUpFeedback.tone === 'success'
+                      ? <CheckCircle2 size={28} />
+                      : walletTopUpFeedback.tone === 'processing'
+                        ? <Loader2 size={28} className="animate-spin" />
+                      : walletTopUpFeedback.tone === 'warning'
+                        ? <AlertCircle size={28} />
+                        : <Info size={28} />}
                   </div>
-                </div>
+                  <div className="wallet-topup-result__content">
+                    <p className="wallet-topup-result__eyebrow">
+                      {walletTopUpFeedback.tone === 'success'
+                        ? 'Payment confirmed'
+                        : walletTopUpFeedback.tone === 'processing'
+                          ? 'Secure payment verification'
+                          : 'Wallet update'}
+                    </p>
+                    <h2>{walletTopUpFeedback.title}</h2>
+                    <p>{walletTopUpFeedback.message}</p>
+
+                    {walletTopUpFeedback.payment && (
+                      <dl className="wallet-topup-result__receipt">
+                        <div>
+                          <dt>Amount</dt>
+                          <dd>RM {walletTopUpFeedback.payment.amount.toFixed(2)}</dd>
+                        </div>
+                        <div>
+                          <dt>Payment reference</dt>
+                          <dd>#{walletTopUpFeedback.payment.paymentId}</dd>
+                        </div>
+                        <div>
+                          <dt>Status</dt>
+                          <dd>
+                            {walletTopUpFeedback.tone === 'success'
+                              ? 'Credited'
+                              : walletTopUpFeedback.tone === 'processing'
+                                ? 'Confirming'
+                                : walletTopUpFeedback.title.replace('Top-up ', '')}
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
+
+                    {walletTopUpFeedback.tone === 'processing' && (
+                      <ol className="wallet-topup-result__steps" aria-label="Wallet top-up progress">
+                        <li className="is-complete"><Check size={14} /> Stripe checkout completed</li>
+                        <li className="is-current"><Loader2 size={14} className="animate-spin" /> Confirming wallet credit</li>
+                      </ol>
+                    )}
+
+                    <div className="wallet-topup-result__actions">
+                      <button type="button" onClick={() => setWalletTopUpFeedback(null)}>Done</button>
+                      {walletTopUpFeedback.tone === 'processing' && (
+                        <button
+                          type="button"
+                          className="is-primary"
+                          disabled={isWalletRefreshing || !walletTopUpFeedback.payment}
+                          onClick={() => walletTopUpFeedback.payment
+                            && void reconcilePendingTopUp(walletTopUpFeedback.payment)}
+                        >
+                          {isWalletRefreshing ? <Loader2 size={15} className="animate-spin" /> : <ArrowUpRight size={15} />}
+                          {isWalletRefreshing ? 'Checking' : 'Check status'}
+                        </button>
+                      )}
+                      {walletTopUpFeedback.action === 'new-topup' && (
+                        <button type="button" className="is-primary" onClick={startNewTopUp}>
+                          Start new top-up <ArrowUpRight size={15} />
+                        </button>
+                      )}
+                      {walletTopUpFeedback.action === 'retry-status' && walletTopUpFeedback.payment && (
+                        <button
+                          type="button"
+                          className="is-primary"
+                          disabled={isWalletRefreshing}
+                          onClick={() => void reconcilePendingTopUp(walletTopUpFeedback.payment!)}
+                        >
+                          {isWalletRefreshing && <Loader2 size={15} className="animate-spin" />}
+                          Try checking again
+                        </button>
+                      )}
+                      {walletTopUpFeedback.allowNewTopUp && (
+                        <button type="button" onClick={startNewTopUp}>
+                          Remove saved link & start new
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </section>
               )}
-              <div className="bg-white rounded-2xl border border-[#e8eaed] p-6 text-center">
-                <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider">Available Balance</p>
-                <p className="text-[40px] font-bold text-[#111] tracking-[-0.02em] mt-1">RM {walletBalance.toFixed(2)}</p>
-                <button onClick={openTopUpModal}
-                  className="mt-4 px-6 py-2.5 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold hover:bg-[#0066d6] transition-colors">
-                  {pendingTopUp ? 'Continue Pending Checkout' : 'Top Up'}
+              <div className="wallet-balance-card bg-white rounded-2xl border border-[#e8eaed] p-6 text-center">
+                <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider">Current Balance</p>
+                <p className="text-[40px] font-bold text-[#111] tracking-[-0.02em] mt-1">
+                  {walletBalance === null ? 'RM —' : `RM ${walletBalance.toFixed(2)}`}
+                </p>
+                <p className="mx-auto mt-1 max-w-sm text-[11px] text-[#6e6e73]">
+                  {walletBalance === null
+                    ? walletLoadError || 'Loading your confirmed wallet balance…'
+                    : 'Only server-confirmed funds are included in this balance.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={openTopUpModal}
+                  disabled={isWalletRefreshing}
+                  className="mt-4 px-6 py-2.5 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold hover:bg-[#0066d6] transition-colors disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isWalletRefreshing
+                    ? 'Checking payment…'
+                    : pendingTopUp?.stage === 'checkout'
+                    ? 'Check & Continue Checkout'
+                    : pendingTopUp?.stage === 'confirming'
+                      ? 'Check Confirmation'
+                      : 'Top Up Wallet'}
                 </button>
+                {walletBalance === null && walletLoadError && !pendingTopUp && (
+                  <button
+                    type="button"
+                    className="mx-auto mt-2 block text-[11px] font-semibold text-[#007AFF] hover:underline"
+                    onClick={() => void refreshWalletBalance()}
+                  >
+                    Retry balance
+                  </button>
+                )}
                 {pendingTopUp && (
-                  <p className="mx-auto mt-3 max-w-sm text-[10px] leading-relaxed text-[#6e6e73]">
-                    RM {pendingTopUp.amount.toFixed(2)} is waiting in Stripe Checkout. It has not been added to your balance. Complete this checkout before starting another top-up.
-                  </p>
+                  <div className="mx-auto mt-3 max-w-sm text-center">
+                    <p className="text-[10px] leading-relaxed text-[#6e6e73]">
+                      {pendingTopUp.stage === 'checkout'
+                        ? `RM ${pendingTopUp.amount.toFixed(2)} is saved. ParkJom will verify it is still open before returning to Stripe.`
+                        : `RM ${pendingTopUp.amount.toFixed(2)} has returned from Stripe and is awaiting server confirmation.`}
+                    </p>
+                    <button
+                      type="button"
+                      className="mt-2 text-[10px] font-semibold text-[#007AFF] hover:underline"
+                      onClick={() => void reconcilePendingTopUp(pendingTopUp)}
+                    >
+                      Can’t continue? Check this payment
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="bg-white rounded-2xl border border-[#e8eaed] p-5">
-                <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider mb-3">Recent Transactions</h3>
-                {history.map((b) => (
-                  <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] last:border-0">
+                <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider mb-3">Top-up Activity</h3>
+                {(walletTopUpFeedback?.payment || pendingTopUp) ? (
+                  <div className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] p-3.5">
                     <div>
-                      <p className="text-[13px] font-medium text-[#111]">{b.spot.name}</p>
-                      <p className="text-[11px] text-[#9ca3af]">{b.spot.station} &middot; {b.status}</p>
+                      <p className="text-[13px] font-semibold text-[#111]">Wallet top-up</p>
+                      <p className="text-[11px] text-[#9ca3af]">
+                        Payment #{(walletTopUpFeedback?.payment || pendingTopUp)?.paymentId}
+                        {' · '}
+                        {walletTopUpFeedback?.tone === 'success'
+                          ? 'Credited'
+                          : walletTopUpFeedback?.title === 'Top-up cancelled'
+                          ? 'Cancelled'
+                          : walletTopUpFeedback?.title === 'Checkout expired'
+                            ? 'Expired'
+                          : (walletTopUpFeedback?.payment || pendingTopUp)?.stage === 'confirming'
+                            ? 'Confirmation pending'
+                            : 'Checkout incomplete'}
+                      </p>
                     </div>
-                    <span className="text-[13px] font-semibold text-[#16a34a]">+RM {b.totalPaid.toFixed(2)}</span>
+                    <span className="text-[13px] font-semibold text-[#007AFF]">
+                      RM {(walletTopUpFeedback?.payment || pendingTopUp)?.amount.toFixed(2)}
+                    </span>
                   </div>
-                ))}
+                ) : (
+                  <div className="flex min-h-24 flex-col items-center justify-center rounded-xl bg-[#f8f9fa] px-4 text-center">
+                    <Coins size={20} className="mb-2 text-[#9ca3af]" />
+                    <p className="text-[12px] font-medium text-[#5f6368]">No recent top-ups</p>
+                    <p className="mt-1 text-[11px] text-[#9ca3af]">Your next wallet top-up will appear here.</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1493,22 +1818,20 @@ export default function CommuterDashboard() {
         </main>
       </div>
 
-      {activeTab !== 'map' && (
-        <BottomNav
-          items={[
-            { id: 'map', icon: Map, label: 'Find' },
-            { id: 'home', icon: Compass, label: 'Browse' },
-            { id: 'active', icon: Unlock, label: 'Pass', dot: !!activeBooking },
-            { id: 'wallet', icon: Wallet, label: 'Wallet' },
-            { id: 'profile', icon: Car, label: 'Vehicles' },
-          ]}
-          activeId={activeTab}
-          onChange={(id) => {
-            setActiveTab(id as typeof activeTab);
-            setSelectedSpot(null);
-          }}
-        />
-      )}
+      <BottomNav
+        items={[
+          { id: 'map', icon: Map, label: 'Transit' },
+          { id: 'home', icon: Compass, label: 'Browse' },
+          { id: 'active', icon: Unlock, label: 'Pass', dot: !!activeBooking },
+          { id: 'wallet', icon: Wallet, label: 'Wallet' },
+          { id: 'profile', icon: Car, label: 'Vehicles' },
+        ]}
+        activeId={activeTab}
+        onChange={(id) => {
+          setActiveTab(id as typeof activeTab);
+          setSelectedSpot(null);
+        }}
+      />
 
       {/* ─── Notifications Drawer ─── */}
       <AnimatePresence>
@@ -1557,15 +1880,19 @@ export default function CommuterDashboard() {
 
       {/* ─── Top-Up Modal ─── */}
       {showTopUpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/20" onClick={() => !isTopUpLoading && setShowTopUpModal(false)} aria-hidden="true" />
-          <div ref={topUpDialogRef} role="dialog" aria-modal="true" aria-labelledby="top-up-title" tabIndex={-1} className="relative bg-white rounded-2xl border border-[#e8eaed] p-6 w-full max-w-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 id="top-up-title" className="text-[15px] font-bold text-[#111]">Top Up Wallet</h3>
+        <div className="wallet-topup-modal fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={() => !isTopUpLoading && setShowTopUpModal(false)} aria-hidden="true" />
+          <div ref={topUpDialogRef} role="dialog" aria-modal="true" aria-labelledby="top-up-title" tabIndex={-1} className="wallet-topup-dialog relative bg-white rounded-2xl border border-[#e8eaed] p-6 w-full max-w-md">
+            <div className="flex items-start gap-3 mb-5">
+              <span className="wallet-topup-dialog__mark" aria-hidden="true"><Wallet size={20} /></span>
+              <div className="min-w-0 flex-1">
+                <h3 id="top-up-title" className="text-[15px] font-bold text-[#111]">Top up wallet</h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#6e6e73]">Choose an amount, then complete payment on Stripe's secure checkout.</p>
+              </div>
               <button type="button" aria-label="Close wallet top up" disabled={isTopUpLoading} onClick={() => setShowTopUpModal(false)} className="p-1.5 rounded-lg hover:bg-[#f1f3f4] disabled:cursor-not-allowed disabled:opacity-40"><X size={18} /></button>
             </div>
             <form onSubmit={handleTopUp} className="space-y-4">
-              <div className="flex gap-2">
+              <div className="wallet-topup-presets grid grid-cols-4 gap-2" aria-label="Suggested top-up amounts">
                 {['20', '50', '100', '500'].map((amount) => (
                   <button
                     key={amount}
@@ -1575,7 +1902,7 @@ export default function CommuterDashboard() {
                       setTopUpAmount(amount);
                       setTopUpError(null);
                     }}
-                    className={`flex-1 py-2 rounded-xl text-[12px] font-semibold border transition disabled:cursor-not-allowed disabled:opacity-60 ${topUpAmount === amount ? 'bg-[#007AFF] text-white border-[#007AFF]' : 'bg-white text-[#5f6368] border-[#dadce0] hover:border-[#007AFF]'}`}
+                    className={`py-2 rounded-xl text-[12px] font-semibold border transition disabled:cursor-not-allowed disabled:opacity-60 ${topUpAmount === amount ? 'bg-[#007AFF] text-white border-[#007AFF]' : 'bg-white text-[#5f6368] border-[#dadce0] hover:border-[#007AFF]'}`}
                   >
                     RM {amount}
                   </button>

@@ -59,6 +59,47 @@ export interface WalletTopUpResponse {
   checkoutUrl: string;
 }
 
+export interface WalletSummary {
+  code: number;
+  success: boolean;
+  message: string;
+  walletId: number;
+  balance: number;
+  onHold: number;
+  currency: string;
+  status: string;
+  updatedAt: string;
+}
+
+export type WalletTopUpState =
+  | 'open'
+  | 'processing'
+  | 'completed'
+  | 'expired'
+  | 'cancelled'
+  | 'failed'
+  | 'unavailable';
+
+export interface WalletTopUpStatus {
+  code: number;
+  success: boolean;
+  message: string;
+  paymentId: number;
+  sessionId: string;
+  amount: number;
+  currency: string;
+  state: WalletTopUpState;
+  paymentStatus: string;
+  checkoutStatus: string;
+  stripePaymentStatus: string;
+  isCredited: boolean;
+  canContinue: boolean;
+  checkoutUrl: string | null;
+  expiresAt: string | null;
+  walletBalance: number;
+  walletUpdatedAt: string;
+}
+
 export interface Booking {
   id: string;
   spot: ParkingSpot;
