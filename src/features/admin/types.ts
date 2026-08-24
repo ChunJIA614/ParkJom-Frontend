@@ -45,7 +45,78 @@ export interface ParkingVerificationRequestsResponse {
   success: boolean;
   message: string;
   data: ParkingVerificationRequestDto[];
+  page?: number;
+  pageSize?: number;
+  totalCount?: number;
+  totalPages?: number;
+  hasNextPage?: boolean;
+  pagination?: {
+    page?: number;
+    currentPage?: number;
+    pageSize?: number;
+    totalCount?: number;
+    totalPages?: number;
+    hasNextPage?: boolean;
+  };
 }
+
+export interface VerificationRequestPaginationState {
+  source: 'server' | 'client';
+  page: number;
+  pageSize: number;
+  totalCount: number | null;
+  totalPages: number | null;
+  hasNextPage: boolean;
+}
+
+export interface AccessLogDto {
+  accessLogId: number;
+  bookingId: number | null;
+  userId: number | null;
+  ioTDeviceId: number | null;
+  actions: string;
+  accessedAt: string;
+  createdAt: string;
+  userEmail: string | null;
+  userName: string;
+}
+
+export interface AccessLogResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data: AccessLogDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  sort: string;
+  type: string | null;
+  search: string | null;
+}
+
+export interface AccessLogPaginationState {
+  source: 'server' | 'client';
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasNextPage: boolean;
+}
+
+export interface AdminVehicleDto {
+  vehicleId: number;
+  numberPlate: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleColor: string;
+  createdAt: string;
+  updatedAt: string;
+  ownerEmail: string | null;
+  ownerName: string | null;
+}
+
+export type VerificationRequestListStatus = 'pending' | 'completed';
 
 export interface ParkingVerificationRequestResponse {
   code: number;

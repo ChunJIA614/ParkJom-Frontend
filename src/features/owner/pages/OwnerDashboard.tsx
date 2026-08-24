@@ -3,7 +3,6 @@ import { LayoutDashboard, CalendarDays, PlusSquare, ClipboardList, Sliders } fro
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
-  configureParking,
   getMyParking,
   updateParkingAvailability,
   updateParkingPublication,
@@ -83,6 +82,8 @@ export default function OwnerDashboard() {
     localStorage.setItem('parkjom_owner_view', activeView);
   }, [activeView]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [configureParkingSpotId, setConfigureParkingSpotId] = useState<number | undefined>();
+  const [configureParkingSection, setConfigureParkingSection] = useState<'setup' | 'timetable'>('setup');
 
   useEffect(() => {
     if (!isSidebarOpen) return;
@@ -115,10 +116,7 @@ export default function OwnerDashboard() {
   // 4. Notifications — persisted to localStorage
   const [notifications, setNotifications] = useState<Notification[]>(loadNotifications);
 
-  // 5. Weekly calendar schedule blocks — TODO: fetch from backend
-  const [scheduleBlocks, setScheduleBlocks] = useState<{ id: string; dayOfWeek: number; startTime: string; endTime: string; rate: number }[]>([]);
-
-  // 6. Bank Beneficiary — TODO: fetch from backend
+  // 5. Bank Beneficiary — TODO: fetch from backend
   const [activeBank, setActiveBank] = useState({ name: '-', accNo: '-', holder: '-' });
 
   // ---- Fetch parking spots from backend ----
@@ -242,76 +240,6 @@ export default function OwnerDashboard() {
       type: 'payment'
     };
     setNotifications(prev => [newNotif, ...prev]);
-  };
-
-  // Add Availability slot
-  const handleAddScheduleSlot = (block: { dayOfWeek: number; startTime: string; endTime: string; rate: number }) => {
-    const newBlock = {
-      id: `sc-${Date.now()}`,
-      dayOfWeek: block.dayOfWeek,
-      startTime: block.startTime,
-      endTime: block.endTime,
-      rate: block.rate
-    };
-    setScheduleBlocks(prev => [...prev, newBlock]);
-  };
-
-  // Remove availability block
-  const handleRemoveScheduleSlot = (blockId: string) => {
-    setScheduleBlocks(prev => prev.filter(b => b.id !== blockId));
-  };
-
-  // Block All calendar slots (IoT lockout actuation!)
-  const handleBlockAllSchedule = () => {
-    setScheduleBlocks([]);
-  };
-
-  // Configure Parking — POST to backend API
-  const handleConfigParking = async (formData: FormData) => {
-    const token = user?.token ?? '';
-    if (!token) {
-      alert('Authentication required. Please log in again.');
-      return { success: false, message: 'No auth token' };
-    }
-
-    const parkingSpotId = Number(formData.get('parkingSpotId'));
-    const editableBay = bays.find((bay) => bay.parkingSpotId === parkingSpotId);
-    if (!Number.isInteger(parkingSpotId) || !editableBay) {
-      return { success: false, message: 'Select one of your parking spots before saving.' };
-    }
-    if (editableBay.isPublished) {
-      return { success: false, message: 'Unpublish this parking spot before changing its configuration.' };
-    }
-
-    try {
-      const res = await configureParking(token, formData);
-      const data = await res.json().catch(() => null) as {
-        code?: number;
-        success?: boolean;
-        message?: string;
-        parkingSpotId?: number;
-      } | null;
-
-      if (res.ok && data?.success === true) {
-        const newNotif: Notification = {
-          id: `n-${Date.now()}`,
-          title: 'Parking Configured',
-          message: data.message || `Parking spot #${data.parkingSpotId ?? formData.get('parkingSpotId')} configured successfully.`,
-          time: 'Just now',
-          unread: true,
-          type: 'system',
-        };
-        setNotifications(prev => [newNotif, ...prev]);
-        await fetchMyParking();
-        return { success: true, message: data.message, parkingSpotId: data.parkingSpotId };
-      } else {
-        alert(data?.message || 'Failed to configure parking. Please try again.');
-        return { success: false, message: data?.message || `Configuration failed (${res.status}).` };
-      }
-    } catch (err: unknown) {
-      alert('Network error. Please check your connection.');
-      return { success: false, message: err instanceof Error ? err.message : 'Network error' };
-    }
   };
 
   const handleUpdateParkingAvailability = async (
@@ -448,9 +376,15 @@ export default function OwnerDashboard() {
     setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
   };
 
+  const openParkingWorkspace = (parkingSpotId: number, section: 'setup' | 'timetable') => {
+    setConfigureParkingSpotId(parkingSpotId);
+    setConfigureParkingSection(section);
+    setActiveView('availability');
+  };
+
   const viewMeta: Record<string, { title: string; description: string }> = {
-    dashboard: { title: 'Overview', description: 'Today’s bays, bookings, and settlement status.' },
-    availability: { title: 'Configure parking', description: 'Add or update photos, pricing, and availability for any unpublished bay.' },
+    dashboard: { title: 'Parking status', description: 'See the current booking readiness and today’s status for every property parking spot.' },
+    availability: { title: 'Configure parking', description: 'Keep one-time parking details separate from the availability timetable you manage day to day.' },
     registration: { title: 'Register a property', description: 'Submit a bay for verification and configure it for bookings.' },
     tickets: { title: 'Support', description: 'Track booking, access, and settlement issues.' },
     settings: { title: 'Settings', description: 'Manage payout details and workspace preferences.' },
@@ -505,17 +439,16 @@ export default function OwnerDashboard() {
               onUpdatePublication={handleUpdateParkingPublication}
               activeBank={activeBank}
               onResolveDispute={handleResolveDispute}
+              onConfigureParking={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'setup')}
+              onOpenTimetable={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'timetable')}
             />
           )}
 
           {activeView === 'availability' && (
             <AvailabilityScheduler 
-              bays={bays.filter((bay) => !bay.isPublished)}
-              scheduleBlocks={scheduleBlocks}
-              onAddBlock={handleAddScheduleSlot}
-              onRemoveBlock={handleRemoveScheduleSlot}
-              onBlockAll={handleBlockAllSchedule}
-              onConfigParking={handleConfigParking}
+              bays={bays}
+              initialParkingSpotId={configureParkingSpotId}
+              initialSection={configureParkingSection}
             />
           )}
 

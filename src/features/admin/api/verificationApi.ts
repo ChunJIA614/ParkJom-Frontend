@@ -1,8 +1,23 @@
 import { apiRequest, authorizationHeaders } from '@/services/apiClient';
 import type { ParkingVerificationDecision } from '../types';
 
-export function listVerificationRequests(token: string): Promise<Response> {
-  return apiRequest('/parking/verification-requests', {
+export interface VerificationRequestListOptions {
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function listVerificationRequests(
+  token: string,
+  options: VerificationRequestListOptions = {},
+): Promise<Response> {
+  const params = new URLSearchParams();
+  if (options.status) params.set('status', options.status);
+  if (options.page && options.page > 0) params.set('page', String(Math.floor(options.page)));
+  if (options.pageSize && options.pageSize > 0) params.set('pageSize', String(Math.floor(options.pageSize)));
+
+  const query = params.toString();
+  return apiRequest(`/parking/verification-requests${query ? `?${query}` : ''}`, {
     method: 'GET',
     headers: authorizationHeaders(token, 'application/json'),
   });

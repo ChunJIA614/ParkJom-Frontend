@@ -33,7 +33,10 @@ import {
   Train,
   Home,
   Navigation,
-  Loader2
+  Loader2,
+  RefreshCw,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import {
   ParkingSpot,
@@ -60,8 +63,17 @@ import {
 import type { JourneyStage } from '../lib/journeySession';
 import { getNearbyParking, searchParking } from '../api/parkingApi';
 import { createWalletTopUp, getWalletSummary, getWalletTopUpStatus } from '../api/walletApi';
+import { addVehicle, deleteVehicle, getMyVehicles, modifyVehicle } from '../api/vehicleApi';
+import { getVehicleCatalog, type VehicleCatalogEntry } from '../api/vehicleCatalogApi';
+import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
+import VehicleBrandModelFields from '../components/VehicleBrandModelFields';
 import { isNativeApp, watchDeviceLocation } from '@/services/deviceCapabilities';
-import { openExternalUrl } from '@/services/externalNavigation';
+import {
+  closeExternalWindow,
+  isLocalWebHost,
+  openExternalUrl,
+  reserveExternalWindow,
+} from '@/services/externalNavigation';
 
 type ParkingResultDto = ParkingSearchResponse['data'][number];
 
@@ -185,6 +197,53 @@ const distanceFromUser = (origin: StationCoordinates, spot: ParkingSpot) =>
 const formatUserDistance = (distanceKm: number) =>
   distanceKm < 1 ? `${Math.max(1, Math.round(distanceKm * 1000))} m away` : `${distanceKm.toFixed(1)} km away`;
 
+const VEHICLE_CACHE_KEY = (userId: number) => `parkjom.vehicles.${userId}`;
+
+const loadCachedVehicles = (userId: number): Vehicle[] => {
+  try {
+    const rawVehicles = localStorage.getItem(VEHICLE_CACHE_KEY(userId));
+    if (!rawVehicles) return [];
+
+    const parsed = JSON.parse(rawVehicles) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    const vehicles = parsed.filter((value): value is Vehicle => {
+      if (!value || typeof value !== 'object') return false;
+      const vehicle = value as Partial<Vehicle>;
+      return typeof vehicle.vehicleId === 'number'
+        && Number.isFinite(vehicle.vehicleId)
+        && vehicle.vehicleId > 0
+        && typeof vehicle.plate === 'string'
+        && Boolean(vehicle.plate.trim())
+        && typeof vehicle.brand === 'string'
+        && typeof vehicle.model === 'string'
+        && typeof vehicle.color === 'string'
+        && typeof vehicle.active === 'boolean';
+    });
+    const activeIndex = vehicles.findIndex((vehicle) => vehicle.active);
+    const selectedIndex = activeIndex >= 0 ? activeIndex : vehicles.length > 0 ? 0 : -1;
+
+    return vehicles.map((vehicle, index) => ({
+      ...vehicle,
+      plate: vehicle.plate.trim().toUpperCase(),
+      brand: vehicle.brand.trim(),
+      model: vehicle.model.trim(),
+      color: vehicle.color.trim(),
+      active: index === selectedIndex,
+    }));
+  } catch {
+    return [];
+  }
+};
+
+const saveCachedVehicles = (userId: number, vehicles: Vehicle[]) => {
+  try {
+    localStorage.setItem(VEHICLE_CACHE_KEY(userId), JSON.stringify(vehicles));
+  } catch {
+    // Vehicle API actions still work when browser storage is unavailable.
+  }
+};
+
 export default function CommuterDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -256,13 +315,61 @@ export default function CommuterDashboard() {
   const [walletTopUpFeedback, setWalletTopUpFeedback] = useState<WalletTopUpFeedback | null>(null);
   const handledTopUpReturnRef = useRef<string | null>(null);
   const walletReconciliationRef = useRef(false);
+  const localCheckoutWindowRef = useRef<Window | null>(null);
 
-  // Vehicles state — TODO: fetch from backend
+  // The API is authoritative; the cache keeps the previous list visible while
+  // a fresh authenticated request is in flight.
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicleCacheUserId, setVehicleCacheUserId] = useState<number | null>(null);
+  const [isVehiclesLoading, setIsVehiclesLoading] = useState(false);
+  const [vehiclesLoadError, setVehiclesLoadError] = useState<string | null>(null);
+  const [vehicleCatalog, setVehicleCatalog] = useState<VehicleCatalogEntry[]>(VEHICLE_CATALOG_FALLBACK);
   const [showAddVehicle, setShowAddVehicle] = useState<boolean>(false);
   const [newPlate, setNewPlate] = useState<string>('');
+  const [newBrand, setNewBrand] = useState<string>('');
   const [newModel, setNewModel] = useState<string>('');
   const [newColor, setNewColor] = useState<string>('');
+  const [isVehicleSaving, setIsVehicleSaving] = useState(false);
+  const [vehicleEditDraft, setVehicleEditDraft] = useState<{
+    vehicleId: number;
+    numberPlate: string;
+    vehicleBrand: string;
+    vehicleModel: string;
+    vehicleColor: string;
+  } | null>(null);
+  const [isVehicleUpdating, setIsVehicleUpdating] = useState(false);
+  const [vehicleDeletingId, setVehicleDeletingId] = useState<number | null>(null);
+  const [vehicleFeedback, setVehicleFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+
+  const loadMyVehicles = useCallback(async (signal?: AbortSignal) => {
+    if (!user?.token) return;
+
+    setIsVehiclesLoading(true);
+    setVehiclesLoadError(null);
+    try {
+      const result = await getMyVehicles(user.token, signal);
+      if (signal?.aborted) return;
+
+      setVehicles((current) => {
+        const selectedVehicleId = current.find((vehicle) => vehicle.active)?.vehicleId;
+        const selectedVehicleExists = result.data.some((vehicle) => vehicle.vehicleId === selectedVehicleId);
+
+        return result.data.map((vehicle, index) => ({
+          vehicleId: vehicle.vehicleId,
+          plate: vehicle.numberPlate.trim().toUpperCase(),
+          brand: vehicle.vehicleBrand.trim(),
+          model: vehicle.vehicleModel.trim(),
+          color: vehicle.vehicleColor.trim(),
+          active: selectedVehicleExists ? vehicle.vehicleId === selectedVehicleId : index === 0,
+        }));
+      });
+    } catch (error) {
+      if (signal?.aborted) return;
+      setVehiclesLoadError(error instanceof Error ? error.message : 'Unable to load your vehicles.');
+    } finally {
+      if (!signal?.aborted) setIsVehiclesLoading(false);
+    }
+  }, [user?.token]);
 
   // Active Reservation / Session — TODO: fetch from backend
   const [activeBooking, setActiveBooking] = useState<Booking | null>(initialJourney?.booking ?? null);
@@ -285,6 +392,38 @@ export default function CommuterDashboard() {
   // Notifications — TODO: fetch from backend
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotificationsDrawer, setShowNotificationsDrawer] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!user?.userId || !user.token) {
+      setVehicles([]);
+      setVehicleCacheUserId(null);
+      setVehiclesLoadError(null);
+      return;
+    }
+
+    setVehicles(loadCachedVehicles(user.userId));
+    setVehicleCacheUserId(user.userId);
+    const controller = new AbortController();
+    void loadMyVehicles(controller.signal);
+    return () => controller.abort();
+  }, [loadMyVehicles, user?.token, user?.userId]);
+
+  useEffect(() => {
+    if (!user?.userId || vehicleCacheUserId !== user.userId) return;
+    saveCachedVehicles(user.userId, vehicles);
+  }, [vehicleCacheUserId, user?.userId, vehicles]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getVehicleCatalog(controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setVehicleCatalog(result.data);
+      })
+      .catch(() => {
+        // Keep the local catalog available when the optional endpoint is absent.
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     try {
@@ -650,10 +789,14 @@ export default function CommuterDashboard() {
 
   const reconcilePendingTopUp = useCallback(async (
     payment: PendingWalletTopUp,
-    options: { openWhenAvailable?: boolean; silent?: boolean } = {},
+    options: { openWhenAvailable?: boolean; silent?: boolean; checkoutWindow?: Window | null } = {},
   ): Promise<WalletTopUpState | 'error'> => {
-    if (!user?.token || walletReconciliationRef.current) return 'error';
+    if (!user?.token || walletReconciliationRef.current) {
+      closeExternalWindow(options.checkoutWindow);
+      return 'error';
+    }
     walletReconciliationRef.current = true;
+    let checkoutWindowTransferred = false;
     if (!options.silent) setIsWalletRefreshing(true);
 
     try {
@@ -679,6 +822,8 @@ export default function CommuterDashboard() {
           message: `${status.currency} ${status.amount.toFixed(2)} has been credited to your wallet.`,
           payment: reconciledPayment,
         });
+        closeExternalWindow(localCheckoutWindowRef.current);
+        localCheckoutWindowRef.current = null;
         return status.state;
       }
 
@@ -693,6 +838,8 @@ export default function CommuterDashboard() {
           message: 'Stripe received the payment. ParkJom is waiting for the verified webhook before showing it in your balance; this completed checkout will not block another top-up.',
           payment: reconciledPayment,
         });
+        closeExternalWindow(localCheckoutWindowRef.current);
+        localCheckoutWindowRef.current = null;
         return status.state;
       }
 
@@ -705,11 +852,14 @@ export default function CommuterDashboard() {
         setPendingTopUp(reconciledPayment);
 
         if (options.openWhenAvailable) {
-          await openExternalUrl(checkoutUrl.toString());
+          await openExternalUrl(checkoutUrl.toString(), options.checkoutWindow);
+          checkoutWindowTransferred = true;
           setWalletTopUpFeedback({
             tone: 'info',
             title: 'Checkout reopened',
-            message: 'This Stripe session is still active. Complete it there, then ParkJom will verify the payment automatically.',
+            message: isLocalWebHost()
+              ? 'Checkout reopened in a new tab. Return to this local tab when you are done so ParkJom can verify the payment.'
+              : 'This Stripe session is still active. Complete it there, then ParkJom will verify the payment automatically.',
             payment: reconciledPayment,
           });
         }
@@ -731,6 +881,8 @@ export default function CommuterDashboard() {
         payment: reconciledPayment,
         action: 'new-topup',
       });
+      closeExternalWindow(localCheckoutWindowRef.current);
+      localCheckoutWindowRef.current = null;
       return status.state;
     } catch (error) {
       if (!options.silent) {
@@ -745,6 +897,7 @@ export default function CommuterDashboard() {
       }
       return 'error';
     } finally {
+      if (!checkoutWindowTransferred) closeExternalWindow(options.checkoutWindow);
       walletReconciliationRef.current = false;
       if (!options.silent) setIsWalletRefreshing(false);
     }
@@ -762,7 +915,25 @@ export default function CommuterDashboard() {
 
   const resumePendingTopUp = async () => {
     if (!pendingTopUp) return;
-    await reconcilePendingTopUp(pendingTopUp, { openWhenAvailable: true });
+
+    const checkoutWindow = reserveExternalWindow();
+    localCheckoutWindowRef.current = checkoutWindow;
+    if (isLocalWebHost() && !checkoutWindow) {
+      setWalletTopUpFeedback({
+        tone: 'warning',
+        title: 'Checkout window blocked',
+        message: 'Allow pop-ups for localhost, then try continuing this checkout again.',
+        payment: pendingTopUp,
+        action: 'retry-status',
+      });
+      return;
+    }
+
+    const state = await reconcilePendingTopUp(pendingTopUp, {
+      openWhenAvailable: true,
+      checkoutWindow,
+    });
+    if (state !== 'open') localCheckoutWindowRef.current = null;
   };
 
   const openTopUpModal = () => {
@@ -782,6 +953,64 @@ export default function CommuterDashboard() {
     const storedPayment = loadPendingWalletTopUp(user.userId);
     if (storedPayment) void reconcilePendingTopUp(storedPayment);
   }, [activeTab, reconcilePendingTopUp, refreshWalletBalance, user?.token, user?.userId]);
+
+  // Stripe's web callback is configured for the deployed site. On localhost,
+  // re-check the pending session when the local app becomes visible again.
+  useEffect(() => {
+    if (!isLocalWebHost() || activeTab !== 'wallet' || !user?.token || !pendingTopUp) return;
+
+    const reconcileWhenVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      const storedPayment = loadPendingWalletTopUp(user.userId) || pendingTopUp;
+      void reconcilePendingTopUp(storedPayment, { silent: true });
+    };
+
+    window.addEventListener('focus', reconcileWhenVisible);
+    window.addEventListener('pageshow', reconcileWhenVisible);
+    document.addEventListener('visibilitychange', reconcileWhenVisible);
+
+    return () => {
+      window.removeEventListener('focus', reconcileWhenVisible);
+      window.removeEventListener('pageshow', reconcileWhenVisible);
+      document.removeEventListener('visibilitychange', reconcileWhenVisible);
+    };
+  }, [activeTab, pendingTopUp, reconcilePendingTopUp, user?.token, user?.userId]);
+
+  // Keep the localhost app authoritative while Stripe runs in its own window.
+  // Once the API reports a terminal state, close that window and show the result here.
+  useEffect(() => {
+    if (!isLocalWebHost() || activeTab !== 'wallet' || !user?.token || !pendingTopUp) return;
+
+    let disposed = false;
+    let timer: number | undefined;
+
+    const pollLocalCheckout = async () => {
+      const checkoutWindow = localCheckoutWindowRef.current;
+      if (!checkoutWindow || checkoutWindow.closed) {
+        localCheckoutWindowRef.current = null;
+        return;
+      }
+
+      const storedPayment = loadPendingWalletTopUp(user.userId) || pendingTopUp;
+      const state = await reconcilePendingTopUp(storedPayment, { silent: true });
+      if (disposed) return;
+
+      if (state !== 'open' && state !== 'error') {
+        closeExternalWindow(checkoutWindow);
+        localCheckoutWindowRef.current = null;
+        window.focus();
+        return;
+      }
+
+      timer = window.setTimeout(pollLocalCheckout, 5000);
+    };
+
+    timer = window.setTimeout(pollLocalCheckout, 2500);
+    return () => {
+      disposed = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [activeTab, pendingTopUp, reconcilePendingTopUp, user?.token, user?.userId]);
 
   useEffect(() => {
     const processingPayment = walletTopUpFeedback?.tone === 'processing'
@@ -837,6 +1066,13 @@ export default function CommuterDashboard() {
 
     setIsTopUpLoading(true);
     setTopUpError(null);
+    const checkoutWindow = reserveExternalWindow();
+    localCheckoutWindowRef.current = checkoutWindow;
+    if (isLocalWebHost() && !checkoutWindow) {
+      setTopUpError('Allow pop-ups for localhost to open secure checkout.');
+      setIsTopUpLoading(false);
+      return;
+    }
 
     try {
       const data = await createWalletTopUp(
@@ -862,37 +1098,180 @@ export default function CommuterDashboard() {
       };
       setPendingTopUp(pendingPayment);
       savePendingWalletTopUp(pendingPayment);
-      await openExternalUrl(checkoutUrl.toString());
+      await openExternalUrl(checkoutUrl.toString(), checkoutWindow);
       setShowTopUpModal(false);
       setIsTopUpLoading(false);
       setWalletTopUpFeedback({
         tone: 'info',
         title: 'Checkout opened',
-        message: 'Complete the secure Stripe checkout. If you close it, you can continue this pending payment from your wallet.',
+        message: isLocalWebHost()
+          ? 'Checkout opened in a new tab. Keep this local tab open and return here when you are done.'
+          : 'Complete the secure Stripe checkout. If you close it, you can continue this pending payment from your wallet.',
         payment: pendingPayment,
       });
     } catch (error) {
+      closeExternalWindow(checkoutWindow);
+      localCheckoutWindowRef.current = null;
       setTopUpError(error instanceof Error ? error.message : 'Unable to start wallet checkout.');
       setIsTopUpLoading(false);
     }
   };
 
-  // Add vehicle function
-  const handleAddVehicle = (e: React.FormEvent) => {
+  // Add a vehicle to the authenticated commuter account.
+  const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPlate.trim() && newModel.trim()) {
-      const updatedVehicles = vehicles.map(v => ({ ...v, active: false }));
-      const newVeh: Vehicle = {
-        plate: newPlate.toUpperCase(),
-        model: newModel,
-        color: newColor || 'Default',
-        active: true
+    setVehicleFeedback(null);
+
+    if (!user?.token) {
+      setVehicleFeedback({ tone: 'error', message: 'Your commuter session is missing an authorization token.' });
+      return;
+    }
+
+    const numberPlate = newPlate.trim().toUpperCase();
+    const vehicleBrand = newBrand.trim();
+    const vehicleModel = newModel.trim();
+    const vehicleColor = newColor.trim();
+
+    if (!numberPlate || !vehicleBrand || !vehicleModel || !vehicleColor) {
+      setVehicleFeedback({ tone: 'error', message: 'Number plate, brand, model, and color are required.' });
+      return;
+    }
+
+    setIsVehicleSaving(true);
+    try {
+      const result = await addVehicle(user.token, {
+        numberPlate,
+        vehicleBrand,
+        vehicleModel,
+        vehicleColor,
+      });
+      const createdVehicle = result.data;
+      const newVehicle: Vehicle = {
+        vehicleId: createdVehicle.vehicleId,
+        plate: createdVehicle.numberPlate,
+        brand: createdVehicle.vehicleBrand,
+        model: createdVehicle.vehicleModel,
+        color: createdVehicle.vehicleColor,
+        active: true,
       };
-      setVehicles([...updatedVehicles, newVeh]);
+      setVehicles((current) => [
+        ...current.map((vehicle) => ({ ...vehicle, active: false })),
+        newVehicle,
+      ]);
+      setVehiclesLoadError(null);
       setNewPlate('');
+      setNewBrand('');
       setNewModel('');
       setNewColor('');
       setShowAddVehicle(false);
+      setVehicleFeedback({ tone: 'success', message: result.message || 'Vehicle added successfully.' });
+    } catch (error) {
+      setVehicleFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to add this vehicle.',
+      });
+    } finally {
+      setIsVehicleSaving(false);
+    }
+  };
+
+  const handleDeleteVehicle = async (vehicle: Vehicle) => {
+    setVehicleFeedback(null);
+    if (!user?.token) {
+      setVehicleFeedback({ tone: 'error', message: 'Your commuter session is missing an authorization token.' });
+      return;
+    }
+    if (vehicle.vehicleId === null) {
+      setVehicleFeedback({ tone: 'error', message: 'This vehicle is missing its backend vehicle ID and cannot be deleted.' });
+      return;
+    }
+    if (!window.confirm(`Delete vehicle ${vehicle.plate}? This action cannot be undone.`)) return;
+
+    setVehicleDeletingId(vehicle.vehicleId);
+    try {
+      const result = await deleteVehicle(user.token, vehicle.vehicleId);
+      setVehicles((current) => {
+        const remaining = current.filter((item) => item.vehicleId !== vehicle.vehicleId);
+        if (!vehicle.active || remaining.some((item) => item.active) || remaining.length === 0) return remaining;
+        return remaining.map((item, index) => ({ ...item, active: index === 0 }));
+      });
+      setVehiclesLoadError(null);
+      if (vehicleEditDraft?.vehicleId === vehicle.vehicleId) setVehicleEditDraft(null);
+      setVehicleFeedback({ tone: 'success', message: result.message || 'Vehicle deleted successfully.' });
+    } catch (error) {
+      setVehicleFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to delete this vehicle.',
+      });
+    } finally {
+      setVehicleDeletingId(null);
+    }
+  };
+
+  const beginVehicleEdit = (vehicle: Vehicle) => {
+    if (vehicle.vehicleId === null) {
+      setVehicleFeedback({
+        tone: 'error',
+        message: 'This vehicle is missing its backend vehicle ID and cannot be edited yet.',
+      });
+      return;
+    }
+
+    setShowAddVehicle(false);
+    setVehicleFeedback(null);
+    setVehicleEditDraft({
+      vehicleId: vehicle.vehicleId,
+      numberPlate: vehicle.plate,
+      vehicleBrand: vehicle.brand,
+      vehicleModel: vehicle.model,
+      vehicleColor: vehicle.color,
+    });
+  };
+
+  const handleModifyVehicle = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setVehicleFeedback(null);
+
+    if (!user?.token) {
+      setVehicleFeedback({ tone: 'error', message: 'Your commuter session is missing an authorization token.' });
+      return;
+    }
+    if (!vehicleEditDraft) return;
+
+    const request = {
+      vehicleId: vehicleEditDraft.vehicleId,
+      numberPlate: vehicleEditDraft.numberPlate.trim().toUpperCase(),
+      vehicleBrand: vehicleEditDraft.vehicleBrand.trim(),
+      vehicleModel: vehicleEditDraft.vehicleModel.trim(),
+      vehicleColor: vehicleEditDraft.vehicleColor.trim(),
+    };
+    if (!request.numberPlate || !request.vehicleBrand || !request.vehicleModel || !request.vehicleColor) {
+      setVehicleFeedback({ tone: 'error', message: 'Number plate, brand, model, and color are required.' });
+      return;
+    }
+
+    setIsVehicleUpdating(true);
+    try {
+      const result = await modifyVehicle(user.token, request);
+      setVehicles((current) => current.map((vehicle) => vehicle.vehicleId === request.vehicleId
+        ? {
+            ...vehicle,
+            plate: result.data.numberPlate || request.numberPlate,
+            brand: result.data.vehicleBrand || request.vehicleBrand,
+            model: result.data.vehicleModel || request.vehicleModel,
+            color: result.data.vehicleColor || request.vehicleColor,
+          }
+        : vehicle));
+      setVehiclesLoadError(null);
+      setVehicleEditDraft(null);
+      setVehicleFeedback({ tone: 'success', message: result.message || 'Vehicle updated successfully.' });
+    } catch (error) {
+      setVehicleFeedback({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Unable to update this vehicle.',
+      });
+    } finally {
+      setIsVehicleUpdating(false);
     }
   };
 
@@ -1763,35 +2142,171 @@ export default function CommuterDashboard() {
           {activeTab === 'profile' && (
             <div className="space-y-4">
               <div className="bg-white rounded-2xl border border-[#e8eaed] p-5">
-                <div className="flex items-center justify-between mb-4">
+                <div className="mb-4 flex items-center justify-between gap-3">
                   <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Your Vehicles</h3>
-                  <button onClick={() => setShowAddVehicle(!showAddVehicle)}
-                    className="text-[12px] font-semibold text-[#007AFF] hover:underline flex items-center gap-1">
-                    <Plus size={14} /> Add
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void loadMyVehicles()}
+                      disabled={isVehiclesLoading}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#5f6368] transition-colors hover:bg-[#f1f3f4] hover:text-[#111] disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Refresh vehicles"
+                      title="Refresh vehicles"
+                    >
+                      <RefreshCw size={14} className={isVehiclesLoading ? 'animate-spin' : ''} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddVehicle((current) => !current);
+                        setVehicleEditDraft(null);
+                        setVehicleFeedback(null);
+                      }}
+                      className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-semibold text-[#007AFF] hover:bg-[#eff6ff]">
+                      <Plus size={14} /> Add
+                    </button>
+                  </div>
                 </div>
+                {vehiclesLoadError && (
+                  <div role="alert" className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] text-red-700">
+                    <span className="flex min-w-0 items-start gap-2">
+                      <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                      <span>{vehiclesLoadError}</span>
+                    </span>
+                    <button type="button" onClick={() => void loadMyVehicles()} disabled={isVehiclesLoading}
+                      className="shrink-0 font-semibold underline underline-offset-2 disabled:opacity-50">
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {vehicleFeedback && (
+                  <div
+                    role={vehicleFeedback.tone === 'error' ? 'alert' : 'status'}
+                    className={`mb-3 flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[12px] ${
+                      vehicleFeedback.tone === 'error'
+                        ? 'border-red-200 bg-red-50 text-red-700'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    }`}
+                  >
+                    {vehicleFeedback.tone === 'error'
+                      ? <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                      : <CheckCircle2 size={15} className="mt-0.5 shrink-0" />}
+                    <span>{vehicleFeedback.message}</span>
+                  </div>
+                )}
+                {isVehiclesLoading && vehicles.length === 0 && (
+                  <div className="flex min-h-24 items-center justify-center gap-2 text-[12px] text-[#5f6368]">
+                    <Loader2 size={16} className="animate-spin" /> Loading your vehicles
+                  </div>
+                )}
+                {!isVehiclesLoading && !vehiclesLoadError && vehicles.length === 0 && (
+                  <div className="flex min-h-24 flex-col items-center justify-center rounded-xl border border-dashed border-[#dadce0] px-4 text-center">
+                    <Car size={20} className="mb-2 text-[#9ca3af]" />
+                    <p className="text-[12px] font-medium text-[#5f6368]">No vehicles added yet</p>
+                    <p className="mt-1 text-[11px] text-[#9ca3af]">Add a vehicle to use it for your next parking session.</p>
+                  </div>
+                )}
                 {vehicles.map((v) => (
-                  <button key={v.plate} type="button" onClick={() => setActiveVehicle(v.plate)} aria-pressed={v.active}
-                    className={`w-full text-left flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${v.active ? 'bg-[#eff6ff] border border-[#bfdbfe]' : 'hover:bg-[#f8f9fa] border border-transparent'}`}>
-                    <Car size={18} className={v.active ? 'text-[#007AFF]' : 'text-[#9ca3af]'} />
-                    <div className="flex-1">
-                      <p className="text-[13px] font-semibold text-[#111]">{v.plate}</p>
-                      <p className="text-[11px] text-[#5f6368]">{v.model} &middot; {v.color}</p>
-                    </div>
-                    {v.active && <span className="text-[10px] font-semibold bg-[#007AFF] text-white px-2 py-0.5 rounded-full">Active</span>}
-                  </button>
+                  <div key={v.vehicleId ?? v.plate}
+                    className={`mb-1 flex items-center rounded-xl border transition-colors ${v.active ? 'border-[#bfdbfe] bg-[#eff6ff]' : 'border-transparent hover:bg-[#f8f9fa]'}`}>
+                    <button type="button" onClick={() => setActiveVehicle(v.plate)} aria-pressed={v.active}
+                      className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left">
+                      <Car size={18} className={v.active ? 'text-[#007AFF]' : 'text-[#9ca3af]'} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold text-[#111]">{v.plate}</p>
+                        <p className="truncate text-[11px] text-[#5f6368]">{v.brand} {v.model} &middot; {v.color}</p>
+                      </div>
+                      {v.active && <span className="text-[10px] font-semibold bg-[#007AFF] text-white px-2 py-0.5 rounded-full">Active</span>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => beginVehicleEdit(v)}
+                      disabled={isVehicleUpdating || vehicleDeletingId !== null}
+                      className="rounded-lg p-2 text-[#5f6368] transition-colors hover:bg-white hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Edit vehicle ${v.plate}`}
+                      title="Edit vehicle"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteVehicle(v)}
+                      disabled={isVehicleUpdating || vehicleDeletingId !== null}
+                      className="mr-2 rounded-lg p-2 text-[#5f6368] transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label={`Delete vehicle ${v.plate}`}
+                      title="Delete vehicle"
+                    >
+                      {vehicleDeletingId === v.vehicleId
+                        ? <Loader2 size={15} className="animate-spin" />
+                        : <Trash2 size={15} />}
+                    </button>
+                  </div>
                 ))}
+                {vehicleEditDraft && (
+                  <form onSubmit={handleModifyVehicle} className="mt-3 space-y-2 rounded-xl bg-[#f8f9fa] p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5f6368]">Edit vehicle</p>
+                      <button type="button" onClick={() => setVehicleEditDraft(null)} disabled={isVehicleUpdating}
+                        className="rounded-lg p-1 text-[#5f6368] hover:bg-white hover:text-[#111] disabled:opacity-50" aria-label="Cancel vehicle edit">
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Number plate</span>
+                      <input type="text" value={vehicleEditDraft.numberPlate}
+                        onChange={(event) => setVehicleEditDraft((current) => current ? { ...current, numberPlate: event.target.value } : current)}
+                        maxLength={20} required disabled={isVehicleUpdating}
+                        className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] uppercase focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
+                    </label>
+                    <VehicleBrandModelFields
+                      brand={vehicleEditDraft.vehicleBrand}
+                      model={vehicleEditDraft.vehicleModel}
+                      catalog={vehicleCatalog}
+                      disabled={isVehicleUpdating}
+                      onBrandChange={(value) => setVehicleEditDraft((current) => current ? { ...current, vehicleBrand: value } : current)}
+                      onModelChange={(value) => setVehicleEditDraft((current) => current ? { ...current, vehicleModel: value } : current)}
+                    />
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Color</span>
+                      <input type="text" value={vehicleEditDraft.vehicleColor}
+                        onChange={(event) => setVehicleEditDraft((current) => current ? { ...current, vehicleColor: event.target.value } : current)}
+                        maxLength={30} required disabled={isVehicleUpdating}
+                        className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
+                    </label>
+                    <button type="submit" disabled={isVehicleUpdating}
+                      className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60">
+                      {isVehicleUpdating && <Loader2 size={14} className="animate-spin" />}
+                      {isVehicleUpdating ? 'Updating Vehicle' : 'Update Vehicle'}
+                    </button>
+                  </form>
+                )}
                 {showAddVehicle && (
                   <form onSubmit={handleAddVehicle} className="mt-3 p-4 bg-[#f8f9fa] rounded-xl space-y-2">
-                    <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="Plate (e.g. VGV 8899)"
-                      className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF]" />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <input type="text" value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="Model"
-                        className="flex-1 px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF]" />
-                      <input type="text" value={newColor} onChange={(e) => setNewColor(e.target.value)} placeholder="Color"
-                        className="flex-1 px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF]" />
-                    </div>
-                    <button type="submit" className="w-full py-2 rounded-xl bg-[#007AFF] text-white text-[12px] font-semibold hover:bg-[#0066d6] transition-colors">Save Vehicle</button>
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Number plate</span>
+                      <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="WXY1234"
+                        maxLength={20} required disabled={isVehicleSaving}
+                        className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] uppercase focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
+                    </label>
+                    <VehicleBrandModelFields
+                      brand={newBrand}
+                      model={newModel}
+                      catalog={vehicleCatalog}
+                      disabled={isVehicleSaving}
+                      onBrandChange={setNewBrand}
+                      onModelChange={setNewModel}
+                    />
+                    <label className="block space-y-1">
+                      <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Color</span>
+                      <input type="text" value={newColor} onChange={(e) => setNewColor(e.target.value)} placeholder="Black"
+                        maxLength={30} required disabled={isVehicleSaving}
+                        className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
+                    </label>
+                    <button type="submit" disabled={isVehicleSaving}
+                      className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60">
+                      {isVehicleSaving && <Loader2 size={14} className="animate-spin" />}
+                      {isVehicleSaving ? 'Saving Vehicle' : 'Save Vehicle'}
+                    </button>
                   </form>
                 )}
               </div>

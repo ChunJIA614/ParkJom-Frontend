@@ -1,423 +1,304 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  FileText, Shield, Radio, Landmark, Search, Clock, 
-  Plus, Download, Filter, HelpCircle, Activity, 
-  ShieldCheck, Check, AlertCircle, AlertOctagon, User, ArrowRight
-} from 'lucide-react';
-
-interface ActivityLog {
-  id: string;
-  type: string;
-  message: string;
-  timestamp: string;
-  user: string;
-}
+import React, { useMemo, useState } from 'react';
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, RefreshCw, Search, ShieldAlert, User, XCircle } from 'lucide-react';
+import type { AccessLogDto, AccessLogPaginationState } from '../types';
 
 interface SystemAuditProps {
-  activityLogs: ActivityLog[];
-  addActivityLog: (type: string, message: string, user: string) => void;
+  accessLogs: AccessLogDto[];
+  isLoading: boolean;
+  error: string | null;
+  responseMessage: string;
+  totalCount: number;
+  searchQuery: string;
+  pagination: AccessLogPaginationState;
+  onSearchChange: (query: string) => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
+  onRefresh: () => void | Promise<void>;
 }
 
-type FilterType = 'all' | 'governance' | 'iot' | 'financial';
+type OutcomeFilter = 'all' | 'success' | 'failed';
 
-export default function SystemAudit({ activityLogs, addActivityLog }: SystemAuditProps) {
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // Custom manual entry state
-  const [newLogMessage, setNewLogMessage] = useState('');
-  const [newLogType, setNewLogType] = useState('governance');
-  const [newLogUser, setNewLogUser] = useState('Admin Operator');
-  
-  // Export button states
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportSuccess, setExportSuccess] = useState(false);
+const getOutcome = (actions: string): Exclude<OutcomeFilter, 'all'> =>
+  actions.toLowerCase().includes('[failed]') ? 'failed' : 'success';
 
-  // Helper mapping
-  const getCategory = (type: string): FilterType => {
-    const t = type.toLowerCase();
-    if (t === 'governance' || t === 'dispute') return 'governance';
-    if (t === 'bollard_state' || t === 'overstay' || t === 'iot') return 'iot';
-    return 'financial'; // 'system', 'financial'
+const formatAccessTime = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString([], {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+};
+
+const escapeCsvCell = (value: string | number | null) => {
+  const text = value === null ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+};
+
+export default function SystemAudit({
+  accessLogs,
+  isLoading,
+  error,
+  responseMessage,
+  totalCount,
+  searchQuery,
+  pagination,
+  onSearchChange,
+  onPageChange,
+  onPageSizeChange,
+  onRefresh,
+}: SystemAuditProps) {
+  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredLogs = useMemo(() => accessLogs.filter((log) => {
+    const matchesOutcome = outcomeFilter === 'all' || getOutcome(log.actions) === outcomeFilter;
+    const matchesSearch = !normalizedSearch || [
+      log.actions,
+      log.userName,
+      log.userEmail,
+      log.accessLogId,
+      log.userId,
+      log.bookingId,
+      log.ioTDeviceId,
+    ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
+    return matchesOutcome && matchesSearch;
+  }), [accessLogs, normalizedSearch, outcomeFilter]);
+  const visibleLogs = pagination.source === 'client'
+    ? filteredLogs.slice((pagination.page - 1) * pagination.pageSize, pagination.page * pagination.pageSize)
+    : filteredLogs;
+  const effectiveTotalCount = pagination.source === 'client' ? filteredLogs.length : totalCount;
+  const effectiveTotalPages = pagination.source === 'client'
+    ? Math.max(1, Math.ceil(filteredLogs.length / pagination.pageSize))
+    : pagination.totalPages;
+  const effectiveHasNextPage = pagination.page < effectiveTotalPages;
+
+  const successCount = accessLogs.filter((log) => getOutcome(log.actions) === 'success').length;
+  const failedCount = accessLogs.filter((log) => getOutcome(log.actions) === 'failed').length;
+  const systemCount = accessLogs.filter((log) => log.userId === null).length;
+
+  const exportLogs = () => {
+    const header = ['Access Log ID', 'Action', 'Outcome', 'Accessed At', 'User ID', 'User Name', 'User Email', 'Booking ID', 'IoT Device ID'];
+    const rows = visibleLogs.map((log) => [
+      log.accessLogId,
+      log.actions,
+      getOutcome(log.actions),
+      log.accessedAt,
+      log.userId,
+      log.userName,
+      log.userEmail,
+      log.bookingId,
+      log.ioTDeviceId,
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => escapeCsvCell(cell)).join(','))
+      .join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `parkjom-access-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
-  // Filter and search activity logs
-  const filteredLogs = activityLogs.filter(log => {
-    const category = getCategory(log.type);
-    const matchesFilter = activeFilter === 'all' || category === activeFilter;
-    const matchesSearch = log.message.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (log.user && log.user.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                          log.type.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
-
-  // Calculate statistics for the badges and summary cards
-  const totalCount = activityLogs.length;
-  const governanceCount = activityLogs.filter(log => getCategory(log.type) === 'governance').length;
-  const iotCount = activityLogs.filter(log => getCategory(log.type) === 'iot').length;
-  const financialCount = activityLogs.filter(log => getCategory(log.type) === 'financial').length;
-
-  const handleSimulateLog = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newLogMessage.trim()) return;
-    
-    // Call the parent state adder
-    addActivityLog(newLogType, newLogMessage, newLogUser);
-    setNewLogMessage('');
-  };
-
-  const handleExport = () => {
-    setIsExporting(true);
-    setExportSuccess(false);
-    setTimeout(() => {
-      setIsExporting(false);
-      setExportSuccess(true);
-      setTimeout(() => setExportSuccess(false), 3000);
-    }, 1500);
-  };
-
-  // Helper to get styled attributes for timeline nodes
-  const getLogVisuals = (type: string) => {
-    const cat = getCategory(type);
-    switch (cat) {
-      case 'governance':
-        return {
-          icon: Shield,
-          color: 'text-[#2563EB]',
-          bgColor: 'bg-[#2563EB]/5',
-          borderColor: 'border-[#2563EB]/10',
-          badgeText: 'Governance Operations'
-        };
-      case 'iot':
-        return {
-          icon: Radio,
-          color: 'text-emerald-600',
-          bgColor: 'bg-emerald-50',
-          borderColor: 'border-emerald-100',
-          badgeText: 'IoT & Telemetry'
-        };
-      case 'financial':
-        return {
-          icon: Landmark,
-          color: 'text-amber-600',
-          bgColor: 'bg-amber-50',
-          borderColor: 'border-amber-100',
-          badgeText: 'Financial System'
-        };
-    }
-  };
+  const firstResult = visibleLogs.length === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+  const lastResult = visibleLogs.length === 0 ? 0 : firstResult + visibleLogs.length - 1;
 
   return (
-    <div id="system-audit-root" className="space-y-6">
-      
-      {/* Title Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div id="system-audit-root" className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 id="audit-title" className="text-2xl font-bold text-[#1E293B] tracking-tight font-sans">
-            System Security & Audit Trail
-          </h2>
-          <p className="text-[#64748B] text-sm">
-            Real-time, immutable operations ledger recording all operator overrides, compliance reviews, and hardware handshakes.
-          </p>
+          <h2 id="audit-title" className="text-2xl font-bold text-slate-800">System Access Logs</h2>
+          <p className="text-sm text-slate-500">Review authenticated user, vehicle, wallet, parking, and system operations.</p>
+          {responseMessage && !error && <p className="mt-1 text-[11px] font-medium text-emerald-700">{responseMessage}</p>}
         </div>
-
-        <button 
-          onClick={handleExport}
-          disabled={isExporting}
-          className="self-start sm:self-center px-4 py-2 border border-slate-200 hover:border-slate-300 text-[#1E293B] bg-white rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors shrink-0 shadow-xs"
-        >
-          {isExporting ? (
-            <>
-              <motion.div 
-                animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, ease: 'linear', duration: 1 }}
-              >
-                <Activity className="w-3.5 h-3.5 text-[#2563EB]" />
-              </motion.div>
-              <span>Generating CSV...</span>
-            </>
-          ) : exportSuccess ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Report Downloaded!</span>
-            </>
-          ) : (
-            <>
-              <Download className="w-3.5 h-3.5" />
-              <span>Export Secure Audit Log</span>
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* Top Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-2">
-          <span className="text-[10px] uppercase font-bold text-[#64748B] tracking-wider block">Total Tracked Events</span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-[#1E293B]">{totalCount}</span>
-            <span className="text-xs text-slate-500">Live indexed</span>
-          </div>
-          <p className="text-[10px] text-slate-400">Total handshakes, commands, and reviews captured this cycle.</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-2">
-          <span className="text-[10px] uppercase font-bold text-[#64748B] tracking-wider block">Governance Events</span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-[#2563EB]">{governanceCount}</span>
-            <span className="text-xs text-[#2563EB] font-semibold">{Math.round((governanceCount / (totalCount || 1)) * 100)}% ratio</span>
-          </div>
-          <p className="text-[10px] text-slate-400">Host approvals, document validations, and operator enforcement.</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-2">
-          <span className="text-[10px] uppercase font-bold text-[#64748B] tracking-wider block">Hardware Overrides</span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-emerald-600">{iotCount}</span>
-            <span className="text-xs text-emerald-500 font-semibold">{iotCount} barrier actions</span>
-          </div>
-          <p className="text-[10px] text-slate-400">Automatic/manual bollard triggers, overstay checks, and state syncs.</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-2">
-          <span className="text-[10px] uppercase font-bold text-[#64748B] tracking-wider block">Ledger Integrity</span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-emerald-600 flex items-center gap-1.5">
-              <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" />
-              100%
-            </span>
-            <span className="text-xs text-emerald-500 font-semibold">Verified</span>
-          </div>
-          <p className="text-[10px] text-slate-400">Cryptographically signed operations feed, matching compliance criteria.</p>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onRefresh} disabled={isLoading}
+            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+          <button type="button" onClick={exportLogs} disabled={visibleLogs.length === 0}
+            className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-slate-800 px-3 text-xs font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <Download className="h-3.5 w-3.5" /> Export CSV
+          </button>
         </div>
       </div>
 
-      {/* Main Filter and List Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left 2 Columns: Timeline list */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col space-y-5">
-          
-          {/* Controls Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100">
-            {/* Filter Pills */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button 
-                onClick={() => setActiveFilter('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
-                  activeFilter === 'all' 
-                    ? 'bg-[#2563EB]/5 text-[#2563EB] border border-[#2563EB]/10' 
-                    : 'text-[#64748B] hover:bg-slate-50 border border-transparent'
-                }`}
-              >
-                All Events ({totalCount})
-              </button>
-              <button 
-                onClick={() => setActiveFilter('governance')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
-                  activeFilter === 'governance' 
-                    ? 'bg-[#2563EB]/5 text-[#2563EB] border border-[#2563EB]/10' 
-                    : 'text-[#64748B] hover:bg-slate-50 border border-transparent'
-                }`}
-              >
-                Governance ({governanceCount})
-              </button>
-              <button 
-                onClick={() => setActiveFilter('iot')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
-                  activeFilter === 'iot' 
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                    : 'text-[#64748B] hover:bg-slate-50 border border-transparent'
-                }`}
-              >
-                IoT Bollards ({iotCount})
-              </button>
-              <button 
-                onClick={() => setActiveFilter('financial')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all ${
-                  activeFilter === 'financial' 
-                    ? 'bg-amber-50 text-amber-700 border border-amber-100' 
-                    : 'text-[#64748B] hover:bg-slate-50 border border-transparent'
-                }`}
-              >
-                Financial ({financialCount})
-              </button>
-            </div>
+      {error && (
+        <div role="alert" className="flex flex-col gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          <button type="button" onClick={onRefresh} className="self-start font-semibold underline underline-offset-2 sm:self-auto">Try again</button>
+        </div>
+      )}
 
-            {/* Simple Search bar */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input 
-                type="text" 
-                placeholder="Search audit trail..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8.5 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs w-full sm:w-52 focus:outline-hidden focus:ring-1 focus:ring-[#2563EB]"
-              />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: 'Total events', value: totalCount, icon: ShieldAlert, color: 'text-slate-700' },
+          { label: 'Successful', value: successCount, icon: CheckCircle2, color: 'text-emerald-600' },
+          { label: 'Failed', value: failedCount, icon: XCircle, color: 'text-rose-600' },
+          { label: 'System events', value: systemCount, icon: User, color: 'text-amber-600' },
+        ].map((stat) => (
+          <div key={stat.label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold uppercase text-slate-400">{stat.label}</span>
+              <stat.icon className={`h-4 w-4 ${stat.color}`} />
             </div>
+            <p className={`mt-2 text-2xl font-bold ${stat.color}`}>{stat.value}</p>
           </div>
+        ))}
+      </div>
 
-          {/* Timeline Feed */}
-          {filteredLogs.length === 0 ? (
-            <div className="py-12 flex flex-col items-center justify-center text-center text-[#64748B] space-y-2">
-              <AlertCircle className="w-8 h-8 text-slate-300" />
-              <p className="text-xs font-semibold">No audit matches found</p>
-              <p className="text-[11px] text-slate-400">Try checking alternative categories or clearing your search phrase.</p>
-            </div>
-          ) : (
-            <div className="relative pl-6 border-l border-slate-100 space-y-6 py-2 ml-2">
-              <AnimatePresence initial={false}>
-                {filteredLogs.map((log) => {
-                  const design = getLogVisuals(log.type);
-                  const Icon = design.icon;
+      <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex self-start rounded-lg bg-slate-100 p-1">
+            {(['all', 'success', 'failed'] as OutcomeFilter[]).map((filter) => (
+              <button key={filter} type="button" onClick={() => { setOutcomeFilter(filter); onPageChange(1); }} aria-pressed={outcomeFilter === filter}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold capitalize ${outcomeFilter === filter ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+                {filter}
+              </button>
+            ))}
+          </div>
+          <label className="relative block w-full sm:w-72">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input type="search" value={searchQuery} onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search actions, users, or IDs"
+              className="min-h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+          </label>
+        </div>
+      </div>
 
+      {isLoading && accessLogs.length === 0 ? (
+        <div className="flex min-h-52 items-center justify-center gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading access logs
+        </div>
+      ) : visibleLogs.length === 0 ? (
+        <div className="flex min-h-52 flex-col items-center justify-center gap-2 text-center text-slate-500">
+          <AlertCircle className="h-7 w-7 text-slate-300" />
+          <p className="text-sm font-semibold">No matching access logs</p>
+        </div>
+      ) : (
+        <div className="isolate overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[780px] border-separate border-spacing-0 text-left">
+              <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500">
+                <tr>
+                  <th className="rounded-tl-[11px] border-b-2 border-r border-slate-200 px-4 py-3">Event</th>
+                  <th className="border-b-2 border-r border-slate-200 px-4 py-3">Actor</th>
+                  <th className="border-b-2 border-r border-slate-200 px-4 py-3">References</th>
+                  <th className="rounded-tr-[11px] border-b-2 border-slate-200 px-4 py-3">Accessed</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {visibleLogs.map((log) => {
+                  const outcome = getOutcome(log.actions);
                   return (
-                    <motion.div 
-                      key={log.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 10 }}
-                      transition={{ duration: 0.15 }}
-                      className="relative group"
-                    >
-                      {/* Left vertical marker node */}
-                      <span className={`absolute -left-[31px] top-1 w-6 h-6 rounded-full border bg-white flex items-center justify-center shadow-xs transition-all group-hover:scale-105 ${design.color} ${design.borderColor}`}>
-                        <Icon className="w-3 h-3" />
-                      </span>
-
-                      {/* Timeline card content */}
-                      <div className="space-y-1 bg-slate-50/40 border border-slate-100 rounded-xl p-3.5 hover:bg-slate-50/90 transition-all duration-150">
-                        <div className="flex items-start justify-between gap-4">
-                          <p className="text-xs font-semibold text-[#1E293B] leading-relaxed">
-                            {log.message}
-                          </p>
-                          <span className="text-[10px] font-mono text-[#64748B] bg-slate-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">
-                            {log.timestamp}
-                          </span>
+                    <tr key={log.accessLogId} className="align-top hover:bg-slate-50/70">
+                      <td className="relative border-r border-slate-200 px-4 py-3">
+                        <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${outcome === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                        <div className="flex items-start gap-2">
+                          {outcome === 'success'
+                            ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                            : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-500" />}
+                          <div>
+                            <p className="text-xs font-semibold text-slate-800">{log.actions}</p>
+                            <p className="mt-1 font-mono text-[10px] text-slate-400">Log #{log.accessLogId}</p>
+                          </div>
                         </div>
-
-                        {/* Badges footer */}
-                        <div className="flex items-center gap-2 pt-1 text-[10px]">
-                          <span className={`px-2 py-0.2 rounded-full border text-[9px] font-semibold ${design.bgColor} ${design.color} ${design.borderColor}`}>
-                            {design.badgeText} ({log.type})
-                          </span>
-                          
-                          {log.user && (
-                            <span className="text-slate-400 flex items-center gap-1">
-                              • <User className="w-3 h-3" />
-                              <span className="font-medium text-slate-500">{log.user}</span>
-                            </span>
-                          )}
-
-                          <span className="text-slate-400 ml-auto font-mono text-[9px]">ID: {log.id}</span>
-                        </div>
-                      </div>
-                    </motion.div>
+                      </td>
+                      <td className="border-r border-slate-200 px-4 py-3 text-xs text-slate-600">
+                        <p className="font-semibold text-slate-700">{log.userName || 'System'}</p>
+                        <p className="mt-0.5 text-[10px] text-slate-400">{log.userEmail || 'No user email'}</p>
+                        <p className="mt-0.5 font-mono text-[10px] text-slate-400">User {log.userId ?? 'system'}</p>
+                      </td>
+                      <td className="border-r border-slate-200 px-4 py-3 font-mono text-[10px] text-slate-500">
+                        <p>Booking: {log.bookingId ?? '-'}</p>
+                        <p className="mt-1">IoT device: {log.ioTDeviceId ?? '-'}</p>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-600">
+                        <p className="whitespace-nowrap">{formatAccessTime(log.accessedAt)}</p>
+                        <p className="mt-1 text-[10px] text-slate-400">Created {formatAccessTime(log.createdAt)}</p>
+                      </td>
+                    </tr>
                   );
                 })}
-              </AnimatePresence>
-            </div>
-          )}
-        </div>
-
-        {/* Right 1 Column: Actions and configuration metadata */}
-        <div className="space-y-6">
-          
-          {/* Simulate Action form */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <Plus className="w-4 h-4 text-[#2563EB]" />
-              <h3 className="text-sm font-semibold text-[#1E293B]">Simulate Audit Entry</h3>
-            </div>
-            
-            <p className="text-xs text-[#64748B]">
-              Inject custom manual log events to test live system update parameters and security logging capabilities.
-            </p>
-
-            <form onSubmit={handleSimulateLog} className="space-y-3.5">
-              {/* Type Selection */}
-              <div className="space-y-1">
-                <label className="text-[10px] uppercase font-bold text-slate-400 block">Activity Log Type</label>
-                <select 
-                  value={newLogType}
-                  onChange={(e) => setNewLogType(e.target.value)}
-                  className="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-[#2563EB]"
-                >
-                  <option value="governance">Governance (Approval, Document Verify)</option>
-                  <option value="dispute">Dispute (Support Ticket, Resolution)</option>
-                  <option value="bollard_state">Bollard State (Command Override)</option>
-                  <option value="overstay">Overstay (Enforcement Warning)</option>
-                  <option value="system">System (IBG Payout, Cron cycle)</option>
-                </select>
-              </div>
-
-              {/* Actor/User */}
-              <div className="space-y-1">
-                <label className="text-[10px] uppercase font-bold text-slate-400 block">Triggering Operator</label>
-                <input 
-                  type="text" 
-                  value={newLogUser}
-                  onChange={(e) => setNewLogUser(e.target.value)}
-                  placeholder="e.g. Admin (Ch Chun Jia)"
-                  className="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-[#2563EB]"
-                />
-              </div>
-
-              {/* Message text */}
-              <div className="space-y-1">
-                <label className="text-[10px] uppercase font-bold text-slate-400 block">Audit Log Message</label>
-                <textarea 
-                  rows={3}
-                  value={newLogMessage}
-                  onChange={(e) => setNewLogMessage(e.target.value)}
-                  placeholder="e.g., Manual physical patrol completed. Confirmed SS15 Bollard A-03 raised successfully."
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-[#2563EB] resize-none leading-relaxed"
-                />
-              </div>
-
-              <button 
-                type="submit"
-                disabled={!newLogMessage.trim()}
-                className="w-full py-2.5 bg-[#2563EB] text-white font-semibold rounded-lg text-xs hover:bg-[#2563EB]/90 transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span>Commit Entry to Ledger</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </form>
+              </tbody>
+            </table>
           </div>
-
-          {/* Compliance & Policy Card */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
-              <Shield className="w-4 h-4 text-emerald-600" />
-              <h4 className="text-xs font-bold text-[#1E293B]">Logging Compliance Standard</h4>
-            </div>
-            
-            <p className="text-[11px] text-[#64748B] leading-relaxed">
-              This panel registers actions with strict compliance mappings based on standards set in the Personal Data Protection Act (PDPA) & Smart City IoT Security Protocols.
-            </p>
-
-            <ul className="space-y-2 text-[11px] text-slate-500 pt-1">
-              <li className="flex items-start gap-1.5">
-                <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                <span>**Retention Cycle**: Logs are held securely in cloud memory for 90 days before cold storage.</span>
-              </li>
-              <li className="flex items-start gap-1.5">
-                <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                <span>**Immutability**: Log mutations are forbidden; any adjustments require corrective contra entries.</span>
-              </li>
-              <li className="flex items-start gap-1.5">
-                <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                <span>**Audit Trail Accuracy**: Every record ties directly to authenticated operator key pairs and system timers.</span>
-              </li>
-            </ul>
-          </div>
-
         </div>
+      )}
 
+      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-4">
+        <p className="text-[11px] text-slate-500" aria-live="polite">
+          Showing <span className="font-semibold text-slate-700">{firstResult}-{Math.min(lastResult, effectiveTotalCount)}</span> of <span className="font-semibold text-slate-700">{effectiveTotalCount}</span> logs
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            Rows per page
+            <select
+              value={pagination.pageSize}
+              onChange={(event) => onPageSizeChange(Number(event.target.value))}
+              disabled={isLoading}
+              className="min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Audit logs rows per page"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </label>
+          <nav className="flex items-center gap-1" aria-label="Audit log pagination">
+            <button
+              type="button"
+              onClick={() => onPageChange(1)}
+              disabled={isLoading || pagination.page <= 1}
+              title="First page"
+              aria-label="First page"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onPageChange(pagination.page - 1)}
+              disabled={isLoading || pagination.page <= 1}
+              title="Previous page"
+              aria-label="Previous page"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="min-w-20 text-center text-xs font-semibold text-slate-700">
+              Page {pagination.page} of {effectiveTotalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPageChange(pagination.page + 1)}
+              disabled={isLoading || !effectiveHasNextPage}
+              title="Next page"
+              aria-label="Next page"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onPageChange(effectiveTotalPages)}
+              disabled={isLoading || pagination.page >= effectiveTotalPages}
+              title="Last page"
+              aria-label="Last page"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronsRight className="h-4 w-4" />
+            </button>
+          </nav>
+        </div>
       </div>
-
     </div>
   );
 }

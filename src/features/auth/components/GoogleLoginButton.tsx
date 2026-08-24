@@ -1,12 +1,35 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
+import { GoogleLogin, googleLogout, type CredentialResponse } from '@react-oauth/google';
 import { Capacitor } from '@capacitor/core';
 import { useAuth, type UserRole } from '../context/AuthContext';
 import { motion } from 'motion/react';
+import { Loader2 } from 'lucide-react';
 import { completeUserProfile, signInWithGoogle } from '../api/authApi';
 import { isGoogleLoginCancellation, signInWithNativeGoogle } from '../googleAuth';
 import { readApiError } from '@/services/apiClient';
+
+type AuthResponsePayload = {
+  success?: boolean;
+  message?: string;
+  isProfileComplete?: boolean;
+  jwtToken?: string;
+  user?: {
+    userId?: number;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    profilePictureURL?: string;
+    phoneNumber?: string;
+    userType?: number;
+  };
+};
+
+// FedCM can reuse an already-approved account after the user presses the button.
+// The Google chooser still appears when consent or an account choice is required.
+const fedCmButtonOptions = {
+  button_auto_select: true,
+} as const;
 
 export default function GoogleLoginButton() {
   const { setUser } = useAuth();
@@ -21,9 +44,55 @@ export default function GoogleLoginButton() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [selectedRole, setSelectedRole] = useState<number>(defaultRole);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
-  const [isNativeLoginPending, setIsNativeLoginPending] = useState(false);
+  const [isGoogleLoginPending, setIsGoogleLoginPending] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [loginError, setLoginError] = useState('');
+  const loginRequestInFlightRef = useRef(false);
+
+  const beginGoogleLoginRequest = () => {
+    if (loginRequestInFlightRef.current) return false;
+    loginRequestInFlightRef.current = true;
+    setIsGoogleLoginPending(true);
+    setLoginError('');
+    return true;
+  };
+
+  const finishGoogleLoginRequest = () => {
+    loginRequestInFlightRef.current = false;
+    setIsGoogleLoginPending(false);
+  };
+
+  const authenticateGoogleCredential = async (credential: string) => {
+    const res = await signInWithGoogle(credential);
+
+    if (!res.ok) {
+      throw new Error(await readApiError(res, 'Backend login failed'));
+    }
+
+    const data = await res.json() as AuthResponsePayload;
+    if (data.success === false) {
+      throw new Error(data.message || 'Backend login failed');
+    }
+
+    const userId = Number(data.user?.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      throw new Error('The login response was incomplete. Please try again.');
+    }
+
+    // Step 1a: Profile incomplete → show phone verification
+    if (!data.isProfileComplete) {
+      setPendingUserId(userId);
+      return;
+    }
+
+    const userType = Number(data.user?.userType);
+    if (![1, 2, 3].includes(userType) || !data.jwtToken?.trim()) {
+      throw new Error('The login response was incomplete. Please try again.');
+    }
+
+    // Step 1b: Profile complete → login immediately. AppRoutes redirects by role.
+    finishLogin(data);
+  };
 
   const handleGoogleCredential = async (credential?: string) => {
     if (!credential) {
@@ -32,25 +101,10 @@ export default function GoogleLoginButton() {
       return;
     }
 
-    setLoginError('');
+    if (!beginGoogleLoginRequest()) return;
 
     try {
-      const res = await signInWithGoogle(credential);
-
-      if (!res.ok) {
-        throw new Error(await readApiError(res, 'Backend login failed'));
-      }
-
-      const data = await res.json();
-
-      // Step 1a: Profile incomplete → show phone verification
-      if (!data.isProfileComplete && data.user?.userId) {
-        setPendingUserId(data.user.userId);
-        return;
-      }
-
-      // Step 1b: Profile complete → login immediately
-      finishLogin(data);
+      await authenticateGoogleCredential(credential);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
       const isUnavailable = message.includes('Failed to fetch') || message.includes('NetworkError');
@@ -59,6 +113,8 @@ export default function GoogleLoginButton() {
         : message;
       console.error('❌ Google login failed:', displayMessage);
       setLoginError(displayMessage);
+    } finally {
+      finishGoogleLoginRequest();
     }
   };
 
@@ -66,10 +122,10 @@ export default function GoogleLoginButton() {
   const handleGoogleSuccess = ({ credential }: CredentialResponse) => handleGoogleCredential(credential);
 
   const handleNativeGoogleLogin = async () => {
-    setIsNativeLoginPending(true);
-    setLoginError('');
+    if (!beginGoogleLoginRequest()) return;
+
     try {
-      await handleGoogleCredential(await signInWithNativeGoogle());
+      await authenticateGoogleCredential(await signInWithNativeGoogle());
     } catch (error) {
       if (!isGoogleLoginCancellation(error)) {
         const message = error instanceof Error ? error.message : 'Google sign-in failed. Please try again.';
@@ -77,7 +133,7 @@ export default function GoogleLoginButton() {
         setLoginError(message);
       }
     } finally {
-      setIsNativeLoginPending(false);
+      finishGoogleLoginRequest();
     }
   };
 
@@ -114,29 +170,41 @@ export default function GoogleLoginButton() {
   };
 
   // ---- Finish login: store user and redirect ----
-  const finishLogin = (data: any) => {
+  const finishLogin = (data: AuthResponsePayload) => {
     // Backend enum: Admin=1, PropertyOwner=2, Renter=3
     const userTypeMap: Record<number, UserRole> = { 1: 'Admin', 2: 'Owner', 3: 'Commuter' };
-    const role = userTypeMap[data.user?.userType] ?? 'Commuter';
+    const backendUser = data.user!;
+    const userType = backendUser.userType!;
+    const role = userTypeMap[userType];
 
     setUser({
-      userId: data.user?.userId,
-      email: data.user?.email,
-      firstName: data.user?.firstName ?? '',
-      lastName: data.user?.lastName ?? '',
-      picture: data.user?.profilePictureURL ?? '',
-      phoneNumber: data.user?.phoneNumber ?? '',
-      userType: data.user?.userType,
+      userId: backendUser.userId!,
+      email: backendUser.email ?? '',
+      firstName: backendUser.firstName ?? '',
+      lastName: backendUser.lastName ?? '',
+      picture: backendUser.profilePictureURL ?? '',
+      phoneNumber: backendUser.phoneNumber ?? '',
+      userType,
       role,
-      token: data.jwtToken,
-      isProfileComplete: data.isProfileComplete ?? false,
+      token: data.jwtToken!,
+      isProfileComplete: true,
     });
   };
 
   // ---- Login failure handler ----
   const handleGoogleError = () => {
+    finishGoogleLoginRequest();
     console.error('Google Sign-In encountered an error');
     setLoginError('Google sign-in was cancelled or could not be completed. Please try again.');
+  };
+
+  const handleUseDifferentAccount = () => {
+    if (!Capacitor.isNativePlatform()) googleLogout();
+    finishGoogleLoginRequest();
+    setPendingUserId(null);
+    setPhoneNumber('');
+    setPhoneError('');
+    setLoginError('');
   };
 
   // ---- Show phone verification form when profile is incomplete ----
@@ -210,7 +278,8 @@ export default function GoogleLoginButton() {
         </motion.button>
 
         <button
-          onClick={() => setPendingUserId(null)}
+          type="button"
+          onClick={handleUseDifferentAccount}
           className="text-[12px] text-[#6e6e73] hover:text-[#1d1d1f] transition-colors"
         >
           ← Use a different account
@@ -222,25 +291,37 @@ export default function GoogleLoginButton() {
   // ---- Default: show Google Sign-In button ----
   return (
     <div className="flex flex-col items-center gap-3">
-      {Capacitor.isNativePlatform() ? (
+      {isGoogleLoginPending ? (
+        <button
+          type="button"
+          disabled
+          aria-busy="true"
+          className="flex min-h-11 w-[260px] max-w-full cursor-wait items-center justify-center gap-2.5 rounded-full border border-black/10 bg-white px-6 text-[14px] font-semibold text-[#1d1d1f] shadow-sm opacity-80"
+        >
+          <Loader2 size={17} aria-hidden="true" className="animate-spin text-[#007AFF]" />
+          <span aria-live="polite">Signing you in…</span>
+        </button>
+      ) : Capacitor.isNativePlatform() ? (
         <motion.button
           type="button"
           whileTap={{ scale: 0.97 }}
           onClick={handleNativeGoogleLogin}
-          disabled={isNativeLoginPending}
-          className="flex min-h-11 items-center justify-center gap-3 rounded-full border border-black/10 bg-white px-6 text-[14px] font-semibold text-[#1d1d1f] shadow-sm disabled:opacity-60"
+          className="flex min-h-11 w-[260px] max-w-full items-center justify-center gap-3 rounded-full border border-black/10 bg-white px-6 text-[14px] font-semibold text-[#1d1d1f] shadow-sm"
         >
           <span aria-hidden="true" className="text-[17px] font-bold text-[#4285f4]">G</span>
-          {isNativeLoginPending ? 'Signing in…' : 'Sign in with Google'}
+          Continue with Google
         </motion.button>
       ) : (
         <GoogleLogin
+          {...fedCmButtonOptions}
           onSuccess={handleGoogleSuccess}
           onError={handleGoogleError}
+          use_fedcm_for_button
           theme="outline"
-          size="large"
+          size="medium"
           shape="pill"
-          text="signin_with"
+          text="continue_with"
+          width={260}
         />
       )}
       <p className="text-[11px] text-[#8e8e93]">
