@@ -64,6 +64,9 @@ import type { JourneyStage } from '../lib/journeySession';
 import { getNearbyParking, searchParking } from '../api/parkingApi';
 import { createWalletTopUp, getWalletSummary, getWalletTopUpStatus } from '../api/walletApi';
 import { addVehicle, deleteVehicle, getMyVehicles, modifyVehicle } from '../api/vehicleApi';
+import { getVehicleCatalog, type VehicleCatalogEntry } from '../api/vehicleCatalogApi';
+import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
+import VehicleBrandModelFields from '../components/VehicleBrandModelFields';
 import { isNativeApp, watchDeviceLocation } from '@/services/deviceCapabilities';
 import {
   closeExternalWindow,
@@ -320,6 +323,7 @@ export default function CommuterDashboard() {
   const [vehicleCacheUserId, setVehicleCacheUserId] = useState<number | null>(null);
   const [isVehiclesLoading, setIsVehiclesLoading] = useState(false);
   const [vehiclesLoadError, setVehiclesLoadError] = useState<string | null>(null);
+  const [vehicleCatalog, setVehicleCatalog] = useState<VehicleCatalogEntry[]>(VEHICLE_CATALOG_FALLBACK);
   const [showAddVehicle, setShowAddVehicle] = useState<boolean>(false);
   const [newPlate, setNewPlate] = useState<string>('');
   const [newBrand, setNewBrand] = useState<string>('');
@@ -408,6 +412,18 @@ export default function CommuterDashboard() {
     if (!user?.userId || vehicleCacheUserId !== user.userId) return;
     saveCachedVehicles(user.userId, vehicles);
   }, [vehicleCacheUserId, user?.userId, vehicles]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getVehicleCatalog(controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setVehicleCatalog(result.data);
+      })
+      .catch(() => {
+        // Keep the local catalog available when the optional endpoint is absent.
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     try {
@@ -2242,22 +2258,14 @@ export default function CommuterDashboard() {
                         maxLength={20} required disabled={isVehicleUpdating}
                         className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] uppercase focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
                     </label>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Brand</span>
-                        <input type="text" value={vehicleEditDraft.vehicleBrand}
-                          onChange={(event) => setVehicleEditDraft((current) => current ? { ...current, vehicleBrand: event.target.value } : current)}
-                          maxLength={50} required disabled={isVehicleUpdating}
-                          className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
-                      </label>
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Model</span>
-                        <input type="text" value={vehicleEditDraft.vehicleModel}
-                          onChange={(event) => setVehicleEditDraft((current) => current ? { ...current, vehicleModel: event.target.value } : current)}
-                          maxLength={50} required disabled={isVehicleUpdating}
-                          className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
-                      </label>
-                    </div>
+                    <VehicleBrandModelFields
+                      brand={vehicleEditDraft.vehicleBrand}
+                      model={vehicleEditDraft.vehicleModel}
+                      catalog={vehicleCatalog}
+                      disabled={isVehicleUpdating}
+                      onBrandChange={(value) => setVehicleEditDraft((current) => current ? { ...current, vehicleBrand: value } : current)}
+                      onModelChange={(value) => setVehicleEditDraft((current) => current ? { ...current, vehicleModel: value } : current)}
+                    />
                     <label className="block space-y-1">
                       <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Color</span>
                       <input type="text" value={vehicleEditDraft.vehicleColor}
@@ -2280,20 +2288,14 @@ export default function CommuterDashboard() {
                         maxLength={20} required disabled={isVehicleSaving}
                         className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] uppercase focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Brand</span>
-                        <input type="text" value={newBrand} onChange={(e) => setNewBrand(e.target.value)} placeholder="Toyota"
-                          maxLength={50} required disabled={isVehicleSaving}
-                          className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
-                      </label>
-                      <label className="block space-y-1">
-                        <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Model</span>
-                        <input type="text" value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="Camry"
-                          maxLength={50} required disabled={isVehicleSaving}
-                          className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
-                      </label>
-                    </div>
+                    <VehicleBrandModelFields
+                      brand={newBrand}
+                      model={newModel}
+                      catalog={vehicleCatalog}
+                      disabled={isVehicleSaving}
+                      onBrandChange={setNewBrand}
+                      onModelChange={setNewModel}
+                    />
                     <label className="block space-y-1">
                       <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Color</span>
                       <input type="text" value={newColor} onChange={(e) => setNewColor(e.target.value)} placeholder="Black"
