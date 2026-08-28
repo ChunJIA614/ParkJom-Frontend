@@ -6,7 +6,6 @@ interface VehicleManagementProps {
   vehicles: AdminVehicleDto[];
   isLoading: boolean;
   error: string | null;
-  responseMessage: string;
   onRefresh: () => void | Promise<void>;
 }
 
@@ -21,7 +20,6 @@ export default function VehicleManagement({
   vehicles,
   isLoading,
   error,
-  responseMessage,
   onRefresh,
 }: VehicleManagementProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,7 +57,6 @@ export default function VehicleManagement({
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Vehicle Management</h2>
           <p className="text-sm text-slate-500">Review every vehicle registered by commuters on ParkJom.</p>
-          {responseMessage && !error && <p className="mt-1 text-[11px] font-medium text-emerald-700">{responseMessage}</p>}
         </div>
         <button type="button" onClick={onRefresh} disabled={isLoading}
           className="inline-flex min-h-9 items-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">

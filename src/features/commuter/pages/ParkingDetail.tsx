@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, MapPin, Clock, Navigation, ShieldCheck,
+  ArrowLeft, MapPin, Navigation, ShieldCheck,
   Car, Wifi, CreditCard,
   Loader2, Calendar, AlertTriangle,
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import type { Booking, ParkingSpot } from '../types';
-import { clearJourneySession, saveJourneySession } from '../lib/journeySession';
+import { saveJourneySession } from '../lib/journeySession';
 import { getWalkingRoute } from '@/services/walkingRoutes';
+import { confirmBooking, createBookingQuote, type BookingQuote, type ConfirmedBooking } from '../api/bookingApi';
+import { getMyVehicles, type VehicleApiData } from '../api/vehicleApi';
 
 /* ================================================================
    ParkingDetail — Parking spot detail page
@@ -28,6 +30,19 @@ interface WalkingInfo {
   rawDistance: number;
 }
 
+const toDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addDays = (date: Date, days: number) => {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+};
+
 export default function ParkingDetail() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -42,33 +57,19 @@ export default function ParkingDetail() {
   const [walkingInfo, setWalkingInfo] = useState<WalkingInfo | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
-  // ── Date / Time ──
+  // ── Booking ──
   const today = new Date();
-  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-
-  const dateOptions = [
-    { label: 'Today', value: today.toISOString().slice(0, 10) },
-    { label: 'Tomorrow', value: tomorrow.toISOString().slice(0, 10) },
-  ];
-  for (let i = 2; i <= 6; i++) {
-    const d = new Date(today); d.setDate(d.getDate() + i);
-    dateOptions.push({
-      label: d.toLocaleDateString('en-MY', { weekday: 'short', month: 'short', day: 'numeric' }),
-      value: d.toISOString().slice(0, 10),
-    });
-  }
-
-  const startTimeOptions: string[] = [];
-  for (let h = 6; h <= 22; h++) {
-    for (let m = 0; m < 60; m += 30) {
-      startTimeOptions.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
-    }
-  }
-
-  const [selectedDate, setSelectedDate] = useState(dateOptions[0].value);
-  const [startTime, setStartTime] = useState('09:00');
-  const [durationHours, setDurationHours] = useState(2);
+  const [startDate, setStartDate] = useState(toDateInput(addDays(today, 1)));
+  const [endDate, setEndDate] = useState(toDateInput(addDays(today, 2)));
+  const [quote, setQuote] = useState<BookingQuote | null>(null);
+  const [confirmedBooking, setConfirmedBooking] = useState<ConfirmedBooking | null>(null);
+  const [vehicles, setVehicles] = useState<VehicleApiData[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
+  const [isVehiclesLoading, setIsVehiclesLoading] = useState(false);
+  const [isBookingLoading, setIsBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
   const [reservationReady, setReservationReady] = useState(false);
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!spot || !stationCoords) return;
@@ -76,6 +77,26 @@ export default function ParkingDetail() {
     getWalkingRoute(spot.lat, spot.lon, stationCoords.lat, stationCoords.lon)
       .then(setWalkingInfo).finally(() => setIsLoadingRoute(false));
   }, [spot, stationCoords]);
+
+  useEffect(() => {
+    if (!user?.token) return;
+    const controller = new AbortController();
+    setIsVehiclesLoading(true);
+    getMyVehicles(user.token, controller.signal)
+      .then((result) => {
+        setVehicles(result.data);
+        setSelectedVehicleId((current) => current ?? result.data[0]?.vehicleId ?? null);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setBookingError(error instanceof Error ? error.message : 'Unable to load your vehicles.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsVehiclesLoading(false);
+      });
+    return () => controller.abort();
+  }, [user?.token]);
 
   if (!spot) {
     return (
@@ -91,46 +112,74 @@ export default function ParkingDetail() {
     );
   }
 
-  // ── Calculate pricing ──
-  const [h, m] = startTime.split(':').map(Number);
-  const selectedStart = new Date(`${selectedDate}T${startTime}:00`);
-  const isPastTime = selectedStart <= new Date();
-  const endH = Math.floor((h * 60 + m + durationHours * 60) / 60) % 24;
-  const endM = (h * 60 + m + durationHours * 60) % 60;
-  const endTimeStr = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
-  const isDateToday = selectedDate === new Date().toISOString().slice(0, 10);
-  const conflict = isDateToday && isPastTime;
-  const subtotal = spot.price * durationHours;
-  const total = subtotal;
+  const invalidDates = endDate <= startDate || startDate < toDateInput(today);
+  const displayedRate = quote?.ratePerDay ?? spot.dailyRate ?? 0;
+  const displayedTotal = quote?.rentalSubtotal ?? 0;
 
-  // ── Confirm booking ──
-  const handleBook = () => {
-    if (conflict) { alert('Please select a future time slot before booking.'); return; }
+  const updateDates = (kind: 'start' | 'end', value: string) => {
+    setQuote(null);
+    setBookingError(null);
+    idempotencyKeyRef.current = null;
+    if (kind === 'start') {
+      setStartDate(value);
+      if (endDate <= value) setEndDate(toDateInput(addDays(new Date(`${value}T00:00:00`), 1)));
+    } else {
+      setEndDate(value);
+    }
+  };
 
-    const parkingSpot: ParkingSpot = {
-      ...spot,
-      station: stationName || 'Klang Valley transit area',
-      name: spot.address,
-      pricePerHour: spot.price,
-      distance: walkingInfo?.rawDistance ? Math.round(walkingInfo.rawDistance) : 0,
-      lat: spot.lat,
-      lng: spot.lon,
-      available: false,
-      type: 'Condo Bay',
-      owner: 'Private bay owner',
-    };
-    const booking: Booking = {
-      id: `BK-${Date.now().toString().slice(-6)}`,
-      spot: parkingSpot,
-      startTime: selectedStart,
-      endTime: new Date(selectedStart.getTime() + durationHours * 60 * 60 * 1000),
-      vehiclePlate: 'VGV 8899',
-      status: 'Active',
-      totalPaid: total,
-    };
+  const handleBook = async () => {
+    if (!user?.token || invalidDates || isBookingLoading) return;
+    setBookingError(null);
+    setIsBookingLoading(true);
 
-    saveJourneySession(booking);
-    setReservationReady(true);
+    try {
+      if (!quote) {
+        const result = await createBookingQuote(user.token, spot.parkingSpotId, { startDate, endDate });
+        setQuote(result.data);
+        return;
+      }
+
+      if (!selectedVehicleId) throw new Error('Select a vehicle before confirming this booking.');
+      idempotencyKeyRef.current ??= crypto.randomUUID();
+      const confirmation = await confirmBooking(
+        user.token,
+        quote.quoteId,
+        selectedVehicleId,
+        idempotencyKeyRef.current,
+      );
+      setConfirmedBooking(confirmation.data);
+
+      const parkingSpot: ParkingSpot = {
+        ...spot,
+        station: stationName || 'Klang Valley transit area',
+        name: spot.address,
+        pricePerHour: quote.ratePerDay,
+        distance: walkingInfo?.rawDistance ? Math.round(walkingInfo.rawDistance) : 0,
+        lat: spot.lat,
+        lng: spot.lon,
+        available: false,
+        type: 'Condo Bay',
+        owner: 'Private bay owner',
+      };
+      const vehicle = vehicles.find((item) => item.vehicleId === selectedVehicleId);
+      const booking: Booking = {
+        id: confirmation.data.bookingReference,
+        spot: parkingSpot,
+        startTime: new Date(`${quote.startDate}T00:00:00`),
+        endTime: new Date(`${quote.endDate}T00:00:00`),
+        vehiclePlate: vehicle?.numberPlate ?? '',
+        status: 'Upcoming',
+        totalPaid: quote.rentalSubtotal,
+      };
+
+      saveJourneySession(booking);
+      setReservationReady(true);
+    } catch (error) {
+      setBookingError(error instanceof Error ? error.message : 'Unable to complete this booking.');
+    } finally {
+      setIsBookingLoading(false);
+    }
   };
 
   if (reservationReady) {
@@ -158,18 +207,15 @@ export default function ParkingDetail() {
                 <p className="text-[12px] text-[#6e6e73] mt-1">{stationName || 'Klang Valley transit area'}</p>
               </div>
               <div className="grid grid-cols-2 gap-4 py-4 border-y border-black/[0.08]">
-                <div><p className="text-[11px] text-[#6e6e73]">Arrival</p><p className="text-[13px] font-semibold mt-1">{selectedDate} · {startTime}</p></div>
-                <div><p className="text-[11px] text-[#6e6e73]">Parking window</p><p className="text-[13px] font-semibold mt-1">{durationHours}h · until {endTimeStr}</p></div>
+                <div><p className="text-[11px] text-[#6e6e73]">Booking dates</p><p className="text-[13px] font-semibold mt-1">{quote?.startDate} to {quote?.endDate}</p></div>
+                <div><p className="text-[11px] text-[#6e6e73]">Duration</p><p className="text-[13px] font-semibold mt-1">{quote?.bookedDays} day{quote?.bookedDays === 1 ? '' : 's'}</p></div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[13px] text-[#6e6e73]">Reservation total</span>
-                <strong>RM {total.toFixed(2)}</strong>
+                <span className="text-[13px] text-[#6e6e73]">Paid total</span>
+                <strong>RM {quote?.rentalSubtotal.toFixed(2)}</strong>
               </div>
-              <p className="text-[11px] text-[#6e6e73] leading-relaxed">This prototype stores the pass on this device. Live payment and final backend confirmation still depend on connected ParkJom services.</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-                <button type="button" onClick={() => { clearJourneySession(); setReservationReady(false); }} className="min-h-11 rounded-xl border border-black/[0.12] text-[13px] font-semibold">Edit booking</button>
-                <button type="button" onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })} className="min-h-11 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold">Continue to arrival</button>
-              </div>
+              <p className="text-[11px] text-[#6e6e73] leading-relaxed">Booking reference: {confirmedBooking?.bookingReference}</p>
+              <button type="button" onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })} className="w-full min-h-11 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold">Continue to my parking pass</button>
             </div>
           </div>
         </main>
@@ -249,49 +295,50 @@ export default function ParkingDetail() {
 
           <div className="h-px bg-[#e8eaed]" />
 
-          {/* Booking time */}
+          {/* Booking dates */}
           <div>
             <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-4 flex items-center gap-1.5">
-              <Calendar size={14} className="text-[#007AFF]" /> Select Booking Time
+              <Calendar size={14} className="text-[#007AFF]" /> Select Booking Dates
             </h3>
-
-            <div className="space-y-1 mb-3">
-              <label className="text-[11px] font-medium text-[#5f6368]">Date</label>
-              <div className="flex gap-2 flex-wrap">
-                {dateOptions.slice(0, 3).map((opt) => (
-                  <button key={opt.value} onClick={() => setSelectedDate(opt.value)}
-                    className={`px-4 py-2 rounded-xl text-[12px] font-semibold border transition ${
-                      selectedDate === opt.value ? 'bg-[#007AFF] text-white border-[#007AFF]' : 'bg-white text-[#5f6368] border-[#dadce0] hover:border-[#007AFF]'
-                    }`}>{opt.label}</button>
-                ))}
-                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-                  min={today.toISOString().slice(0, 10)}
-                  max={(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); })()}
-                  className="px-3 py-2 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF]" />
-              </div>
-            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-[#5f6368]">Start Time</label>
-                <select value={startTime} onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF] appearance-none">
-                  {startTimeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <label className="text-[11px] font-medium text-[#5f6368]">Start date</label>
+                <input type="date" value={startDate} onChange={(event) => updateDates('start', event.target.value)}
+                  min={toDateInput(today)}
+                  className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF]" />
               </div>
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-[#5f6368]">Duration</label>
-                <select value={durationHours} onChange={(e) => setDurationHours(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF] appearance-none">
-                  {[1, 2, 3, 4].map((h) => <option key={h} value={h}>{h} hour{h > 1 ? 's' : ''}</option>)}
-                </select>
+                <label className="text-[11px] font-medium text-[#5f6368]">End date</label>
+                <input type="date" value={endDate} onChange={(event) => updateDates('end', event.target.value)}
+                  min={toDateInput(addDays(new Date(`${startDate}T00:00:00`), 1))}
+                  className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF]" />
               </div>
             </div>
 
-            {conflict && (
+            {invalidDates && (
               <div className="mt-3 flex items-start gap-2 text-[12px] text-[#dc2626] bg-[#fef2f2] border border-[#fecaca] rounded-xl p-3">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                <span>Selected time has already passed. Please choose a future time slot.</span>
+                <span>The end date must be after the start date, and dates cannot be in the past.</span>
+              </div>
+            )}
+
+            <div className="mt-4 space-y-1">
+              <label className="text-[11px] font-medium text-[#5f6368]">Vehicle</label>
+              <select value={selectedVehicleId ?? ''} onChange={(event) => setSelectedVehicleId(Number(event.target.value) || null)}
+                disabled={isVehiclesLoading || vehicles.length === 0}
+                className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF]">
+                {vehicles.length === 0 && <option value="">{isVehiclesLoading ? 'Loading vehicles…' : 'No vehicles available'}</option>}
+                {vehicles.map((vehicle) => (
+                  <option key={vehicle.vehicleId} value={vehicle.vehicleId}>{vehicle.numberPlate} · {vehicle.vehicleBrand} {vehicle.vehicleModel}</option>
+                ))}
+              </select>
+            </div>
+
+            {bookingError && (
+              <div className="mt-3 flex items-start gap-2 text-[12px] text-[#dc2626] bg-[#fef2f2] border border-[#fecaca] rounded-xl p-3">
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>{bookingError}</span>
               </div>
             )}
           </div>
@@ -309,16 +356,17 @@ export default function ParkingDetail() {
           <div className="h-px bg-[#e8eaed]" />
 
           {/* Price breakdown */}
-          {!conflict && (
+          {quote && (
             <div className="space-y-2 text-[13px]">
               <div className="flex justify-between">
-                <span className="text-[#5f6368]">RM {spot.price.toFixed(2)} x {durationHours}h <span className="text-[#9ca3af] ml-1">({startTime} &ndash; {endTimeStr})</span></span>
-                <span className="font-semibold text-[#111]">RM {subtotal.toFixed(2)}</span>
+                <span className="text-[#5f6368]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} day{quote.bookedDays === 1 ? '' : 's'}</span>
+                <span className="font-semibold text-[#111]">RM {quote.rentalSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-bold text-[15px]">
                 <span>Total</span>
-                <span>RM {total.toFixed(2)}</span>
+                <span>RM {quote.rentalSubtotal.toFixed(2)}</span>
               </div>
+              <p className="text-[11px] text-[#9ca3af]">Quote expires {new Date(quote.expiresAt).toLocaleString('en-MY')}.</p>
             </div>
           )}
         </div>
@@ -328,15 +376,15 @@ export default function ParkingDetail() {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#e8eaed] px-4 md:px-6 py-4 z-40">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
           <div>
-            <p className="font-bold text-[#111] text-[15px]">RM {spot.price.toFixed(2)} <span className="text-[13px] font-normal text-[#5f6368]">/ hour</span></p>
-            <p className="text-[11px] text-[#9ca3af]">{durationHours}h &middot; RM {total.toFixed(2)} total</p>
+            <p className="font-bold text-[#111] text-[15px]">{displayedRate > 0 ? `RM ${displayedRate.toFixed(2)}` : 'Daily rate'} <span className="text-[13px] font-normal text-[#5f6368]">/ day</span></p>
+            <p className="text-[11px] text-[#9ca3af]">{quote ? `${quote.bookedDays} days · RM ${displayedTotal.toFixed(2)} total` : 'Request a quote for exact pricing'}</p>
           </div>
-          <button onClick={handleBook} disabled={conflict}
+          <button onClick={handleBook} disabled={invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId)}
             className={`font-semibold text-[13px] px-8 py-3 rounded-xl transition flex items-center gap-2 ${
-              conflict ? 'bg-[#e8eaed] text-[#9ca3af] cursor-not-allowed' : 'bg-[#007AFF] text-white hover:bg-[#1d4ed8] active:scale-[0.98]'
+              invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId) ? 'bg-[#e8eaed] text-[#9ca3af] cursor-not-allowed' : 'bg-[#007AFF] text-white hover:bg-[#1d4ed8] active:scale-[0.98]'
             }`}>
-            <CreditCard size={16} />
-            {conflict ? 'Select a Valid Time' : `Create Parking Pass · RM ${total.toFixed(2)}`}
+            {isBookingLoading ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
+            {isBookingLoading ? (quote ? 'Confirming…' : 'Creating quote…') : quote ? `Confirm & Pay · RM ${quote.rentalSubtotal.toFixed(2)}` : 'Get Booking Quote'}
           </button>
         </div>
       </div>

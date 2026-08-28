@@ -29,7 +29,6 @@ export interface DashboardHomeProps {
   bookings?: Booking[];
   baysLoading?: boolean;
   baysError?: string | null;
-  baysMessage?: string;
   onRefreshBays?: () => void | Promise<void>;
   onConfigureParking?: (parkingSpotId: number) => void;
   onOpenTimetable?: (parkingSpotId: number) => void;
@@ -159,33 +158,6 @@ function scheduleStatus(
     };
   }
 
-  const localDay = getOwnerParkingWorkspace().spots[String(bay.parkingSpotId)]?.days[localDateKey()];
-  if (localDay?.status === 'booked') {
-    const renter = localDay.booking?.commuterName || localDay.booking?.vehicle || 'commuter';
-    return {
-      label: 'Booked today',
-      detail: `Reserved by ${renter}`,
-      tone: 'blue',
-      locked: true,
-    };
-  }
-  if (localDay?.status === 'unavailable') {
-    return {
-      label: 'Not available',
-      detail: 'Today is blocked in the timetable',
-      tone: 'amber',
-      locked: false,
-    };
-  }
-  if (localDay?.status === 'available') {
-    return {
-      label: 'Available for booking',
-      detail: 'Today is open in the timetable',
-      tone: 'green',
-      locked: false,
-    };
-  }
-
   const availability = normalize(bay.availabilityStatus);
   if (availability === 'occupied' || availability === 'reserved') {
     return {
@@ -205,19 +177,38 @@ function scheduleStatus(
     };
   }
 
-  if (availability === 'inactive') {
+  if (availability === 'inactive' || availability === 'unavailable') {
     return {
       label: 'Not available',
-      detail: 'Today is blocked in the timetable',
+      detail: 'Current status from Get My Parking',
       tone: 'amber',
       locked: false,
     };
   }
 
+  if (availability === 'available') {
+    return {
+      label: 'Available for booking',
+      detail: 'Current status from Get My Parking',
+      tone: 'green',
+      locked: false,
+    };
+  }
+
+  // Retain the local timetable only as a fallback when the API returns an unknown status.
+  const localDay = getOwnerParkingWorkspace().spots[String(bay.parkingSpotId)]?.days[localDateKey()];
+  if (localDay?.status === 'booked') {
+    const renter = localDay.booking?.commuterName || localDay.booking?.vehicle || 'commuter';
+    return { label: 'Booked today', detail: `Reserved by ${renter}`, tone: 'blue', locked: true };
+  }
+  if (localDay?.status === 'available') {
+    return { label: 'Available for booking', detail: 'Today is open in the timetable', tone: 'green', locked: false };
+  }
+
   return {
-    label: 'Available for booking',
-    detail: 'No commuter booking today',
-    tone: 'green',
+    label: 'Not available',
+    detail: 'Availability status is not recognized',
+    tone: 'slate',
     locked: false,
   };
 }
@@ -248,7 +239,6 @@ export default function DashboardHome({
   bookings = [],
   baysLoading = false,
   baysError = null,
-  baysMessage = '',
   onRefreshBays,
   onConfigureParking,
   onOpenTimetable,
@@ -307,7 +297,6 @@ export default function DashboardHome({
           </div>
         </div>
 
-        {baysMessage && !baysError && <p className="text-[10px] text-emerald-600">{baysMessage}</p>}
       </section>
 
       {baysError && (

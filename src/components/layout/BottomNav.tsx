@@ -20,7 +20,7 @@ export default function BottomNav({ items, activeId, onChange }: BottomNavProps)
 
   return (
     <nav
-      className="dashboard-bottom-nav lg:hidden fixed bottom-0 left-0 right-0 glass-bar z-50 bottom-nav-safe"
+      className="dashboard-bottom-nav md:hidden fixed bottom-0 left-0 right-0 glass-bar z-50 bottom-nav-safe"
       aria-label="Dashboard navigation"
     >
       <div className="dashboard-bottom-nav__inner" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>

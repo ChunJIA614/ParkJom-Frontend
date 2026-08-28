@@ -6,7 +6,6 @@ interface SystemAuditProps {
   accessLogs: AccessLogDto[];
   isLoading: boolean;
   error: string | null;
-  responseMessage: string;
   totalCount: number;
   searchQuery: string;
   pagination: AccessLogPaginationState;
@@ -44,7 +43,6 @@ export default function SystemAudit({
   accessLogs,
   isLoading,
   error,
-  responseMessage,
   totalCount,
   searchQuery,
   pagination,
@@ -54,20 +52,10 @@ export default function SystemAudit({
   onRefresh,
 }: SystemAuditProps) {
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
-  const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredLogs = useMemo(() => accessLogs.filter((log) => {
     const matchesOutcome = outcomeFilter === 'all' || getOutcome(log.actions) === outcomeFilter;
-    const matchesSearch = !normalizedSearch || [
-      log.actions,
-      log.userName,
-      log.userEmail,
-      log.accessLogId,
-      log.userId,
-      log.bookingId,
-      log.ioTDeviceId,
-    ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
-    return matchesOutcome && matchesSearch;
-  }), [accessLogs, normalizedSearch, outcomeFilter]);
+    return matchesOutcome;
+  }), [accessLogs, outcomeFilter]);
   const visibleLogs = pagination.source === 'client'
     ? filteredLogs.slice((pagination.page - 1) * pagination.pageSize, pagination.page * pagination.pageSize)
     : filteredLogs;
@@ -116,7 +104,6 @@ export default function SystemAudit({
         <div>
           <h2 id="audit-title" className="text-2xl font-bold text-slate-800">System Access Logs</h2>
           <p className="text-sm text-slate-500">Review authenticated user, vehicle, wallet, parking, and system operations.</p>
-          {responseMessage && !error && <p className="mt-1 text-[11px] font-medium text-emerald-700">{responseMessage}</p>}
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={onRefresh} disabled={isLoading}

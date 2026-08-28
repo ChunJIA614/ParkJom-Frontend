@@ -14,6 +14,7 @@ type AuthResponsePayload = {
   message?: string;
   isProfileComplete?: boolean;
   jwtToken?: string;
+  accountStatus?: string;
   user?: {
     userId?: number;
     email?: string;
@@ -22,6 +23,7 @@ type AuthResponsePayload = {
     profilePictureURL?: string;
     phoneNumber?: string;
     userType?: number;
+    accountStatus?: string;
   };
 };
 
@@ -72,6 +74,11 @@ export default function GoogleLoginButton() {
     const data = await res.json() as AuthResponsePayload;
     if (data.success === false) {
       throw new Error(data.message || 'Backend login failed');
+    }
+
+    const accountStatus = data.user?.accountStatus ?? data.accountStatus;
+    if (accountStatus?.trim().toLowerCase() === 'suspended') {
+      throw new Error('This account has been suspended. Please contact ParkJom support.');
     }
 
     const userId = Number(data.user?.userId);
@@ -188,6 +195,7 @@ export default function GoogleLoginButton() {
       role,
       token: data.jwtToken!,
       isProfileComplete: true,
+      accountStatus: backendUser.accountStatus ?? data.accountStatus,
     });
   };
 

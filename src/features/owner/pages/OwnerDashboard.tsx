@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, CalendarDays, PlusSquare, ClipboardList, Sliders } from 'lucide-react';
+import {
+  AlertCircle,
+  CalendarDays,
+  ClipboardList,
+  LayoutDashboard,
+  PlusSquare,
+  RefreshCw,
+  Sliders,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
@@ -82,24 +90,15 @@ export default function OwnerDashboard() {
     localStorage.setItem('parkjom_owner_view', activeView);
   }, [activeView]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => localStorage.getItem('parkjom_owner_sidebar_collapsed') === 'true',
+  );
   const [configureParkingSpotId, setConfigureParkingSpotId] = useState<number | undefined>();
   const [configureParkingSection, setConfigureParkingSection] = useState<'setup' | 'timetable'>('setup');
 
   useEffect(() => {
-    if (!isSidebarOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsSidebarOpen(false);
-    };
-
-    document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isSidebarOpen]);
+    localStorage.setItem('parkjom_owner_sidebar_collapsed', String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   // 1. Wallet Balance (RM) — TODO: fetch from backend
   const [walletBalance, setWalletBalance] = useState(0);
@@ -108,7 +107,6 @@ export default function OwnerDashboard() {
   const [bays, setBays] = useState<ParkingBay[]>([]);
   const [baysLoading, setBaysLoading] = useState(true);
   const [baysError, setBaysError] = useState<string | null>(null);
-  const [baysMessage, setBaysMessage] = useState('');
 
   // 3. Recent Bookings History — TODO: fetch from backend
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -153,15 +151,18 @@ export default function OwnerDashboard() {
         };
       });
       setBays(mapped);
-      setBaysMessage(`${body.message} (API ${body.code})`);
     } catch (error) {
       setBaysError(error instanceof Error ? error.message : 'Unable to retrieve your parking spots.');
     }
     finally { setBaysLoading(false); }
   }, [user?.token]);
 
-  // Fetch on mount and when token changes
-  useEffect(() => { fetchMyParking(); }, [fetchMyParking]);
+  // Overview and Configure Parking share Get My Parking as their source of truth.
+  useEffect(() => {
+    if (activeView === 'dashboard' || activeView === 'availability') {
+      void fetchMyParking();
+    }
+  }, [activeView, fetchMyParking]);
 
   // Refetch bays when user returns to this tab (catches admin approve/reject updates)
   useEffect(() => {
@@ -399,10 +400,12 @@ export default function OwnerDashboard() {
         onViewChange={(view) => setActiveView(view as OwnerView)}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
       />
 
       {/* Main content viewport wrapper */}
-      <div className="flex-1 flex flex-col lg:ml-60 min-h-screen min-w-0">
+      <div className="workspace-main flex-1 flex flex-col min-h-screen min-w-0">
         {/* Top Navbar */}
         <Header
           notifications={notifications}
@@ -433,7 +436,6 @@ export default function OwnerDashboard() {
               bays={bays}
               baysLoading={baysLoading}
               baysError={baysError}
-              baysMessage={baysMessage}
               onRefreshBays={fetchMyParking}
               onUpdateAvailability={handleUpdateParkingAvailability}
               onUpdatePublication={handleUpdateParkingPublication}
@@ -445,11 +447,28 @@ export default function OwnerDashboard() {
           )}
 
           {activeView === 'availability' && (
-            <AvailabilityScheduler 
-              bays={bays}
-              initialParkingSpotId={configureParkingSpotId}
-              initialSection={configureParkingSection}
-            />
+            baysLoading && bays.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+                <RefreshCw className="mx-auto h-6 w-6 animate-spin text-blue-600" aria-hidden="true" />
+                <p className="mt-2 text-xs font-medium text-slate-500">Loading your parking spots...</p>
+              </div>
+            ) : baysError && bays.length === 0 ? (
+              <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center text-rose-700">
+                <AlertCircle className="mx-auto h-6 w-6" aria-hidden="true" />
+                <p className="mt-2 text-xs font-medium">{baysError}</p>
+                <button type="button" onClick={() => void fetchMyParking()} className="mt-4 min-h-10 rounded-xl bg-rose-700 px-4 text-xs font-bold text-white hover:bg-rose-800">Retry</button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {baysError && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700"><span className="inline-flex items-center gap-2"><AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />{baysError}</span><button type="button" onClick={() => void fetchMyParking()} className="font-semibold underline">Retry</button></div>}
+                <AvailabilityScheduler
+                  bays={bays}
+                  initialParkingSpotId={configureParkingSpotId}
+                  initialSection={configureParkingSection}
+                  onScheduleChange={() => { void fetchMyParking(); }}
+                />
+              </div>
+            )
           )}
 
           {activeView === 'registration' && (

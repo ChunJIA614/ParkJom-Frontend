@@ -4,9 +4,22 @@ const DEFAULT_API_BASE = 'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.a
 export const API_BASE = import.meta.env.VITE_API_BASE
   || (import.meta.env.DEV ? '/api' : DEFAULT_API_BASE);
 
+export const AUTH_REJECTED_EVENT = 'parkjom:auth-rejected';
+
 export function apiRequest(path: string, init?: RequestInit): Promise<Response> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return fetch(`${API_BASE}${normalizedPath}`, init);
+  return fetch(`${API_BASE}${normalizedPath}`, init).then(async (response) => {
+    if (response.status === 401 || response.status === 403) {
+      const message = await response.clone().text().catch(() => '');
+      const isSuspended = /suspend|disabled|account\s+(?:is\s+)?inactive/i.test(message);
+      if (response.status === 401 || isSuspended) {
+        window.dispatchEvent(new CustomEvent(AUTH_REJECTED_EVENT, {
+          detail: { reason: isSuspended ? 'suspended' : 'unauthorized' },
+        }));
+      }
+    }
+    return response;
+  });
 }
 
 export async function readApiError(response: Response, fallback: string): Promise<string> {

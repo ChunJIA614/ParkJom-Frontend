@@ -67,7 +67,10 @@ export default function DashboardHeader({
   }, [user?.picture]);
 
   const handleSignOut = () => {
-    onSignOut();
+    const confirmed = window.confirm(
+      'Are you sure you want to sign out? You will need to sign in again to access your ParkJom account.',
+    );
+    if (confirmed) onSignOut();
   };
 
   const handleBrandClick = () => {
@@ -93,7 +96,7 @@ export default function DashboardHeader({
               aria-label="Open menu"
               aria-expanded={menuExpanded}
               aria-controls={menuControls}
-              className="workspace-icon-button lg:hidden -ml-1 text-[#5f6368] hover:text-[#111] hover:bg-black/[0.04]"
+              className="workspace-icon-button workspace-menu-button md:hidden -ml-1 text-[#5f6368] hover:text-[#111] hover:bg-black/[0.04]"
             >
               <Menu size={20} strokeWidth={2} />
             </button>

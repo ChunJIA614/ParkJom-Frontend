@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, ShieldCheck, Radio, AlertOctagon, 
-  Landmark, LifeBuoy, X, LogOut,
+  Landmark, LifeBuoy,
   ShieldAlert, Lock, Menu, Car
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
+import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
-import BrandLogo from '@/components/ui/BrandLogo';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
@@ -18,6 +17,7 @@ import {
 } from '../api/verificationApi';
 import { getAccessLogs } from '../api/accessLogApi';
 import { getAllVehicles } from '../api/vehicleApi';
+import { getSuspendedAccounts, reintegrateAccount, suspendAccount } from '../api/accountSuspensionApi';
 
 import { 
   initialStats
@@ -42,22 +42,13 @@ export default function AdminDashboard() {
   const token = user?.token ?? '';
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('parkjom_admin_sidebar_collapsed') === 'true',
+  );
 
   useEffect(() => {
-    if (!sidebarOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSidebarOpen(false);
-    };
-
-    document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [sidebarOpen]);
+    localStorage.setItem('parkjom_admin_sidebar_collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   // App core states — all data fetched from backend
   const [activeView, setActiveView] = useState<ActiveView>(() => {
@@ -75,7 +66,6 @@ export default function AdminDashboard() {
   const [listings, setListings] = useState<ListingRequest[]>([]);
   const [listingsLoading, setListingsLoading] = useState(false);
   const [listingsError, setListingsError] = useState<string | null>(null);
-  const [listingsMessage, setListingsMessage] = useState('');
   const [listingsStatus, setListingsStatus] = useState<VerificationRequestListStatus>('pending');
   const [listingsPage, setListingsPage] = useState(1);
   const [listingsPageSize, setListingsPageSize] = useState(10);
@@ -95,7 +85,6 @@ export default function AdminDashboard() {
   const [accessLogs, setAccessLogs] = useState<AccessLogDto[]>([]);
   const [accessLogsLoading, setAccessLogsLoading] = useState(false);
   const [accessLogsError, setAccessLogsError] = useState<string | null>(null);
-  const [accessLogsMessage, setAccessLogsMessage] = useState('');
   const [accessLogsTotal, setAccessLogsTotal] = useState(0);
   const [accessLogsSearch, setAccessLogsSearch] = useState('');
   const [accessLogsPagination, setAccessLogsPagination] = useState<AccessLogPaginationState>({
@@ -109,7 +98,6 @@ export default function AdminDashboard() {
   const [adminVehicles, setAdminVehicles] = useState<AdminVehicleDto[]>([]);
   const [adminVehiclesLoading, setAdminVehiclesLoading] = useState(false);
   const [adminVehiclesError, setAdminVehiclesError] = useState<string | null>(null);
-  const [adminVehiclesMessage, setAdminVehiclesMessage] = useState('');
 
   // Global system configs (live-wired into widgets)
   const [systemConfig, setSystemConfig] = useState({
@@ -137,6 +125,11 @@ export default function AdminDashboard() {
       activeOverstaysCount: overstays.filter(o => o.status !== 'resolved').length
     }));
   };
+
+  const loadSuspendedAccounts = React.useCallback(async () => {
+    if (!token) return [];
+    return (await getSuspendedAccounts(token)).data;
+  }, [token]);
 
   // ---- Fetch verification requests from backend (pending + moderated) ----
   const fetchListings = React.useCallback(async () => {
@@ -266,9 +259,6 @@ export default function AdminDashboard() {
         totalPages,
         hasNextPage,
       });
-      setListingsMessage(isEnvelope
-        ? `${body.message} (API ${body.code}, page ${responsePage})`
-        : `${displayedListings.length} verification request${displayedListings.length === 1 ? '' : 's'} retrieved successfully`);
       if (listingsStatus === 'pending') {
         setStats(prev => ({ ...prev, pendingListingsCount: totalCount ?? displayedListings.length }));
       }
@@ -305,45 +295,35 @@ export default function AdminDashboard() {
     setAccessLogsLoading(true);
     setAccessLogsError(null);
     try {
-      const normalizedSearch = accessLogsSearch.trim().toLowerCase();
+      const requestedPage = accessLogsPagination.page;
+      const requestedPageSize = accessLogsPagination.pageSize;
       const result = await getAccessLogs(token, {
         search: accessLogsSearch,
-        // The endpoint can repeat page one for later page requests. Load a
-        // broad result set once and make the visible pagination client-side.
-        page: 1,
-        pageSize: 100,
+        page: requestedPage,
+        pageSize: requestedPageSize,
       });
-      const matchingLogs = !normalizedSearch ? result.data : result.data.filter((log) => [
-        log.actions,
-        log.userName,
-        log.userEmail,
-        log.accessLogId,
-        log.userId,
-        log.bookingId,
-        log.ioTDeviceId,
-      ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch)));
 
       setAccessLogs(result.data);
-      setAccessLogsTotal(matchingLogs.length);
-      setAccessLogsPagination((current) => {
-        const totalPages = Math.max(1, Math.ceil(matchingLogs.length / current.pageSize));
-        const page = Math.min(current.page, totalPages);
+      setAccessLogsTotal(result.total);
+      setAccessLogsPagination(() => {
+        const pageSize = result.pageSize > 0 ? result.pageSize : requestedPageSize;
+        const totalPages = Math.max(1, result.totalPages || Math.ceil(result.total / pageSize));
+        const page = Math.min(totalPages, Math.max(1, result.page || requestedPage));
         return {
-          source: 'client',
+          source: 'server',
           page,
-          pageSize: current.pageSize,
-          totalCount: matchingLogs.length,
+          pageSize,
+          totalCount: result.total,
           totalPages,
           hasNextPage: page < totalPages,
         };
       });
-      setAccessLogsMessage(`${result.message} (${matchingLogs.length} matching)`);
     } catch (error) {
       setAccessLogsError(error instanceof Error ? error.message : 'Unable to load access logs.');
     } finally {
       setAccessLogsLoading(false);
     }
-  }, [accessLogsSearch, token]);
+  }, [accessLogsPagination.page, accessLogsPagination.pageSize, accessLogsSearch, token]);
 
   const changeAccessLogsSearch = React.useCallback((search: string) => {
     setAccessLogsSearch(search);
@@ -380,7 +360,6 @@ export default function AdminDashboard() {
     try {
       const result = await getAllVehicles(token);
       setAdminVehicles(result.data);
-      setAdminVehiclesMessage(`${result.message} (${result.data.length} loaded)`);
     } catch (error) {
       setAdminVehiclesError(error instanceof Error ? error.message : 'Unable to load all vehicles.');
     } finally {
@@ -486,19 +465,33 @@ export default function AdminDashboard() {
     addActivityLog('bollard_state', `Emergency Override: Lowered barrier of ${bollardId} from Support Ticket`, "Admin");
   };
 
-  const mainMenuItems = [
-    { id: 'home', label: 'Platform Dashboard', icon: TrendingUp, count: null },
-    { id: 'governance', label: 'Listing Governance', icon: ShieldCheck, count: listings.filter(l => l.status === 'pending').length },
-    { id: 'vehicles', label: 'Vehicle Management', icon: Car, count: null },
-    { id: 'iot', label: 'IoT Smart Bollards', icon: Radio, count: bollards.filter(b => b.status === 'offline').length ? `${bollards.filter(b => b.status === 'offline').length} offline` : null, countColor: 'bg-rose-100 text-rose-700' },
-    { id: 'settlement', label: 'Financial Settlement', icon: Landmark, count: payouts.filter(p => p.status === 'pending').length },
-    { id: 'enforcement', label: 'Overstay Enforcement', icon: AlertOctagon, count: overstays.filter(o => o.status !== 'resolved').length, countColor: 'bg-rose-100 text-rose-700' },
-    { id: 'support', label: 'Disputes & Tickets', icon: LifeBuoy, count: tickets.filter(t => t.status !== 'resolved').length },
-    { id: 'audit', label: 'System Audit', icon: ShieldAlert, count: null }
-  ];
-
-  const bottomMenuItems = [
-    { id: 'system', label: 'System Configuration', icon: Lock, count: null }
+  const adminSidebarGroups = [
+    {
+      items: [{ id: 'home', label: 'Platform Dashboard', icon: TrendingUp }],
+    },
+    {
+      label: 'Operations',
+      items: [
+        { id: 'governance', label: 'Listing Governance', icon: ShieldCheck, badge: listings.filter((listing) => listing.status === 'pending').length },
+        { id: 'vehicles', label: 'Vehicle Management', icon: Car },
+        { id: 'iot', label: 'IoT Smart Bollards', icon: Radio, badge: bollards.filter((bollard) => bollard.status === 'offline').length, badgeTone: 'danger' as const },
+      ],
+    },
+    {
+      label: 'Finance & Safety',
+      items: [
+        { id: 'settlement', label: 'Financial Settlement', icon: Landmark, badge: payouts.filter((payout) => payout.status === 'pending').length },
+        { id: 'enforcement', label: 'Overstay Enforcement', icon: AlertOctagon, badge: overstays.filter((overstay) => overstay.status !== 'resolved').length, badgeTone: 'danger' as const },
+        { id: 'support', label: 'Disputes & Tickets', icon: LifeBuoy, badge: tickets.filter((ticket) => ticket.status !== 'resolved').length },
+      ],
+    },
+    {
+      label: 'System',
+      items: [
+        { id: 'audit', label: 'System Audit', icon: ShieldAlert },
+        { id: 'system', label: 'System Configuration', icon: Lock },
+      ],
+    },
   ];
 
   const renderActiveView = () => {
@@ -519,7 +512,6 @@ export default function AdminDashboard() {
             listings={listings} 
             isLoading={listingsLoading}
             error={listingsError}
-            responseMessage={listingsMessage}
             statusFilter={listingsStatus}
             pagination={listingsPagination}
             onStatusChange={changeListingsStatus}
@@ -529,6 +521,9 @@ export default function AdminDashboard() {
             onViewDocument={fetchPrivateDocument}
             onApprove={handleApproveListing} 
             onReject={handleRejectListing}
+            onSuspend={async (email) => (await suspendAccount(token, email)).data}
+            onReintegrate={async (email) => (await reintegrateAccount(token, email)).data}
+            onLoadSuspensions={loadSuspendedAccounts}
             addActivityLog={addActivityLog}
           />
         );
@@ -577,7 +572,6 @@ export default function AdminDashboard() {
             accessLogs={accessLogs}
             isLoading={accessLogsLoading}
             error={accessLogsError}
-            responseMessage={accessLogsMessage}
             totalCount={accessLogsTotal}
             searchQuery={accessLogsSearch}
             pagination={accessLogsPagination}
@@ -593,7 +587,6 @@ export default function AdminDashboard() {
             vehicles={adminVehicles}
             isLoading={adminVehiclesLoading}
             error={adminVehiclesError}
-            responseMessage={adminVehiclesMessage}
             onRefresh={fetchAdminVehicles}
           />
         );
@@ -625,71 +618,21 @@ export default function AdminDashboard() {
 
   return (
     <div id="parkjom-root" className="app-workspace font-sans text-[#1d1d1f] flex" data-workspace-role="admin">
-      
-      <aside className="workspace-sidebar hidden lg:flex">
-        <div className="workspace-sidebar__brand">
-          <div className="workspace-wordmark">
-            <BrandLogo alt="" className="workspace-wordmark__mark" />
-            <div><strong>ParkJom</strong><span>Admin workspace</span></div>
-          </div>
-        </div>
-
-        <nav className="workspace-nav" aria-label="Admin workspace">
-          {mainMenuItems.map((item) => {
-            const IconComponent = item.icon;
-            const isActive = activeView === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-              onClick={() => setActiveView(item.id as ActiveView)}
-              className={isActive ? 'is-active' : ''}
-              aria-current={isActive ? 'page' : undefined}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <IconComponent size={15} />
-                  <span>{item.label}</span>
-                </div>
-                {item.count !== null && item.count !== 0 && (
-                  <span className="ml-auto text-[10px] font-semibold text-[#6e6e73]">
-                    {item.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-          <div className="mt-auto pt-3 border-t border-black/[0.06]">
-          {bottomMenuItems.map((item) => {
-            const IconComponent = item.icon;
-            const isActive = activeView === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveView(item.id as ActiveView)}
-                className={isActive ? 'is-active' : ''}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                <IconComponent size={15} /> {item.label}
-              </button>
-            );
-          })}
-          </div>
-        </nav>
-
-        <div className="workspace-sidebar__footer">
-          <button
-            type="button"
-            onClick={() => { logout(); navigate('/'); }}
-            className="w-full flex items-center gap-2.5 text-left hover:text-[#1d1d1f]"
-          >
-            <LogOut size={15} /> Sign out
-          </button>
-        </div>
-      </aside>
+      <AppSidebar
+        id="admin-workspace-navigation"
+        workspaceLabel="Admin workspace"
+        groups={adminSidebarGroups}
+        activeId={activeView}
+        onNavigate={(id) => setActiveView(id as ActiveView)}
+        mobileOpen={sidebarOpen}
+        onMobileOpenChange={setSidebarOpen}
+        collapsed={sidebarCollapsed}
+        onCollapsedChange={setSidebarCollapsed}
+        footer="Platform operations and governance."
+      />
 
       {/* 2. Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 lg:ml-60">
+      <div className="workspace-main flex-1 flex flex-col min-w-0">
         <DashboardHeader
           role="admin"
           user={user}
@@ -698,7 +641,7 @@ export default function AdminDashboard() {
           showMenuButton
           onMenuClick={() => setSidebarOpen(true)}
           menuExpanded={sidebarOpen}
-          menuControls="admin-mobile-navigation"
+          menuControls="admin-workspace-navigation"
           statusText="Operations workspace"
         />
 
@@ -714,85 +657,6 @@ export default function AdminDashboard() {
           </PageTransition>
         </main>
       </div>
-
-      {/* 3. Mobile Sidebar Drawer Overlay */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <div className="fixed inset-0 z-[60] flex lg:hidden select-none">
-            {/* Dimmer backdrop */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 bg-slate-950/35 backdrop-blur-[2px]"
-            />
-
-            <motion.aside 
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', bounce: 0, duration: 0.38 }}
-              id="admin-mobile-navigation"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Admin navigation"
-              className="workspace-sidebar is-open"
-            >
-              <div className="workspace-sidebar__brand">
-                <div className="workspace-wordmark">
-                  <BrandLogo alt="" className="workspace-wordmark__mark" />
-                  <div><strong>ParkJom</strong><span>Admin workspace</span></div>
-                </div>
-                <button type="button" onClick={() => setSidebarOpen(false)} className="text-[#6e6e73] p-1.5" aria-label="Close menu">
-                  <X size={18} />
-                </button>
-              </div>
-
-              <nav className="workspace-nav" aria-label="Admin workspace">
-                {mainMenuItems.map((item) => {
-                  const IconComponent = item.icon;
-                  const isActive = activeView === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => { setActiveView(item.id as ActiveView); setSidebarOpen(false); }}
-                      className={isActive ? 'is-active' : ''}
-                      aria-current={isActive ? 'page' : undefined}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <IconComponent size={15} />
-                        <span>{item.label}</span>
-                      </div>
-                      {item.count !== null && item.count !== 0 && (
-                        <span className="ml-auto text-[10px] font-semibold text-[#6e6e73]">{item.count}</span>
-                      )}
-                    </button>
-                  );
-                })}
-                <div className="mt-auto pt-3 border-t border-black/[0.06]">
-                  {bottomMenuItems.map((item) => {
-                    const IconComponent = item.icon;
-                    const isActive = activeView === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => { setActiveView(item.id as ActiveView); setSidebarOpen(false); }}
-                        className={isActive ? 'is-active' : ''}
-                        aria-current={isActive ? 'page' : undefined}
-                      >
-                        <IconComponent size={15} /> {item.label}
-                      </button>
-                    );
-                  })}
-                  </div>
-              </nav>
-            </motion.aside>
-          </div>
-        )}
-      </AnimatePresence>
 
       <BottomNav
         items={[

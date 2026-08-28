@@ -9,14 +9,14 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
   FileText,
+  GripVertical,
   ImagePlus,
   Info,
   Lock,
   MapPin,
+  RefreshCw,
   RotateCcw,
-  Save,
   Send,
   ShieldCheck,
   Trash2,
@@ -24,7 +24,25 @@ import {
   Users,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { ParkingBay } from '../types';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import {
+  createParkingAvailabilityRules,
+  deleteParkingImage,
+  getOwnerAvailabilityCalendar,
+  updateParkingConfiguration,
+  updateParkingImage,
+  updateParkingPublication,
+  uploadParkingImages,
+} from '../api/parkingApi';
+import type {
+  ParkingBay,
+  ParkingAvailabilityCalendarHours,
+  ParkingAvailabilityCalendarResponse,
+  ParkingAvailabilityRulesResponse,
+  ParkingConfigurationResponse,
+  ParkingImagesResponse,
+  ParkingSpotImage,
+} from '../types';
 
 /**
  * Local owner parking workspace storage.  The shape is deliberately JSON
@@ -45,11 +63,13 @@ export interface OwnerParkingBooking {
 
 export interface OwnerParkingDay {
   status: ParkingDayStatus;
+  configuredHours?: ParkingAvailabilityCalendarHours[];
   booking?: OwnerParkingBooking;
 }
 
 export interface OwnerParkingSetup {
   photos: string[];
+  images: ParkingSpotImage[];
   description: string;
   accessInstructions: string;
   dailyRate: number | null;
@@ -75,8 +95,10 @@ export interface AvailabilitySchedulerProps {
   onScheduleChange?: () => void;
 }
 
-const MAX_PHOTOS = 5;
+const MAX_PHOTOS = 6;
 const MAX_BULK_DAYS = 366;
+const SETUP_STEPS = ['Photos', 'Description', 'Pricing', 'Review', 'Publish'] as const;
+type SetupStep = 1 | 2 | 3 | 4 | 5;
 
 const statusMeta: Record<ParkingDayStatus, {
   label: string;
@@ -140,9 +162,43 @@ function normaliseBooking(value: unknown): OwnerParkingBooking | undefined {
   };
 }
 
+function normaliseConfiguredHours(value: unknown): ParkingAvailabilityCalendarHours[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const candidate = item as Record<string, unknown>;
+    return typeof candidate.from === 'string' && typeof candidate.to === 'string'
+      ? [{ from: candidate.from, to: candidate.to }]
+      : [];
+  });
+}
+
+function normaliseParkingImage(value: unknown): ParkingSpotImage | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Record<string, unknown>;
+  const parkingSpotImageId = safeNumber(candidate.parkingSpotImageId);
+  const mediaFileId = safeNumber(candidate.mediaFileId);
+  const displayOrder = safeNumber(candidate.displayOrder);
+  if (
+    parkingSpotImageId === null
+    || mediaFileId === null
+    || displayOrder === null
+    || typeof candidate.secureUrl !== 'string'
+  ) return null;
+  return {
+    parkingSpotImageId,
+    mediaFileId,
+    secureUrl: candidate.secureUrl,
+    originalFileName: typeof candidate.originalFileName === 'string' ? candidate.originalFileName : '',
+    displayOrder,
+    isPrimary: Boolean(candidate.isPrimary),
+  };
+}
+
 function emptySetup(bay?: ParkingBay): OwnerParkingSetup {
   return {
     photos: [],
+    images: [],
     description: '',
     accessInstructions: '',
     dailyRate: bay && safeNumber(bay.dailyRate) && (bay.dailyRate ?? 0) > 0 ? bay.dailyRate : null,
@@ -175,15 +231,30 @@ function normaliseSetup(value: unknown, bay?: ParkingBay): OwnerParkingSetup {
   const photos = Array.isArray(candidate.photos)
     ? candidate.photos.filter((photo): photo is string => typeof photo === 'string').slice(0, MAX_PHOTOS)
     : fallback.photos;
+  const images = Array.isArray(candidate.images)
+    ? candidate.images
+      .map(normaliseParkingImage)
+      .filter((image): image is ParkingSpotImage => image !== null)
+      .sort((left, right) => left.displayOrder - right.displayOrder)
+    : fallback.images;
+  const apiDailyRate = bay ? safeNumber(bay.dailyRate) : null;
+  const apiMonthlyRate = bay ? safeNumber(bay.monthlyRate) : null;
   return {
     photos,
+    images,
     description: typeof candidate.description === 'string' ? candidate.description : fallback.description,
     accessInstructions: typeof candidate.accessInstructions === 'string'
       ? candidate.accessInstructions
       : fallback.accessInstructions,
-    dailyRate: candidate.dailyRate === undefined ? fallback.dailyRate : safeNumber(candidate.dailyRate),
-    monthlyRate: candidate.monthlyRate === undefined ? fallback.monthlyRate : safeNumber(candidate.monthlyRate),
-    published: typeof candidate.published === 'boolean' ? candidate.published : fallback.published,
+    dailyRate: bay
+      ? (apiDailyRate !== null && apiDailyRate > 0 ? apiDailyRate : null)
+      : candidate.dailyRate === undefined ? fallback.dailyRate : safeNumber(candidate.dailyRate),
+    monthlyRate: bay
+      ? (apiMonthlyRate !== null && apiMonthlyRate > 0 ? apiMonthlyRate : null)
+      : candidate.monthlyRate === undefined ? fallback.monthlyRate : safeNumber(candidate.monthlyRate),
+    published: bay
+      ? Boolean(bay.isPublished)
+      : typeof candidate.published === 'boolean' ? candidate.published : fallback.published,
     updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : undefined,
   };
 }
@@ -200,6 +271,7 @@ function normaliseSpot(value: unknown, bay?: ParkingBay): OwnerParkingWorkspaceS
     const dayStatus = normaliseStatus(day.status);
     days[date] = {
       status: dayStatus,
+      configuredHours: normaliseConfiguredHours(day.configuredHours),
       booking: dayStatus === 'booked' ? normaliseBooking(day.booking) : undefined,
     };
   });
@@ -277,6 +349,17 @@ function dateKeyIsPast(key: string): boolean {
   return key < localDateKey();
 }
 
+function dateMatchesDayPattern(key: string, dayPattern: string): boolean {
+  const day = dateFromKey(key).getDay();
+  const normalized = dayPattern.trim().toLowerCase().replace(/\s+/g, '');
+  if (normalized === 'weekdays' || normalized === 'weekday') return day >= 1 && day <= 5;
+  if (normalized === 'weekends' || normalized === 'weekend') return day === 0 || day === 6;
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  if (normalized === dayNames[day] || normalized === `${dayNames[day]}s`) return true;
+  if (dayNames.some((name) => normalized === name || normalized === `${name}s`)) return false;
+  return true;
+}
+
 function addDays(date: Date, amount: number): Date {
   const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   next.setDate(next.getDate() + amount);
@@ -317,6 +400,14 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(new Error('Unable to read image'));
     reader.readAsDataURL(file);
   });
+}
+
+async function dataUrlToImageFile(dataUrl: string, index: number): Promise<File> {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  if (!blob.type.startsWith('image/')) throw new Error('Invalid image preview data.');
+  const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type.split('/')[1] || 'jpg';
+  return new File([blob], `parking-image-${index + 1}.${extension}`, { type: blob.type });
 }
 
 function validPhoto(file: File): boolean {
@@ -365,6 +456,7 @@ export default function AvailabilityScheduler({
   initialSection = 'setup',
   onScheduleChange,
 }: AvailabilitySchedulerProps) {
+  const { user } = useAuth();
   const todayKey = localDateKey();
   const [workspace, setWorkspace] = useState<OwnerParkingWorkspace>(() => getOwnerParkingWorkspace(bays));
   const [selectedBayId, setSelectedBayId] = useState<string>(() => {
@@ -372,12 +464,12 @@ export default function AvailabilityScheduler({
     return String(preferred?.parkingSpotId ?? bays[0]?.parkingSpotId ?? '');
   });
   const [section, setSection] = useState<'setup' | 'timetable'>(initialSection);
-  const [monthCursor, setMonthCursor] = useState<Date>(() => {
-    const now = new Date();
+  const monthCursor = useMemo(() => {
+    const now = dateFromKey(todayKey);
     return new Date(now.getFullYear(), now.getMonth(), 1);
-  });
+  }, [todayKey]);
   const [selectedDate, setSelectedDate] = useState(todayKey);
-  const [setupStep, setSetupStep] = useState<1 | 2 | 3>(1);
+  const [setupStep, setSetupStep] = useState<SetupStep>(1);
   const [setupForm, setSetupForm] = useState<{
     photos: string[];
     description: string;
@@ -389,21 +481,44 @@ export default function AvailabilityScheduler({
   const [pendingPhotoCount, setPendingPhotoCount] = useState(0);
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupSaving, setSetupSaving] = useState(false);
+  const [imagesUploading, setImagesUploading] = useState(false);
+  const [imageUpdatingId, setImageUpdatingId] = useState<number | null>(null);
+  const [imageDeletingId, setImageDeletingId] = useState<number | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
+  const [draggedPhotoIndex, setDraggedPhotoIndex] = useState<number | null>(null);
   const [bulkStart, setBulkStart] = useState(todayKey);
   const [bulkEnd, setBulkEnd] = useState(todayKey);
+  const [bulkFromTime, setBulkFromTime] = useState('09:00');
+  const [bulkToTime, setBulkToTime] = useState('19:00');
+  const [bulkDayPattern, setBulkDayPattern] = useState('Weekdays');
   const [bulkStatus, setBulkStatus] = useState<'available' | 'unavailable'>('available');
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [calendarTimeZone, setCalendarTimeZone] = useState('Asia/Kuala_Lumpur');
   const [dayMessage, setDayMessage] = useState<string | null>(null);
   const [dayError, setDayError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
+  const pendingImageFilesRef = useRef<Map<string, File>>(new Map());
+  const calendarRequestRef = useRef(0);
   const prefersReducedMotion = useReducedMotion();
 
   const activeBay = bays.find((bay) => String(bay.parkingSpotId) === selectedBayId) ?? bays[0];
   const activeSpotId = activeBay ? String(activeBay.parkingSpotId) : '';
   const activeSpot = activeSpotId ? workspace.spots[activeSpotId] : undefined;
   const activeSetup = setupFromSpot(activeSpot, activeBay);
+  const displayedMonth = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`;
+  const setupBusy = setupSaving
+    || imagesUploading
+    || imageUpdatingId !== null
+    || imageDeletingId !== null
+    || publishing
+    || availabilitySaving;
 
   useEffect(() => {
     setWorkspace((current) => mergeWorkspaceWithBays(current, bays));
@@ -444,13 +559,17 @@ export default function AvailabilityScheduler({
     setSetupMessage(null);
     setSetupError(null);
     setPendingPhotoCount(0);
+    setSelectedPhotoIndex(null);
+    setDraggedPhotoIndex(null);
     setSelectedDate(todayKey);
-    const now = new Date();
-    setMonthCursor(new Date(now.getFullYear(), now.getMonth(), 1));
     setBulkStart(todayKey);
     setBulkEnd(todayKey);
+    setBulkFromTime('09:00');
+    setBulkToTime('19:00');
+    setBulkDayPattern('Weekdays');
     setBulkMessage(null);
     setBulkError(null);
+    setCalendarError(null);
     setDayMessage(null);
     setDayError(null);
   }, [selectedBayId]);
@@ -478,15 +597,70 @@ export default function AvailabilityScheduler({
     notifyChange();
   }, [notifyChange]);
 
+  const fetchAvailabilityCalendar = useCallback(async (month = displayedMonth) => {
+    const parkingSpotId = activeBay?.parkingSpotId;
+    const token = user?.token ?? '';
+    if (!parkingSpotId || !activeSpotId) return;
+    if (!token) {
+      setCalendarLoading(false);
+      setCalendarError('Your owner session is missing an authorization token.');
+      return;
+    }
+
+    const requestId = calendarRequestRef.current + 1;
+    calendarRequestRef.current = requestId;
+    setCalendarLoading(true);
+    setCalendarError(null);
+    try {
+      const response = await getOwnerAvailabilityCalendar(token, parkingSpotId, month);
+      const body = await response.json().catch(() => null) as ParkingAvailabilityCalendarResponse | null;
+      if (!response.ok || !body?.success || !Array.isArray(body.days)) {
+        throw new Error(body?.message || `Unable to retrieve the availability calendar (${response.status}).`);
+      }
+
+      setWorkspace((current) => {
+        const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
+        const days = { ...spot.days };
+        Object.keys(days).forEach((date) => {
+          if (date.startsWith(`${body.month}-`)) delete days[date];
+        });
+        body.days.forEach((day) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(day.date) || !day.date.startsWith(`${body.month}-`)) return;
+          const status = normaliseStatus(day.status);
+          days[day.date] = {
+            status,
+            configuredHours: normaliseConfiguredHours(day.configuredHours),
+          };
+        });
+        return {
+          ...current,
+          spots: { ...current.spots, [activeSpotId]: { ...spot, days } },
+        };
+      });
+
+      if (calendarRequestRef.current === requestId) {
+        setCalendarTimeZone(body.timeZone || 'Asia/Kuala_Lumpur');
+      }
+    } catch (error) {
+      if (calendarRequestRef.current === requestId) {
+        setCalendarError(error instanceof Error ? error.message : 'Unable to retrieve the availability calendar.');
+      }
+    } finally {
+      if (calendarRequestRef.current === requestId) setCalendarLoading(false);
+    }
+  }, [activeBay, activeSpotId, displayedMonth, user?.token]);
+
+  useEffect(() => {
+    if (section === 'timetable') void fetchAvailabilityCalendar();
+  }, [fetchAvailabilityCalendar, section]);
+
   const replaceSetupForm = (field: keyof typeof setupForm, value: string | string[]) => {
     setSetupForm((current) => ({ ...current, [field]: value }));
     setSetupMessage(null);
     setSetupError(null);
   };
 
-  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = '';
+  const addPhotoFiles = async (files: File[]) => {
     if (!activeSpotId || files.length === 0) return;
     const invalid = files.find((file) => !validPhoto(file));
     if (invalid) {
@@ -516,6 +690,7 @@ export default function AvailabilityScheduler({
     try {
       const dataUrls = await Promise.all(selected.map((file) => fileToDataUrl(file)));
       const replacements = new Map(objectUrls.map((url, index) => [url, dataUrls[index]]));
+      dataUrls.forEach((dataUrl, index) => pendingImageFilesRef.current.set(dataUrl, selected[index]));
       setPhotoPreviews((current) => ({
         ...current,
         [activeSpotId]: (current[activeSpotId] ?? []).map((photo) => replacements.get(photo) ?? photo),
@@ -544,9 +719,23 @@ export default function AvailabilityScheduler({
     }
   };
 
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    void addPhotoFiles(files);
+  };
+
+  const handlePhotoFileDrop = (event: React.DragEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    if (setupBusy) return;
+    void addPhotoFiles(Array.from(event.dataTransfer.files ?? []));
+  };
+
   const removePhoto = (index: number) => {
     if (!activeSpotId) return;
     const preview = photoPreviews[activeSpotId]?.[index];
+    const storedPhoto = setupForm.photos[index];
+    if (storedPhoto) pendingImageFilesRef.current.delete(storedPhoto);
     if (preview && objectUrlsRef.current.has(preview)) {
       URL.revokeObjectURL(preview);
       objectUrlsRef.current.delete(preview);
@@ -556,9 +745,55 @@ export default function AvailabilityScheduler({
       [activeSpotId]: (current[activeSpotId] ?? []).filter((_, itemIndex) => itemIndex !== index),
     }));
     setSetupForm((current) => ({ ...current, photos: current.photos.filter((_, itemIndex) => itemIndex !== index) }));
+    setSelectedPhotoIndex(null);
   };
 
-  const persistSetup = (publish: boolean): boolean => {
+  const swapPhotos = async (fromIndex: number, toIndex: number) => {
+    if (!activeSpotId || fromIndex === toIndex || setupBusy) return;
+    const photos = photoPreviews[activeSpotId] ?? setupForm.photos;
+    const sourceUrl = photos[fromIndex];
+    const targetUrl = photos[toIndex];
+    if (!sourceUrl || !targetUrl) return;
+
+    const sourceImage = activeSetup.images.find((image) => image.secureUrl === sourceUrl);
+    const targetImage = activeSetup.images.find((image) => image.secureUrl === targetUrl);
+    if (sourceImage && targetImage) {
+      if (sourceImage.isPrimary) {
+        await editImageOrder(targetImage, sourceImage.displayOrder, true);
+        await editImageOrder(sourceImage, targetImage.displayOrder, false);
+      } else {
+        await editImageOrder(sourceImage, targetImage.displayOrder, targetImage.isPrimary);
+        await editImageOrder(targetImage, sourceImage.displayOrder, false);
+      }
+      return;
+    }
+
+    const reordered = [...photos];
+    [reordered[fromIndex], reordered[toIndex]] = [reordered[toIndex], reordered[fromIndex]];
+    setPhotoPreviews((current) => ({ ...current, [activeSpotId]: reordered }));
+    setSetupForm((current) => ({ ...current, photos: reordered }));
+    setSetupMessage('Photo order updated.');
+    setSetupError(null);
+  };
+
+  const handlePhotoTap = (index: number) => {
+    if (selectedPhotoIndex === null) {
+      setSelectedPhotoIndex(index);
+      return;
+    }
+    if (selectedPhotoIndex === index) {
+      setSelectedPhotoIndex(null);
+      return;
+    }
+    void swapPhotos(selectedPhotoIndex, index);
+    setSelectedPhotoIndex(null);
+  };
+
+  const persistSetup = (
+    publish: boolean,
+    updatedAt = new Date().toISOString(),
+    successMessage = publish ? 'Parking listing published. Choose open dates in Availability.' : 'Draft saved.',
+  ): boolean => {
     if (!activeSpotId) return false;
     if (pendingPhotoCount > 0) {
       setSetupError('Please wait for the photo previews to finish loading.');
@@ -575,12 +810,13 @@ export default function AvailabilityScheduler({
       // URLs/paths.  The component deliberately does not assume a backend
       // image URL shape yet.
       photos: setupForm.photos.filter((photo) => photo.trim().length > 0).slice(0, MAX_PHOTOS),
+      images: activeSetup.images.filter((image) => setupForm.photos.includes(image.secureUrl)),
       description: setupForm.description.trim(),
       accessInstructions: setupForm.accessInstructions.trim(),
       dailyRate: daily !== null && daily > 0 ? daily : null,
       monthlyRate: monthly !== null && monthly > 0 ? monthly : null,
       published: publish ? true : activeSetup.published,
-      updatedAt: new Date().toISOString(),
+      updatedAt,
     };
     updateWorkspace((current) => {
       const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
@@ -600,39 +836,282 @@ export default function AvailabilityScheduler({
       monthlyRate: nextSetup.monthlyRate === null ? '' : String(nextSetup.monthlyRate),
     });
     setPhotoPreviews((current) => ({ ...current, [activeSpotId]: [...nextSetup.photos] }));
-    setSetupMessage(publish ? 'Parking listing published. Choose open dates in Availability.' : 'Draft saved.');
+    setSetupMessage(successMessage);
     setSetupError(null);
     return true;
   };
 
-  const continueToReview = () => {
-    const candidate: OwnerParkingSetup = {
-      photos: setupForm.photos,
-      description: setupForm.description,
-      accessInstructions: setupForm.accessInstructions,
-      dailyRate: setupForm.dailyRate.trim() === '' ? null : Number(setupForm.dailyRate),
-      monthlyRate: setupForm.monthlyRate.trim() === '' ? null : Number(setupForm.monthlyRate),
-      published: activeSetup.published,
-    };
-    const completion = setupCompletion(candidate);
+  const saveConfiguration = async (): Promise<boolean> => {
+    if (!activeBay) return false;
+    if (pendingPhotoCount > 0) {
+      setSetupError('Please wait for the photo previews to finish loading.');
+      return false;
+    }
+
+    const dailyRate = setupForm.dailyRate.trim() === '' ? 0 : Number(setupForm.dailyRate);
+    const monthlyRate = setupForm.monthlyRate.trim() === '' ? 0 : Number(setupForm.monthlyRate);
+    if (!Number.isFinite(dailyRate) || dailyRate < 0 || !Number.isFinite(monthlyRate) || monthlyRate < 0) {
+      setSetupError('Rates must be zero or a positive number.');
+      return false;
+    }
+
+    const token = user?.token ?? '';
+    if (!token) {
+      setSetupError('Your owner session is missing an authorization token.');
+      return false;
+    }
+
+    setSetupSaving(true);
+    setSetupMessage(null);
+    setSetupError(null);
+    try {
+      const response = await updateParkingConfiguration(token, activeBay.parkingSpotId, {
+        description: setupForm.description.trim(),
+        dailyRate,
+        monthlyRate,
+      });
+      const body = await response.json().catch(() => null) as ParkingConfigurationResponse | null;
+      if (!response.ok || !body?.success) {
+        throw new Error(body?.message || `Unable to save parking configuration (${response.status}).`);
+      }
+
+      return persistSetup(false, body.updatedAt, body.message);
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : 'Unable to save parking configuration.');
+      return false;
+    } finally {
+      setSetupSaving(false);
+    }
+  };
+
+  const applyServerImages = (images: ParkingSpotImage[], message: string) => {
+    const orderedImages = images
+      .map(normaliseParkingImage)
+      .filter((image): image is ParkingSpotImage => image !== null)
+      .sort((left, right) => left.displayOrder - right.displayOrder)
+      .slice(0, MAX_PHOTOS);
+    const secureUrls = orderedImages.map((image) => image.secureUrl);
+
+    updateWorkspace((current) => {
+      const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
+      return {
+        ...current,
+        spots: {
+          ...current.spots,
+          [activeSpotId]: {
+            ...spot,
+            setup: { ...spot.setup, photos: secureUrls, images: orderedImages },
+          },
+        },
+      };
+    });
+    setSetupForm((current) => ({ ...current, photos: secureUrls }));
+    setPhotoPreviews((current) => ({ ...current, [activeSpotId]: secureUrls }));
+    setSetupMessage(message);
+  };
+
+  const uploadImages = async (): Promise<boolean> => {
+    if (!activeBay) return false;
+    const localImages = setupForm.photos.filter((photo) => photo.startsWith('data:image/'));
+    if (localImages.length === 0) return true;
+
+    const token = user?.token ?? '';
+    if (!token) {
+      setSetupError('Your owner session is missing an authorization token.');
+      return false;
+    }
+
+    setImagesUploading(true);
+    setSetupMessage(null);
+    setSetupError(null);
+    try {
+      const imageFiles = await Promise.all(localImages.map((dataUrl, index) => (
+        pendingImageFilesRef.current.get(dataUrl) ?? dataUrlToImageFile(dataUrl, index)
+      )));
+      const response = await uploadParkingImages(token, activeBay.parkingSpotId, imageFiles);
+      const body = await response.json().catch(() => null) as ParkingImagesResponse | null;
+      if (!response.ok || !body?.success || !Array.isArray(body.data)) {
+        throw new Error(body?.message || `Unable to upload parking images (${response.status}).`);
+      }
+
+      localImages.forEach((dataUrl) => pendingImageFilesRef.current.delete(dataUrl));
+      applyServerImages(body.data, body.message);
+      return true;
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : 'Unable to upload parking images.');
+      return false;
+    } finally {
+      setImagesUploading(false);
+    }
+  };
+
+  const editImageOrder = async (
+    image: ParkingSpotImage,
+    displayOrder: number,
+    isPrimary: boolean,
+  ) => {
+    if (!activeBay) return;
+    const token = user?.token ?? '';
+    if (!token) {
+      setSetupError('Your owner session is missing an authorization token.');
+      return;
+    }
+
+    const nextOrder = Math.min(Math.max(1, displayOrder), activeSetup.images.length);
+    if (nextOrder === image.displayOrder && isPrimary === image.isPrimary) return;
+
+    setImageUpdatingId(image.parkingSpotImageId);
+    setSetupMessage(null);
+    setSetupError(null);
+    try {
+      const response = await updateParkingImage(
+        token,
+        activeBay.parkingSpotId,
+        image.parkingSpotImageId,
+        { displayOrder: nextOrder, isPrimary },
+      );
+      const body = await response.json().catch(() => null) as ParkingImagesResponse | null;
+      if (!response.ok || !body?.success || !Array.isArray(body.data)) {
+        throw new Error(body?.message || `Unable to update the parking image (${response.status}).`);
+      }
+
+      applyServerImages(body.data, body.message);
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : 'Unable to update the parking image.');
+    } finally {
+      setImageUpdatingId(null);
+    }
+  };
+
+  const deleteImage = async (image: ParkingSpotImage) => {
+    if (!activeBay) return;
+    const confirmed = window.confirm(
+      `Delete ${image.originalFileName || 'this listing image'}? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    const token = user?.token ?? '';
+    if (!token) {
+      setSetupError('Your owner session is missing an authorization token.');
+      return;
+    }
+
+    setImageDeletingId(image.parkingSpotImageId);
+    setSetupMessage(null);
+    setSetupError(null);
+    try {
+      const response = await deleteParkingImage(
+        token,
+        activeBay.parkingSpotId,
+        image.parkingSpotImageId,
+        { displayOrder: 1, isPrimary: true },
+      );
+      const body = await response.json().catch(() => null) as ParkingImagesResponse | null;
+      if (!response.ok || !body?.success || !Array.isArray(body.data)) {
+        throw new Error(body?.message || `Unable to delete the parking image (${response.status}).`);
+      }
+
+      applyServerImages(body.data, body.message);
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : 'Unable to delete the parking image.');
+    } finally {
+      setImageDeletingId(null);
+    }
+  };
+
+  const currentSetupCandidate = (): OwnerParkingSetup => ({
+    photos: setupForm.photos,
+    images: activeSetup.images,
+    description: setupForm.description,
+    accessInstructions: setupForm.accessInstructions,
+    dailyRate: setupForm.dailyRate.trim() === '' ? null : Number(setupForm.dailyRate),
+    monthlyRate: setupForm.monthlyRate.trim() === '' ? null : Number(setupForm.monthlyRate),
+    published: activeSetup.published,
+  });
+
+  const continueFromPhotos = async () => {
+    if (setupForm.photos.length === 0) {
+      setSetupError('Add at least one clear parking photo to continue.');
+      return;
+    }
+    if (await uploadImages()) {
+      setSetupError(null);
+      setSetupStep(2);
+    }
+  };
+
+  const continueFromDescription = () => {
+    if (!setupForm.description.trim()) {
+      setSetupError('Add a short parking description to continue.');
+      return;
+    }
+    setSetupError(null);
+    setSetupStep(3);
+  };
+
+  const continueFromPricing = async () => {
+    const candidate = currentSetupCandidate();
+    const rates = [candidate.dailyRate, candidate.monthlyRate];
+    if (rates.some((rate) => rate !== null && (!Number.isFinite(rate) || rate < 0))) {
+      setSetupError('Rates must be zero or a positive number.');
+      return;
+    }
+    if ((candidate.dailyRate ?? 0) <= 0 && (candidate.monthlyRate ?? 0) <= 0) {
+      setSetupError('Set a daily or monthly rate to continue.');
+      return;
+    }
+    if (await saveConfiguration()) {
+      setSetupError(null);
+      setSetupStep(4);
+    }
+  };
+
+  const continueToPublish = () => {
+    const completion = setupCompletion(currentSetupCandidate());
     if (!completion.complete) {
       setSetupError(completion.issues.join(' '));
       return;
     }
     setSetupError(null);
-    setSetupStep(2);
+    setSetupStep(5);
   };
 
-  const handlePublish = () => {
-    if (persistSetup(true)) {
-      setSetupStep(3);
+  const handlePublish = async () => {
+    if (!activeBay) return;
+    const completion = setupCompletion(currentSetupCandidate());
+    if (!completion.complete) {
+      setSetupError(completion.issues.join(' '));
+      return;
+    }
+    const token = user?.token ?? '';
+    if (!token) {
+      setSetupError('Your owner session is missing an authorization token.');
+      return;
+    }
+
+    setPublishing(true);
+    setSetupMessage(null);
+    setSetupError(null);
+    try {
+      const response = await updateParkingPublication(token, activeBay.parkingSpotId, true);
+      const body = await response.json().catch(() => null) as {
+        success?: boolean;
+        message?: string;
+        isPublished?: boolean;
+      } | null;
+      if (!response.ok || body?.success !== true || body.isPublished === false) {
+        throw new Error(body?.message || `Unable to publish the parking listing (${response.status}).`);
+      }
+      persistSetup(true, new Date().toISOString(), body.message || 'Parking listing published. Choose open dates in Availability.');
+    } catch (error) {
+      setSetupError(error instanceof Error ? error.message : 'Unable to publish the parking listing.');
+    } finally {
+      setPublishing(false);
     }
   };
 
   const selectDate = (date: string) => {
     setSelectedDate(date);
-    const parsed = dateFromKey(date);
-    setMonthCursor(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
   };
 
   const setPreset = (preset: 'week' | 'month') => {
@@ -649,8 +1128,8 @@ export default function AvailabilityScheduler({
     setBulkError(null);
   };
 
-  const bulkUpdate = (nextStatus: 'available' | 'unavailable') => {
-    if (!activeSpotId) return;
+  const bulkUpdate = async (nextStatus: 'available' | 'unavailable') => {
+    if (!activeSpotId || !activeBay) return;
     const keys = inclusiveDateKeys(bulkStart, bulkEnd);
     if (keys.length === 0) {
       setBulkError('Choose a valid inclusive start and end date.');
@@ -662,8 +1141,30 @@ export default function AvailabilityScheduler({
       setBulkMessage(null);
       return;
     }
+
+    if (nextStatus === 'available') {
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(bulkFromTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(bulkToTime)) {
+        setBulkError('Choose valid opening and closing times.');
+        setBulkMessage(null);
+        return;
+      }
+      if (bulkFromTime >= bulkToTime) {
+        setBulkError('The closing time must be later than the opening time.');
+        setBulkMessage(null);
+        return;
+      }
+      if (!bulkDayPattern.trim()) {
+        setBulkError('Enter a day pattern such as Weekdays.');
+        setBulkMessage(null);
+        return;
+      }
+    }
+
     const currentSpot = workspace.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
-    const editableDates = keys.filter((date) => {
+    const matchingDates = nextStatus === 'available'
+      ? keys.filter((date) => dateMatchesDayPattern(date, bulkDayPattern))
+      : keys;
+    const editableDates = matchingDates.filter((date) => {
       const currentDay = statusFor(currentSpot, date);
       return !dateKeyIsPast(date) && currentDay.status !== 'booked';
     });
@@ -671,6 +1172,42 @@ export default function AvailabilityScheduler({
     const changed = editableDates.reduce((count, date) => (
       statusFor(currentSpot, date).status === nextStatus ? count : count + 1
     ), 0);
+
+    let backendMessage = '';
+    if (nextStatus === 'available') {
+      const token = user?.token ?? '';
+      if (!token) {
+        setBulkError('Your owner session is missing an authorization token.');
+        setBulkMessage(null);
+        return;
+      }
+
+      setAvailabilitySaving(true);
+      setBulkError(null);
+      setBulkMessage(null);
+      try {
+        const response = await createParkingAvailabilityRules(token, activeBay.parkingSpotId, {
+          rules: [{
+            fromDate: bulkStart,
+            toDate: bulkEnd,
+            fromTime: bulkFromTime,
+            toTime: bulkToTime,
+            dayPattern: bulkDayPattern.trim(),
+          }],
+        });
+        const body = await response.json().catch(() => null) as ParkingAvailabilityRulesResponse | null;
+        if (!response.ok || !body?.success || !Array.isArray(body.data)) {
+          throw new Error(body?.message || `Unable to create availability rules (${response.status}).`);
+        }
+        backendMessage = `${body.message}${body.timeZone ? ` Time zone: ${body.timeZone}.` : ''}`;
+      } catch (error) {
+        setBulkError(error instanceof Error ? error.message : 'Unable to create availability rules.');
+        return;
+      } finally {
+        setAvailabilitySaving(false);
+      }
+    }
+
     updateWorkspace((current) => {
       const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
       const days = { ...spot.days };
@@ -680,7 +1217,9 @@ export default function AvailabilityScheduler({
       return { ...current, spots: { ...current.spots, [activeSpotId]: { ...spot, days } } };
     });
     setBulkError(null);
-    setBulkMessage(`${changed} day${changed === 1 ? '' : 's'} marked ${statusMeta[nextStatus].shortLabel.toLowerCase()}.${skipped ? ` ${skipped} booked/past day${skipped === 1 ? '' : 's'} skipped.` : ''}`);
+    const localMessage = `${changed} day${changed === 1 ? '' : 's'} marked ${statusMeta[nextStatus].shortLabel.toLowerCase()}.${skipped ? ` ${skipped} day${skipped === 1 ? '' : 's'} outside the pattern, booked, or past.` : ''}`;
+    setBulkMessage(backendMessage ? `${backendMessage} ${localMessage}` : localMessage);
+    if (nextStatus === 'available') await fetchAvailabilityCalendar();
   };
 
   const applySelectedDayStatus = (nextStatus: 'available' | 'unavailable') => {
@@ -716,36 +1255,38 @@ export default function AvailabilityScheduler({
 
   const calendarDays = useMemo(() => {
     const first = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
-    const gridStart = addDays(first, -first.getDay());
-    return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
+    const numberOfDays = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
+    return Array.from({ length: numberOfDays }, (_, index) => addDays(first, index));
   }, [monthCursor]);
+
+  const calendarStartOffset = monthCursor.getDay();
 
   const selectedDay = statusFor(activeSpot, selectedDate);
   const selectedDayMeta = statusMeta[selectedDay.status];
   const SelectedDayIcon = selectedDayMeta.icon;
   const selectedDayIsPast = dateKeyIsPast(selectedDate);
   const monthStats = useMemo(() => {
-    const month = monthCursor.getMonth();
-    const year = monthCursor.getFullYear();
     let available = 0;
     let unavailable = 0;
     let booked = 0;
     calendarDays.forEach((day) => {
-      if (day.getMonth() !== month || day.getFullYear() !== year) return;
       const status = statusFor(activeSpot, localDateKey(day)).status;
       if (status === 'available') available += 1;
       if (status === 'unavailable') unavailable += 1;
       if (status === 'booked') booked += 1;
     });
     return { available, unavailable, booked };
-  }, [activeSpot, calendarDays, monthCursor]);
+  }, [activeSpot, calendarDays]);
 
   const bulkPreview = useMemo(() => {
     const keys = inclusiveDateKeys(bulkStart, bulkEnd);
     if (!keys.length || keys.length > MAX_BULK_DAYS || !activeSpot) {
       return { total: keys.length, editable: 0, changed: 0, skipped: keys.length };
     }
-    const editable = keys.filter((date) => {
+    const matchingKeys = bulkStatus === 'available'
+      ? keys.filter((date) => dateMatchesDayPattern(date, bulkDayPattern))
+      : keys;
+    const editable = matchingKeys.filter((date) => {
       const day = statusFor(activeSpot, date);
       return !dateKeyIsPast(date) && day.status !== 'booked';
     });
@@ -755,7 +1296,7 @@ export default function AvailabilityScheduler({
       changed: editable.filter((date) => statusFor(activeSpot, date).status !== bulkStatus).length,
       skipped: keys.length - editable.length,
     };
-  }, [activeSpot, bulkEnd, bulkStart, bulkStatus]);
+  }, [activeSpot, bulkDayPattern, bulkEnd, bulkStart, bulkStatus]);
 
   if (!activeBay) {
     return (
@@ -770,6 +1311,7 @@ export default function AvailabilityScheduler({
   const setupPhotos = photoPreviews[activeSpotId] ?? setupForm.photos;
   const setupCandidate: OwnerParkingSetup = {
     photos: setupForm.photos,
+    images: activeSetup.images,
     description: setupForm.description,
     accessInstructions: setupForm.accessInstructions,
     dailyRate: setupForm.dailyRate.trim() === '' ? null : Number(setupForm.dailyRate),
@@ -779,24 +1321,24 @@ export default function AvailabilityScheduler({
   const setupIsComplete = setupCompletion(setupCandidate).complete;
 
   return (
-    <div className="space-y-5 md:space-y-6">
-      <div className="sticky top-2 z-20 rounded-2xl border border-white/80 bg-white/80 p-2 shadow-[0_16px_48px_-28px_rgba(15,23,42,0.45)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/65 md:p-3">
-        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-3 px-2 py-1">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm"><CalendarDays className="h-5 w-5" aria-hidden="true" /></div>
-             <div className="min-w-0"><p className="text-xs font-semibold text-blue-600">Owner workspace</p><h1 className="truncate text-lg font-extrabold tracking-tight text-slate-950">Configure parking</h1><p className="truncate text-xs text-slate-500">Set up your listing, then choose when commuters can book it.</p></div>
+    <div className="space-y-3 sm:space-y-5 md:space-y-6">
+      <div className="rounded-2xl border border-white/80 bg-white/90 p-2 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.38)] md:p-3">
+        <div className="flex flex-col gap-1.5 sm:gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-2 px-1 sm:gap-3 sm:px-2 sm:py-1">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-blue-600 text-white shadow-sm sm:h-10 sm:w-10 sm:rounded-xl"><CalendarDays className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" /></div>
+             <div className="min-w-0"><p className="hidden text-xs font-semibold text-blue-600 sm:block">Owner workspace</p><h1 className="truncate text-base font-extrabold tracking-tight text-slate-950 sm:text-lg">Configure parking</h1><p className="hidden truncate text-xs text-slate-500 md:block">Set up your listing, then choose when commuters can book it.</p></div>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-slate-200/90 bg-white/75 px-3 sm:min-w-[260px]">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+            <label className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-slate-200/90 bg-white/75 px-3 sm:h-11 sm:min-w-[260px]">
               <MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
               <span className="sr-only">Parking spot</span>
-              <select value={selectedBayId} onChange={(event) => setSelectedBayId(event.target.value)} disabled={pendingPhotoCount > 0} className="min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-800 outline-none disabled:opacity-60">
+              <select value={selectedBayId} onChange={(event) => setSelectedBayId(event.target.value)} disabled={pendingPhotoCount > 0 || setupBusy} style={{ minHeight: 0 }} className="h-auto min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-800 outline-none disabled:opacity-60">
                 {bays.map((bay) => <option key={bay.id || bay.parkingSpotId} value={String(bay.parkingSpotId)}>{bayLabel(bay)}</option>)}
               </select>
             </label>
-            <div role="tablist" aria-label="Configure parking sections" className="grid min-h-11 grid-cols-2 gap-1 rounded-xl bg-slate-200/65 p-1 sm:min-w-[250px]">
-              <button id="parking-setup-tab" type="button" role="tab" aria-selected={section === 'setup'} aria-controls="parking-setup-panel" onClick={() => setSection('setup')} className={`rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] ${section === 'setup' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" aria-hidden="true" /> Setup</span></button>
-              <button id="parking-timetable-tab" type="button" role="tab" aria-selected={section === 'timetable'} aria-controls="parking-timetable-panel" onClick={() => setSection('timetable')} className={`rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] ${section === 'timetable' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><CalendarRange className="h-3.5 w-3.5" aria-hidden="true" /> Timetable</span></button>
+            <div role="tablist" aria-label="Configure parking sections" className="grid h-10 grid-cols-2 gap-1 rounded-xl bg-slate-200/65 p-1 sm:h-11 sm:min-w-[250px]">
+              <button id="parking-setup-tab" type="button" role="tab" aria-selected={section === 'setup'} aria-controls="parking-setup-panel" onClick={() => setSection('setup')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'setup' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" aria-hidden="true" /> Setup</span></button>
+              <button id="parking-timetable-tab" type="button" role="tab" aria-selected={section === 'timetable'} aria-controls="parking-timetable-panel" onClick={() => setSection('timetable')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'timetable' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><CalendarRange className="h-3.5 w-3.5" aria-hidden="true" /> Timetable</span></button>
             </div>
           </div>
         </div>
@@ -804,9 +1346,9 @@ export default function AvailabilityScheduler({
 
       <AnimatePresence mode="wait" initial={false}>
       {section === 'setup' ? (
-        <motion.section id="parking-setup-panel" role="tabpanel" aria-labelledby="parking-setup-tab" key="setup" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition} className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
-          <div className="space-y-5 rounded-2xl border border-slate-200/90 bg-white/90 p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <motion.section id="parking-setup-panel" role="tabpanel" aria-labelledby="parking-setup-tab" key="setup" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition}>
+          <div className="space-y-3 rounded-2xl border border-slate-200/90 bg-white/90 p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] sm:space-y-5 sm:p-4 md:p-6">
+            <div className="hidden flex-col gap-2 sm:flex sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">Parking setup</h2>
                 <p className="mt-0.5 text-[11px] text-slate-500">Set the information commuters see before they choose a date.</p>
@@ -817,113 +1359,181 @@ export default function AvailabilityScheduler({
               </span>
             </div>
 
-            <div className="flex items-center gap-2 border-y border-slate-100 py-3" aria-label="Setup progress">
-              {['Setup', 'Review', 'Publish'].map((label, index) => { const step = (index + 1) as 1 | 2 | 3; const complete = setupStep > step || (step === 3 && activeSetup.published); return <React.Fragment key={label}><div className="flex min-w-0 items-center gap-2"><span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${complete ? 'bg-emerald-600 text-white' : setupStep === step ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{complete ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : step}</span><span className={`truncate text-[11px] font-bold ${setupStep === step ? 'text-slate-900' : 'text-slate-400'}`}>{label}</span></div>{index < 2 && <span className="h-px flex-1 bg-slate-200" aria-hidden="true" />}</React.Fragment>; })}
+            <div className="rounded-2xl bg-slate-50 p-2.5 sm:p-3.5" aria-label="Setup progress">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold text-blue-600">Step {setupStep} of {SETUP_STEPS.length}</p>
+                  <p className="mt-0.5 text-sm font-bold text-slate-900">{SETUP_STEPS[setupStep - 1]}</p>
+                </div>
+                <span className="text-[11px] font-semibold tabular-nums text-slate-500">{Math.round((setupStep / SETUP_STEPS.length) * 100)}%</span>
+              </div>
+              <div
+                role="progressbar"
+                aria-valuemin={1}
+                aria-valuemax={SETUP_STEPS.length}
+                aria-valuenow={setupStep}
+                aria-valuetext={`${SETUP_STEPS[setupStep - 1]}, step ${setupStep} of ${SETUP_STEPS.length}`}
+                className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200"
+              >
+                <span className="block h-full rounded-full bg-blue-600 transition-[width] duration-300" style={{ width: `${(setupStep / SETUP_STEPS.length) * 100}%` }} />
+              </div>
+              <ol className="mt-2 grid grid-cols-5 gap-1" aria-hidden="true">
+                {SETUP_STEPS.map((label, index) => (
+                  <li key={label} className={`truncate text-center text-[9px] font-semibold ${setupStep === index + 1 ? 'text-blue-600' : setupStep > index + 1 ? 'text-slate-600' : 'text-slate-400'}`}>{label}</li>
+                ))}
+              </ol>
             </div>
 
             {setupMessage && <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[11px] font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />{setupMessage}</div>}
             {setupError && <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] font-medium text-rose-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{setupError}</div>}
 
             {setupStep === 1 && (
-              <motion.div key="setup-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-5">
+              <motion.div key="photos-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
                 <div>
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <label className="text-xs font-bold text-slate-800">Parking photos <span className="font-normal text-slate-400">(up to {MAX_PHOTOS})</span></label>
-                    <span className="text-[10px] text-slate-400">{setupPhotos.length}/{MAX_PHOTOS}</span>
-                  </div>
-                  <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={(event) => void handlePhotoChange(event)} className="hidden" />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={pendingPhotoCount > 0 || setupPhotos.length >= MAX_PHOTOS} className="flex min-h-24 w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 text-center text-[11px] text-slate-500 transition-colors hover:border-blue-400 hover:bg-blue-50/40 disabled:cursor-not-allowed disabled:opacity-60">
-                    <UploadCloud className="h-6 w-6 text-blue-500" aria-hidden="true" />
-                    <span className="font-semibold text-slate-700">Upload parking photos</span>
-                    <span>JPG, PNG, or WEBP · up to {MAX_PHOTOS}</span>
-                  </button>
-                  {setupPhotos.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-                      {setupPhotos.map((photo, index) => (
-                        <div key={`${photo.slice(0, 24)}-${index}`} className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                          <img src={photo} alt={`Parking preview ${index + 1}`} className="h-full w-full object-cover" />
-                          <button type="button" onClick={() => removePhoto(index)} className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/75 text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100" aria-label={`Remove parking photo ${index + 1}`}>
-                            <Trash2 className="h-3 w-3" aria-hidden="true" />
-                          </button>
-                        </div>
-                      ))}
+                  <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Show commuters the exact spot</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">Add at least one clear photo. The first photo becomes the cover.</p>
+                </div>
+                <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={handlePhotoChange} className="hidden" />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={handlePhotoFileDrop}
+                  disabled={pendingPhotoCount > 0 || setupPhotos.length >= MAX_PHOTOS || setupBusy}
+                  className="flex min-h-24 w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-blue-300 bg-blue-50/50 px-4 text-center transition-colors hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-36 sm:gap-2 sm:px-5"
+                >
+                  <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-blue-600 shadow-sm"><UploadCloud className="h-5 w-5" aria-hidden="true" /></span>
+                  <span className="text-sm font-semibold text-slate-900">Tap to add photos</span>
+                  <span className="text-[11px] text-slate-500">or drop JPG, PNG, WEBP here · {setupPhotos.length}/{MAX_PHOTOS}</span>
+                </button>
+                {setupPhotos.length > 0 && (
+                  <div>
+                    <div className="mb-2 flex items-center gap-1.5 text-[11px] text-slate-500"><GripVertical className="h-3.5 w-3.5" aria-hidden="true" />Drag to reorder, or tap one photo then another to swap.</div>
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                      {setupPhotos.map((photo, index) => {
+                        const uploadedImage = activeSetup.images.find((image) => image.secureUrl === photo);
+                        const selected = selectedPhotoIndex === index;
+                        return (
+                          <div
+                            key={uploadedImage?.parkingSpotImageId ?? `${photo.slice(0, 24)}-${index}`}
+                            role="button"
+                            tabIndex={0}
+                            draggable={!setupBusy}
+                            aria-pressed={selected}
+                            aria-label={`Parking photo ${index + 1}. ${selected ? 'Selected. Choose another photo to move it.' : 'Select to reorder.'}`}
+                            onClick={() => handlePhotoTap(index)}
+                            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handlePhotoTap(index); } }}
+                            onDragStart={(event) => { setDraggedPhotoIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)); }}
+                            onDragEnd={() => setDraggedPhotoIndex(null)}
+                            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
+                            onDrop={(event) => { event.preventDefault(); const from = draggedPhotoIndex ?? Number(event.dataTransfer.getData('text/plain')); if (Number.isInteger(from)) void swapPhotos(from, index); setDraggedPhotoIndex(null); setSelectedPhotoIndex(null); }}
+                            className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-2xl bg-slate-100 shadow-sm outline-none transition ${selected ? 'ring-4 ring-blue-500/25 ring-offset-2' : 'ring-1 ring-black/5'} ${draggedPhotoIndex === index ? 'opacity-50' : ''}`}
+                          >
+                            <img src={photo} alt="" className="h-full w-full object-cover" draggable={false} />
+                            <span className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm ${index === 0 ? 'bg-white text-slate-900' : 'bg-slate-950/70 text-white'}`}>{index === 0 ? 'Cover' : index + 1}</span>
+                            <span className="absolute bottom-2 left-2 grid h-8 w-8 place-items-center rounded-full bg-slate-950/65 text-white backdrop-blur"><GripVertical className="h-4 w-4" aria-hidden="true" /></span>
+                            <button type="button" onClick={(event) => { event.stopPropagation(); if (uploadedImage) void deleteImage(uploadedImage); else removePhoto(index); }} disabled={setupBusy} className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-slate-950/70 text-white backdrop-blur hover:bg-rose-600 disabled:opacity-50" aria-label={`Remove parking photo ${index + 1}`}><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
+                            {imageUpdatingId === uploadedImage?.parkingSpotImageId && <span className="absolute inset-0 grid place-items-center bg-slate-950/55 text-[11px] font-bold text-white">Reordering…</span>}
+                            {imageDeletingId === uploadedImage?.parkingSpotImageId && <span className="absolute inset-0 grid place-items-center bg-rose-950/65 text-[11px] font-bold text-white">Removing…</span>}
+                          </div>
+                        );
+                      })}
                     </div>
-                  )}
-                  {pendingPhotoCount > 0 && <p className="mt-1.5 text-[10px] text-blue-600">Preparing photo preview…</p>}
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <label className="block rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                    <span className="mb-1.5 block text-xs font-bold text-slate-800">Description</span>
-                    <span className="mb-3 block text-[11px] leading-relaxed text-slate-500">Help commuters recognise the spot and its surroundings.</span>
-                    <textarea value={setupForm.description} onChange={(event) => replaceSetupForm('description', event.target.value)} rows={5} maxLength={500} placeholder="e.g. Covered bay beside the lobby entrance." className="min-h-11 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                    <span className="mt-1 block text-right text-[10px] text-slate-400">{setupForm.description.length}/500</span>
-                  </label>
-                  <label className="block rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                    <span className="mb-1.5 block text-xs font-bold text-slate-800">Access instructions</span>
-                    <span className="mb-3 block text-[11px] leading-relaxed text-slate-500">Tell the commuter how to enter, park, and leave.</span>
-                    <textarea value={setupForm.accessInstructions} onChange={(event) => replaceSetupForm('accessInstructions', event.target.value)} rows={5} maxLength={500} placeholder="e.g. Use the visitor lane; bay is on Level B2." className="min-h-11 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                    <span className="mt-1 block text-right text-[10px] text-slate-400">{setupForm.accessInstructions.length}/500</span>
-                  </label>
-                </div>
-
-                <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                  <span className="mb-1 block text-xs font-bold text-slate-800">Rates</span>
-                  <span className="mb-3 block text-[11px] text-slate-500">Set at least one rate before publishing.</span>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="relative block">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">RM</span>
-                      <input type="number" min="0" step="0.01" inputMode="decimal" value={setupForm.dailyRate} onChange={(event) => replaceSetupForm('dailyRate', event.target.value)} placeholder="Daily rate" className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-16 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">/ day</span>
-                    </label>
-                    <label className="relative block">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">RM</span>
-                      <input type="number" min="0" step="0.01" inputMode="decimal" value={setupForm.monthlyRate} onChange={(event) => replaceSetupForm('monthlyRate', event.target.value)} placeholder="Monthly rate" className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-20 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">/ month</span>
-                    </label>
                   </div>
-                  <p className="mt-1.5 text-[10px] text-slate-400">At least one rate is needed before publishing. Leave a rate blank if it does not apply.</p>
-                </div>
-
-                <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-between">
-                  <button type="button" onClick={() => persistSetup(false)} disabled={pendingPhotoCount > 0} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><Save className="h-4 w-4" aria-hidden="true" /> Save draft</button>
-                  <button type="button" onClick={continueToReview} disabled={pendingPhotoCount > 0} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">Review setup <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                )}
+                {pendingPhotoCount > 0 && <p className="text-[11px] font-medium text-blue-600">Preparing photo preview…</p>}
+                <div className="border-t border-slate-100 pt-3 sm:pt-5">
+                  <button type="button" onClick={() => void continueFromPhotos()} disabled={pendingPhotoCount > 0 || setupBusy} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{imagesUploading ? 'Uploading photos…' : 'Continue'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
             )}
 
             {setupStep === 2 && (
-              <motion.div key="review-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-4">
-                <div className="rounded-2xl border border-blue-100 bg-blue-50/65 p-5 shadow-[0_12px_35px_-28px_rgba(37,99,235,0.5)]">
-                  <div className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-blue-600" aria-hidden="true" /><h3 className="text-xs font-bold text-slate-800">Review before publishing</h3></div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Check the details commuters will use to identify and access this parking spot.</p>
+              <motion.div key="description-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
+                <div>
+                  <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Describe the parking spot</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">Help commuters recognise the bay and find it without calling you.</p>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_10px_28px_-26px_rgba(15,23,42,0.45)] sm:col-span-2"><span className="text-xs font-bold text-slate-800">Photos</span><div className="mt-3 flex gap-2 overflow-x-auto">{setupPhotos.map((photo, index) => <img key={`${photo.slice(0, 20)}-${index}`} src={photo} alt={`Parking preview ${index + 1}`} className="h-20 w-20 shrink-0 rounded-xl border border-slate-200 object-cover" />)}{setupPhotos.length === 0 && <span className="text-xs text-rose-600">No photos added</span>}</div></div>
-                  <div className="rounded-2xl border border-slate-100 bg-white p-4"><span className="text-xs font-bold text-slate-800">Description</span><p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">{setupForm.description || 'Not provided'}</p></div>
-                  <div className="rounded-2xl border border-slate-100 bg-white p-4"><span className="text-xs font-bold text-slate-800">Access</span><p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">{setupForm.accessInstructions || 'No special instructions'}</p></div>
-                  <div className="rounded-2xl border border-slate-100 bg-white p-4"><span className="text-xs font-bold text-slate-800">Daily rate</span><p className="mt-2 text-base font-bold text-emerald-700">{setupForm.dailyRate ? `RM ${Number(setupForm.dailyRate).toFixed(2)}` : '—'}</p></div>
-                  <div className="rounded-2xl border border-slate-100 bg-white p-4"><span className="text-xs font-bold text-slate-800">Monthly rate</span><p className="mt-2 text-base font-bold text-emerald-700">{setupForm.monthlyRate ? `RM ${Number(setupForm.monthlyRate).toFixed(2)}` : '—'}</p></div>
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold text-slate-800">Description</span>
+                  <textarea value={setupForm.description} onChange={(event) => replaceSetupForm('description', event.target.value)} rows={6} maxLength={500} placeholder="Covered bay on Level B2, beside the lift lobby. Enter through the visitor lane." className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 sm:py-3.5" />
+                  <span className="mt-1.5 block text-right text-[11px] tabular-nums text-slate-400">{setupForm.description.length}/500</span>
+                </label>
+                <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
+                  <button type="button" onClick={() => setSetupStep(1)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
+                  <button type="button" onClick={continueFromDescription} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
-                <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-between"><button type="button" onClick={() => setSetupStep(1)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Edit setup</button><div className="flex flex-col gap-2 sm:flex-row"><button type="button" onClick={() => persistSetup(false)} disabled={pendingPhotoCount > 0} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><Save className="h-4 w-4" aria-hidden="true" /> Save draft</button><button type="button" onClick={() => { setSetupError(null); setSetupStep(3); }} disabled={!setupIsComplete} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">Continue to publish <ChevronRight className="h-4 w-4" aria-hidden="true" /></button></div></div>
               </motion.div>
             )}
 
             {setupStep === 3 && (
-              <motion.div key="publish-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-5">
-                 <div className="rounded-2xl border border-blue-100 bg-blue-50/65 p-5 shadow-[0_12px_35px_-28px_rgba(37,99,235,0.5)]"><div className="flex items-center gap-2 text-blue-800"><ShieldCheck className="h-5 w-5" aria-hidden="true" /><h3 className="text-sm font-bold">{activeSetup.published ? 'Listing published' : 'Ready to publish?'}</h3></div><p className="mt-2 text-xs leading-relaxed text-blue-700">{activeSetup.published ? 'Your listing is visible to commuters. Open dates in the timetable when this spot is ready to accept a booking.' : 'Publishing makes this setup visible to commuters. Availability still starts closed until you open dates in the timetable.'}</p></div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3"><div className="rounded-xl border border-slate-100 p-3 text-center"><ImagePlus className="mx-auto h-4 w-4 text-emerald-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-bold text-slate-700">{setupPhotos.length} photo{setupPhotos.length === 1 ? '' : 's'}</p></div><div className="rounded-xl border border-slate-100 p-3 text-center"><FileText className="mx-auto h-4 w-4 text-blue-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-bold text-slate-700">Description added</p></div><div className="rounded-xl border border-slate-100 p-3 text-center"><Car className="mx-auto h-4 w-4 text-violet-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-bold text-slate-700">{rateText(activeSetup.dailyRate ?? (setupForm.dailyRate ? Number(setupForm.dailyRate) : null))} daily</p></div></div>
-                 <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:justify-between"><button type="button" onClick={() => setSetupStep(2)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back to review</button><div className="flex flex-col gap-2 sm:flex-row">{activeSetup.published ? <button type="button" onClick={() => setSection('timetable')} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-bold text-white hover:bg-blue-700"><CalendarRange className="h-4 w-4" aria-hidden="true" /> Open availability</button> : <><button type="button" onClick={() => persistSetup(false)} disabled={pendingPhotoCount > 0} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><Save className="h-4 w-4" aria-hidden="true" /> Save draft</button><button type="button" onClick={handlePublish} disabled={!setupIsComplete || pendingPhotoCount > 0} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" aria-hidden="true" /> Publish listing</button></>}</div></div>
+              <motion.div key="pricing-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
+                <div>
+                  <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Set your rates</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">Add one or both prices. Leave a rate empty if you do not offer it.</p>
+                </div>
+                <div className="space-y-3">
+                  <label className="block rounded-2xl bg-slate-50 p-3 sm:p-4">
+                    <span className="text-xs font-semibold text-slate-700">Daily rate</span>
+                    <span className="mt-3 flex items-baseline gap-2">
+                      <span className="text-base font-semibold text-slate-500">RM</span>
+                      <input type="number" min="0" step="0.01" inputMode="decimal" value={setupForm.dailyRate} onChange={(event) => replaceSetupForm('dailyRate', event.target.value)} placeholder="0.00" className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-bold tracking-tight text-slate-950 shadow-none outline-none placeholder:text-slate-300 focus:ring-0 sm:text-3xl" />
+                      <span className="text-sm text-slate-400">/ day</span>
+                    </span>
+                  </label>
+                  <label className="block rounded-2xl bg-slate-50 p-3 sm:p-4">
+                    <span className="text-xs font-semibold text-slate-700">Monthly rate</span>
+                    <span className="mt-3 flex items-baseline gap-2">
+                      <span className="text-base font-semibold text-slate-500">RM</span>
+                      <input type="number" min="0" step="0.01" inputMode="decimal" value={setupForm.monthlyRate} onChange={(event) => replaceSetupForm('monthlyRate', event.target.value)} placeholder="0.00" className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-bold tracking-tight text-slate-950 shadow-none outline-none placeholder:text-slate-300 focus:ring-0 sm:text-3xl" />
+                      <span className="text-sm text-slate-400">/ month</span>
+                    </span>
+                  </label>
+                </div>
+                <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
+                  <button type="button" onClick={() => setSetupStep(2)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
+                  <button type="button" onClick={() => void continueFromPricing()} disabled={setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{setupSaving ? 'Saving…' : 'Save & review'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                </div>
+              </motion.div>
+            )}
+
+            {setupStep === 4 && (
+              <motion.div key="review-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
+                <div>
+                  <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Review your listing</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">This is what commuters will see before booking.</p>
+                </div>
+                <div className="overflow-hidden rounded-3xl border border-black/5 bg-white shadow-[0_16px_45px_-30px_rgba(15,23,42,0.45)]">
+                  {setupPhotos[0] && <img src={setupPhotos[0]} alt="Parking listing cover" className="aspect-[16/7] w-full object-cover sm:aspect-[16/10]" />}
+                  <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
+                    <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold text-blue-600">{activeBay.propertyName || `Property #${activeBay.propertyId}`}</p><h4 className="mt-1 text-lg font-bold text-slate-950">{activeBay.bayNumber || activeBay.parkingLabel}</h4></div><span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">{setupPhotos.length} photo{setupPhotos.length === 1 ? '' : 's'}</span></div>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{setupForm.description}</p>
+                    <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
+                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Daily</p><p className="mt-1 text-base font-bold text-slate-900">{setupForm.dailyRate ? `RM ${Number(setupForm.dailyRate).toFixed(2)}` : 'Not offered'}</p></div>
+                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Monthly</p><p className="mt-1 text-base font-bold text-slate-900">{setupForm.monthlyRate ? `RM ${Number(setupForm.monthlyRate).toFixed(2)}` : 'Not offered'}</p></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
+                  <button type="button" onClick={() => setSetupStep(3)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Edit</button>
+                  <button type="button" onClick={continueToPublish} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                </div>
+              </motion.div>
+            )}
+
+            {setupStep === 5 && (
+              <motion.div key="publish-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 text-center sm:space-y-5">
+                <div className={`mx-auto grid h-16 w-16 place-items-center rounded-full ${activeSetup.published ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>{activeSetup.published ? <CheckCircle2 className="h-8 w-8" aria-hidden="true" /> : <ShieldCheck className="h-8 w-8" aria-hidden="true" />}</div>
+                <div><h3 className="text-2xl font-bold tracking-tight text-slate-950">{activeSetup.published ? 'Your parking is live' : 'Ready to publish'}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">{activeSetup.published ? 'Commuters can now see this listing. Open bookable dates in the availability timetable.' : 'Publishing makes this listing visible. Dates remain closed until you open them in the timetable.'}</p></div>
+                <div className="mx-auto grid max-w-md grid-cols-3 gap-2"><div className="rounded-2xl bg-slate-50 p-3"><ImagePlus className="mx-auto h-4 w-4 text-blue-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600">{setupPhotos.length} photos</p></div><div className="rounded-2xl bg-slate-50 p-3"><FileText className="mx-auto h-4 w-4 text-blue-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600">Details ready</p></div><div className="rounded-2xl bg-slate-50 p-3"><Car className="mx-auto h-4 w-4 text-blue-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600">Rates set</p></div></div>
+                <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
+                  {!activeSetup.published && <button type="button" onClick={() => setSetupStep(4)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>}
+                  {activeSetup.published ? <button type="button" onClick={() => setSection('timetable')} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700"><CalendarRange className="h-4 w-4" aria-hidden="true" /> Set availability</button> : <button type="button" onClick={() => void handlePublish()} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" aria-hidden="true" /> {publishing ? 'Publishing…' : 'Publish listing'}</button>}
+                </div>
               </motion.div>
             )}
           </div>
 
-          <aside className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5">
-            <div className="flex items-center gap-2"><Info className="h-4 w-4 text-blue-600" aria-hidden="true" /><h2 className="text-xs font-bold text-slate-800">Setup at a glance</h2></div>
-            <div className="space-y-2 rounded-xl border border-white bg-white p-3"><div className="flex items-center justify-between gap-3 text-[11px]"><span className="text-slate-500">Spot</span><span className="truncate font-bold text-slate-800">{activeBay.bayNumber || activeBay.parkingLabel}</span></div><div className="flex items-center justify-between gap-3 text-[11px]"><span className="text-slate-500">Daily rate</span><span className="font-bold text-emerald-700">{rateText(activeSetup.dailyRate)}</span></div><div className="flex items-center justify-between gap-3 text-[11px]"><span className="text-slate-500">Monthly rate</span><span className="font-bold text-emerald-700">{rateText(activeSetup.monthlyRate)}</span></div><div className="flex items-center justify-between gap-3 text-[11px]"><span className="text-slate-500">Timetable today</span><span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusMeta[statusFor(activeSpot, todayKey).status].badge}`}>{statusMeta[statusFor(activeSpot, todayKey).status].shortLabel}</span></div></div>
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-700"><strong>Tip:</strong> Setup is infrequent. Use the Timetable tab for day-to-day opening and closing decisions.</div>
-            <button type="button" onClick={() => setSection('timetable')} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 hover:bg-slate-100"><CalendarDays className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Open timetable</button>
-          </aside>
         </motion.section>
       ) : (
         <motion.section id="parking-timetable-panel" role="tabpanel" aria-labelledby="parking-timetable-tab" key="timetable" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition} className="space-y-5">
@@ -934,18 +1544,38 @@ export default function AvailabilityScheduler({
                 {(Object.keys(statusMeta) as ParkingDayStatus[]).map((status) => { const meta = statusMeta[status]; const Icon = meta.icon; return <span key={status} className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${meta.badge}`}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{status === 'available' ? 'Open' : status === 'unavailable' ? 'Closed' : 'Booked'}</span>; })}
               </div>
             </div>
+            <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/75 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 text-[11px]" aria-live="polite">
+                {calendarLoading ? (
+                  <span className="inline-flex items-center gap-2 font-semibold text-blue-700"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Loading {displayedMonth} availability…</span>
+                ) : calendarError ? (
+                  <span role="alert" className="inline-flex items-center gap-2 font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{calendarError}</span>
+                ) : (
+                  <span className="text-slate-500">Time zone: {calendarTimeZone}</span>
+                )}
+              </div>
+              <button type="button" onClick={() => void fetchAvailabilityCalendar()} disabled={calendarLoading} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"><RefreshCw className={`h-3.5 w-3.5 ${calendarLoading ? 'animate-spin' : ''}`} aria-hidden="true" /> Refresh</button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.75fr)]">
              <div className="rounded-2xl border border-slate-200/90 bg-white p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
-              <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-sm font-bold text-slate-900">{new Intl.DateTimeFormat('en-MY', { month: 'long', year: 'numeric' }).format(monthCursor)}</h3><div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{monthStats.available} open</span><span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{monthStats.unavailable} closed</span><span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{monthStats.booked} booked</span></div></div><div className="flex items-center gap-1"><button type="button" onClick={() => setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50" aria-label="Previous month"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button><button type="button" onClick={() => { const now = new Date(); setMonthCursor(new Date(now.getFullYear(), now.getMonth(), 1)); selectDate(todayKey); }} className="h-11 rounded-xl border border-slate-200 px-3 text-[10px] font-bold text-slate-600 hover:bg-slate-50">Today</button><button type="button" onClick={() => setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))} className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50" aria-label="Next month"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button></div></div>
-              <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{calendarDays.map((day) => { const key = localDateKey(day); const inMonth = day.getMonth() === monthCursor.getMonth() && day.getFullYear() === monthCursor.getFullYear(); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={past} aria-selected={selected} aria-disabled={past || undefined} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-1 py-2 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}${past ? ', read-only' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : past ? ' · past dates are read-only' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-[#007AFF] text-white' : key === todayKey ? 'ring-1 ring-inset ring-[#007AFF] text-[#007AFF]' : inMonth ? 'text-slate-800' : 'text-slate-300'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[9px] font-semibold leading-none ${meta.cell} ${!inMonth || past ? 'opacity-55' : ''}`}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
+              <div className="border-b border-slate-100 pb-4"><h3 className="text-sm font-bold text-slate-900">{new Intl.DateTimeFormat('en-MY', { month: 'long', year: 'numeric' }).format(monthCursor)}</h3><div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{monthStats.available} open</span><span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{monthStats.unavailable} closed</span><span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{monthStats.booked} booked</span></div></div>
+              <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{Array.from({ length: calendarStartOffset }, (_, index) => <span key={`calendar-offset-${index}`} aria-hidden="true" />)}{calendarDays.map((day) => { const key = localDateKey(day); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={past} aria-selected={selected} aria-disabled={past || undefined} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-1 py-2 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}${past ? ', read-only' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : past ? ' · past dates are read-only' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-[#007AFF] text-white' : key === todayKey ? 'ring-1 ring-inset ring-[#007AFF] text-[#007AFF]' : 'text-slate-800'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[9px] font-semibold leading-none ${meta.cell} ${past ? 'opacity-55' : ''}`}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
               <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400"><Info className="h-3.5 w-3.5" aria-hidden="true" /> Select a date to inspect it. Use the inspector action to open or close it.</p>
             </div>
 
              <aside className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:sticky md:top-28 md:self-start md:p-5">
               <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Selected day</p><h3 className="mt-1 text-sm font-bold text-slate-900">{formatLongDate(selectedDate)}</h3></div>
               <div className={`rounded-2xl border p-4 ${selectedDayMeta.badge}`} aria-live="polite"><div className="flex items-center gap-2"><SelectedDayIcon className="h-4 w-4" aria-hidden="true" /><span className="text-xs font-bold">{selectedDay.status === 'booked' ? 'Booked · locked' : selectedDayMeta.label}</span></div>{selectedDay.status === 'booked' && <p className="mt-2 text-xs leading-relaxed">This date is locked because one commuter already has the booking.</p>}{selectedDayIsPast && selectedDay.status !== 'booked' && <p className="mt-2 text-xs leading-relaxed">Past dates are read-only.</p>}{!selectedDayIsPast && selectedDay.status !== 'booked' && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => applySelectedDayStatus('available')} aria-pressed={selectedDay.status === 'available'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] ${selectedDay.status === 'available' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Check className="h-4 w-4" aria-hidden="true" /> Open</button><button type="button" onClick={() => applySelectedDayStatus('unavailable')} aria-pressed={selectedDay.status === 'unavailable'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] ${selectedDay.status === 'unavailable' ? 'border-slate-400 bg-slate-200 text-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Ban className="h-4 w-4" aria-hidden="true" /> Closed</button></div>}</div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-slate-700">Configured hours</span><span className="text-[9px] font-semibold text-slate-400">{calendarTimeZone}</span></div>
+                {selectedDay.configuredHours?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-2">{selectedDay.configuredHours.map((hours, index) => <span key={`${hours.from}-${hours.to}-${index}`} className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-700">{hours.from}–{hours.to}</span>)}</div>
+                ) : (
+                  <p className="mt-2 text-[10px] leading-relaxed text-slate-500">No opening hours are configured for this date.</p>
+                )}
+              </div>
               {dayError && <p role="alert" className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{dayError}</p>}
               {dayMessage && <p role="status" className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{dayMessage}</p>}
               {selectedDay.status === 'booked' && <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3"><div className="flex items-center gap-2 text-[11px] font-bold text-slate-700"><Users className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Commuter booking</div><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Name</span><span className="text-right font-semibold text-slate-700">{selectedDay.booking?.commuterName || 'Booking details unavailable'}</span></div><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Vehicle</span><span className="inline-flex items-center gap-1 text-right font-semibold text-slate-700"><Car className="h-3 w-3" aria-hidden="true" />{selectedDay.booking?.vehicle || '—'}</span></div>{selectedDay.booking?.commuterPhone && <div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Contact</span><span className="font-semibold text-slate-700">{selectedDay.booking.commuterPhone}</span></div>}</div>}
@@ -953,12 +1583,70 @@ export default function AvailabilityScheduler({
             </aside>
           </div>
 
-           <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><CalendarRange className="h-4 w-4 text-blue-600" aria-hidden="true" /><h3 className="text-sm font-bold text-slate-900">Range editor</h3></div><p className="mt-1 text-[11px] text-slate-500">Apply one status to an inclusive range. Booked and past days are previewed as skipped.</p></div><button type="button" onClick={() => { setBulkStart(todayKey); setBulkEnd(todayKey); setBulkStatus('available'); setBulkMessage(null); setBulkError(null); }} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-600 hover:bg-slate-50"><RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Reset</button></div>
-            <div className="mt-4 flex flex-wrap gap-2"><span className="mr-1 self-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Presets</span><button type="button" onClick={() => setPreset('week')} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-700 hover:bg-slate-50">This week</button><button type="button" onClick={() => setPreset('month')} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-700 hover:bg-slate-50">This month</button></div>
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2"><label className="block"><span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">From</span><input type="date" min={todayKey} value={bulkStart} onChange={(event) => setBulkStart(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label><label className="block"><span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">To</span><input type="date" min={todayKey} value={bulkEnd} onChange={(event) => setBulkEnd(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label></div>
-            <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1"><button type="button" onClick={() => setBulkStatus('available')} className={`min-h-11 rounded-lg text-xs font-bold transition-colors ${bulkStatus === 'available' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`} aria-pressed={bulkStatus === 'available'}><span className="inline-flex items-center gap-1.5"><Check className="h-4 w-4" aria-hidden="true" /> Open dates</span></button><button type="button" onClick={() => setBulkStatus('unavailable')} className={`min-h-11 rounded-lg text-xs font-bold transition-colors ${bulkStatus === 'unavailable' ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-500'}`} aria-pressed={bulkStatus === 'unavailable'}><span className="inline-flex items-center gap-1.5"><Ban className="h-4 w-4" aria-hidden="true" /> Close dates</span></button></div>
-             <div className="mt-3 flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/75 p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs leading-relaxed text-slate-500" aria-live="polite">{bulkPreview.total ? <><strong className="text-slate-800">{bulkPreview.changed}</strong> day{bulkPreview.changed === 1 ? '' : 's'} will change · <strong className="text-slate-800">{bulkPreview.skipped}</strong> skipped (booked or past)</> : 'Choose an inclusive date range to preview changes.'}</p><button type="button" onClick={() => bulkUpdate(bulkStatus)} disabled={!bulkPreview.total || !bulkPreview.changed || bulkPreview.total > MAX_BULK_DAYS} className={`inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-45 ${bulkStatus === 'available' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-800 hover:bg-slate-900'}`}><Check className="h-4 w-4" aria-hidden="true" /> Apply range</button></div>
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <CalendarRange className="h-4 w-4 shrink-0 text-[#007AFF]" aria-hidden="true" />
+                  <h3 className="text-sm font-bold text-slate-900">Range editor</h3>
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Set one schedule across several dates.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkStart(todayKey);
+                  setBulkEnd(todayKey);
+                  setBulkFromTime('09:00');
+                  setBulkToTime('19:00');
+                  setBulkDayPattern('Weekdays');
+                  setBulkStatus('available');
+                  setBulkMessage(null);
+                  setBulkError(null);
+                }}
+                disabled={availabilitySaving}
+                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Reset
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" aria-label="Availability action">
+              <button type="button" onClick={() => setBulkStatus('available')} disabled={availabilitySaving} className={`min-h-10 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${bulkStatus === 'available' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`} aria-pressed={bulkStatus === 'available'}><span className="inline-flex items-center gap-1.5"><Check className="h-4 w-4" aria-hidden="true" /> Open dates</span></button>
+              <button type="button" onClick={() => setBulkStatus('unavailable')} disabled={availabilitySaving} className={`min-h-10 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${bulkStatus === 'unavailable' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`} aria-pressed={bulkStatus === 'unavailable'}><span className="inline-flex items-center gap-1.5"><Ban className="h-4 w-4" aria-hidden="true" /> Close dates</span></button>
+            </div>
+
+            <div className={`mt-4 grid gap-3 ${bulkStatus === 'available' ? 'lg:grid-cols-2' : ''}`}>
+              <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" aria-labelledby="range-dates-title">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 id="range-dates-title" className="text-[11px] font-semibold text-slate-700">Date range</h4>
+                  <div className="flex gap-1.5" aria-label="Date presets">
+                    <button type="button" onClick={() => setPreset('week')} disabled={availabilitySaving} className="min-h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">This week</button>
+                    <button type="button" onClick={() => setPreset('month')} disabled={availabilitySaving} className="min-h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">This month</button>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">From</span><input type="date" min={todayKey} value={bulkStart} onChange={(event) => setBulkStart(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                  <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">To</span><input type="date" min={todayKey} value={bulkEnd} onChange={(event) => setBulkEnd(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                </div>
+              </section>
+
+              {bulkStatus === 'available' && (
+                <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" aria-labelledby="range-schedule-title">
+                  <h4 id="range-schedule-title" className="text-[11px] font-semibold text-slate-700">Opening schedule</h4>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">Opens</span><input type="time" value={bulkFromTime} onChange={(event) => setBulkFromTime(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                    <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">Closes</span><input type="time" value={bulkToTime} onChange={(event) => setBulkToTime(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                  </div>
+                  <label className="mt-2 block"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">Repeat on</span><input type="text" value={bulkDayPattern} onChange={(event) => setBulkDayPattern(event.target.value)} disabled={availabilitySaving} placeholder="Weekdays" className="min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                </section>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[11px] leading-relaxed text-slate-500" aria-live="polite">{bulkPreview.total ? <><strong className="text-slate-800">{bulkPreview.changed}</strong> day{bulkPreview.changed === 1 ? '' : 's'} will change · <strong className="text-slate-800">{bulkPreview.skipped}</strong> skipped</> : 'Choose a date range to preview changes.'}</p>
+              <button type="button" onClick={() => void bulkUpdate(bulkStatus)} disabled={availabilitySaving || !bulkPreview.total || bulkPreview.total > MAX_BULK_DAYS || (bulkStatus === 'available' ? !bulkPreview.editable : !bulkPreview.changed)} className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-xs font-semibold text-white hover:bg-[#006EE6] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"><Check className="h-4 w-4" aria-hidden="true" /> {availabilitySaving ? 'Creating rule…' : bulkStatus === 'available' ? 'Create rule' : 'Apply range'}</button>
+            </div>
             {bulkError && <p role="alert" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{bulkError}</p>}
             {bulkMessage && <p role="status" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{bulkMessage}</p>}
           </div>

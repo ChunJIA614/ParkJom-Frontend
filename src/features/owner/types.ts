@@ -29,6 +29,82 @@ export interface ParkingActionResult {
   message: string;
 }
 
+export interface ParkingConfigurationPayload {
+  description: string;
+  dailyRate: number;
+  monthlyRate: number;
+}
+
+export interface ParkingConfigurationResponse extends ParkingActionResult {
+  code: number;
+  parkingSpotId: number;
+  isConfigurationComplete: boolean;
+  missingRequirements: string[];
+  updatedAt: string;
+}
+
+export interface ParkingSpotImage {
+  parkingSpotImageId: number;
+  mediaFileId: number;
+  secureUrl: string;
+  originalFileName: string;
+  displayOrder: number;
+  isPrimary: boolean;
+}
+
+export interface ParkingImagesResponse extends ParkingActionResult {
+  code: number;
+  parkingSpotId: number;
+  data: ParkingSpotImage[];
+}
+
+export interface ParkingImageUpdatePayload {
+  displayOrder: number;
+  isPrimary: boolean;
+}
+
+export interface ParkingAvailabilityRuleInput {
+  fromDate: string;
+  toDate: string;
+  fromTime: string;
+  toTime: string;
+  dayPattern: string;
+}
+
+export interface ParkingAvailabilityRulesPayload {
+  rules: ParkingAvailabilityRuleInput[];
+}
+
+export interface ParkingAvailabilityRule extends ParkingAvailabilityRuleInput {
+  availabilityRuleId: number;
+}
+
+export interface ParkingAvailabilityRulesResponse extends ParkingActionResult {
+  code: number;
+  parkingSpotId: number;
+  timeZone: string;
+  data: ParkingAvailabilityRule[];
+}
+
+export interface ParkingAvailabilityCalendarHours {
+  from: string;
+  to: string;
+}
+
+export interface ParkingAvailabilityCalendarDay {
+  date: string;
+  configuredHours: ParkingAvailabilityCalendarHours[];
+  status: string;
+}
+
+export interface ParkingAvailabilityCalendarResponse extends ParkingActionResult {
+  code: number;
+  parkingSpotId: number;
+  month: string;
+  timeZone: string;
+  days: ParkingAvailabilityCalendarDay[];
+}
+
 export interface MyParkingResponse {
   code: number;
   success: boolean;

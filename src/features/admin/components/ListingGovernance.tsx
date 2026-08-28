@@ -11,12 +11,12 @@ import {
   VerificationRequestListStatus,
   VerificationRequestPaginationState,
 } from '../types';
+import type { SuspendedAccount } from '../api/accountSuspensionApi';
 
 interface ListingGovernanceProps {
   listings: ListingRequest[];
   isLoading: boolean;
   error: string | null;
-  responseMessage: string;
   statusFilter: VerificationRequestListStatus;
   pagination: VerificationRequestPaginationState;
   onStatusChange: (status: VerificationRequestListStatus) => void;
@@ -26,6 +26,9 @@ interface ListingGovernanceProps {
   onViewDocument: (document: ParkingVerificationDocumentDto) => Promise<Blob>;
   onApprove: (id: string) => Promise<ParkingVerificationDecisionResult>;
   onReject: (id: string, reason: string) => Promise<ParkingVerificationDecisionResult>;
+  onSuspend: (email: string) => Promise<SuspendedAccount>;
+  onReintegrate: (email: string) => Promise<SuspendedAccount>;
+  onLoadSuspensions: () => Promise<SuspendedAccount[]>;
   addActivityLog: (type: string, message: string, user: string) => void;
 }
 
@@ -33,7 +36,6 @@ export default function ListingGovernance({
   listings,
   isLoading,
   error,
-  responseMessage,
   statusFilter,
   pagination,
   onStatusChange,
@@ -43,6 +45,9 @@ export default function ListingGovernance({
   onViewDocument,
   onApprove, 
   onReject,
+  onSuspend,
+  onReintegrate,
+  onLoadSuspensions,
   addActivityLog 
 }: ListingGovernanceProps) {
   const activeTab = statusFilter === 'pending' ? 'pending' : 'moderated';
@@ -58,12 +63,15 @@ export default function ListingGovernance({
   const [decisionLoadingId, setDecisionLoadingId] = useState<string | null>(null);
   const [decisionFeedback, setDecisionFeedback] = useState<{ success: boolean; message: string } | null>(null);
   
-  // Whitelist/Blacklist state for testing governance controls
-  const [blacklist, setBlacklist] = useState<string[]>([
-    "spammer.owner@gmail.com"
-  ]);
+  const [suspendedAccounts, setSuspendedAccounts] = useState<SuspendedAccount[]>([]);
   const [newBlacklistEmail, setNewBlacklistEmail] = useState('');
   const [blacklistError, setBlacklistError] = useState('');
+  const [suspensionMessage, setSuspensionMessage] = useState('');
+  const [isSuspending, setIsSuspending] = useState(false);
+  const [reintegratingUserId, setReintegratingUserId] = useState<number | null>(null);
+  const [suspensionsLoading, setSuspensionsLoading] = useState(true);
+  const [suspensionsLoadError, setSuspensionsLoadError] = useState('');
+  const [suspensionSearch, setSuspensionSearch] = useState('');
 
   const rejectionOptions = [
     "Deed name mismatch with registration profile",
@@ -202,6 +210,22 @@ export default function ListingGovernance({
     };
   }, [documentUrl]);
 
+  const loadSuspensions = React.useCallback(async () => {
+    setSuspensionsLoading(true);
+    setSuspensionsLoadError('');
+    try {
+      setSuspendedAccounts(await onLoadSuspensions());
+    } catch (loadError) {
+      setSuspensionsLoadError(loadError instanceof Error ? loadError.message : 'Unable to load suspended accounts.');
+    } finally {
+      setSuspensionsLoading(false);
+    }
+  }, [onLoadSuspensions]);
+
+  React.useEffect(() => {
+    void loadSuspensions();
+  }, [loadSuspensions]);
+
   const closeSelectedListing = () => {
     setSelectedListing(null);
     setSelectedDocument(null);
@@ -232,26 +256,62 @@ export default function ListingGovernance({
     }
   };
 
-  const handleAddToBlacklist = (e: React.FormEvent) => {
+  const handleAddToBlacklist = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newBlacklistEmail || !newBlacklistEmail.includes('@')) {
+    const email = newBlacklistEmail.trim().toLowerCase();
+    setSuspensionMessage('');
+    if (!email || !email.includes('@')) {
       setBlacklistError('Please enter a valid email address');
       return;
     }
-    if (blacklist.includes(newBlacklistEmail)) {
+    if (suspendedAccounts.some((account) => account.email.toLowerCase() === email)) {
       setBlacklistError('Email is already on the suspension blacklist');
       return;
     }
-    setBlacklist([...blacklist, newBlacklistEmail]);
-    addActivityLog('governance', `Suspended/Blacklisted host email: ${newBlacklistEmail}`, "Admin");
-    setNewBlacklistEmail('');
+    setIsSuspending(true);
     setBlacklistError('');
+    try {
+      const account = await onSuspend(email);
+      setSuspendedAccounts((current) => [
+        account,
+        ...current.filter((item) => item.userId !== account.userId),
+      ]);
+      addActivityLog('governance', `Suspended account: ${account.email}`, 'Admin');
+      setNewBlacklistEmail('');
+      setSuspensionMessage(`${account.firstName} ${account.lastName} is now ${account.accountStatus.toLowerCase()}.`);
+    } catch (suspensionError) {
+      setBlacklistError(suspensionError instanceof Error ? suspensionError.message : 'Unable to suspend this account.');
+    } finally {
+      setIsSuspending(false);
+    }
   };
 
-  const handleRemoveFromBlacklist = (email: string) => {
-    setBlacklist(blacklist.filter(e => e !== email));
-    addActivityLog('governance', `Reinstated/Whitelisted host email: ${email}`, "Admin");
+  const handleReintegrate = async (account: SuspendedAccount) => {
+    setReintegratingUserId(account.userId);
+    setBlacklistError('');
+    setSuspensionMessage('');
+    try {
+      const reintegrated = await onReintegrate(account.email);
+      setSuspendedAccounts((current) => current.filter((item) => item.userId !== reintegrated.userId));
+      addActivityLog('governance', `Reintegrated account: ${reintegrated.email}`, 'Admin');
+      setSuspensionMessage(`${reintegrated.firstName} ${reintegrated.lastName} is now ${reintegrated.accountStatus.toLowerCase()}.`);
+    } catch (reintegrationError) {
+      setBlacklistError(reintegrationError instanceof Error ? reintegrationError.message : 'Unable to reintegrate this account.');
+    } finally {
+      setReintegratingUserId(null);
+    }
   };
+
+  const normalizedSuspensionSearch = suspensionSearch.trim().toLowerCase();
+  const filteredSuspendedAccounts = suspendedAccounts.filter((account) => !normalizedSuspensionSearch || [
+    account.userId,
+    account.email,
+    account.firstName,
+    account.lastName,
+    account.accountStatus,
+    account.userType,
+    account.lockedParkingSpotCount,
+  ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSuspensionSearch)));
 
   return (
     <div id="listing-governance" className="space-y-6">
@@ -261,9 +321,6 @@ export default function ListingGovernance({
           <div>
             <h2 id="governance-title" className="text-2xl font-bold text-slate-800 tracking-tight">Parking Verification Requests</h2>
             <p className="text-slate-500 text-sm">Review every parking-space verification submitted by property owners.</p>
-            {responseMessage && !error && (
-              <p className="mt-1 text-[11px] font-medium text-emerald-700">{responseMessage}</p>
-            )}
           </div>
           <button
             type="button"
@@ -532,30 +589,62 @@ export default function ListingGovernance({
                   />
                   <button 
                     type="submit"
+                    disabled={isSuspending}
                     className="px-3 bg-slate-800 text-white font-semibold rounded-lg text-xs hover:bg-slate-700 transition-colors shrink-0"
                   >
-                    Suspend
+                    {isSuspending ? 'Suspending…' : 'Suspend'}
                   </button>
                 </div>
               </div>
               {blacklistError && <p className="text-[10px] text-rose-600 font-medium">{blacklistError}</p>}
+              {suspensionMessage && <p role="status" className="text-[10px] text-emerald-700 font-medium">{suspensionMessage}</p>}
             </form>
 
             <div className="space-y-2 pt-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Suspension List</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Suspension List</span>
+                <button type="button" onClick={loadSuspensions} disabled={suspensionsLoading} className="text-[10px] font-semibold text-[#2563EB] disabled:opacity-50">
+                  {suspensionsLoading ? 'Loading…' : 'Refresh'}
+                </button>
+              </div>
+              <label className="relative block">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                <input
+                  type="search"
+                  value={suspensionSearch}
+                  onChange={(event) => setSuspensionSearch(event.target.value)}
+                  placeholder="Search suspended accounts"
+                  aria-label="Search suspended accounts"
+                  className="min-h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </label>
               
-              {blacklist.length === 0 ? (
-                <div className="text-[11px] text-slate-400 italic">No suspended accounts currently.</div>
+              {suspensionsLoadError ? (
+                <div className="text-[11px] text-rose-600">{suspensionsLoadError}</div>
+              ) : suspensionsLoading && suspendedAccounts.length === 0 ? (
+                <div className="text-[11px] text-slate-400 italic">Loading suspended accounts…</div>
+              ) : suspendedAccounts.length === 0 ? (
+                <div className="text-[11px] text-slate-400 italic">No suspended accounts.</div>
+              ) : filteredSuspendedAccounts.length === 0 ? (
+                <div className="text-[11px] text-slate-400 italic">No suspended accounts match “{suspensionSearch.trim()}”.</div>
               ) : (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {blacklist.map((email) => (
-                    <div key={email} className="flex items-center justify-between p-2 bg-rose-50 border border-rose-100 rounded-lg text-xs">
-                      <span className="font-mono text-rose-800 font-medium truncate max-w-[150px]">{email}</span>
-                      <button 
-                        onClick={() => handleRemoveFromBlacklist(email)}
-                        className="text-[10px] text-[#2563EB] font-semibold hover:underline"
+                  {filteredSuspendedAccounts.map((account) => (
+                    <div key={account.userId} className="flex items-center justify-between gap-2 p-2 bg-rose-50 border border-rose-100 rounded-lg text-xs">
+                      <div className="min-w-0">
+                        <p className="font-mono text-rose-800 font-medium truncate">{account.email}</p>
+                        <p className="mt-0.5 text-[10px] text-rose-600">{account.firstName} {account.lastName} · {account.accountStatus}</p>
+                        {typeof account.lockedParkingSpotCount === 'number' && (
+                          <p className="mt-0.5 text-[10px] text-slate-500">{account.lockedParkingSpotCount} locked parking spot{account.lockedParkingSpotCount === 1 ? '' : 's'}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleReintegrate(account)}
+                        disabled={reintegratingUserId !== null}
+                        className="shrink-0 text-[10px] text-[#2563EB] font-semibold hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Reintegrate
+                        {reintegratingUserId === account.userId ? 'Reintegrating…' : 'Reintegrate'}
                       </button>
                     </div>
                   ))}

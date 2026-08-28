@@ -51,6 +51,7 @@ import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
 import JourneyStrip from '../components/JourneyStrip';
 import DashboardHeader from '@/components/layout/DashboardHeader';
+import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -276,6 +277,10 @@ export default function CommuterDashboard() {
 
   // App Navigation and Module States
   const [activeTab, setActiveTab] = useState<CommuterTab>(requestedTab || persistedTab || (initialJourney ? 'active' : 'home'));
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('parkjom_commuter_sidebar_collapsed') === 'true',
+  );
   const [selectedStation, setSelectedStation] = useState<string>('');
   const [selectedStationCoords, setSelectedStationCoords] = useState<StationCoordinates | null>(null);
   const [distanceFilter, setDistanceFilter] = useState<number>(3000); // meters
@@ -284,13 +289,12 @@ export default function CommuterDashboard() {
   const [nearbySpots, setNearbySpots] = useState<ParkingSpot[]>([]);
   const [isNearbyLoading, setIsNearbyLoading] = useState<boolean>(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
-  const [nearbyMessage, setNearbyMessage] = useState('');
   const [nearbySpotCache, setNearbySpotCache] = useState<Record<string, ParkingSpot[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [searchSpots, setSearchSpots] = useState<ParkingSpot[]>([]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [searchMeta, setSearchMeta] = useState<{ message: string; totalCount: number; page: number; pageSize: number } | null>(null);
+  const [searchMeta, setSearchMeta] = useState<{ totalCount: number; page: number; pageSize: number } | null>(null);
   const [currentLocation, setCurrentLocation] = useState<StationCoordinates | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('locating');
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
@@ -299,7 +303,6 @@ export default function CommuterDashboard() {
   const [suggestedSpots, setSuggestedSpots] = useState<ParkingSpot[]>([]);
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
-  const [suggestionsMessage, setSuggestionsMessage] = useState('');
   
   // The supplied API creates top-up sessions but does not expose a wallet
   // summary endpoint, so an unknown balance is never presented as RM 0.00.
@@ -437,6 +440,10 @@ export default function CommuterDashboard() {
     params.set('tab', activeTab);
     navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: true });
   }, [activeTab, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    localStorage.setItem('parkjom_commuter_sidebar_collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   // Booking history — TODO: fetch from backend
   const [history, setHistory] = useState<Booking[]>([]);
@@ -604,11 +611,9 @@ export default function CommuterDashboard() {
           .sort((first, second) => distanceFromUser(currentLocation, first) - distanceFromUser(currentLocation, second));
 
         setSuggestedSpots(orderedSpots);
-        setSuggestionsMessage(data.message);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setSuggestedSpots([]);
-        setSuggestionsMessage('');
         setSuggestionsError(error instanceof Error ? error.message : 'Unable to find parking near your current location.');
       } finally {
         if (!controller.signal.aborted) setIsSuggestionsLoading(false);
@@ -623,7 +628,6 @@ export default function CommuterDashboard() {
     if (!selectedStationCoords) {
       setNearbySpots([]);
       setNearbyError(null);
-      setNearbyMessage('');
       setIsNearbyLoading(false);
       return;
     }
@@ -635,7 +639,6 @@ export default function CommuterDashboard() {
     if (cacheKey && nearbySpotCache[cacheKey]) {
       setNearbySpots(nearbySpotCache[cacheKey]);
       setNearbyError(null);
-      setNearbyMessage('');
       setIsNearbyLoading(false);
       setSelectedSpot(nearbySpotCache[cacheKey][0] ?? null);
       return;
@@ -662,7 +665,6 @@ export default function CommuterDashboard() {
           [cacheKey || getStationCacheKey(selectedStation || '', selectedStationCoords.lat, selectedStationCoords.lng)]: fetchedSpots,
         }));
         setSelectedSpot(fetchedSpots[0] ?? null);
-        setNearbyMessage(`${data.message} · Page ${data.page} of ${Math.max(1, Math.ceil(data.totalCount / data.pageSize))}`);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setNearbySpots([]);
@@ -699,7 +701,6 @@ export default function CommuterDashboard() {
 
       setSearchSpots(data.data.map(mapParkingResult));
       setSearchMeta({
-        message: data.message,
         totalCount: data.totalCount,
         page: data.page,
         pageSize: data.pageSize,
@@ -1510,6 +1511,28 @@ export default function CommuterDashboard() {
     wallet: { title: 'Wallet', description: 'Top up securely and keep track of every parking payment.' },
     profile: { title: 'Vehicles', description: 'Choose the vehicle attached to your next parking session.' },
   } as const;
+  const commuterSidebarGroups = [
+    {
+      label: 'Discover',
+      items: [
+        { id: 'home', icon: Compass, label: 'Browse' },
+        { id: 'map', icon: Map, label: 'Transit Map' },
+      ],
+    },
+    {
+      label: 'My Parking',
+      items: [
+        { id: 'active', icon: Unlock, label: 'My Pass', dot: Boolean(activeBooking) },
+      ],
+    },
+    {
+      label: 'Account',
+      items: [
+        { id: 'wallet', icon: Wallet, label: 'Wallet', badge: walletBalance === null ? null : `RM ${walletBalance.toFixed(2)}` },
+        { id: 'profile', icon: Car, label: 'Vehicles', badge: vehicles.length },
+      ],
+    },
+  ];
 
   const notificationActions = (
     <button
@@ -1528,72 +1551,38 @@ export default function CommuterDashboard() {
   );
 
   return (
-    <div className="app-workspace commuter-workspace page-shell text-[#1d1d1f] flex flex-col" data-workspace-role="commuter" data-commuter-tab={activeTab}>
+    <div className="app-workspace commuter-workspace page-shell text-[#1d1d1f] flex" data-workspace-role="commuter" data-commuter-tab={activeTab}>
+      <AppSidebar
+        id="commuter-workspace-navigation"
+        workspaceLabel="Commuter workspace"
+        groups={commuterSidebarGroups}
+        activeId={activeTab}
+        onNavigate={(id) => { setActiveTab(id as CommuterTab); setSelectedSpot(null); }}
+        mobileOpen={sidebarOpen}
+        onMobileOpenChange={setSidebarOpen}
+        collapsed={sidebarCollapsed}
+        onCollapsedChange={setSidebarCollapsed}
+        footer="Find, book, and manage transit parking."
+      />
+
+      <div className="workspace-main flex min-h-screen min-w-0 flex-1 flex-col">
       <DashboardHeader
         role="commuter"
         user={user}
         onSignOut={() => { logout(); navigate('/'); }}
         onBrandClick={handleCommuterBrandClick}
+        showMenuButton
+        onMenuClick={() => setSidebarOpen(true)}
+        menuExpanded={sidebarOpen}
+        menuControls="commuter-workspace-navigation"
         actions={notificationActions}
       />
 
       {/* ─── Main Layout ─── */}
-      <div className="commuter-content-grid flex-1 max-w-[1400px] w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-        {/* Desktop Sidebar */}
-        <aside className="commuter-rail hidden lg:flex lg:col-span-3 flex-col gap-4 h-fit sticky top-[calc(3.5rem+1rem)]">
-          {/* Quick actions: wallet + notifications */}
-          <div className="flex items-center gap-2">
-            <button onClick={() => setActiveTab('wallet')}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-white hover:bg-[#f8f9fa] px-3 py-2.5 rounded-xl border border-[#e8eaed] text-[12px] font-semibold text-[#333] transition">
-              <Wallet size={14} className="text-[#007AFF]" /> {walletBalance === null ? 'Wallet' : `RM ${walletBalance.toFixed(2)}`}
-            </button>
-            <button onClick={() => setShowNotificationsDrawer(!showNotificationsDrawer)}
-              className="relative p-2.5 bg-white hover:bg-[#f8f9fa] rounded-xl border border-[#e8eaed] text-[#5f6368] transition">
-              <Bell size={16} />
-              {unreadCount > 0 && <span className="absolute -top-0.5 -right-0.5 bg-[#007AFF] text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">{unreadCount}</span>}
-            </button>
-          </div>
-          <div className="bg-white rounded-2xl border border-[#e8eaed] p-5 space-y-5">
-            {/* User */}
-            <div className="flex items-center gap-3 pb-4 border-b border-[#f1f3f4]">
-              <div className="w-9 h-9 rounded-full bg-[#eff6ff] flex items-center justify-center shrink-0">
-                <User size={17} className="text-[#007AFF]" />
-              </div>
-              <div className="truncate">
-                <p className="text-[13px] font-semibold text-[#111]">{user?.firstName ?? 'Commuter'}</p>
-                <p className="text-[11px] text-[#5f6368]">{vehicles.find(v => v.active)?.plate || 'VGV 8899'}</p>
-              </div>
-            </div>
-            {/* Nav */}
-            <nav className="flex flex-col gap-0.5">
-              {[
-                { id: 'home' as const, icon: Compass, label: 'Browse' },
-                { id: 'map' as const, icon: Map, label: 'Transit Map' },
-                { id: 'active' as const, icon: Unlock, label: 'My Pass', dot: !!activeBooking },
-                { id: 'wallet' as const, icon: Wallet, label: 'Wallet' },
-                { id: 'profile' as const, icon: Car, label: 'Vehicles' },
-              ].map(({ id, icon: Icon, label, dot }) => (
-                <button key={id} onClick={() => { setActiveTab(id); setSelectedSpot(null); }}
-                  aria-current={activeTab === id ? 'page' : undefined}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 ${
-                    activeTab === id ? 'bg-[#007AFF] text-white' : 'text-[#5f6368] hover:bg-[#f1f3f4] hover:text-[#111]'
-                  }`}>
-                  <Icon size={16} /> {label}
-                  {dot && <span className="ml-auto w-2 h-2 rounded-full bg-[#16a34a]" />}
-                </button>
-              ))}
-            </nav>
-          </div>
-          {/* SDG badge */}
-          <div className="bg-white rounded-2xl border border-[#e8eaed] p-4">
-            <p className="text-[10px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-1">SDG 11</p>
-            <p className="text-[12px] text-[#5f6368] leading-relaxed">Optimizing vacant parking near transit — reducing emissions and congestion in Greater KL.</p>
-          </div>
-        </aside>
+      <div className="commuter-content-grid flex-1 max-w-[1180px] w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6">
 
         {/* Main Content */}
-        <main className="lg:col-span-9 min-h-0">
+        <main className="min-h-0">
           <div className="workspace-heading workspace-heading--compact">
             <div>
               <h1>{commuterViewMeta[activeTab].title}</h1>
@@ -1672,9 +1661,7 @@ export default function CommuterDashboard() {
                 {searchError && <p role="alert" className="mt-2 text-[11px] font-medium text-rose-600">{searchError}</p>}
                 {searchMeta && (
                   <div className="mt-2 flex items-center justify-between gap-3">
-                    <p className="text-[10px] text-emerald-700">
-                      {searchMeta.message} · Page {searchMeta.page} · {searchMeta.pageSize} per page
-                    </p>
+                    <p className="text-[10px] text-[#6e6e73]">Page {searchMeta.page} · {searchMeta.pageSize} per page</p>
                     <button
                       type="button"
                       onClick={() => {
@@ -1697,7 +1684,6 @@ export default function CommuterDashboard() {
                     <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">
                       {searchMeta ? 'Search results' : 'Recommended near you'} ({searchMeta?.totalCount ?? locationSuggestedSpots.length})
                     </h3>
-                    {!searchMeta && suggestionsMessage && <p className="mt-1 text-[10px] text-[#9ca3af]">{suggestionsMessage}</p>}
                   </div>
                   {!searchMeta && isSuggestionsLoading && <Loader2 size={16} className="animate-spin text-[#007AFF]" />}
                 </div>
@@ -2347,6 +2333,7 @@ export default function CommuterDashboard() {
           setSelectedSpot(null);
         }}
       />
+      </div>
 
       {/* ─── Notifications Drawer ─── */}
       <AnimatePresence>
