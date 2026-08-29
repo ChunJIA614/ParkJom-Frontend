@@ -42,7 +42,18 @@ interface SupportTicket {
   timeline: TimelineEvent[];
 }
 
-export default function SupportTickets() {
+interface SupportTicketsProps {
+  audience?: 'owner' | 'commuter';
+  user?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+  } | null;
+}
+
+export default function SupportTickets({ audience = 'owner', user = null }: SupportTicketsProps) {
+  const isCommuter = audience === 'commuter';
+  const applicantRole = isCommuter ? 'Commuter' : 'Property Owner';
   const [activeTab, setActiveTab] = useState<'admin' | 'submit'>('admin');
   
   // Seed initial tickets based on the user's uploaded image
@@ -149,7 +160,10 @@ export default function SupportTickets() {
   ]);
 
   const [selectedTicketId, setSelectedTicketId] = useState<string>('TKT-103');
-  const selectedTicket = tickets.find(t => t.id === selectedTicketId) || tickets[0];
+  const visibleTickets = isCommuter
+    ? tickets.filter((ticket) => ticket.role === 'Driver Operator' || ticket.role === 'Commuter')
+    : tickets;
+  const selectedTicket = visibleTickets.find(t => t.id === selectedTicketId) || visibleTickets[0];
 
   // Submit form states
   const [formSubject, setFormSubject] = useState('');
@@ -157,8 +171,10 @@ export default function SupportTickets() {
   const [formHardwareNode, setFormHardwareNode] = useState('BLD-SS15-01 (SS15 Bay 12)');
   const [formBookingRef, setFormBookingRef] = useState('BKG-2026-1201');
   const [formDescription, setFormDescription] = useState('');
-  const [formApplicantName, setFormApplicantName] = useState('Chaw Chun Jia');
-  const [formEmail, setFormEmail] = useState('chunjia.owner@gmail.com');
+  const [formApplicantName, setFormApplicantName] = useState(
+    () => `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'Chaw Chun Jia',
+  );
+  const [formEmail, setFormEmail] = useState(() => user?.email ?? (isCommuter ? 'commuter@example.com' : 'chunjia.owner@gmail.com'));
   
   // Custom action states for interactive demo
   const [customReplyText, setCustomReplyText] = useState('');
@@ -190,13 +206,13 @@ export default function SupportTickets() {
       bookingRef: formBookingRef || 'N/A',
       description: formDescription,
       applicantName: formApplicantName,
-      role: 'Property Owner',
+      role: applicantRole,
       email: formEmail,
       status: 'AWAITING ACTION',
       timestamp: formattedDate,
       timeline: [
         {
-          label: 'Owner Dispute Form Uploaded',
+          label: `${applicantRole} Support Request Submitted`,
           time: 'Original Entry',
           note: `System registered ticket ${nextId}. Form uploaded successfully with digital signature.`,
           type: 'system'
@@ -321,7 +337,9 @@ export default function SupportTickets() {
           </span>
           <h1 className="text-xl font-black text-slate-950 tracking-tight">Support Tickets & Disputes</h1>
           <p className="text-slate-500 text-xs mt-1 max-w-2xl">
-            Submit formal application forms to request remote hardware overrides, report broken physical smart bollards, or resolve payment/escrow disputes with administrators.
+            {isCommuter
+              ? 'Report booking, parking access, wallet, payment, or account issues and follow updates from ParkJom support.'
+              : 'Submit formal application forms to request remote hardware overrides, report broken physical smart bollards, or resolve payment/escrow disputes with administrators.'}
           </p>
         </div>
 
@@ -337,7 +355,7 @@ export default function SupportTickets() {
             `}
           >
             <Layers className="w-3.5 h-3.5" />
-            Disputes Register (Admin Portal)
+            {isCommuter ? 'My Support Tickets' : 'Disputes Register (Admin Portal)'}
           </button>
           <button
             onClick={() => setActiveTab('submit')}
@@ -372,7 +390,7 @@ export default function SupportTickets() {
               </div>
 
               <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-                {tickets.map((ticket) => {
+                {visibleTickets.map((ticket) => {
                   const isActive = ticket.id === selectedTicketId;
                   return (
                     <button
@@ -405,7 +423,7 @@ export default function SupportTickets() {
                       </p>
 
                       <div className="flex justify-between items-center pt-1">
-                        <span className="text-[9px] text-slate-400 font-medium">Owner: {ticket.applicantName}</span>
+                        <span className="text-[9px] text-slate-400 font-medium">Applicant: {ticket.applicantName}</span>
                         <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 border border-blue-100/30 px-1.5 py-0.5 rounded tracking-wider uppercase">
                           {ticket.category}
                         </span>
@@ -420,16 +438,18 @@ export default function SupportTickets() {
             <div className="p-4 bg-blue-50/50 border border-blue-100/50 rounded-2xl flex gap-3 text-xs text-slate-600">
               <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-slate-800">Administrator Emulator</span>
+                <span className="font-bold text-slate-800">{isCommuter ? 'Need a quick resolution?' : 'Administrator Emulator'}</span>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
-                  This portal replicates the admin panel layout. Select a ticket and use the <strong>Administrative Bypass</strong> controls on the right to resolve issues in real-time.
+                  {isCommuter
+                    ? 'Select a ticket to review its progress or add information requested by the support team.'
+                    : <>This portal replicates the admin panel layout. Select a ticket and use the <strong>Administrative Bypass</strong> controls on the right to resolve issues in real-time.</>}
                 </p>
               </div>
             </div>
           </div>
 
           {/* Middle Column: Official Reconciliation Detail (6/12 span) */}
-          <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <div className={`${isCommuter ? 'lg:col-span-9' : 'lg:col-span-6'} bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6`}>
             
             {/* Detail Title Header */}
             <div className="flex justify-between items-start gap-4 border-b border-slate-100 pb-4">
@@ -558,7 +578,7 @@ export default function SupportTickets() {
           </div>
 
           {/* Right Column: Administrative Bypass Controls (3/12 span) */}
-          <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          {!isCommuter && <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
               <Settings className="w-4 h-4 text-slate-500" />
               <h3 className="font-black text-slate-950 text-xs uppercase tracking-wider">Administrative Bypass</h3>
@@ -606,7 +626,7 @@ export default function SupportTickets() {
                 </p>
               </div>
             </div>
-          </div>
+          </div>}
 
         </div>
       ) : (
@@ -621,10 +641,12 @@ export default function SupportTickets() {
               </span>
               <h2 className="text-lg font-black tracking-tight mt-2 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-blue-400" />
-                Systematic Administrative Action Application
+                {isCommuter ? 'Submit a Support Request' : 'Systematic Administrative Action Application'}
               </h2>
               <p className="text-slate-300 text-xs mt-1">
-                Establish an official dispute registry item. This documentation is logged onto the compliance board for instantaneous administrative review.
+                {isCommuter
+                  ? 'Tell the support team what happened and include any booking or parking-access details that can help us investigate.'
+                  : 'Establish an official dispute registry item. This documentation is logged onto the compliance board for instantaneous administrative review.'}
               </p>
             </div>
           </div>
@@ -757,7 +779,7 @@ export default function SupportTickets() {
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-6 rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                Submit Application Form
+                {isCommuter ? 'Submit Support Ticket' : 'Submit Application Form'}
               </button>
             </div>
           </form>

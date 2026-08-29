@@ -36,7 +36,10 @@ import {
   Loader2,
   RefreshCw,
   Pencil,
-  Trash2
+  Trash2,
+  ClipboardList,
+  Heart,
+  Menu,
 } from 'lucide-react';
 import {
   ParkingSpot,
@@ -68,6 +71,8 @@ import { addVehicle, deleteVehicle, getMyVehicles, modifyVehicle } from '../api/
 import { getVehicleCatalog, type VehicleCatalogEntry } from '../api/vehicleCatalogApi';
 import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
 import VehicleBrandModelFields from '../components/VehicleBrandModelFields';
+import SupportTickets from '@/features/owner/components/SupportTickets';
+import { loadFavoriteParking, saveFavoriteParking, toggleParkingFavorite } from '../lib/favoriteParking';
 import { isNativeApp, watchDeviceLocation } from '@/services/deviceCapabilities';
 import {
   closeExternalWindow,
@@ -251,7 +256,7 @@ export default function CommuterDashboard() {
   const { user, logout } = useAuth();
   const prefersReducedMotion = useReducedMotion();
   const [initialJourney] = useState(loadJourneySession);
-  type CommuterTab = 'home' | 'active' | 'wallet' | 'profile' | 'map';
+  type CommuterTab = 'home' | 'active' | 'wallet' | 'profile' | 'map' | 'favorites' | 'support';
   const locationParams = new URLSearchParams(location.search);
   const queryTab = locationParams.get('tab');
   const requestedTabFromQuery: CommuterTab | undefined = queryTab === 'home'
@@ -259,13 +264,15 @@ export default function CommuterDashboard() {
     || queryTab === 'wallet'
     || queryTab === 'profile'
     || queryTab === 'map'
+    || queryTab === 'support'
+    || queryTab === 'favorites'
     ? queryTab
     : undefined;
   const requestedTab = requestedTabFromQuery || (location.state as { activeTab?: CommuterTab } | null)?.activeTab;
   const persistedTab = (() => {
     try {
       const stored = localStorage.getItem('parkjom_commuter_tab');
-      return stored === 'home' || stored === 'active' || stored === 'wallet' || stored === 'profile' || stored === 'map'
+      return stored === 'home' || stored === 'active' || stored === 'wallet' || stored === 'profile' || stored === 'map' || stored === 'support' || stored === 'favorites'
         ? stored as CommuterTab
         : undefined;
     } catch {
@@ -286,6 +293,7 @@ export default function CommuterDashboard() {
   const [distanceFilter, setDistanceFilter] = useState<number>(3000); // meters
   const [spotTypeFilter, setSpotTypeFilter] = useState<string>('all');
   const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
+  const [favoriteSpots, setFavoriteSpots] = useState<ParkingSpot[]>(() => user?.userId ? loadFavoriteParking(user.userId) : []);
   const [nearbySpots, setNearbySpots] = useState<ParkingSpot[]>([]);
   const [isNearbyLoading, setIsNearbyLoading] = useState<boolean>(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
@@ -444,6 +452,22 @@ export default function CommuterDashboard() {
   useEffect(() => {
     localStorage.setItem('parkjom_commuter_sidebar_collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    setFavoriteSpots(user?.userId ? loadFavoriteParking(user.userId) : []);
+  }, [user?.userId]);
+
+  const handleToggleFavorite = (spot: ParkingSpot) => {
+    if (!user?.userId) return;
+    setFavoriteSpots(toggleParkingFavorite(user.userId, spot));
+  };
+
+  const handleClearFavorites = () => {
+    if (!user?.userId || favoriteSpots.length === 0) return;
+    if (!window.confirm('Remove all parking spaces from your favorites?')) return;
+    saveFavoriteParking(user.userId, []);
+    setFavoriteSpots([]);
+  };
 
   // Booking history — TODO: fetch from backend
   const [history, setHistory] = useState<Booking[]>([]);
@@ -1510,6 +1534,8 @@ export default function CommuterDashboard() {
     active: { title: 'My parking pass', description: 'Everything you need to arrive, unlock, park, and leave.' },
     wallet: { title: 'Wallet', description: 'Top up securely and keep track of every parking payment.' },
     profile: { title: 'Vehicles', description: 'Choose the vehicle attached to your next parking session.' },
+    support: { title: 'Support', description: 'Report booking, access, wallet, payment, or account issues.' },
+    favorites: { title: 'Favorites', description: 'Keep parking spaces you are interested in within easy reach.' },
   } as const;
   const commuterSidebarGroups = [
     {
@@ -1523,6 +1549,7 @@ export default function CommuterDashboard() {
       label: 'My Parking',
       items: [
         { id: 'active', icon: Unlock, label: 'My Pass', dot: Boolean(activeBooking) },
+        { id: 'favorites', icon: Heart, label: 'Favorites', badge: favoriteSpots.length },
       ],
     },
     {
@@ -1530,6 +1557,7 @@ export default function CommuterDashboard() {
       items: [
         { id: 'wallet', icon: Wallet, label: 'Wallet', badge: walletBalance === null ? null : `RM ${walletBalance.toFixed(2)}` },
         { id: 'profile', icon: Car, label: 'Vehicles', badge: vehicles.length },
+        { id: 'support', icon: ClipboardList, label: 'Support' },
       ],
     },
   ];
@@ -1717,21 +1745,14 @@ export default function CommuterDashboard() {
                 {discoverySpots.map((spot, index) => {
                   const userDistance = currentLocation ? distanceFromUser(currentLocation, spot) : null;
                   return (
-                    <button
-                      key={spot.id}
-                      type="button"
-                      onClick={() => openParkingDetail(
-                        spot,
-                        currentLocation,
-                        currentLocation ? 'Your location' : spot.stationName,
-                      )}
-                      className="w-full bg-white rounded-2xl border p-4 text-left cursor-pointer transition-all duration-150 border-[#e8eaed] hover:border-[#d2d5d9]"
-                    >
+                    <div key={spot.id} className="relative">
+                    <button type="button" onClick={() => openParkingDetail(spot, currentLocation, currentLocation ? 'Your location' : spot.stationName)}
+                      className="w-full bg-white rounded-2xl border p-3 sm:p-4 sm:pr-12 text-left cursor-pointer transition-all duration-150 border-[#e8eaed] hover:border-[#d2d5d9] shadow-[0_4px_14px_rgba(15,23,42,0.04)] sm:shadow-none">
                       <div className="flex flex-col sm:flex-row items-start gap-4">
                         {spot.primaryImageUrl ? (
-                          <img src={spot.primaryImageUrl} alt="" className="h-36 sm:h-20 w-full sm:w-24 shrink-0 rounded-xl object-cover" />
+                          <img src={spot.primaryImageUrl} alt="" className="aspect-[16/9] sm:aspect-auto sm:h-20 w-full sm:w-24 shrink-0 rounded-xl object-cover" />
                         ) : (
-                          <div className="h-28 sm:h-20 w-full sm:w-24 rounded-xl bg-[#eff6ff] flex items-center justify-center shrink-0"><Home size={20} className="text-[#007AFF]" /></div>
+                          <div className="aspect-[16/9] sm:aspect-auto sm:h-20 w-full sm:w-24 rounded-xl bg-[#eff6ff] flex items-center justify-center shrink-0"><Home size={24} className="text-[#007AFF]" /></div>
                         )}
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3">
@@ -1759,6 +1780,13 @@ export default function CommuterDashboard() {
                         <ChevronRight size={18} className="hidden sm:block mt-1 shrink-0 text-[#9ca3af]" />
                       </div>
                     </button>
+                    <button type="button" onClick={() => handleToggleFavorite(spot)}
+                      aria-label={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? `Remove ${spot.propertyName} from favorites` : `Add ${spot.propertyName} to favorites`}
+                      aria-pressed={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId)}
+                      className="absolute right-5 top-5 sm:right-3 sm:top-3 z-10 flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-black/[0.08] bg-white/95 text-[#5f6368] shadow-md backdrop-blur transition hover:text-rose-500 active:scale-95">
+                      <Heart size={17} fill={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? 'currentColor' : 'none'} className={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? 'text-rose-500' : ''} />
+                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -2315,6 +2343,45 @@ export default function CommuterDashboard() {
             </div>
           )}
 
+          {activeTab === 'support' && (
+            <SupportTickets audience="commuter" user={user} />
+          )}
+
+          {activeTab === 'favorites' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e8eaed] bg-white px-4 py-3 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
+                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-500"><Heart size={17} fill="currentColor" /></span><div><p className="text-[13px] font-semibold text-[#111]">Saved parking</p><p className="text-[11px] text-[#5f6368]">{favoriteSpots.length} space{favoriteSpots.length === 1 ? '' : 's'} ready to revisit</p></div></div>
+                {favoriteSpots.length > 0 && <button type="button" onClick={handleClearFavorites} className="min-h-9 shrink-0 rounded-lg px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">Clear all</button>}
+              </div>
+              {favoriteSpots.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-[#dadce0] bg-white p-10 text-center">
+                  <Heart size={32} className="mx-auto text-[#dadce0]" />
+                  <p className="mt-3 text-[14px] font-semibold text-[#111]">No favorite parking yet</p>
+                  <p className="mt-1 text-[12px] text-[#5f6368]">Tap the heart on a parking space to save it here.</p>
+                  <button type="button" onClick={() => setActiveTab('home')} className="mt-4 rounded-xl bg-[#007AFF] px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-[#0066d6]">Browse parking</button>
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {favoriteSpots.map((spot) => (
+                    <article key={spot.parkingSpotId} className="overflow-hidden rounded-2xl border border-[#e8eaed] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
+                      <div className="relative">
+                        {spot.primaryImageUrl ? <img src={spot.primaryImageUrl} alt="" className="aspect-[16/9] w-full object-cover" /> : <div className="flex aspect-[16/9] items-center justify-center bg-[#eff6ff]"><Home size={28} className="text-[#007AFF]" /></div>}
+                        <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 shadow-sm backdrop-blur">{spot.availabilityStatus}</span>
+                        <button type="button" onClick={() => handleToggleFavorite(spot)} aria-label={`Remove ${spot.propertyName} from favorites`} className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.06] bg-white/95 text-rose-500 shadow-md backdrop-blur active:scale-95"><Heart size={18} fill="currentColor" /></button>
+                      </div>
+                      <div className="p-4">
+                        <div className="min-w-0"><h3 className="truncate text-[15px] font-semibold text-[#111]">{spot.propertyName}</h3><p className="mt-1 text-[11px] text-[#5f6368]">Bay {spot.parkingLabel} · Near {spot.stationName}</p></div>
+                        <p className="mt-2 line-clamp-2 text-[11px] text-[#6e6e73]">{spot.address}</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-[#f8f9fa] p-3 text-[11px]"><div><span className="block text-[10px] text-[#9ca3af]">Daily rate</span><strong className="mt-0.5 block text-[#111]">{spot.dailyRate === null ? 'Not set' : `RM ${spot.dailyRate.toFixed(2)}`}</strong></div><div><span className="block text-[10px] text-[#9ca3af]">To station</span><strong className="mt-0.5 block text-[#111]">{spot.distanceToStation.toFixed(2)} km</strong></div></div>
+                        <button type="button" onClick={() => openParkingDetail(spot, null, spot.stationName)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-[12px] font-semibold text-white hover:bg-[#0066d6]">View parking <ChevronRight size={15} /></button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           </PageTransition>
         </main>
       </div>
@@ -2325,10 +2392,14 @@ export default function CommuterDashboard() {
           { id: 'home', icon: Compass, label: 'Browse' },
           { id: 'active', icon: Unlock, label: 'Pass', dot: !!activeBooking },
           { id: 'wallet', icon: Wallet, label: 'Wallet' },
-          { id: 'profile', icon: Car, label: 'Vehicles' },
+          { id: 'more', icon: Menu, label: 'More' },
         ]}
-        activeId={activeTab}
+        activeId={['profile', 'favorites', 'support'].includes(activeTab) ? 'more' : activeTab}
         onChange={(id) => {
+          if (id === 'more') {
+            setSidebarOpen(true);
+            return;
+          }
           setActiveTab(id as typeof activeTab);
           setSelectedSpot(null);
         }}

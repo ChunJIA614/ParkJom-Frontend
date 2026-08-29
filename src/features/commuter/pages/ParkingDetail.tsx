@@ -4,6 +4,7 @@ import {
   ArrowLeft, MapPin, Navigation, ShieldCheck,
   Car, Wifi, CreditCard,
   Loader2, Calendar, AlertTriangle,
+  Heart,
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -12,6 +13,7 @@ import { saveJourneySession } from '../lib/journeySession';
 import { getWalkingRoute } from '@/services/walkingRoutes';
 import { confirmBooking, createBookingQuote, type BookingQuote, type ConfirmedBooking } from '../api/bookingApi';
 import { getMyVehicles, type VehicleApiData } from '../api/vehicleApi';
+import { isParkingFavorite, toggleParkingFavorite } from '../lib/favoriteParking';
 
 /* ================================================================
    ParkingDetail — Parking spot detail page
@@ -69,6 +71,7 @@ export default function ParkingDetail() {
   const [isBookingLoading, setIsBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [reservationReady, setReservationReady] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(() => Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
   const idempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -97,6 +100,10 @@ export default function ParkingDetail() {
       });
     return () => controller.abort();
   }, [user?.token]);
+
+  useEffect(() => {
+    setIsFavorite(Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
+  }, [spot, user?.userId]);
 
   if (!spot) {
     return (
@@ -243,12 +250,19 @@ export default function ParkingDetail() {
         <div className="bg-white rounded-2xl border border-[#e8eaed] p-6 md:p-8 space-y-6">
 
           {/* Title */}
-          <div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
             <h1 className="text-xl md:text-2xl font-bold text-[#111] tracking-[-0.01em] leading-tight">{spot.address}</h1>
             <div className="flex items-center gap-1.5 mt-2 text-[13px] text-[#5f6368]">
               <MapPin size={14} className="text-[#007AFF] shrink-0" />
               <span>{stationName ? `${stationName} area` : 'Klang Valley'}</span>
             </div>
+            </div>
+            <button type="button" onClick={() => { if (user?.userId) { toggleParkingFavorite(user.userId, spot); setIsFavorite((current) => !current); } }}
+              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={isFavorite}
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition ${isFavorite ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#dadce0] text-[#5f6368] hover:text-rose-500'}`}>
+              <Heart size={18} fill={isFavorite ? 'currentColor' : 'none'} />
+            </button>
           </div>
 
           {/* Walking distance */}
