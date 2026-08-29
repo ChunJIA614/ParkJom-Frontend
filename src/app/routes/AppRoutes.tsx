@@ -9,6 +9,7 @@ const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
 const AdminDashboard = lazy(() => import('@/features/admin/pages/AdminDashboard'));
 const CommuterDashboard = lazy(() => import('@/features/commuter/pages/CommuterDashboard'));
 const ParkingDetail = lazy(() => import('@/features/commuter/pages/ParkingDetail'));
+const ParkingReview = lazy(() => import('@/features/commuter/pages/ParkingReview'));
 const LandingPage = lazy(() => import('@/features/landing/pages/LandingPage'));
 const OwnerDashboard = lazy(() => import('@/features/owner/pages/OwnerDashboard'));
 
@@ -58,6 +59,7 @@ export function AppRoutes() {
           <Route path="/owner" element={<RequireRole role="Owner"><OwnerDashboard /></RequireRole>} />
           <Route path="/commuter" element={<RequireRole role="Commuter"><CommuterDashboard /></RequireRole>} />
           <Route path="/commuter/parking/:id" element={<RequireRole role="Commuter"><ParkingDetail /></RequireRole>} />
+          <Route path="/commuter/parking/:id/review" element={<RequireRole role="Commuter"><ParkingReview /></RequireRole>} />
           <Route path="*" element={<Navigate to={dashboardPath} replace />} />
         </Routes>
       </Suspense>
