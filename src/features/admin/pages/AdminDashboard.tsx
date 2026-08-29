@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, ShieldCheck, Radio, AlertOctagon, 
   Landmark, LifeBuoy,
-  ShieldAlert, Lock, Menu, Car
+  ShieldAlert, Lock, Menu, Car, MessageSquare
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
@@ -33,8 +33,9 @@ import SupportDispute from '../components/SupportDispute';
 import SystemAudit from '../components/SystemAudit';
 import SystemConfiguration from '../components/SystemConfiguration';
 import VehicleManagement from '../components/VehicleManagement';
+import ReviewModeration from '../components/ReviewModeration';
 
-type ActiveView = 'home' | 'governance' | 'vehicles' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system';
+type ActiveView = 'home' | 'governance' | 'reviews' | 'vehicles' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -53,7 +54,7 @@ export default function AdminDashboard() {
   // App core states — all data fetched from backend
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     const saved = localStorage.getItem('parkjom_admin_view');
-    const validViews: ActiveView[] = ['home', 'governance', 'vehicles', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system'];
+    const validViews: ActiveView[] = ['home', 'governance', 'reviews', 'vehicles', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system'];
     return saved && validViews.includes(saved as ActiveView) ? saved as ActiveView : 'home';
   });
 
@@ -473,6 +474,7 @@ export default function AdminDashboard() {
       label: 'Operations',
       items: [
         { id: 'governance', label: 'Listing Governance', icon: ShieldCheck, badge: listings.filter((listing) => listing.status === 'pending').length },
+        { id: 'reviews', label: 'Review Moderation', icon: MessageSquare },
         { id: 'vehicles', label: 'Vehicle Management', icon: Car },
         { id: 'iot', label: 'IoT Smart Bollards', icon: Radio, badge: bollards.filter((bollard) => bollard.status === 'offline').length, badgeTone: 'danger' as const },
       ],
@@ -590,6 +592,12 @@ export default function AdminDashboard() {
             onRefresh={fetchAdminVehicles}
           />
         );
+      case 'reviews':
+        return (
+          <ReviewModeration
+            onModerated={(message) => addActivityLog('review_moderation', message, 'Admin')}
+          />
+        );
       case 'system':
         return (
           <SystemConfiguration 
@@ -606,6 +614,7 @@ export default function AdminDashboard() {
   const viewMeta: Record<ActiveView, { title: string; description: string }> = {
     home: { title: 'Operations overview', description: 'Monitor the queues and systems that affect today’s parking journeys.' },
     governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
+    reviews: { title: 'Review moderation', description: 'Protect the community by removing inappropriate commuter feedback.' },
     vehicles: { title: 'Vehicle management', description: 'Review commuter vehicles registered across the platform.' },
     iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
     settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
@@ -666,7 +675,7 @@ export default function AdminDashboard() {
           { id: 'settlement', icon: Landmark, label: 'Finance' },
           { id: 'more', icon: Menu, label: 'More', count: tickets.filter((t) => t.status !== 'resolved').length },
         ]}
-        activeId={['vehicles', 'enforcement', 'support', 'audit', 'system'].includes(activeView) ? 'more' : activeView}
+        activeId={['reviews', 'vehicles', 'enforcement', 'support', 'audit', 'system'].includes(activeView) ? 'more' : activeView}
         onChange={(id) => {
           if (id === 'more') {
             setSidebarOpen(true);
