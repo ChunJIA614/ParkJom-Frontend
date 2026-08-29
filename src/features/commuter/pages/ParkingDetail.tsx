@@ -5,6 +5,7 @@ import {
   Car, Wifi, CreditCard,
   Loader2, Calendar, AlertTriangle,
   Heart,
+  MessageSquare, Star, Trash2,
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -14,6 +15,7 @@ import { getWalkingRoute } from '@/services/walkingRoutes';
 import { confirmBooking, createBookingQuote, type BookingQuote, type ConfirmedBooking } from '../api/bookingApi';
 import { getMyVehicles, type VehicleApiData } from '../api/vehicleApi';
 import { isParkingFavorite, toggleParkingFavorite } from '../lib/favoriteParking';
+import { deleteParkingReview, loadParkingReviews, PARKING_REVIEWS_CHANGED_EVENT } from '../lib/parkingReviews';
 
 /* ================================================================
    ParkingDetail — Parking spot detail page
@@ -73,6 +75,10 @@ export default function ParkingDetail() {
   const [reservationReady, setReservationReady] = useState(false);
   const [isFavorite, setIsFavorite] = useState(() => Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
   const idempotencyKeyRef = useRef<string | null>(null);
+  const [reviews, setReviews] = useState(() => spot ? loadParkingReviews(spot.parkingSpotId) : []);
+  const averageRating = reviews.length
+    ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length
+    : 0;
 
   useEffect(() => {
     if (!spot || !stationCoords) return;
@@ -104,6 +110,14 @@ export default function ParkingDetail() {
   useEffect(() => {
     setIsFavorite(Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
   }, [spot, user?.userId]);
+
+  useEffect(() => {
+    if (!spot) return;
+    const refreshReviews = () => setReviews(loadParkingReviews(spot.parkingSpotId));
+    refreshReviews();
+    window.addEventListener(PARKING_REVIEWS_CHANGED_EVENT, refreshReviews);
+    return () => window.removeEventListener(PARKING_REVIEWS_CHANGED_EVENT, refreshReviews);
+  }, [spot]);
 
   if (!spot) {
     return (
@@ -356,6 +370,53 @@ export default function ParkingDetail() {
               </div>
             )}
           </div>
+
+          <div className="h-px bg-[#e8eaed]" />
+
+          {/* Reviews */}
+          <section aria-labelledby="parking-reviews-title">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af]">Verified stays</p>
+                <h2 id="parking-reviews-title" className="mt-1 text-[17px] font-bold text-[#111]">Commuter reviews</h2>
+              </div>
+              <div className="text-right">
+                <div className="flex items-center justify-end gap-1 text-[#ff9500]"><Star size={16} fill="currentColor" /><strong className="text-[15px] text-[#111]">{averageRating.toFixed(1)}</strong></div>
+                <p className="mt-0.5 text-[10px] text-[#8e8e93]">{reviews.length} verified reviews</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {reviews.slice(0, 2).map((review) => (
+                <article key={review.reviewId} className="rounded-2xl bg-[#f8f9fa] p-4 ring-1 ring-black/[0.04]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f0fe] text-[11px] font-bold text-[#007AFF]">{review.reviewerName.charAt(0)}</span>
+                      <div><p className="text-[12px] font-semibold text-[#111]">{review.reviewerName}</p><p className="text-[10px] text-[#8e8e93]">Verified booking · {new Date(review.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}</p></div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-0.5 text-[#ff9500]" aria-label={`${review.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill={index < review.rating ? 'currentColor' : 'none'} className={index < review.rating ? '' : 'text-[#d2d2d7]'} />)}</div>
+                      {review.reviewerId !== 0 && review.reviewerId === user?.userId && (
+                        <button type="button" aria-label="Delete your review" title="Delete your review" onClick={() => {
+                          if (window.confirm('Delete your review permanently? This cannot be undone.')) {
+                            deleteParkingReview(review.reviewId, { requesterId: user.userId });
+                          }
+                        }} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] transition hover:bg-[#fff2f1] hover:text-[#d92d20]"><Trash2 size={14} /></button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-3 whitespace-pre-line text-[12px] leading-5 text-[#5f6368]">{review.comment}</p>
+                  {review.ownerReply && (
+                    <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-black/[0.05]">
+                      <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#007AFF]"><MessageSquare size={11} /> Owner reply</p>
+                      <p className="mt-1 text-[11px] leading-4 text-[#5f6368]">{review.ownerReply}</p>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+            <p className="mt-3 flex items-center gap-1.5 text-[10px] text-[#8e8e93]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
+          </section>
 
           <div className="h-px bg-[#e8eaed]" />
 
