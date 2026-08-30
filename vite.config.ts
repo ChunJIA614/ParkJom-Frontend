@@ -7,7 +7,7 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiProxyTarget = env.VITE_API_PROXY_TARGET ||
-    'https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net';
+    'http://localhost:5276';
 
   return {
     plugins: [react(), tailwindcss(), mkcert() ],

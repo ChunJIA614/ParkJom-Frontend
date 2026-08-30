@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -36,6 +36,7 @@ import {
   Loader2,
   RefreshCw,
   Pencil,
+  Star,
   Trash2,
   ClipboardList,
   Heart,
@@ -66,13 +67,20 @@ import {
 } from '../lib/journeySession';
 import type { JourneyStage } from '../lib/journeySession';
 import { getNearbyParking, searchParking } from '../api/parkingApi';
+import {
+  favoriteParkingSpotToParkingSpot,
+  getFavoriteParking,
+  updateFavoriteParking,
+} from '../api/favoriteApi';
 import { createWalletTopUp, getWalletSummary, getWalletTopUpStatus } from '../api/walletApi';
 import { addVehicle, deleteVehicle, getMyVehicles, modifyVehicle } from '../api/vehicleApi';
 import { getVehicleCatalog, type VehicleCatalogEntry } from '../api/vehicleCatalogApi';
+import { updateReview } from '../api/reviewApi';
+import { getCommuterBookingHistory, type BookingHistoryItem } from '@/features/bookings/api/bookingHistoryApi';
 import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
 import VehicleBrandModelFields from '../components/VehicleBrandModelFields';
-import SupportTickets from '@/features/owner/components/SupportTickets';
-import { loadFavoriteParking, saveFavoriteParking, toggleParkingFavorite } from '../lib/favoriteParking';
+import SupportWorkspace from '@/features/support/components/SupportWorkspace';
+import { loadFavoriteParking, saveFavoriteParking, setParkingFavorite } from '../lib/favoriteParking';
 import { isNativeApp, watchDeviceLocation } from '@/services/deviceCapabilities';
 import {
   closeExternalWindow,
@@ -95,6 +103,28 @@ const mapParkingResult = (spot: ParkingResultDto): ParkingSpot => ({
   available: spot.availabilityStatus.toLowerCase() === 'available',
   type: 'Condo Bay',
   owner: `Property #${spot.propertyId}`,
+});
+
+const historyItemToBooking = ({ booking }: BookingHistoryItem): Booking => ({
+  id: booking.bookingReference,
+  bookingId: booking.bookingId,
+  spot: {
+    id: String(booking.parkingSpotId),
+    parkingSpotId: booking.parkingSpotId,
+    parkingLabel: booking.parkingLabel,
+    propertyId: 0,
+    propertyName: booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
+    address: booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
+    latitude: 0, longitude: 0, stationName: '', distanceToStation: 0, timeToStationInMinutes: 0,
+    availabilityStatus: '', monthlyRate: 0, dailyRate: null, primaryImageUrl: null,
+    station: 'ParkJom parking', name: booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
+    pricePerHour: 0, distance: 0, lat: 0, lng: 0, available: false, type: 'Condo Bay', owner: '',
+  },
+  startTime: new Date(booking.startDate),
+  endTime: new Date(booking.endDate),
+  vehiclePlate: '',
+  status: booking.bookingStatus === 'Completed' ? 'Completed' : 'Upcoming',
+  totalPaid: booking.totalAmount,
 });
 
 const formatParkingRate = (spot: ParkingSpot) => {
@@ -254,6 +284,13 @@ export default function CommuterDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const supportViewer = useMemo(() => user ? ({
+    userId: user.userId,
+    name: `${user.firstName} ${user.lastName}`.trim() || user.email,
+    email: user.email,
+    role: 'Commuter' as const,
+    token: user.token,
+  }) : null, [user]);
   const prefersReducedMotion = useReducedMotion();
   const [initialJourney] = useState(loadJourneySession);
   type CommuterTab = 'home' | 'active' | 'wallet' | 'profile' | 'map' | 'favorites' | 'support';
@@ -294,6 +331,10 @@ export default function CommuterDashboard() {
   const [spotTypeFilter, setSpotTypeFilter] = useState<string>('all');
   const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
   const [favoriteSpots, setFavoriteSpots] = useState<ParkingSpot[]>(() => user?.userId ? loadFavoriteParking(user.userId) : []);
+  const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
+  const [favoriteUpdatingIds, setFavoriteUpdatingIds] = useState<number[]>([]);
+  const [isClearingFavorites, setIsClearingFavorites] = useState(false);
+  const [favoriteError, setFavoriteError] = useState<string | null>(null);
   const [nearbySpots, setNearbySpots] = useState<ParkingSpot[]>([]);
   const [isNearbyLoading, setIsNearbyLoading] = useState<boolean>(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
@@ -454,23 +495,176 @@ export default function CommuterDashboard() {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
-    setFavoriteSpots(user?.userId ? loadFavoriteParking(user.userId) : []);
-  }, [user?.userId]);
+    if (!user?.userId || !user.token) {
+      setFavoriteSpots([]);
+      setIsFavoritesLoading(false);
+      setFavoriteUpdatingIds([]);
+      setIsClearingFavorites(false);
+      setFavoriteError(null);
+      return;
+    }
 
-  const handleToggleFavorite = (spot: ParkingSpot) => {
-    if (!user?.userId) return;
-    setFavoriteSpots(toggleParkingFavorite(user.userId, spot));
+    const cachedFavorites = loadFavoriteParking(user.userId);
+    const controller = new AbortController();
+    setFavoriteSpots(cachedFavorites);
+    setIsFavoritesLoading(true);
+    setFavoriteUpdatingIds([]);
+    setIsClearingFavorites(false);
+    setFavoriteError(null);
+
+    void getFavoriteParking(user.token, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        const currentCache = loadFavoriteParking(user.userId);
+        const favorites = result.data.map((favorite) => favoriteParkingSpotToParkingSpot(
+          favorite,
+          currentCache.find((spot) => spot.parkingSpotId === favorite.parkingSpotId),
+        ));
+        saveFavoriteParking(user.userId, favorites);
+        setFavoriteSpots(favorites);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setFavoriteError(error instanceof Error ? error.message : 'Unable to load your favorite parking spots.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsFavoritesLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [user?.token, user?.userId]);
+
+  const handleToggleFavorite = async (spot: ParkingSpot) => {
+    if (!user?.userId || !user.token || isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)) return;
+
+    setFavoriteUpdatingIds((current) => [...current, spot.parkingSpotId]);
+    setFavoriteError(null);
+    try {
+      const result = await updateFavoriteParking(user.token, spot.parkingSpotId);
+      setFavoriteSpots(setParkingFavorite(user.userId, spot, result.data.isFavorite));
+    } catch (error) {
+      setFavoriteError(error instanceof Error ? error.message : 'Unable to update this favorite parking spot.');
+    } finally {
+      setFavoriteUpdatingIds((current) => current.filter((id) => id !== spot.parkingSpotId));
+    }
   };
 
-  const handleClearFavorites = () => {
-    if (!user?.userId || favoriteSpots.length === 0) return;
+  const handleClearFavorites = async () => {
+    if (!user?.userId || !user.token || favoriteSpots.length === 0 || isFavoritesLoading || isClearingFavorites) return;
     if (!window.confirm('Remove all parking spaces from your favorites?')) return;
-    saveFavoriteParking(user.userId, []);
-    setFavoriteSpots([]);
+
+    const spotsToRemove = [...favoriteSpots];
+    let failureCount = 0;
+    setIsClearingFavorites(true);
+    setFavoriteError(null);
+
+    for (const spot of spotsToRemove) {
+      try {
+        const result = await updateFavoriteParking(user.token, spot.parkingSpotId);
+        setFavoriteSpots(setParkingFavorite(user.userId, spot, result.data.isFavorite));
+        if (result.data.isFavorite) failureCount += 1;
+      } catch {
+        failureCount += 1;
+      }
+    }
+
+    if (failureCount > 0) {
+      setFavoriteError(`${failureCount} favorite${failureCount === 1 ? '' : 's'} could not be removed. Please try again.`);
+    }
+    setIsClearingFavorites(false);
   };
 
-  // Booking history — TODO: fetch from backend
+  // Booking history from the authenticated commuter endpoint.
   const [history, setHistory] = useState<Booking[]>([]);
+  const [bookingHistory, setBookingHistory] = useState<BookingHistoryItem[]>([]);
+  const [bookingHistoryPage, setBookingHistoryPage] = useState(1);
+  const [bookingHistoryMeta, setBookingHistoryMeta] = useState({ totalPages: 0, totalCount: 0 });
+  const [isBookingHistoryLoading, setIsBookingHistoryLoading] = useState(false);
+  const [bookingHistoryError, setBookingHistoryError] = useState<string | null>(null);
+  const [bookingHistoryRefreshKey, setBookingHistoryRefreshKey] = useState(0);
+  const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
+  const [editingReviewRating, setEditingReviewRating] = useState(0);
+  const [editingReviewComment, setEditingReviewComment] = useState('');
+  const [editingReviewError, setEditingReviewError] = useState<string | null>(null);
+  const [isReviewSaving, setIsReviewSaving] = useState(false);
+
+  const startReviewEdit = (item: BookingHistoryItem) => {
+    if (!item.review) return;
+    setEditingReviewId(item.review.reviewId);
+    setEditingReviewRating(item.review.rating);
+    setEditingReviewComment(item.review.comment);
+    setEditingReviewError(null);
+  };
+
+  const resetReviewEdit = () => {
+    setEditingReviewId(null);
+    setEditingReviewRating(0);
+    setEditingReviewComment('');
+    setEditingReviewError(null);
+  };
+
+  const cancelReviewEdit = () => {
+    if (isReviewSaving) return;
+    resetReviewEdit();
+  };
+
+  const saveReviewEdit = async () => {
+    if (!editingReviewId || !user?.token || isReviewSaving) return;
+    if (!editingReviewRating) {
+      setEditingReviewError('Choose a star rating before saving.');
+      return;
+    }
+
+    setIsReviewSaving(true);
+    setEditingReviewError(null);
+    try {
+      const result = await updateReview(user.token, editingReviewId, {
+        rating: editingReviewRating,
+        comment: editingReviewComment.trim(),
+      });
+      setBookingHistory((current) => current.map((item) => (
+        item.review?.reviewId === result.data.reviewId
+          ? {
+              ...item,
+              review: {
+                ...item.review,
+                ...result.data,
+                ownerReply: result.data.ownerReply ?? item.review.ownerReply,
+                ownerReplyAt: result.data.ownerReplyAt ?? item.review.ownerReplyAt,
+              },
+            }
+          : item
+      )));
+      resetReviewEdit();
+    } catch (saveError) {
+      setEditingReviewError(saveError instanceof Error ? saveError.message : 'Unable to update your review.');
+    } finally {
+      setIsReviewSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'profile' || !user?.token) return;
+    const controller = new AbortController();
+    setIsBookingHistoryLoading(true);
+    setBookingHistoryError(null);
+    void getCommuterBookingHistory(user.token, bookingHistoryPage, 10, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setBookingHistory(result.data);
+        setBookingHistoryMeta({ totalPages: result.totalPages, totalCount: result.totalCount });
+      })
+      .catch((reason) => {
+        if (!controller.signal.aborted) {
+          setBookingHistoryError(reason instanceof Error ? reason.message : 'Unable to load booking history.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsBookingHistoryLoading(false);
+      });
+    return () => controller.abort();
+  }, [activeTab, bookingHistoryPage, bookingHistoryRefreshKey, user?.token]);
 
   // Video scanner setup
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1631,6 +1825,16 @@ export default function CommuterDashboard() {
             </button>
           )}
 
+          {favoriteError && (
+            <div role="alert" className="mb-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              <span className="flex-1">{favoriteError}</span>
+              <button type="button" onClick={() => setFavoriteError(null)} aria-label="Dismiss favorite error" className="rounded-md p-0.5 hover:bg-rose-100">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {/* ─── TAB: Home / Discovery ─── */}
           {activeTab === 'home' && (
             <div className="space-y-4">
@@ -1780,11 +1984,14 @@ export default function CommuterDashboard() {
                         <ChevronRight size={18} className="hidden sm:block mt-1 shrink-0 text-[#9ca3af]" />
                       </div>
                     </button>
-                    <button type="button" onClick={() => handleToggleFavorite(spot)}
+                    <button type="button" onClick={() => void handleToggleFavorite(spot)}
+                      disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
                       aria-label={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? `Remove ${spot.propertyName} from favorites` : `Add ${spot.propertyName} to favorites`}
                       aria-pressed={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId)}
-                      className="absolute right-5 top-5 sm:right-3 sm:top-3 z-10 flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-black/[0.08] bg-white/95 text-[#5f6368] shadow-md backdrop-blur transition hover:text-rose-500 active:scale-95">
-                      <Heart size={17} fill={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? 'currentColor' : 'none'} className={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? 'text-rose-500' : ''} />
+                      className="absolute right-5 top-5 sm:right-3 sm:top-3 z-10 flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-black/[0.08] bg-white/95 text-[#5f6368] shadow-md backdrop-blur transition hover:text-rose-500 active:scale-95 disabled:cursor-wait disabled:opacity-70">
+                      {favoriteUpdatingIds.includes(spot.parkingSpotId)
+                        ? <Loader2 size={17} className="animate-spin text-[#007AFF]" />
+                        : <Heart size={17} fill={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? 'currentColor' : 'none'} className={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? 'text-rose-500' : ''} />}
                     </button>
                     </div>
                   );
@@ -2326,34 +2533,89 @@ export default function CommuterDashboard() {
               </div>
               {/* History */}
               <div className="bg-white rounded-2xl border border-[#e8eaed] p-5">
-                <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider mb-3">Booking History</h3>
-                {history.map((b) => (
-                  <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] last:border-0">
-                    <div>
-                      <p className="text-[13px] font-medium text-[#111]">{b.spot.name}</p>
-                      <p className="text-[11px] text-[#9ca3af]">{b.spot.station}</p>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[#5f6368]">Booking History</h3>
+                  <button type="button" onClick={() => setBookingHistoryRefreshKey((value) => value + 1)} disabled={isBookingHistoryLoading} className="rounded-lg p-1.5 text-[#5f6368] hover:bg-[#f1f3f4]" aria-label="Refresh booking history"><RefreshCw size={14} className={isBookingHistoryLoading ? 'animate-spin' : ''} /></button>
+                </div>
+                {bookingHistoryError && <div role="alert" className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-[11px] text-red-700"><AlertCircle size={14} />{bookingHistoryError}</div>}
+                {isBookingHistoryLoading && bookingHistory.length === 0 ? <div className="py-5 text-center text-[11px] text-[#5f6368]"><Loader2 size={18} className="mx-auto animate-spin text-[#007AFF]" />Loading history...</div> : null}
+                {bookingHistory.map((item) => {
+                  const { booking, review } = item;
+                  const isEditingReview = review?.reviewId === editingReviewId;
+                  return <article key={booking.bookingId} className="border-b border-[#f1f3f4] py-4 last:border-0">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-[13px] font-semibold text-[#111]">{booking.parkingLabel || 'Parking lot #' + booking.parkingSpotId}</p>
+                          <span className="rounded-full bg-[#eef5ff] px-2 py-0.5 font-mono text-[10px] font-semibold text-[#007AFF]">Parking ID #{booking.parkingSpotId}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-[#6e6e73]">{new Date(booking.startDate).toLocaleDateString('en-MY')} – {new Date(booking.endDate).toLocaleDateString('en-MY')}</p>
+                        <p className="mt-1 text-[10px] text-[#9ca3af]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <span className="text-[13px] font-semibold text-[#111]">RM {booking.totalAmount.toFixed(2)}</span>
+                        <p className="text-[10px] font-medium text-[#16a34a]">{booking.bookingStatus}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-[13px] font-semibold text-[#111]">RM {b.totalPaid.toFixed(2)}</span>
-                      <p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p>
-                    </div>
-                  </div>
-                ))}
+
+                    {item.canReview && !review && <button type="button" onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })} className="mt-3 text-[11px] font-semibold text-[#007AFF] hover:underline">Write a review</button>}
+
+                    {review && !isEditingReview && <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8f9fa] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-[11px] font-semibold text-[#111]">Your commuter review</p>
+                            {review.isVerifiedBooking && <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf3] px-2 py-0.5 text-[9px] font-semibold text-[#15803d]"><ShieldCheck size={11} /> Verified stay</span>}
+                          </div>
+                          <div className="mt-1 flex items-center gap-1" aria-label={`${review.rating} out of 5 stars`}>
+                            {[1, 2, 3, 4, 5].map((value) => <Star key={value} size={13} className={value <= review.rating ? 'text-[#f59e0b]' : 'text-[#d1d5db]'} fill={value <= review.rating ? 'currentColor' : 'none'} />)}
+                            <span className="ml-1 text-[10px] font-semibold text-[#6e6e73]">{review.rating}/5</span>
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => startReviewEdit(item)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[#dbeafe] bg-white px-2.5 text-[10px] font-semibold text-[#007AFF] hover:bg-[#eff6ff]"><Pencil size={12} /> Edit</button>
+                      </div>
+                      <p className="mt-3 whitespace-pre-line text-[11px] leading-5 text-[#3c4043]">{review.comment || 'You submitted a rating without a written comment.'}</p>
+                      <div className="mt-3 rounded-lg border border-[#dbeafe] bg-white px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2"><p className="text-[9px] font-semibold uppercase tracking-wide text-[#007AFF]">Owner reply</p>{review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="text-[9px] text-[#6e6e73]">{new Date(review.ownerReplyAt).toLocaleDateString('en-MY')}</time>}</div>
+                        <p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'text-[#5f6368]' : 'text-[#9ca3af]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p>
+                      </div>
+                    </div>}
+
+                    {review && isEditingReview && <div className="mt-3 rounded-xl border border-[#bfdbfe] bg-[#eff6ff] p-3">
+                      <div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold text-[#111]">Edit your review</p><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="text-[10px] font-semibold text-[#5f6368] hover:text-[#111] disabled:opacity-50">Cancel</button></div>
+                      <div className="mt-3"><span className="block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368]">Rating</span><div className="mt-1 flex items-center gap-1" role="radiogroup" aria-label="Review rating">
+                        {[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" role="radio" aria-checked={editingReviewRating === value} aria-label={`${value} star${value === 1 ? '' : 's'}`} onClick={() => setEditingReviewRating(value)} disabled={isReviewSaving} className="rounded p-0.5 hover:bg-white disabled:opacity-50"><Star size={19} className={value <= editingReviewRating ? 'text-[#f59e0b]' : 'text-[#cbd5e1]'} fill={value <= editingReviewRating ? 'currentColor' : 'none'} /></button>)}
+                      </div></div>
+                      <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368]">Comment<textarea value={editingReviewComment} onChange={(event) => setEditingReviewComment(event.target.value)} maxLength={1000} rows={4} disabled={isReviewSaving} placeholder="Share what you thought about this parking lot." className="mt-1 w-full resize-y rounded-lg border border-[#dbeafe] bg-white px-3 py-2 text-[11px] font-normal leading-5 text-[#111] outline-none focus:border-[#007AFF] disabled:opacity-60" /></label>
+                      <div className="mt-3 rounded-lg border border-[#dbeafe] bg-white px-3 py-2.5"><p className="text-[9px] font-semibold uppercase tracking-wide text-[#007AFF]">Owner reply</p><p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'text-[#5f6368]' : 'text-[#9ca3af]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p></div>
+                      <div className="mt-1 flex items-center justify-between gap-3"><span className="text-[10px] text-[#6e6e73]">{editingReviewComment.length}/1000</span>{editingReviewError && <span role="alert" className="text-right text-[10px] text-[#dc2626]">{editingReviewError}</span>}</div>
+                      <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-2 text-[10px] font-semibold text-[#5f6368] hover:bg-[#f8f9fa] disabled:opacity-50">Cancel</button><button type="button" onClick={() => void saveReviewEdit()} disabled={isReviewSaving || !editingReviewRating} className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-[10px] font-semibold text-white hover:bg-[#0066d6] disabled:cursor-wait disabled:opacity-60">{isReviewSaving && <Loader2 size={12} className="animate-spin" />}{isReviewSaving ? 'Saving…' : 'Save changes'}</button></div>
+                    </div>}
+                  </article>;
+                })}
+                {bookingHistory.length === 0 && history.length === 0 && !isBookingHistoryLoading && !bookingHistoryError && <p className="py-4 text-center text-[11px] text-[#9ca3af]">No booking history yet.</p>}
+                {history.map((b) => <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] last:border-0"><div><p className="text-[13px] font-medium text-[#111]">{b.spot.name}</p><p className="text-[11px] text-[#9ca3af]">{b.spot.station}</p></div><div className="text-right"><span className="text-[13px] font-semibold text-[#111]">RM {b.totalPaid.toFixed(2)}</span><p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p></div></div>)}
+                {bookingHistoryMeta.totalPages > 1 && <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-[#5f6368]"><button type="button" onClick={() => setBookingHistoryPage((value) => Math.max(1, value - 1))} disabled={bookingHistoryPage === 1}>Previous</button><span>Page {bookingHistoryPage} of {bookingHistoryMeta.totalPages}</span><button type="button" onClick={() => setBookingHistoryPage((value) => Math.min(bookingHistoryMeta.totalPages, value + 1))} disabled={bookingHistoryPage === bookingHistoryMeta.totalPages}>Next</button></div>}
               </div>
             </div>
           )}
 
           {activeTab === 'support' && (
-            <SupportTickets audience="commuter" user={user} />
+            supportViewer && <SupportWorkspace mode="user" viewer={supportViewer} />
           )}
 
           {activeTab === 'favorites' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e8eaed] bg-white px-4 py-3 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
-                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-500"><Heart size={17} fill="currentColor" /></span><div><p className="text-[13px] font-semibold text-[#111]">Saved parking</p><p className="text-[11px] text-[#5f6368]">{favoriteSpots.length} space{favoriteSpots.length === 1 ? '' : 's'} ready to revisit</p></div></div>
-                {favoriteSpots.length > 0 && <button type="button" onClick={handleClearFavorites} className="min-h-9 shrink-0 rounded-lg px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">Clear all</button>}
+                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-500">{isFavoritesLoading ? <Loader2 size={17} className="animate-spin" /> : <Heart size={17} fill="currentColor" />}</span><div><p className="text-[13px] font-semibold text-[#111]">Saved parking</p><p className="text-[11px] text-[#5f6368]">{isFavoritesLoading ? 'Refreshing favorites…' : `${favoriteSpots.length} space${favoriteSpots.length === 1 ? '' : 's'} ready to revisit`}</p></div></div>
+                {favoriteSpots.length > 0 && <button type="button" onClick={() => void handleClearFavorites()} disabled={isFavoritesLoading || isClearingFavorites} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-wait disabled:opacity-70">{isClearingFavorites && <Loader2 size={13} className="animate-spin" />}{isClearingFavorites ? 'Clearing…' : 'Clear all'}</button>}
               </div>
-              {favoriteSpots.length === 0 ? (
+              {isFavoritesLoading && favoriteSpots.length === 0 ? (
+                <div className="rounded-2xl border border-[#e8eaed] bg-white p-10 text-center" role="status">
+                  <Loader2 size={28} className="mx-auto animate-spin text-[#007AFF]" />
+                  <p className="mt-3 text-[13px] font-semibold text-[#111]">Loading your favorites…</p>
+                </div>
+              ) : favoriteSpots.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-[#dadce0] bg-white p-10 text-center">
                   <Heart size={32} className="mx-auto text-[#dadce0]" />
                   <p className="mt-3 text-[14px] font-semibold text-[#111]">No favorite parking yet</p>
@@ -2367,7 +2629,7 @@ export default function CommuterDashboard() {
                       <div className="relative">
                         {spot.primaryImageUrl ? <img src={spot.primaryImageUrl} alt="" className="aspect-[16/9] w-full object-cover" /> : <div className="flex aspect-[16/9] items-center justify-center bg-[#eff6ff]"><Home size={28} className="text-[#007AFF]" /></div>}
                         <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 shadow-sm backdrop-blur">{spot.availabilityStatus}</span>
-                        <button type="button" onClick={() => handleToggleFavorite(spot)} aria-label={`Remove ${spot.propertyName} from favorites`} className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.06] bg-white/95 text-rose-500 shadow-md backdrop-blur active:scale-95"><Heart size={18} fill="currentColor" /></button>
+                        <button type="button" onClick={() => void handleToggleFavorite(spot)} disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)} aria-label={`Remove ${spot.propertyName} from favorites`} className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.06] bg-white/95 text-rose-500 shadow-md backdrop-blur active:scale-95 disabled:cursor-wait disabled:opacity-70">{favoriteUpdatingIds.includes(spot.parkingSpotId) ? <Loader2 size={18} className="animate-spin text-[#007AFF]" /> : <Heart size={18} fill="currentColor" />}</button>
                       </div>
                       <div className="p-4">
                         <div className="min-w-0"><h3 className="truncate text-[15px] font-semibold text-[#111]">{spot.propertyName}</h3><p className="mt-1 text-[11px] text-[#5f6368]">Bay {spot.parkingLabel} · Near {spot.stationName}</p></div>

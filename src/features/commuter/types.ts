@@ -102,6 +102,7 @@ export interface WalletTopUpStatus {
 
 export interface Booking {
   id: string;
+  bookingId?: number;
   spot: ParkingSpot;
   startTime: Date;
   endTime: Date;

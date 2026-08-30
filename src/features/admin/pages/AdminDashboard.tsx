@@ -22,14 +22,14 @@ import { getSuspendedAccounts, reintegrateAccount, suspendAccount } from '../api
 import { 
   initialStats
 } from '../data/mockData';
-import { AccessLogDto, AccessLogPaginationState, AdminVehicleDto, IoTBollard, ListingRequest, OwnerPayout, Transaction, OverstayRecord, SupportTicket, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse, VerificationRequestListStatus, VerificationRequestPaginationState } from '../types';
+import { AccessLogDto, AccessLogPaginationState, AdminVehicleDto, IoTBollard, ListingRequest, OwnerPayout, Transaction, OverstayRecord, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse, VerificationRequestListStatus, VerificationRequestPaginationState } from '../types';
 
 import DashboardHome from '../components/DashboardHome';
 import ListingGovernance from '../components/ListingGovernance';
 import IotHealthMonitor from '../components/IotHealthMonitor';
 import FinanceSettlement from '../components/FinanceSettlement';
 import OverstayEnforcement from '../components/OverstayEnforcement';
-import SupportDispute from '../components/SupportDispute';
+import SupportWorkspace from '@/features/support/components/SupportWorkspace';
 import SystemAudit from '../components/SystemAudit';
 import SystemConfiguration from '../components/SystemConfiguration';
 import VehicleManagement from '../components/VehicleManagement';
@@ -40,6 +40,13 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const token = user?.token ?? '';
+  const supportViewer = React.useMemo(() => user ? ({
+    userId: user.userId,
+    name: `${user.firstName} ${user.lastName}`.trim() || user.email,
+    email: user.email,
+    role: 'Admin' as const,
+    token: user.token,
+  }) : null, [user]);
   // Mobile sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -80,7 +87,6 @@ export default function AdminDashboard() {
   const [payouts, setPayouts] = useState<OwnerPayout[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [overstays, setOverstays] = useState<OverstayRecord[]>([]);
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [activityLogs, setActivityLogs] = useState<{ id: string; type: string; message: string; timestamp: string; user: string }[]>([]);
   const [accessLogs, setAccessLogs] = useState<AccessLogDto[]>([]);
   const [accessLogsLoading, setAccessLogsLoading] = useState(false);
@@ -121,7 +127,6 @@ export default function AdminDashboard() {
       ...prev,
       onlineBollardsRate: Math.round((bollards.filter(b => b.status === 'online').length / bollards.length) * 1000) / 10,
       pendingListingsCount: listings.filter(l => l.status === 'pending').length,
-      openDisputesCount: tickets.filter(t => t.status !== 'resolved').length,
       activeOverstaysCount: overstays.filter(o => o.status !== 'resolved').length
     }));
   };
@@ -459,12 +464,6 @@ export default function AdminDashboard() {
   const handleRejectListing = (id: string, reason: string) =>
     submitVerificationDecision(id, 'rejected', reason);
 
-  // Trigger from support component to lower a bollard
-  const handleLowerBollard = (bollardId: string) => {
-    setBollards(prev => prev.map(b => b.id === bollardId ? { ...b, barrierState: 'lowered' } : b));
-    addActivityLog('bollard_state', `Emergency Override: Lowered barrier of ${bollardId} from Support Ticket`, "Admin");
-  };
-
   const adminSidebarGroups = [
     {
       items: [{ id: 'home', label: 'Platform Dashboard', icon: TrendingUp }],
@@ -482,7 +481,7 @@ export default function AdminDashboard() {
       items: [
         { id: 'settlement', label: 'Financial Settlement', icon: Landmark, badge: payouts.filter((payout) => payout.status === 'pending').length },
         { id: 'enforcement', label: 'Overstay Enforcement', icon: AlertOctagon, badge: overstays.filter((overstay) => overstay.status !== 'resolved').length, badgeTone: 'danger' as const },
-        { id: 'support', label: 'Disputes & Tickets', icon: LifeBuoy, badge: tickets.filter((ticket) => ticket.status !== 'resolved').length },
+        { id: 'support', label: 'Disputes & Tickets', icon: LifeBuoy },
       ],
     },
     {
@@ -557,14 +556,7 @@ export default function AdminDashboard() {
         );
       case 'support':
         return (
-          <SupportDispute 
-            tickets={tickets} 
-            setTickets={setTickets}
-            transactions={transactions}
-            setTransactions={setTransactions}
-            addActivityLog={addActivityLog}
-            onLowerBollard={handleLowerBollard}
-          />
+          supportViewer && <SupportWorkspace mode="admin" viewer={supportViewer} />
         );
       case 'audit':
         return (
@@ -590,6 +582,20 @@ export default function AdminDashboard() {
             onRefresh={fetchAdminVehicles}
           />
         );
+<<<<<<< Updated upstream
+=======
+      case 'reviews':
+        return (
+          <ReviewModeration
+            token={token}
+            parkingSpots={listings.map((listing) => ({
+              parkingSpotId: listing.parkingSpotId,
+              label: listing.propertyName + (listing.parkingLabel ? ' · ' + listing.parkingLabel : ''),
+            }))}
+            onModerated={(message) => addActivityLog('review_moderation', message, 'Admin')}
+          />
+        );
+>>>>>>> Stashed changes
       case 'system':
         return (
           <SystemConfiguration 
@@ -606,6 +612,10 @@ export default function AdminDashboard() {
   const viewMeta: Record<ActiveView, { title: string; description: string }> = {
     home: { title: 'Operations overview', description: 'Monitor the queues and systems that affect today’s parking journeys.' },
     governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
+<<<<<<< Updated upstream
+=======
+    reviews: { title: 'Review traceability', description: 'Trace commuter feedback, parking lots, and owner responses from one review workspace.' },
+>>>>>>> Stashed changes
     vehicles: { title: 'Vehicle management', description: 'Review commuter vehicles registered across the platform.' },
     iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
     settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
@@ -664,7 +674,7 @@ export default function AdminDashboard() {
           { id: 'governance', icon: ShieldCheck, label: 'Listings', count: listings.filter((l) => l.status === 'pending').length },
           { id: 'iot', icon: Radio, label: 'Bollards', count: bollards.filter((b) => b.status === 'offline').length },
           { id: 'settlement', icon: Landmark, label: 'Finance' },
-          { id: 'more', icon: Menu, label: 'More', count: tickets.filter((t) => t.status !== 'resolved').length },
+          { id: 'more', icon: Menu, label: 'More' },
         ]}
         activeId={['vehicles', 'enforcement', 'support', 'audit', 'system'].includes(activeView) ? 'more' : activeView}
         onChange={(id) => {

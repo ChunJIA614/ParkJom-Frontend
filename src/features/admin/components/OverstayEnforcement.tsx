@@ -132,7 +132,7 @@ export default function OverstayEnforcement({
                       className={`p-4 rounded-xl border transition-all ${
                         record.status === 'detected' ? 'bg-rose-50/15 border-rose-200 shadow-xs' :
                         record.status === 'warning_sent' ? 'bg-amber-50/15 border-amber-200' :
-                        record.status === 'penalized' ? 'bg-purple-50/10 border-purple-200' :
+                        record.status === 'penalized' ? 'bg-blue-50/10 border-blue-200' :
                         'bg-slate-50/40 border-slate-150 opacity-60'
                       }`}
                     >
@@ -150,7 +150,7 @@ export default function OverstayEnforcement({
                               <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">Driver Warned</span>
                             )}
                             {record.status === 'penalized' && (
-                              <span className="bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">Citation Issued</span>
+                              <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">Citation Issued</span>
                             )}
                             {record.status === 'resolved' && (
                               <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">Resolved</span>
@@ -206,7 +206,7 @@ export default function OverstayEnforcement({
                               {record.status === 'warning_sent' && (
                                 <button
                                   onClick={() => handleImposePenalty(record)}
-                                  className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 transition-colors cursor-pointer"
+                                  className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 transition-colors cursor-pointer"
                                 >
                                   <DollarSign className="w-3 h-3" /> Fine Citation
                                 </button>

@@ -20,19 +20,25 @@ export function loadFavoriteParking(userId: number): ParkingSpot[] {
 }
 
 export function saveFavoriteParking(userId: number, favorites: ParkingSpot[]) {
-  window.localStorage.setItem(storageKey(userId), JSON.stringify(favorites));
+  try {
+    window.localStorage.setItem(storageKey(userId), JSON.stringify(favorites));
+  } catch {
+    // The API remains authoritative when browser storage is unavailable.
+  }
 }
 
 export function isParkingFavorite(userId: number, parkingSpotId: number) {
   return loadFavoriteParking(userId).some((spot) => spot.parkingSpotId === parkingSpotId);
 }
 
-export function toggleParkingFavorite(userId: number, spot: ParkingSpot): ParkingSpot[] {
+export function setParkingFavorite(
+  userId: number,
+  spot: ParkingSpot,
+  isFavorite: boolean,
+): ParkingSpot[] {
   const current = loadFavoriteParking(userId);
-  const exists = current.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId);
-  const next = exists
-    ? current.filter((favorite) => favorite.parkingSpotId !== spot.parkingSpotId)
-    : [spot, ...current];
+  const withoutSpot = current.filter((favorite) => favorite.parkingSpotId !== spot.parkingSpotId);
+  const next = isFavorite ? [spot, ...withoutSpot] : withoutSpot;
   saveFavoriteParking(userId, next);
   return next;
 }

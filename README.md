@@ -61,15 +61,15 @@ The dev server runs on port 3000. It proxies `/api` requests to the target confi
 Use Vite environment variables with the `VITE_` prefix.
 
 ```env
-VITE_API_BASE=http://localhost:5000/api
-VITE_API_PROXY_TARGET=http://localhost:5000
+VITE_API_BASE=http://localhost:5276/api
+VITE_API_PROXY_TARGET=http://localhost:5276
 ```
 
 Notes:
 
 - `VITE_API_BASE` overrides the API base URL used by feature code.
 - If `VITE_API_BASE` is absent, the app falls back to the local `/api` proxy in development.
-- `VITE_API_PROXY_TARGET` controls the Vite dev-server proxy target. If it is not set, the default proxy target is the Azure backend URL in [vite.config.ts](./vite.config.ts).
+- `VITE_API_PROXY_TARGET` controls the Vite dev-server proxy target. If it is not set, the default target is the local API at `http://localhost:5276`.
 - `VITE_GOOGLE_WEB_CLIENT_ID` is the web OAuth client ID and the server audience used by Android sign-in.
 - `VITE_GOOGLE_IOS_CLIENT_ID` must be set before iOS Google sign-in can work.
 - Client state is persisted in `localStorage` for auth and some dashboard/session views.

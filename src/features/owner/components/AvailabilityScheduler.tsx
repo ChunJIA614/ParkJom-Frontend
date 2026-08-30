@@ -464,10 +464,10 @@ export default function AvailabilityScheduler({
     return String(preferred?.parkingSpotId ?? bays[0]?.parkingSpotId ?? '');
   });
   const [section, setSection] = useState<'setup' | 'timetable'>(initialSection);
-  const monthCursor = useMemo(() => {
+  const [monthCursor, setMonthCursor] = useState(() => {
     const now = dateFromKey(todayKey);
     return new Date(now.getFullYear(), now.getMonth(), 1);
-  }, [todayKey]);
+  });
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [setupStep, setSetupStep] = useState<SetupStep>(1);
   const [setupForm, setSetupForm] = useState<{
@@ -1114,6 +1114,28 @@ export default function AvailabilityScheduler({
     setSelectedDate(date);
   };
 
+  const changeMonth = (offset: number) => {
+    const nextMonth = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + offset, 1);
+    const selectedDay = dateFromKey(selectedDate).getDate();
+    const daysInNextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+    setMonthCursor(nextMonth);
+    setSelectedDate(localDateKey(new Date(
+      nextMonth.getFullYear(),
+      nextMonth.getMonth(),
+      Math.min(selectedDay, daysInNextMonth),
+    )));
+    setDayMessage(null);
+    setDayError(null);
+  };
+
+  const goToCurrentMonth = () => {
+    const currentMonth = dateFromKey(todayKey);
+    setMonthCursor(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1));
+    setSelectedDate(todayKey);
+    setDayMessage(null);
+    setDayError(null);
+  };
+
   const setPreset = (preset: 'week' | 'month') => {
     const now = new Date();
     if (preset === 'week') {
@@ -1560,7 +1582,21 @@ export default function AvailabilityScheduler({
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.75fr)]">
              <div className="rounded-2xl border border-slate-200/90 bg-white p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
-              <div className="border-b border-slate-100 pb-4"><h3 className="text-sm font-bold text-slate-900">{new Intl.DateTimeFormat('en-MY', { month: 'long', year: 'numeric' }).format(monthCursor)}</h3><div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{monthStats.available} open</span><span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{monthStats.unavailable} closed</span><span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{monthStats.booked} booked</span></div></div>
+              <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => changeMonth(-1)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="View previous month" title="View previous month">
+                      <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <h3 className="min-w-36 text-center text-sm font-bold text-slate-900" aria-live="polite">{new Intl.DateTimeFormat('en-MY', { month: 'long', year: 'numeric' }).format(monthCursor)}</h3>
+                    <button type="button" onClick={() => changeMonth(1)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="View next month" title="View next month">
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{monthStats.available} open</span><span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{monthStats.unavailable} closed</span><span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{monthStats.booked} booked</span></div>
+                </div>
+                <button type="button" onClick={goToCurrentMonth} className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-bold text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Today</button>
+              </div>
               <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{Array.from({ length: calendarStartOffset }, (_, index) => <span key={`calendar-offset-${index}`} aria-hidden="true" />)}{calendarDays.map((day) => { const key = localDateKey(day); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={past} aria-selected={selected} aria-disabled={past || undefined} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-1 py-2 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}${past ? ', read-only' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : past ? ' · past dates are read-only' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-[#007AFF] text-white' : key === todayKey ? 'ring-1 ring-inset ring-[#007AFF] text-[#007AFF]' : 'text-slate-800'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[9px] font-semibold leading-none ${meta.cell} ${past ? 'opacity-55' : ''}`}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
               <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400"><Info className="h-3.5 w-3.5" aria-hidden="true" /> Select a date to inspect it. Use the inspector action to open or close it.</p>
             </div>

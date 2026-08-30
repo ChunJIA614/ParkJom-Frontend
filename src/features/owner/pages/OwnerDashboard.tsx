@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   AlertCircle,
   CalendarDays,
   ClipboardList,
   LayoutDashboard,
+  MessageSquare,
   PlusSquare,
   RefreshCw,
   Sliders,
@@ -23,7 +24,9 @@ import DashboardHome from '../components/DashboardHome';
 import AvailabilityScheduler from '../components/AvailabilityScheduler';
 import PropertyOnboarding from '../components/PropertyOnboarding';
 import SettingsPanel from '../components/SettingsPanel';
-import SupportTickets from '../components/SupportTickets';
+import ReviewReplies from '../components/ReviewReplies';
+import OwnerBookingHistory from '../components/OwnerBookingHistory';
+import SupportWorkspace from '@/features/support/components/SupportWorkspace';
 import {
   ParkingBay,
   Booking,
@@ -73,15 +76,22 @@ function saveNotifications(notifs: Notification[]) {
   localStorage.setItem('parkjom_owner_notifs', JSON.stringify(notifs));
 }
 
-type OwnerView = 'dashboard' | 'availability' | 'registration' | 'settings' | 'tickets';
+type OwnerView = 'dashboard' | 'availability' | 'reviews' | 'registration' | 'settings' | 'tickets';
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const supportViewer = useMemo(() => user ? ({
+    userId: user.userId,
+    name: `${user.firstName} ${user.lastName}`.trim() || user.email,
+    email: user.email,
+    role: 'Owner' as const,
+    token: user.token,
+  }) : null, [user]);
   // Navigation View Router — persist across reloads
   const [activeView, setActiveView] = useState<OwnerView>(() => {
     const saved = localStorage.getItem('parkjom_owner_view');
-    const validViews: OwnerView[] = ['dashboard', 'availability', 'registration', 'settings', 'tickets'];
+    const validViews: OwnerView[] = ['dashboard', 'availability', 'reviews', 'registration', 'settings', 'tickets'];
     return saved && validViews.includes(saved as OwnerView) ? saved as OwnerView : 'dashboard';
   });
 
@@ -157,9 +167,9 @@ export default function OwnerDashboard() {
     finally { setBaysLoading(false); }
   }, [user?.token]);
 
-  // Overview and Configure Parking share Get My Parking as their source of truth.
+  // Overview, configuration, and owner reviews share Get My Parking as their source of truth.
   useEffect(() => {
-    if (activeView === 'dashboard' || activeView === 'availability') {
+    if (activeView === 'dashboard' || activeView === 'availability' || activeView === 'reviews') {
       void fetchMyParking();
     }
   }, [activeView, fetchMyParking]);
@@ -386,6 +396,7 @@ export default function OwnerDashboard() {
   const viewMeta: Record<string, { title: string; description: string }> = {
     dashboard: { title: 'Parking status', description: 'See the current booking readiness and today’s status for every property parking spot.' },
     availability: { title: 'Configure parking', description: 'Keep one-time parking details separate from the availability timetable you manage day to day.' },
+    reviews: { title: 'Parking reviews', description: 'Read customer feedback and reply as the parking owner.' },
     registration: { title: 'Register a property', description: 'Submit a bay for verification and configure it for bookings.' },
     tickets: { title: 'Support', description: 'Track booking, access, and settlement issues.' },
     settings: { title: 'Settings', description: 'Manage payout details and workspace preferences.' },
@@ -429,21 +440,24 @@ export default function OwnerDashboard() {
           )}
           <PageTransition transitionKey={activeView}>
           {activeView === 'dashboard' && (
-            <DashboardHome 
-              walletBalance={walletBalance} 
-              onWithdraw={handleWithdrawFunds}
-              bookings={bookings}
-              bays={bays}
-              baysLoading={baysLoading}
-              baysError={baysError}
-              onRefreshBays={fetchMyParking}
-              onUpdateAvailability={handleUpdateParkingAvailability}
-              onUpdatePublication={handleUpdateParkingPublication}
-              activeBank={activeBank}
-              onResolveDispute={handleResolveDispute}
-              onConfigureParking={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'setup')}
-              onOpenTimetable={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'timetable')}
-            />
+            <div>
+              <DashboardHome
+                walletBalance={walletBalance}
+                onWithdraw={handleWithdrawFunds}
+                bookings={bookings}
+                bays={bays}
+                baysLoading={baysLoading}
+                baysError={baysError}
+                onRefreshBays={fetchMyParking}
+                onUpdateAvailability={handleUpdateParkingAvailability}
+                onUpdatePublication={handleUpdateParkingPublication}
+                activeBank={activeBank}
+                onResolveDispute={handleResolveDispute}
+                onConfigureParking={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'setup')}
+                onOpenTimetable={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'timetable')}
+              />
+              {user && <OwnerBookingHistory token={user.token} bays={bays} onOpenReviews={() => setActiveView('reviews')} />}
+            </div>
           )}
 
           {activeView === 'availability' && (
@@ -477,6 +491,14 @@ export default function OwnerDashboard() {
             />
           )}
 
+          {activeView === 'reviews' && user && (
+            <ReviewReplies
+              token={user.token}
+              bays={bays}
+              baysLoading={baysLoading}
+            />
+          )}
+
           {activeView === 'settings' && (
             <SettingsPanel 
               bank={activeBank}
@@ -485,7 +507,7 @@ export default function OwnerDashboard() {
           )}
 
           {activeView === 'tickets' && (
-            <SupportTickets />
+            supportViewer && <SupportWorkspace mode="user" viewer={supportViewer} />
           )}
           </PageTransition>
         </main>
@@ -496,6 +518,7 @@ export default function OwnerDashboard() {
         items={[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Overview' },
           { id: 'availability', icon: CalendarDays, label: 'Configure' },
+          { id: 'reviews', icon: MessageSquare, label: 'Reviews' },
           { id: 'registration', icon: PlusSquare, label: 'Register' },
           { id: 'tickets', icon: ClipboardList, label: 'Support' },
           { id: 'settings', icon: Sliders, label: 'Settings' },
