@@ -1575,7 +1575,7 @@ export default function CommuterDashboard() {
         type: 'booking'
       };
       setNotifications(prev => [newNotif, ...prev]);
-      setActiveTab('home');
+      navigate(`/commuter/parking/${completed.spot.parkingSpotId}/review`, { state: { booking: completed } });
     }
   };
 
