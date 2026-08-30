@@ -582,8 +582,6 @@ export default function AdminDashboard() {
             onRefresh={fetchAdminVehicles}
           />
         );
-<<<<<<< Updated upstream
-=======
       case 'reviews':
         return (
           <ReviewModeration
@@ -595,7 +593,6 @@ export default function AdminDashboard() {
             onModerated={(message) => addActivityLog('review_moderation', message, 'Admin')}
           />
         );
->>>>>>> Stashed changes
       case 'system':
         return (
           <SystemConfiguration 
@@ -612,10 +609,7 @@ export default function AdminDashboard() {
   const viewMeta: Record<ActiveView, { title: string; description: string }> = {
     home: { title: 'Operations overview', description: 'Monitor the queues and systems that affect today’s parking journeys.' },
     governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
-<<<<<<< Updated upstream
-=======
     reviews: { title: 'Review traceability', description: 'Trace commuter feedback, parking lots, and owner responses from one review workspace.' },
->>>>>>> Stashed changes
     vehicles: { title: 'Vehicle management', description: 'Review commuter vehicles registered across the platform.' },
     iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
     settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
