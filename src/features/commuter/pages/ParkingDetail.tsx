@@ -5,10 +5,7 @@ import {
   Car, Wifi, CreditCard,
   Loader2, Calendar, AlertTriangle,
   Heart,
-<<<<<<< Updated upstream
-=======
   ChevronLeft, ChevronRight, MessageSquare, Pencil, Star, Trash2,
->>>>>>> Stashed changes
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -26,9 +23,6 @@ import {
 import { getFavoriteParking, updateFavoriteParking } from '../api/favoriteApi';
 import { deleteReview, getParkingReviews, updateReview } from '../api/reviewApi';
 import { getMyVehicles, type VehicleApiData } from '../api/vehicleApi';
-<<<<<<< Updated upstream
-import { isParkingFavorite, toggleParkingFavorite } from '../lib/favoriteParking';
-=======
 import { isParkingFavorite, setParkingFavorite } from '../lib/favoriteParking';
 import {
   deleteParkingReview,
@@ -36,7 +30,6 @@ import {
   saveParkingReview,
   type ParkingReview,
 } from '../lib/parkingReviews';
->>>>>>> Stashed changes
 
 /* ================================================================
    ParkingDetail — Parking spot detail page
@@ -136,8 +129,6 @@ export default function ParkingDetail() {
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
-<<<<<<< Updated upstream
-=======
   const [reviews, setReviews] = useState(() => spot ? loadCachedParkingReviews(spot.parkingSpotId) : []);
   const [reviewPage, setReviewPage] = useState(1);
   const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
@@ -152,7 +143,6 @@ export default function ParkingDetail() {
   const averageRating = reviewMeta?.averageRating ?? (reviews.length
     ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length
     : 0);
->>>>>>> Stashed changes
 
   useEffect(() => {
     if (!spot || !stationCoords) return;
@@ -267,8 +257,6 @@ export default function ParkingDetail() {
     setReviewPage(1);
   }, [spot?.parkingSpotId]);
 
-<<<<<<< Updated upstream
-=======
   useEffect(() => {
     if (!spot) return;
 
@@ -396,7 +384,6 @@ export default function ParkingDetail() {
     }
   };
 
->>>>>>> Stashed changes
   if (!spot) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
@@ -790,8 +777,6 @@ export default function ParkingDetail() {
 
           <div className="h-px bg-[#e8eaed]" />
 
-<<<<<<< Updated upstream
-=======
           {/* Reviews */}
           <section aria-labelledby="parking-reviews-title">
             <div className="flex items-end justify-between gap-4">
@@ -887,7 +872,6 @@ export default function ParkingDetail() {
 
           <div className="h-px bg-[#e8eaed]" />
 
->>>>>>> Stashed changes
           {/* About */}
           <div>
             <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-2">About This Space</h3>
