@@ -1755,6 +1755,15 @@ export default function CommuterDashboard() {
       ],
     },
   ];
+  const commuterSearchItems = commuterSidebarGroups.flatMap((group) => group.items.map((item) => ({
+    id: item.id,
+    label: item.label,
+    keywords: item.id === 'home'
+      ? ['browse', 'parking near me', 'search parking']
+      : item.id === 'active'
+        ? ['parking pass', 'booking', 'reservation']
+        : [commuterViewMeta[item.id as CommuterTab].title],
+  })));
 
   const notificationActions = (
     <button
@@ -1780,6 +1789,7 @@ export default function CommuterDashboard() {
         groups={commuterSidebarGroups}
         activeId={activeTab}
         onNavigate={(id) => { setActiveTab(id as CommuterTab); setSelectedSpot(null); }}
+        onBrandClick={handleCommuterBrandClick}
         mobileOpen={sidebarOpen}
         onMobileOpenChange={setSidebarOpen}
         collapsed={sidebarCollapsed}
@@ -1798,6 +1808,13 @@ export default function CommuterDashboard() {
         menuExpanded={sidebarOpen}
         menuControls="commuter-workspace-navigation"
         actions={notificationActions}
+        hideDesktopBrand
+        searchItems={commuterSearchItems}
+        onSearchSelect={(id) => {
+          setActiveTab(id as CommuterTab);
+          setSelectedSpot(null);
+          setSidebarOpen(false);
+        }}
       />
 
       {/* ─── Main Layout ─── */}

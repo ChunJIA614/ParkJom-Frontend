@@ -44,6 +44,7 @@ interface AppSidebarProps {
   groups: AppSidebarGroup[];
   activeId: string;
   onNavigate: (id: string) => void;
+  onBrandClick: () => void;
   mobileOpen: boolean;
   onMobileOpenChange: (open: boolean) => void;
   collapsed: boolean;
@@ -54,6 +55,7 @@ interface AppSidebarProps {
 interface SidebarNavigationProps extends Pick<
   AppSidebarProps,
   'id' | 'workspaceLabel' | 'groups' | 'activeId' | 'onNavigate' | 'footer'
+  | 'onBrandClick'
 > {}
 
 function SidebarNavigation({
@@ -62,6 +64,7 @@ function SidebarNavigation({
   groups,
   activeId,
   onNavigate,
+  onBrandClick,
   footer,
 }: SidebarNavigationProps) {
   const { state, setOpenMobile, toggleSidebar } = useSidebar();
@@ -70,13 +73,17 @@ function SidebarNavigation({
   return (
     <Sidebar collapsible="icon" className="border-sidebar-border/80">
       <div id={id} className="flex h-full min-h-0 flex-col">
-        <SidebarHeader className="min-h-15 justify-center border-b border-sidebar-border/80 p-2">
+        <SidebarHeader className="h-14 min-h-14 justify-center border-b border-sidebar-border/80 bg-[rgba(250,250,252,0.82)] p-2 backdrop-blur-[24px] backdrop-saturate-[180%]">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="lg"
                 tooltip="ParkJom"
-                className="h-11 rounded-xl px-2.5 hover:bg-sidebar-accent"
+                className="workspace-sidebar-brand !h-10 !rounded-none px-2.5 !bg-transparent hover:!bg-transparent active:!bg-transparent focus-visible:!ring-0"
+                onClick={() => {
+                  onBrandClick();
+                  setOpenMobile(false);
+                }}
               >
                 <BrandLogo alt="" className="size-8 shrink-0 shadow-sm" />
                 <span className="grid min-w-0 flex-1 text-left leading-tight">
@@ -124,7 +131,7 @@ function SidebarNavigation({
                             onNavigate(item.id);
                             setOpenMobile(false);
                           }}
-                          className="h-9 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/70 data-active:bg-sidebar-accent data-active:font-semibold data-active:text-sidebar-accent-foreground data-active:[&_svg]:text-sidebar-primary"
+                          className="h-9 rounded-none px-2.5 text-[13px] text-sidebar-foreground/70 data-active:bg-sidebar-accent data-active:font-semibold data-active:text-sidebar-accent-foreground data-active:[&_svg]:text-sidebar-primary"
                         >
                           <Icon aria-hidden="true" />
                           <span>{item.label}</span>

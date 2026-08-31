@@ -172,7 +172,7 @@ export default function ParkingDetail() {
   }, [user?.token]);
 
   useEffect(() => {
-    if (!spot) return;
+    if (!spot || !user?.token) return;
 
     const month = toMonthInput(calendarMonth);
     if (availabilityByMonth[month]) return;
@@ -180,7 +180,7 @@ export default function ParkingDetail() {
     const controller = new AbortController();
     setIsAvailabilityLoading(true);
     setAvailabilityError(null);
-    void getBookingAvailability(spot.parkingSpotId, month, controller.signal)
+    void getBookingAvailability(user.token, spot.parkingSpotId, month, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
         setAvailabilityByMonth((current) => ({ ...current, [result.month || month]: result }));
@@ -195,7 +195,7 @@ export default function ParkingDetail() {
       });
 
     return () => controller.abort();
-  }, [availabilityByMonth, calendarMonth, spot]);
+  }, [availabilityByMonth, calendarMonth, spot, user?.token]);
 
   useEffect(() => {
     setAvailabilityByMonth({});

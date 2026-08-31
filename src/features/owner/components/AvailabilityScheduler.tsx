@@ -15,6 +15,8 @@ import {
   Info,
   Lock,
   MapPin,
+  Minus,
+  Plus,
   RefreshCw,
   RotateCcw,
   Send,
@@ -65,6 +67,7 @@ export interface OwnerParkingDay {
   status: ParkingDayStatus;
   configuredHours?: ParkingAvailabilityCalendarHours[];
   booking?: OwnerParkingBooking;
+  ownerOverride?: 'closed';
 }
 
 export interface OwnerParkingSetup {
@@ -273,6 +276,7 @@ function normaliseSpot(value: unknown, bay?: ParkingBay): OwnerParkingWorkspaceS
       status: dayStatus,
       configuredHours: normaliseConfiguredHours(day.configuredHours),
       booking: dayStatus === 'booked' ? normaliseBooking(day.booking) : undefined,
+      ownerOverride: day.ownerOverride === 'closed' ? 'closed' : undefined,
     };
   });
   const seeded = seedDaysFromBay(bay);
@@ -435,7 +439,7 @@ function rateText(value: number | null): string {
 function setupCompletion(setup: OwnerParkingSetup): { complete: boolean; issues: string[] } {
   const issues: string[] = [];
   const rates = [setup.dailyRate, setup.monthlyRate];
-  const hasInvalidRate = rates.some((rate) => rate !== null && (!Number.isFinite(rate) || rate < 0));
+  const hasInvalidRate = rates.some((rate) => rate !== null && (!Number.isFinite(rate) || rate < 1));
   if (setup.photos.length === 0) issues.push('Add at least one parking photo.');
   if (!setup.description.trim()) issues.push('Add a short parking description.');
   if (hasInvalidRate) issues.push('Enter a valid positive rate.');
@@ -500,6 +504,7 @@ export default function AvailabilityScheduler({
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const [calendarTimeZone, setCalendarTimeZone] = useState('Asia/Kuala_Lumpur');
+  const [daySaving, setDaySaving] = useState(false);
   const [dayMessage, setDayMessage] = useState<string | null>(null);
   const [dayError, setDayError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -518,7 +523,8 @@ export default function AvailabilityScheduler({
     || imageUpdatingId !== null
     || imageDeletingId !== null
     || publishing
-    || availabilitySaving;
+    || availabilitySaving
+    || daySaving;
 
   useEffect(() => {
     setWorkspace((current) => mergeWorkspaceWithBays(current, bays));
@@ -570,6 +576,7 @@ export default function AvailabilityScheduler({
     setBulkMessage(null);
     setBulkError(null);
     setCalendarError(null);
+    setDaySaving(false);
     setDayMessage(null);
     setDayError(null);
   }, [selectedBayId]);
@@ -621,6 +628,9 @@ export default function AvailabilityScheduler({
       setWorkspace((current) => {
         const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
         const days = { ...spot.days };
+        const closedOverrides = Object.fromEntries(Object.entries(days).filter(([date, day]) => (
+          date.startsWith(`${body.month}-`) && day.ownerOverride === 'closed'
+        )));
         Object.keys(days).forEach((date) => {
           if (date.startsWith(`${body.month}-`)) delete days[date];
         });
@@ -630,6 +640,18 @@ export default function AvailabilityScheduler({
           days[day.date] = {
             status,
             configuredHours: normaliseConfiguredHours(day.configuredHours),
+          };
+        });
+        Object.entries(closedOverrides).forEach(([date, override]) => {
+          if (days[date]?.status === 'booked') return;
+          days[date] = {
+            ...override,
+            ...days[date],
+            status: 'unavailable',
+            configuredHours: days[date]?.configuredHours?.length
+              ? days[date].configuredHours
+              : override.configuredHours,
+            ownerOverride: 'closed',
           };
         });
         return {
@@ -658,6 +680,18 @@ export default function AvailabilityScheduler({
     setSetupForm((current) => ({ ...current, [field]: value }));
     setSetupMessage(null);
     setSetupError(null);
+  };
+
+  const replaceRate = (field: 'dailyRate' | 'monthlyRate', value: string) => {
+    if (!/^\d*(?:\.\d{0,2})?$/.test(value)) return;
+    replaceSetupForm(field, value);
+  };
+
+  const adjustRate = (field: 'dailyRate' | 'monthlyRate', amount: number) => {
+    const currentValue = Number(setupForm[field]);
+    const baseValue = Number.isFinite(currentValue) && currentValue >= 1 ? currentValue : 0;
+    const nextValue = Math.max(1, Number((baseValue + amount).toFixed(2)));
+    replaceSetupForm(field, String(nextValue));
   };
 
   const addPhotoFiles = async (files: File[]) => {
@@ -801,8 +835,8 @@ export default function AvailabilityScheduler({
     }
     const daily = setupForm.dailyRate.trim() === '' ? null : Number(setupForm.dailyRate);
     const monthly = setupForm.monthlyRate.trim() === '' ? null : Number(setupForm.monthlyRate);
-    if ((daily !== null && (!Number.isFinite(daily) || daily < 0)) || (monthly !== null && (!Number.isFinite(monthly) || monthly < 0))) {
-      setSetupError('Rates must be zero or a positive number.');
+    if ((daily !== null && (!Number.isFinite(daily) || daily < 1)) || (monthly !== null && (!Number.isFinite(monthly) || monthly < 1))) {
+      setSetupError('Each entered rate must be at least RM 1.');
       return false;
     }
     const nextSetup: OwnerParkingSetup = {
@@ -848,10 +882,12 @@ export default function AvailabilityScheduler({
       return false;
     }
 
-    const dailyRate = setupForm.dailyRate.trim() === '' ? 0 : Number(setupForm.dailyRate);
-    const monthlyRate = setupForm.monthlyRate.trim() === '' ? 0 : Number(setupForm.monthlyRate);
-    if (!Number.isFinite(dailyRate) || dailyRate < 0 || !Number.isFinite(monthlyRate) || monthlyRate < 0) {
-      setSetupError('Rates must be zero or a positive number.');
+    const dailyRateText = setupForm.dailyRate.trim();
+    const monthlyRateText = setupForm.monthlyRate.trim();
+    const dailyRate = dailyRateText === '' ? 0 : Number(dailyRateText);
+    const monthlyRate = monthlyRateText === '' ? 0 : Number(monthlyRateText);
+    if ((dailyRateText !== '' && (!Number.isFinite(dailyRate) || dailyRate < 1)) || (monthlyRateText !== '' && (!Number.isFinite(monthlyRate) || monthlyRate < 1))) {
+      setSetupError('Each entered rate must be at least RM 1.');
       return false;
     }
 
@@ -1052,8 +1088,8 @@ export default function AvailabilityScheduler({
   const continueFromPricing = async () => {
     const candidate = currentSetupCandidate();
     const rates = [candidate.dailyRate, candidate.monthlyRate];
-    if (rates.some((rate) => rate !== null && (!Number.isFinite(rate) || rate < 0))) {
-      setSetupError('Rates must be zero or a positive number.');
+    if (rates.some((rate) => rate !== null && (!Number.isFinite(rate) || rate < 1))) {
+      setSetupError('Each entered rate must be at least RM 1.');
       return;
     }
     if ((candidate.dailyRate ?? 0) <= 0 && (candidate.monthlyRate ?? 0) <= 0) {
@@ -1112,6 +1148,8 @@ export default function AvailabilityScheduler({
 
   const selectDate = (date: string) => {
     setSelectedDate(date);
+    setDayMessage(null);
+    setDayError(null);
   };
 
   const changeMonth = (offset: number) => {
@@ -1234,7 +1272,9 @@ export default function AvailabilityScheduler({
       const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
       const days = { ...spot.days };
       editableDates.forEach((date) => {
-        days[date] = { status: nextStatus };
+        days[date] = nextStatus === 'unavailable'
+          ? { ...days[date], status: 'unavailable', ownerOverride: 'closed' }
+          : { status: 'available' };
       });
       return { ...current, spots: { ...current.spots, [activeSpotId]: { ...spot, days } } };
     });
@@ -1244,8 +1284,8 @@ export default function AvailabilityScheduler({
     if (nextStatus === 'available') await fetchAvailabilityCalendar();
   };
 
-  const applySelectedDayStatus = (nextStatus: 'available' | 'unavailable') => {
-    if (!activeSpotId || dateKeyIsPast(selectedDate)) {
+  const applySelectedDayStatus = async (nextStatus: 'available' | 'unavailable') => {
+    if (!activeSpotId || !activeBay || dateKeyIsPast(selectedDate)) {
       setDayError('Past dates are read-only.');
       setDayMessage(null);
       return;
@@ -1261,18 +1301,51 @@ export default function AvailabilityScheduler({
       setDayError(null);
       return;
     }
-    updateWorkspace((current) => {
-      const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
-      return {
-        ...current,
-        spots: {
-          ...current.spots,
-          [activeSpotId]: { ...spot, days: { ...spot.days, [selectedDate]: { status: nextStatus } } },
-        },
-      };
-    });
-    setDayMessage(`${formatShortDate(selectedDate)} is now ${statusMeta[nextStatus].shortLabel.toLowerCase()}.`);
+
+    setDaySaving(true);
+    setDayMessage(null);
     setDayError(null);
+    try {
+      if (nextStatus === 'available' && currentDay.ownerOverride !== 'closed') {
+        const token = user?.token ?? '';
+        if (!token) throw new Error('Your owner session is missing an authorization token.');
+        const weekday = new Intl.DateTimeFormat('en-MY', { weekday: 'long' }).format(dateFromKey(selectedDate));
+        const response = await createParkingAvailabilityRules(token, activeBay.parkingSpotId, {
+          rules: [{
+            fromDate: selectedDate,
+            toDate: selectedDate,
+            fromTime: currentDay.configuredHours?.[0]?.from ?? bulkFromTime,
+            toTime: currentDay.configuredHours?.[0]?.to ?? bulkToTime,
+            dayPattern: weekday,
+          }],
+        });
+        const body = await response.json().catch(() => null) as ParkingAvailabilityRulesResponse | null;
+        if (!response.ok || !body?.success || !Array.isArray(body.data)) {
+          throw new Error(body?.message || `Unable to open this date (${response.status}).`);
+        }
+      }
+
+      updateWorkspace((current) => {
+        const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
+        const existingDay = statusFor(spot, selectedDate);
+        const updatedDay: OwnerParkingDay = nextStatus === 'unavailable'
+          ? { ...existingDay, status: 'unavailable', ownerOverride: 'closed' }
+          : { ...existingDay, status: 'available', ownerOverride: undefined };
+        return {
+          ...current,
+          spots: {
+            ...current.spots,
+            [activeSpotId]: { ...spot, days: { ...spot.days, [selectedDate]: updatedDay } },
+          },
+        };
+      });
+      setDayMessage(`${formatShortDate(selectedDate)} is now ${statusMeta[nextStatus].shortLabel.toLowerCase()}.`);
+      if (nextStatus === 'available') await fetchAvailabilityCalendar();
+    } catch (error) {
+      setDayError(error instanceof Error ? error.message : `Unable to mark this date ${statusMeta[nextStatus].shortLabel.toLowerCase()}.`);
+    } finally {
+      setDaySaving(false);
+    }
   };
 
   const calendarDays = useMemo(() => {
@@ -1494,23 +1567,38 @@ export default function AvailabilityScheduler({
                   <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Set your rates</h3>
                   <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">Add one or both prices. Leave a rate empty if you do not offer it.</p>
                 </div>
-                <div className="space-y-3">
-                  <label className="block rounded-2xl bg-slate-50 p-3 sm:p-4">
-                    <span className="text-xs font-semibold text-slate-700">Daily rate</span>
-                    <span className="mt-3 flex items-baseline gap-2">
-                      <span className="text-base font-semibold text-slate-500">RM</span>
-                      <input type="number" min="0" step="0.01" inputMode="decimal" value={setupForm.dailyRate} onChange={(event) => replaceSetupForm('dailyRate', event.target.value)} placeholder="0.00" className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-bold tracking-tight text-slate-950 shadow-none outline-none placeholder:text-slate-300 focus:ring-0 sm:text-3xl" />
-                      <span className="text-sm text-slate-400">/ day</span>
-                    </span>
-                  </label>
-                  <label className="block rounded-2xl bg-slate-50 p-3 sm:p-4">
-                    <span className="text-xs font-semibold text-slate-700">Monthly rate</span>
-                    <span className="mt-3 flex items-baseline gap-2">
-                      <span className="text-base font-semibold text-slate-500">RM</span>
-                      <input type="number" min="0" step="0.01" inputMode="decimal" value={setupForm.monthlyRate} onChange={(event) => replaceSetupForm('monthlyRate', event.target.value)} placeholder="0.00" className="min-w-0 flex-1 border-0 bg-transparent p-0 text-2xl font-bold tracking-tight text-slate-950 shadow-none outline-none placeholder:text-slate-300 focus:ring-0 sm:text-3xl" />
-                      <span className="text-sm text-slate-400">/ month</span>
-                    </span>
-                  </label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <label htmlFor="owner-daily-rate" className="text-xs font-semibold text-slate-700">Daily rate</label>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500">Optional</span>
+                    </div>
+                    <div className="mt-3 flex min-h-14 items-center rounded-xl border border-slate-200 bg-slate-50 p-1.5 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
+                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 px-3 text-sm font-bold text-blue-700">RM</span>
+                      <input id="owner-daily-rate" type="text" inputMode="decimal" value={setupForm.dailyRate} onChange={(event) => replaceRate('dailyRate', event.target.value)} placeholder="0" aria-describedby="owner-daily-rate-unit" className="min-w-0 flex-1 border-0 bg-transparent px-3 text-2xl font-bold text-slate-950 outline-none placeholder:text-slate-300" />
+                      <div className="flex shrink-0 gap-1">
+                        <button type="button" onClick={() => adjustRate('dailyRate', -1)} disabled={!setupForm.dailyRate || Number(setupForm.dailyRate) <= 1 || setupBusy} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-35" aria-label="Decrease daily rate by RM 1" title="Decrease by RM 1"><Minus className="h-4 w-4" aria-hidden="true" /></button>
+                        <button type="button" onClick={() => adjustRate('dailyRate', 1)} disabled={setupBusy} className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Increase daily rate by RM 1" title="Increase by RM 1"><Plus className="h-4 w-4" aria-hidden="true" /></button>
+                      </div>
+                    </div>
+                    <p id="owner-daily-rate-unit" className="mt-2 text-[10px] text-slate-500">Charged per booking day. Minimum RM 1.</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <label htmlFor="owner-monthly-rate" className="text-xs font-semibold text-slate-700">Monthly rate</label>
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500">Optional</span>
+                    </div>
+                    <div className="mt-3 flex min-h-14 items-center rounded-xl border border-slate-200 bg-slate-50 p-1.5 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
+                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 px-3 text-sm font-bold text-blue-700">RM</span>
+                      <input id="owner-monthly-rate" type="text" inputMode="decimal" value={setupForm.monthlyRate} onChange={(event) => replaceRate('monthlyRate', event.target.value)} placeholder="0" aria-describedby="owner-monthly-rate-unit" className="min-w-0 flex-1 border-0 bg-transparent px-3 text-2xl font-bold text-slate-950 outline-none placeholder:text-slate-300" />
+                      <div className="flex shrink-0 gap-1">
+                        <button type="button" onClick={() => adjustRate('monthlyRate', -1)} disabled={!setupForm.monthlyRate || Number(setupForm.monthlyRate) <= 1 || setupBusy} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-35" aria-label="Decrease monthly rate by RM 1" title="Decrease by RM 1"><Minus className="h-4 w-4" aria-hidden="true" /></button>
+                        <button type="button" onClick={() => adjustRate('monthlyRate', 1)} disabled={setupBusy} className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Increase monthly rate by RM 1" title="Increase by RM 1"><Plus className="h-4 w-4" aria-hidden="true" /></button>
+                      </div>
+                    </div>
+                    <p id="owner-monthly-rate-unit" className="mt-2 text-[10px] text-slate-500">Charged for a monthly booking. Minimum RM 1.</p>
+                  </div>
                 </div>
                 <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
                   <button type="button" onClick={() => setSetupStep(2)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
@@ -1603,7 +1691,7 @@ export default function AvailabilityScheduler({
 
              <aside className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:sticky md:top-28 md:self-start md:p-5">
               <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Selected day</p><h3 className="mt-1 text-sm font-bold text-slate-900">{formatLongDate(selectedDate)}</h3></div>
-              <div className={`rounded-2xl border p-4 ${selectedDayMeta.badge}`} aria-live="polite"><div className="flex items-center gap-2"><SelectedDayIcon className="h-4 w-4" aria-hidden="true" /><span className="text-xs font-bold">{selectedDay.status === 'booked' ? 'Booked · locked' : selectedDayMeta.label}</span></div>{selectedDay.status === 'booked' && <p className="mt-2 text-xs leading-relaxed">This date is locked because one commuter already has the booking.</p>}{selectedDayIsPast && selectedDay.status !== 'booked' && <p className="mt-2 text-xs leading-relaxed">Past dates are read-only.</p>}{!selectedDayIsPast && selectedDay.status !== 'booked' && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => applySelectedDayStatus('available')} aria-pressed={selectedDay.status === 'available'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] ${selectedDay.status === 'available' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Check className="h-4 w-4" aria-hidden="true" /> Open</button><button type="button" onClick={() => applySelectedDayStatus('unavailable')} aria-pressed={selectedDay.status === 'unavailable'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] ${selectedDay.status === 'unavailable' ? 'border-slate-400 bg-slate-200 text-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Ban className="h-4 w-4" aria-hidden="true" /> Closed</button></div>}</div>
+              <div className={`rounded-2xl border p-4 ${selectedDayMeta.badge}`} aria-live="polite"><div className="flex items-center gap-2"><SelectedDayIcon className="h-4 w-4" aria-hidden="true" /><span className="text-xs font-bold">{selectedDay.status === 'booked' ? 'Booked · locked' : selectedDayMeta.label}</span>{daySaving && <RefreshCw className="ml-auto h-3.5 w-3.5 animate-spin" aria-label="Saving day status" />}</div>{selectedDay.status === 'booked' && <p className="mt-2 text-xs leading-relaxed">This date is locked because one commuter already has the booking.</p>}{selectedDayIsPast && selectedDay.status !== 'booked' && <p className="mt-2 text-xs leading-relaxed">Past dates are read-only.</p>}{!selectedDayIsPast && selectedDay.status !== 'booked' && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => void applySelectedDayStatus('available')} disabled={daySaving} aria-pressed={selectedDay.status === 'available'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'available' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Check className="h-4 w-4" aria-hidden="true" /> Open</button><button type="button" onClick={() => void applySelectedDayStatus('unavailable')} disabled={daySaving} aria-pressed={selectedDay.status === 'unavailable'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'unavailable' ? 'border-slate-400 bg-slate-200 text-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Ban className="h-4 w-4" aria-hidden="true" /> Closed</button></div>}</div>
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-slate-700">Configured hours</span><span className="text-[9px] font-semibold text-slate-400">{calendarTimeZone}</span></div>
                 {selectedDay.configuredHours?.length ? (
@@ -1613,7 +1701,7 @@ export default function AvailabilityScheduler({
                 )}
               </div>
               {dayError && <p role="alert" className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{dayError}</p>}
-              {dayMessage && <p role="status" className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{dayMessage}</p>}
+              {dayMessage && <p role="status" className={`flex items-center gap-1.5 text-[10px] font-semibold ${selectedDay.status === 'unavailable' ? 'text-slate-600' : 'text-emerald-700'}`}>{selectedDay.status === 'unavailable' ? <Ban className="h-3.5 w-3.5" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}{dayMessage}</p>}
               {selectedDay.status === 'booked' && <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3"><div className="flex items-center gap-2 text-[11px] font-bold text-slate-700"><Users className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Commuter booking</div><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Name</span><span className="text-right font-semibold text-slate-700">{selectedDay.booking?.commuterName || 'Booking details unavailable'}</span></div><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Vehicle</span><span className="inline-flex items-center gap-1 text-right font-semibold text-slate-700"><Car className="h-3 w-3" aria-hidden="true" />{selectedDay.booking?.vehicle || '—'}</span></div>{selectedDay.booking?.commuterPhone && <div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Contact</span><span className="font-semibold text-slate-700">{selectedDay.booking.commuterPhone}</span></div>}</div>}
               <div className="rounded-xl border border-slate-100 p-3 text-[10px] leading-relaxed text-slate-500"><strong className="text-slate-700">One booking per day.</strong> Once a commuter books this spot, the day remains locked until the backend handles cancellation or reopening.</div>
             </aside>

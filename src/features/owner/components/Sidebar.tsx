@@ -4,6 +4,7 @@ import AppSidebar from '@/components/layout/AppSidebar';
 interface SidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
+  onBrandClick: () => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
   isCollapsed: boolean;
@@ -13,6 +14,7 @@ interface SidebarProps {
 export default function Sidebar({
   activeView,
   onViewChange,
+  onBrandClick,
   isOpen,
   setIsOpen,
   isCollapsed,
@@ -24,6 +26,7 @@ export default function Sidebar({
       workspaceLabel="Owner workspace"
       activeId={activeView}
       onNavigate={onViewChange}
+      onBrandClick={onBrandClick}
       mobileOpen={isOpen}
       onMobileOpenChange={setIsOpen}
       collapsed={isCollapsed}

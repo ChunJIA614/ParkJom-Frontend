@@ -2,12 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   AlertCircle,
   CalendarDays,
-  ClipboardList,
   LayoutDashboard,
+  Menu,
   MessageSquare,
   PlusSquare,
   RefreshCw,
-  Sliders,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -77,6 +76,15 @@ function saveNotifications(notifs: Notification[]) {
 }
 
 type OwnerView = 'dashboard' | 'availability' | 'reviews' | 'registration' | 'settings' | 'tickets';
+
+const OWNER_SEARCH_ITEMS = [
+  { id: 'dashboard', label: 'Overview', keywords: ['dashboard', 'parking status', 'bookings'] },
+  { id: 'availability', label: 'Configure Parking', keywords: ['availability', 'schedule', 'timetable'] },
+  { id: 'reviews', label: 'Reviews', keywords: ['feedback', 'owner replies'] },
+  { id: 'registration', label: 'Register Property', keywords: ['onboarding', 'new parking', 'bay'] },
+  { id: 'tickets', label: 'Support', keywords: ['tickets', 'issues', 'help'] },
+  { id: 'settings', label: 'Settings', keywords: ['payout', 'bank account', 'preferences'] },
+] satisfies Array<{ id: OwnerView; label: string; keywords: string[] }>;
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
@@ -409,6 +417,7 @@ export default function OwnerDashboard() {
       <Sidebar 
         activeView={activeView} 
         onViewChange={(view) => setActiveView(view as OwnerView)}
+        onBrandClick={() => { setActiveView('dashboard'); navigate('/owner', { replace: true }); }}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
         isCollapsed={isSidebarCollapsed}
@@ -426,6 +435,11 @@ export default function OwnerDashboard() {
           onMarkAllRead={handleMarkAllRead}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           isSidebarOpen={isSidebarOpen}
+          searchItems={OWNER_SEARCH_ITEMS}
+          onSearchSelect={(id) => {
+            setActiveView(id as OwnerView);
+            setIsSidebarOpen(false);
+          }}
         />
 
         {/* Render View Panels */}
@@ -456,7 +470,7 @@ export default function OwnerDashboard() {
                 onConfigureParking={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'setup')}
                 onOpenTimetable={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'timetable')}
               />
-              {user && <OwnerBookingHistory token={user.token} bays={bays} onOpenReviews={() => setActiveView('reviews')} />}
+              {user && <OwnerBookingHistory token={user.token} bays={bays} />}
             </div>
           )}
 
@@ -520,11 +534,16 @@ export default function OwnerDashboard() {
           { id: 'availability', icon: CalendarDays, label: 'Configure' },
           { id: 'reviews', icon: MessageSquare, label: 'Reviews' },
           { id: 'registration', icon: PlusSquare, label: 'Register' },
-          { id: 'tickets', icon: ClipboardList, label: 'Support' },
-          { id: 'settings', icon: Sliders, label: 'Settings' },
+          { id: 'more', icon: Menu, label: 'More' },
         ]}
-        activeId={activeView}
-        onChange={(id) => setActiveView(id as OwnerView)}
+        activeId={['tickets', 'settings'].includes(activeView) ? 'more' : activeView}
+        onChange={(id) => {
+          if (id === 'more') {
+            setIsSidebarOpen(true);
+            return;
+          }
+          setActiveView(id as OwnerView);
+        }}
       />
     </div>
   );

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, ShieldCheck, Radio, AlertOctagon, 
   Landmark, LifeBuoy,
-  ShieldAlert, Lock, Menu, Car
+  ShieldAlert, Lock, Menu, Car, Bell
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
@@ -52,6 +52,7 @@ export default function AdminDashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('parkjom_admin_sidebar_collapsed') === 'true',
   );
+  const [showAdminNotifications, setShowAdminNotifications] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('parkjom_admin_sidebar_collapsed', String(sidebarCollapsed));
@@ -582,17 +583,6 @@ export default function AdminDashboard() {
             onRefresh={fetchAdminVehicles}
           />
         );
-      case 'reviews':
-        return (
-          <ReviewModeration
-            token={token}
-            parkingSpots={listings.map((listing) => ({
-              parkingSpotId: listing.parkingSpotId,
-              label: listing.propertyName + (listing.parkingLabel ? ' · ' + listing.parkingLabel : ''),
-            }))}
-            onModerated={(message) => addActivityLog('review_moderation', message, 'Admin')}
-          />
-        );
       case 'system':
         return (
           <SystemConfiguration 
@@ -609,7 +599,6 @@ export default function AdminDashboard() {
   const viewMeta: Record<ActiveView, { title: string; description: string }> = {
     home: { title: 'Operations overview', description: 'Monitor the queues and systems that affect today’s parking journeys.' },
     governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
-    reviews: { title: 'Review traceability', description: 'Trace commuter feedback, parking lots, and owner responses from one review workspace.' },
     vehicles: { title: 'Vehicle management', description: 'Review commuter vehicles registered across the platform.' },
     iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
     settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
@@ -619,6 +608,56 @@ export default function AdminDashboard() {
     system: { title: 'System configuration', description: 'Manage the controls that affect platform-wide behavior.' },
   };
   const currentViewMeta = viewMeta[activeView];
+  const adminSearchItems = adminSidebarGroups.flatMap((group) => group.items.map((item) => ({
+    id: item.id,
+    label: item.label,
+    keywords: item.id === 'settlement'
+      ? ['finance', 'settlement', 'payouts', 'transactions']
+      : [viewMeta[item.id as ActiveView].title],
+  })));
+  const adminNotifications = [
+    listings.filter((listing) => listing.status === 'pending').length > 0
+      ? `${listings.filter((listing) => listing.status === 'pending').length} listing reviews are pending.`
+      : null,
+    bollards.filter((bollard) => bollard.status === 'offline').length > 0
+      ? `${bollards.filter((bollard) => bollard.status === 'offline').length} smart bollards are offline.`
+      : null,
+    overstays.filter((overstay) => overstay.status !== 'resolved').length > 0
+      ? `${overstays.filter((overstay) => overstay.status !== 'resolved').length} overstay cases need attention.`
+      : null,
+  ].filter((message): message is string => Boolean(message));
+  const adminNotificationActions = (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setShowAdminNotifications((current) => !current)}
+        aria-label="Notifications"
+        aria-expanded={showAdminNotifications}
+        aria-controls="admin-notifications"
+        className="relative rounded-xl p-2 text-[#5f6368] transition-colors hover:bg-black/[0.04] hover:text-[#111]"
+      >
+        <Bell size={18} strokeWidth={2} />
+        {adminNotifications.length > 0 && (
+          <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ff3b30] px-1 text-[9px] font-bold leading-none text-white">
+            {adminNotifications.length}
+          </span>
+        )}
+      </button>
+      {showAdminNotifications && (
+        <>
+          <button type="button" aria-label="Close notifications" className="fixed inset-0 z-40 cursor-default" onClick={() => setShowAdminNotifications(false)} />
+          <div id="admin-notifications" role="dialog" aria-label="Admin notifications" className="workspace-popover absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-black/[0.08] bg-white py-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
+            <div className="border-b border-[#f1f3f4] px-4 py-2.5 text-[13px] font-semibold text-[#111]">Notifications</div>
+            {adminNotifications.length > 0 ? adminNotifications.map((message) => (
+              <p key={message} className="border-b border-[#f8f9fa] px-4 py-3 text-[11px] leading-relaxed text-[#5f6368] last:border-0">{message}</p>
+            )) : (
+              <p className="px-4 py-5 text-center text-[11px] text-[#8e8e93]">No new operational alerts.</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div id="parkjom-root" className="app-workspace font-sans text-[#1d1d1f] flex" data-workspace-role="admin">
@@ -628,6 +667,7 @@ export default function AdminDashboard() {
         groups={adminSidebarGroups}
         activeId={activeView}
         onNavigate={(id) => setActiveView(id as ActiveView)}
+        onBrandClick={() => { setActiveView('home'); navigate('/admin', { replace: true }); }}
         mobileOpen={sidebarOpen}
         onMobileOpenChange={setSidebarOpen}
         collapsed={sidebarCollapsed}
@@ -646,11 +686,17 @@ export default function AdminDashboard() {
           onMenuClick={() => setSidebarOpen(true)}
           menuExpanded={sidebarOpen}
           menuControls="admin-workspace-navigation"
-          statusText="Operations workspace"
+          actions={adminNotificationActions}
+          hideDesktopBrand
+          searchItems={adminSearchItems}
+          onSearchSelect={(id) => {
+            setActiveView(id as ActiveView);
+            setSidebarOpen(false);
+          }}
         />
 
         {/* Main Workspace Frame */}
-        <main className="workspace-frame flex-1 overflow-y-auto">
+        <main className="workspace-frame flex-1 overflow-y-scroll">
           {activeView === 'home' && (
             <div className="workspace-heading">
               <div><h1>{currentViewMeta.title}</h1><p>{currentViewMeta.description}</p></div>

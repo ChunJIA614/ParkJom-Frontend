@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Bell, Wallet, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
-import DashboardHeader, { type DashboardHeaderUser } from '@/components/layout/DashboardHeader';
+import DashboardHeader, {
+  type DashboardHeaderUser,
+  type DashboardSearchItem,
+} from '@/components/layout/DashboardHeader';
 import { Notification } from '../types';
 
 interface HeaderProps {
@@ -11,6 +14,8 @@ interface HeaderProps {
   onMarkAllRead: () => void;
   onToggleSidebar: () => void;
   isSidebarOpen: boolean;
+  searchItems: DashboardSearchItem[];
+  onSearchSelect: (id: string) => void;
 }
 
 export default function Header({
@@ -21,6 +26,8 @@ export default function Header({
   onMarkAllRead,
   onToggleSidebar,
   isSidebarOpen,
+  searchItems,
+  onSearchSelect,
 }: HeaderProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const unreadCount = notifications.filter((n) => n.unread).length;
@@ -126,8 +133,10 @@ export default function Header({
       onMenuClick={onToggleSidebar}
       menuExpanded={isSidebarOpen}
       menuControls="owner-workspace-navigation"
-      statusText="Owner workspace"
       actions={notificationActions}
+      hideDesktopBrand
+      searchItems={searchItems}
+      onSearchSelect={onSearchSelect}
     />
   );
 }

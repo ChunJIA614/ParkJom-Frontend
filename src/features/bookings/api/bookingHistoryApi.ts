@@ -46,6 +46,38 @@ export interface BookingHistoryResponse {
   data: BookingHistoryItem[];
 }
 
+export interface OwnerBookingHistoryItem {
+  bookingId: number;
+  bookingReference: string;
+  parkingSpotId: number;
+  parkingLabel: string;
+  renterId: number;
+  renterName: string;
+  renterEmail: string;
+  renterPhoneNumber: string;
+  vehicleId: number;
+  vehicleNumberPlate: string;
+  startDate: string;
+  endDate: string;
+  bookedDays: number;
+  bookingStatus: string;
+  renterTotal: number;
+  ownerPayoutAmount: number;
+  createdAt: string;
+}
+
+export interface OwnerBookingHistoryResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  parkingSpotId: number | null;
+  month: string | null;
+  status: string | null;
+  timeZone: string;
+  totalCount: number;
+  data: OwnerBookingHistoryItem[];
+}
+
 type WireObject = Record<string, unknown>;
 
 const asObject = (value: unknown): WireObject | null => (
@@ -132,6 +164,49 @@ function normalizeItem(value: unknown): BookingHistoryItem | null {
   return { booking, canReview, review };
 }
 
+function normalizeOwnerBooking(value: unknown): OwnerBookingHistoryItem | null {
+  const data = asObject(value);
+  if (!data) return null;
+
+  const bookingId = readField(data, 'bookingId', 'BookingId');
+  const parkingSpotId = readField(data, 'parkingSpotId', 'ParkingSpotId');
+  const renterId = readField(data, 'renterId', 'RenterId');
+  const vehicleId = readField(data, 'vehicleId', 'VehicleId');
+  const bookedDays = readField(data, 'bookedDays', 'BookedDays');
+  const renterTotal = readField(data, 'renterTotal', 'RenterTotal');
+  const ownerPayoutAmount = readField(data, 'ownerPayoutAmount', 'OwnerPayoutAmount');
+
+  if (
+    typeof bookingId !== 'number'
+    || typeof parkingSpotId !== 'number'
+    || typeof renterId !== 'number'
+    || typeof vehicleId !== 'number'
+    || typeof bookedDays !== 'number'
+    || typeof renterTotal !== 'number'
+    || typeof ownerPayoutAmount !== 'number'
+  ) return null;
+
+  return {
+    bookingId,
+    bookingReference: String(readField(data, 'bookingReference', 'BookingReference') ?? ''),
+    parkingSpotId,
+    parkingLabel: String(readField(data, 'parkingLabel', 'ParkingLabel') ?? ''),
+    renterId,
+    renterName: String(readField(data, 'renterName', 'RenterName') ?? ''),
+    renterEmail: String(readField(data, 'renterEmail', 'RenterEmail') ?? ''),
+    renterPhoneNumber: String(readField(data, 'renterPhoneNumber', 'RenterPhoneNumber') ?? ''),
+    vehicleId,
+    vehicleNumberPlate: String(readField(data, 'vehicleNumberPlate', 'VehicleNumberPlate') ?? ''),
+    startDate: String(readField(data, 'startDate', 'StartDate') ?? ''),
+    endDate: String(readField(data, 'endDate', 'EndDate') ?? ''),
+    bookedDays,
+    bookingStatus: String(readField(data, 'bookingStatus', 'BookingStatus') ?? ''),
+    renterTotal,
+    ownerPayoutAmount,
+    createdAt: String(readField(data, 'createdAt', 'CreatedAt') ?? ''),
+  };
+}
+
 async function getBookingHistory(
   path: string,
   token: string,
@@ -185,11 +260,48 @@ export function getCommuterBookingHistory(
   return getBookingHistory('/bookings/history', token, page, pageSize, signal);
 }
 
-export function getOwnerBookingHistory(
+export async function getOwnerBookingHistory(
   token: string,
-  page = 1,
-  pageSize = 10,
   signal?: AbortSignal,
-) {
-  return getBookingHistory('/parking/bookings/history', token, page, pageSize, signal);
+): Promise<OwnerBookingHistoryResponse> {
+  const response = await apiRequest('/parking/bookings/history', {
+    method: 'GET',
+    headers: authorizationHeaders(token),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Unable to load owner booking history.'));
+  }
+
+  const payload = await response.json().catch(() => null) as WireObject | null;
+  const wireData = payload ? readField(payload, 'data', 'Data') : null;
+  if (!payload || !Array.isArray(wireData)) {
+    throw new Error('The booking service returned an unreadable owner history response.');
+  }
+
+  const data = wireData
+    .map(normalizeOwnerBooking)
+    .filter((booking): booking is OwnerBookingHistoryItem => Boolean(booking));
+  if (data.length !== wireData.length) {
+    throw new Error('The booking service returned incomplete owner booking details.');
+  }
+
+  const parkingSpotIdValue = readField(payload, 'parkingSpotId', 'ParkingSpotId');
+  const monthValue = readField(payload, 'month', 'Month');
+  const statusValue = readField(payload, 'status', 'Status');
+  const result: OwnerBookingHistoryResponse = {
+    code: Number(readField(payload, 'code', 'Code') ?? response.status),
+    success: Boolean(readField(payload, 'success', 'Success')),
+    message: String(readField(payload, 'message', 'Message') ?? ''),
+    parkingSpotId: typeof parkingSpotIdValue === 'number' ? parkingSpotIdValue : null,
+    month: monthValue == null ? null : String(monthValue),
+    status: statusValue == null ? null : String(statusValue),
+    timeZone: String(readField(payload, 'timeZone', 'TimeZone') ?? 'Asia/Kuala_Lumpur'),
+    totalCount: Number(readField(payload, 'totalCount', 'TotalCount') ?? data.length),
+    data,
+  };
+
+  if (!result.success) throw new Error(result.message || 'Unable to load owner booking history.');
+  return result;
 }

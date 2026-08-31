@@ -133,6 +133,7 @@ function normalizeBookingAvailabilityDate(
 }
 
 export async function getBookingAvailability(
+  token: string,
   parkingSpotId: number,
   month: string,
   signal?: AbortSignal,
@@ -142,7 +143,7 @@ export async function getBookingAvailability(
     `/public/parking/${encodeURIComponent(String(parkingSpotId))}/booking-availability?${query.toString()}`,
     {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: authorizationHeaders(token),
       signal,
     },
   );

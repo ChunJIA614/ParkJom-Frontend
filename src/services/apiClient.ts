@@ -6,10 +6,15 @@ export const API_BASE = import.meta.env.VITE_API_BASE
 
 export const AUTH_REJECTED_EVENT = 'parkjom:auth-rejected';
 
+function hasAuthorizationHeader(headers?: HeadersInit) {
+  return headers ? new Headers(headers).has('Authorization') : false;
+}
+
 export function apiRequest(path: string, init?: RequestInit): Promise<Response> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return fetch(`${API_BASE}${normalizedPath}`, init).then(async (response) => {
-    if (response.status === 401 || response.status === 403) {
+    const isAuthenticatedRequest = hasAuthorizationHeader(init?.headers);
+    if (isAuthenticatedRequest && (response.status === 401 || response.status === 403)) {
       const message = await response.clone().text().catch(() => '');
       const isSuspended = /suspend|disabled|account\s+(?:is\s+)?inactive/i.test(message);
       if (response.status === 401 || isSuspended) {

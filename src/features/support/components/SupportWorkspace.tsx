@@ -33,6 +33,7 @@ import type {
   SupportTicketStatus,
   SupportViewer,
 } from '../types';
+import SupportExperience from './SupportExperience';
 
 interface SupportWorkspaceProps {
   mode: 'user' | 'admin';
@@ -72,7 +73,7 @@ const formatFileSize = (size: number) => size < 1024 * 1024
 const FileIcon = ({ attachment }: { attachment: SupportAttachment }) =>
   attachment.contentType.startsWith('image/') ? <Image className="h-4 w-4" /> : <FileText className="h-4 w-4" />;
 
-export default function SupportWorkspace({ mode, viewer }: SupportWorkspaceProps) {
+function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
   const [status, setStatus] = useState<SupportTicketStatus>('Open');
   const [search, setSearch] = useState('');
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -320,5 +321,15 @@ export default function SupportWorkspace({ mode, viewer }: SupportWorkspaceProps
         </form>
       </div></div>}
     </div>
+  );
+}
+
+export default function SupportWorkspace(props: SupportWorkspaceProps) {
+  return (
+    <SupportExperience
+      mode={props.mode}
+      viewer={props.viewer}
+      ticketWorkspace={<TicketWorkspace {...props} />}
+    />
   );
 }
