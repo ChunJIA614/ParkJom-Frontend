@@ -258,7 +258,7 @@ export default function ParkingDetail() {
   }, [spot?.parkingSpotId]);
 
   useEffect(() => {
-    if (!spot) return;
+    if (!spot || !user?.token) return;
 
     const controller = new AbortController();
     const cachedReviews = loadCachedParkingReviews(spot.parkingSpotId);
@@ -270,7 +270,7 @@ export default function ParkingDetail() {
     setReviewsLoadError(null);
     setIsReviewsLoading(true);
 
-    void getParkingReviews(spot.parkingSpotId, reviewPage, REVIEW_PAGE_SIZE, controller.signal)
+    void getParkingReviews(user.token, spot.parkingSpotId, reviewPage, REVIEW_PAGE_SIZE, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
         const currentCache = loadCachedParkingReviews(spot.parkingSpotId);
@@ -308,7 +308,7 @@ export default function ParkingDetail() {
       });
 
     return () => controller.abort();
-  }, [reviewPage, reviewRefreshKey, spot]);
+  }, [reviewPage, reviewRefreshKey, spot, user?.token]);
 
   const startReviewEdit = (review: ParkingReview) => {
     setReviewEditDraft({
