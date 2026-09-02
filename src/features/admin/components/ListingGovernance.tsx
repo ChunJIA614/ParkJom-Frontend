@@ -356,10 +356,10 @@ export default function ListingGovernance({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
         {/* Main Moderate Listing Column (takes 2 cols) */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm space-y-4">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm flex flex-col justify-between min-h-[620px] space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-slate-100">
             {/* Tabs */}
             <div className="flex bg-slate-100 p-1 rounded-lg self-start">
@@ -392,118 +392,199 @@ export default function ListingGovernance({
                 className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs w-full sm:w-64 focus:outline-hidden focus:ring-1 focus:ring-[#2563EB]"
               />
             </div>
-          </div>
-
-          {/* Table list of listings */}
-          <div className="overflow-x-auto">
+          </div>          {/* Table list of listings */}
+          <div className="flex-1 min-h-[420px]">
             {isLoading && listings.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+              <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
                 <RefreshCw className="h-4 w-4 animate-spin" /> Loading verification requests…
               </div>
             ) : visibleListings.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 text-sm">
+              <div className="py-16 text-center text-slate-400 text-sm">
                 No property listings found matching the current criteria.
               </div>
             ) : (
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                    <th className="py-3 px-2">Verification</th>
-                    <th className="py-3 px-2">Submitted By</th>
-                    <th className="py-3 px-2">Property & Bay</th>
-                    <th className="py-3 px-2">Status</th>
-                    <th className="py-3 px-2 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
+              <>
+                {/* Mobile Card List (zero horizontal scrolling) */}
+                <div className="space-y-3 sm:hidden">
                   {visibleListings.map((listing) => (
-                    <tr key={listing.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3.5 px-2">
-                        <div className="font-mono font-bold text-[#2563EB]">VR-{listing.verificationRequestId}</div>
-                        <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
-                          <Clock3 className="h-3 w-3" /> {formatSubmittedAt(listing.submittedAt)}
+                    <div key={listing.id} className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2.5 shadow-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-mono font-bold text-xs text-[#2563EB]">VR-{listing.verificationRequestId}</div>
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
+                            <Clock3 className="h-3 w-3" /> {formatSubmittedAt(listing.submittedAt)}
+                          </div>
                         </div>
-                        <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
-                          <FileText className="h-3 w-3" /> {listing.documents.length} document{listing.documents.length === 1 ? '' : 's'}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-2">
-                        <div className="font-semibold text-slate-800">{listing.submittedByName}</div>
-                        <div className="text-[10px] text-slate-400">{listing.submittedByEmail}</div>
-                        <div className="mt-0.5 text-[10px] font-mono text-slate-400">User #{listing.submittedByUserId}</div>
-                      </td>
-                      <td className="py-3.5 px-2">
-                        <div className="text-slate-700 font-medium line-clamp-1">{listing.propertyName}</div>
-                        <div className="text-[10px] text-slate-400">Property #{listing.propertyId}</div>
-                        <div className="text-[10px] text-[#2563EB] font-mono font-bold bg-[#2563EB]/5 px-1.5 py-0.5 rounded inline-block mt-1">
-                          Bay {listing.parkingLabel} · Spot #{listing.parkingSpotId}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-2">
-                        {listing.status === 'pending' && (
-                          <div>
-                            <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
-                            <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
-                          </div>
-                        )}
-                        {listing.status === 'approved' && (
-                          <div>
-                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
-                            <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
-                          </div>
-                        )}
-                        {listing.status === 'rejected' && (
-                          <div>
-                            <span className="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
-                            <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
-                          </div>
-                        )}
-                        {listing.status === 'unknown' && (
-                          <div>
-                            <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
-                            <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-2 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button 
-                            onClick={() => openSelectedListing(listing)}
-                            className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-[#2563EB] transition-colors"
-                            title="View verification details"
-                            aria-label={`View verification request ${listing.verificationRequestId}`}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-
+                        <div>
                           {listing.status === 'pending' && (
-                            <>
-                              <button 
-                                onClick={() => handleApproveClick(listing)}
-                                disabled={decisionLoadingId !== null}
-                                className="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                                title="Approve Verification"
-                              >
-                                {decisionLoadingId === listing.id
-                                  ? <RefreshCw className="w-4 h-4 animate-spin" />
-                                  : <CheckCircle className="w-4 h-4" />}
-                              </button>
-                              <button 
-                                onClick={() => openRejectDialog(listing.id)}
-                                disabled={decisionLoadingId !== null}
-                                className="p-1.5 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                                title="Reject Verification"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </button>
-                            </>
+                            <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                          )}
+                          {listing.status === 'approved' && (
+                            <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                          )}
+                          {listing.status === 'rejected' && (
+                            <span className="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                          )}
+                          {listing.status === 'unknown' && (
+                            <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
                           )}
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+
+                      <div className="text-xs space-y-1 pt-1 border-t border-slate-100">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-slate-400 shrink-0">Owner:</span>
+                          <span className="font-semibold text-slate-800 truncate text-right">{listing.submittedByName}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-slate-400 shrink-0">Property:</span>
+                          <span className="text-slate-700 truncate text-right">{listing.propertyName}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-slate-400 shrink-0">Bay:</span>
+                          <span className="text-[10px] text-[#2563EB] font-mono font-bold bg-[#2563EB]/5 px-1.5 py-0.5 rounded">
+                            Bay {listing.parkingLabel} · Spot #{listing.parkingSpotId}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                        <button 
+                          type="button"
+                          onClick={() => openSelectedListing(listing)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Details
+                        </button>
+
+                        {listing.status === 'pending' && (
+                          <>
+                            <button 
+                              type="button"
+                              onClick={() => handleApproveClick(listing)}
+                              disabled={decisionLoadingId !== null}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-xs font-semibold text-emerald-700 transition disabled:opacity-50 cursor-pointer"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" /> Approve
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => openRejectDialog(listing.id)}
+                              disabled={decisionLoadingId !== null}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg text-xs font-semibold text-rose-700 transition disabled:opacity-50 cursor-pointer"
+                            >
+                              <XCircle className="w-3.5 h-3.5" /> Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden sm:block overflow-x-auto">
+                  <table className="w-full text-left border-collapse table-fixed min-w-[600px]">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                        <th className="py-3 px-2 w-[22%]">Verification</th>
+                        <th className="py-3 px-2 w-[24%]">Submitted By</th>
+                        <th className="py-3 px-2 w-[24%]">Property & Bay</th>
+                        <th className="py-3 px-2 w-[18%]">Status</th>
+                        <th className="py-3 px-2 w-[12%] text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {visibleListings.map((listing) => (
+                        <tr key={listing.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-3.5 px-2">
+                            <div className="font-mono font-bold text-[#2563EB]">VR-{listing.verificationRequestId}</div>
+                            <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                              <Clock3 className="h-3 w-3" /> {formatSubmittedAt(listing.submittedAt)}
+                            </div>
+                            <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                              <FileText className="h-3 w-3" /> {listing.documents.length} document{listing.documents.length === 1 ? '' : 's'}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-2">
+                            <div className="font-semibold text-slate-800">{listing.submittedByName}</div>
+                            <div className="text-[10px] text-slate-400">{listing.submittedByEmail}</div>
+                            <div className="mt-0.5 text-[10px] font-mono text-slate-400">User #{listing.submittedByUserId}</div>
+                          </td>
+                          <td className="py-3.5 px-2">
+                            <div className="text-slate-700 font-medium line-clamp-1">{listing.propertyName}</div>
+                            <div className="text-[10px] text-slate-400">Property #{listing.propertyId}</div>
+                            <div className="text-[10px] text-[#2563EB] font-mono font-bold bg-[#2563EB]/5 px-1.5 py-0.5 rounded inline-block mt-1">
+                              Bay {listing.parkingLabel} · Spot #{listing.parkingSpotId}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-2">
+                            {listing.status === 'pending' && (
+                              <div>
+                                <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                                <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
+                              </div>
+                            )}
+                            {listing.status === 'approved' && (
+                              <div>
+                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                                <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
+                              </div>
+                            )}
+                            {listing.status === 'rejected' && (
+                              <div>
+                                <span className="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                                <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
+                              </div>
+                            )}
+                            {listing.status === 'unknown' && (
+                              <div>
+                                <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-[10px] font-medium">{listing.verificationStatusLabel}</span>
+                                <p className="mt-1 text-[9px] font-mono text-slate-400">Code: {listing.verificationStatus}</p>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-2 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button 
+                                onClick={() => openSelectedListing(listing)}
+                                className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-[#2563EB] transition-colors"
+                                title="View verification details"
+                                aria-label={`View verification request ${listing.verificationRequestId}`}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+
+                              {listing.status === 'pending' && (
+                                <>
+                                  <button 
+                                    onClick={() => handleApproveClick(listing)}
+                                    disabled={decisionLoadingId !== null}
+                                    className="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                    title="Approve Verification"
+                                  >
+                                    {decisionLoadingId === listing.id
+                                      ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                      : <CheckCircle className="w-4 h-4" />}
+                                  </button>
+                                  <button 
+                                    onClick={() => openRejectDialog(listing.id)}
+                                    disabled={decisionLoadingId !== null}
+                                    className="p-1.5 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                                    title="Reject Verification"
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
 

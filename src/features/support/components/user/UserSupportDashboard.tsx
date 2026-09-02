@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
+  AlertCircle,
   AlertOctagon,
   ArrowLeft,
   ArrowRight,
@@ -10,10 +11,13 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleDot,
+  Clock,
   Clock3,
   CreditCard,
+  FileCheck2,
   FileSearch,
   HelpCircle,
+  Landmark,
   LifeBuoy,
   Loader2,
   MessageCircle,
@@ -26,9 +30,13 @@ import {
   Siren,
   Sparkles,
   TicketCheck,
+  User,
+  UserCheck,
   UserRound,
+  Wallet,
   WalletCards,
   Workflow,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -41,21 +49,25 @@ interface UserSupportDashboardProps {
 }
 
 type UserView = 'home' | 'quick-help' | 'live-chat' | 'cases';
-type WorkflowId = 'access' | 'booking' | 'payment' | 'account';
 type Answer = 'yes' | 'no' | '';
 
+interface WorkflowOption {
+  id: string;
+  label: string;
+  sublabel?: string;
+}
+
 interface WorkflowDefinition {
-  id: WorkflowId;
+  id: string;
   title: string;
   description: string;
   icon: LucideIcon;
-  tone: string;
-  iconTone: string;
-  options: { id: string; label: string }[];
+  badge: string;
+  options: WorkflowOption[];
 }
 
 interface WorkflowOutcome {
-  object: 'Resolved automatically' | 'Support ticket' | 'Operational incident + ticket' | 'Dispute + ticket';
+  object: 'Resolved Automatically' | 'Tracked Support Ticket' | 'Operational Emergency Incident' | 'Financial Dispute Investigation';
   title: string;
   description: string;
   priority: string;
@@ -71,121 +83,163 @@ interface ChatMessage {
   time: string;
 }
 
-const workflows: WorkflowDefinition[] = [
+// Commuter-specific workflows (Clean neutral styling)
+const commuterWorkflows: WorkflowDefinition[] = [
   {
     id: 'access',
-    title: 'Cannot enter or exit',
-    description: 'Gate, barrier, or booking validation problem at the parking site.',
+    title: 'Barrier, Gate & Access',
+    description: 'Bollard won\'t lower, boom gate unrecognized, or trapped at parking site.',
     icon: Siren,
-    tone: 'border-rose-200 bg-rose-50/70 hover:border-rose-300',
-    iconTone: 'bg-rose-100 text-rose-700',
+    badge: 'Urgent',
     options: [
-      { id: 'enter', label: 'I cannot enter' },
-      { id: 'exit', label: 'I cannot leave' },
-      { id: 'validation', label: 'My booking is not recognized' },
+      { id: 'enter', label: 'Cannot enter parking bay (Bollard / Gate closed)' },
+      { id: 'exit', label: 'Cannot leave parking site (Exit barrier blocked)' },
+      { id: 'validation', label: 'License plate / QR code not recognised at barrier' },
+      { id: 'occupied', label: 'My booked bay is occupied by another car' },
     ],
   },
   {
     id: 'booking',
-    title: 'Booking problem',
-    description: 'Missing, incorrect, expired, or non-cancellable booking.',
+    title: 'Booking & Timing',
+    description: 'Modify station location, extend parking hours, cancel, or fix expired pass.',
     icon: CalendarClock,
-    tone: 'border-amber-200 bg-amber-50/70 hover:border-amber-300',
-    iconTone: 'bg-amber-100 text-amber-700',
+    badge: 'Self-Service',
     options: [
-      { id: 'missing', label: 'Booking not found' },
-      { id: 'location', label: 'Wrong parking location' },
-      { id: 'cancel', label: 'Cannot cancel' },
-      { id: 'time', label: 'Incorrect booking time' },
-      { id: 'expired', label: 'Booking shown as expired' },
-      { id: 'other', label: 'Something else' },
+      { id: 'missing', label: 'Paid booking not showing on my dashboard' },
+      { id: 'location', label: 'Selected wrong train station or parking bay' },
+      { id: 'cancel', label: 'Need to cancel and request refund' },
+      { id: 'time', label: 'Extend parking session time' },
+      { id: 'expired', label: 'Booking shown as expired prematurely' },
     ],
   },
   {
     id: 'payment',
-    title: 'Payment or refund',
-    description: 'Payment confirmation, refund status, or an unfamiliar charge.',
+    title: 'Payments & Wallet',
+    description: 'Payment confirmation, wallet balance discrepancy, or refund review.',
     icon: CreditCard,
-    tone: 'border-cyan-200 bg-cyan-50/70 hover:border-cyan-300',
-    iconTone: 'bg-cyan-100 text-cyan-700',
+    badge: 'Billing',
     options: [
-      { id: 'paid-missing', label: 'Paid but booking is missing' },
-      { id: 'refund', label: 'Refund status' },
-      { id: 'failed', label: 'Payment failed' },
-      { id: 'duplicate', label: 'Charged twice' },
-      { id: 'unknown', label: 'I do not recognize this charge' },
-      { id: 'other', label: 'Something else' },
+      { id: 'paid-missing', label: 'Charged via Stripe but booking not confirmed' },
+      { id: 'duplicate', label: 'Charged twice for single parking booking' },
+      { id: 'wallet-topup', label: 'Wallet top-up not reflected in balance' },
+      { id: 'refund', label: 'Check status of pending refund' },
+      { id: 'unknown', label: 'Unrecognised charge on my statement' },
     ],
   },
   {
-    id: 'account',
-    title: 'Account, vehicle or owner',
-    description: 'Profile, vehicle, verification, listing, or owner payout support.',
-    icon: UserRound,
-    tone: 'border-emerald-200 bg-emerald-50/70 hover:border-emerald-300',
-    iconTone: 'bg-emerald-100 text-emerald-700',
+    id: 'vehicle',
+    title: 'Vehicle & Account Profile',
+    description: 'Update number plate, change rental car plate, or security settings.',
+    icon: Car,
+    badge: 'Account',
     options: [
-      { id: 'access', label: 'Cannot access account' },
-      { id: 'vehicle', label: 'Vehicle information is incorrect' },
-      { id: 'verification', label: 'Account verification' },
-      { id: 'payout', label: 'Owner payout status' },
-      { id: 'listing', label: 'Parking listing problem' },
-      { id: 'payout-dispute', label: 'Owner payout dispute' },
-      { id: 'security', label: 'Account security concern' },
+      { id: 'plate-change', label: 'Switch plate to rental / replacement car for active booking' },
+      { id: 'vehicle-add', label: 'Unable to add secondary vehicle' },
+      { id: 'account-access', label: 'Account sign-in or Google auth trouble' },
+      { id: 'notifications', label: 'Not receiving WhatsApp / SMS entry alerts' },
     ],
   },
 ];
 
-const recentCases = [
-  { reference: 'TKT-2026-00382', title: 'Booking validation at SS15', status: 'In progress', tone: 'bg-blue-50 text-blue-700' },
-  { reference: 'TKT-2026-00351', title: 'Refund confirmation', status: 'Waiting for customer', tone: 'bg-amber-50 text-amber-700' },
-  { reference: 'DSP-2026-00018', title: 'Duplicate card charge', status: 'Under review', tone: 'bg-rose-50 text-rose-700' },
+// Owner-specific workflows (Clean neutral styling)
+const ownerWorkflows: WorkflowDefinition[] = [
+  {
+    id: 'payout',
+    title: 'Payout & Earnings',
+    description: 'Weekly bank disbursement, commission fee breakdown, or payout schedule.',
+    icon: Landmark,
+    badge: 'Settlements',
+    options: [
+      { id: 'payout-delayed', label: 'Weekly payout not received in my bank account' },
+      { id: 'payout-amount', label: 'Discrepancy in booking total vs payout amount' },
+      { id: 'bank-change', label: 'Update bank account / DuitNow details' },
+      { id: 'tax-invoice', label: 'Request monthly commission statement / invoice' },
+    ],
+  },
+  {
+    id: 'hardware',
+    title: 'Smart Bollard & Hardware',
+    description: 'IoT bollard offline, battery warning, mechanical jamming, or QR damaged.',
+    icon: Wrench,
+    badge: 'Diagnostics',
+    options: [
+      { id: 'bollard-stuck', label: 'Bollard stuck in raised position (unable to lower)' },
+      { id: 'bollard-offline', label: 'IoT bollard status showing Offline in app' },
+      { id: 'qr-damaged', label: 'Physical QR label damaged / vandalised' },
+      { id: 'low-battery', label: 'Bollard low battery or solar panel obstruction' },
+    ],
+  },
+  {
+    id: 'overstay',
+    title: 'Commuter Overstay & Disputes',
+    description: 'Unauthorized car parked in your bay or commuter staying past booking time.',
+    icon: ShieldAlert,
+    badge: 'Disputes',
+    options: [
+      { id: 'unauthorized-car', label: 'Unauthorized car parked in my designated bay' },
+      { id: 'commuter-overstay', label: 'Commuter overstayed without extending booking' },
+      { id: 'property-damage', label: 'Report damage to parking bay or bollard hardware' },
+      { id: 'building-access', label: 'Condo management access card / boom gate issue' },
+    ],
+  },
+  {
+    id: 'listing',
+    title: 'Listing Verification & Bay Setup',
+    description: 'Approval status of submitted listing, strata deed check, or pricing updates.',
+    icon: FileCheck2,
+    badge: 'Verification',
+    options: [
+      { id: 'verification-status', label: 'Check pending verification of parking listing' },
+      { id: 'doc-upload', label: 'Re-upload property ownership / tenancy document' },
+      { id: 'pricing-update', label: 'Update daily/monthly rates or availability schedule' },
+      { id: 'delist-temporarily', label: 'Temporarily pause bay bookings for personal use' },
+    ],
+  },
 ];
 
 const navigation: { id: UserView; label: string; icon: LucideIcon }[] = [
   { id: 'home', label: 'Help Center', icon: LifeBuoy },
-  { id: 'quick-help', label: 'Quick Help', icon: Workflow },
-  { id: 'live-chat', label: 'Live Chat', icon: MessagesSquare },
-  { id: 'cases', label: 'My Cases', icon: TicketCheck },
+  { id: 'quick-help', label: 'Quick Triage', icon: Workflow },
+  { id: 'live-chat', label: 'Live Assistant', icon: MessagesSquare },
+  { id: 'cases', label: 'My Tickets', icon: TicketCheck },
 ];
 
-const outcomeTone: Record<WorkflowOutcome['tone'], string> = {
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  warning: 'border-amber-200 bg-amber-50 text-amber-800',
-  danger: 'border-rose-200 bg-rose-50 text-rose-800',
-  info: 'border-blue-200 bg-blue-50 text-blue-800',
-};
-
-function workflowOutcome(workflowId: WorkflowId, issueId: string, trapped: Answer, safetyRisk: Answer): WorkflowOutcome {
-  if (workflowId === 'access') {
+function calculateWorkflowOutcome(
+  workflowId: string,
+  issueId: string,
+  trapped: Answer,
+  safetyRisk: Answer,
+  isOwner: boolean
+): WorkflowOutcome {
+  if (workflowId === 'access' || (isOwner && workflowId === 'overstay' && issueId === 'unauthorized-car')) {
     if (trapped === 'yes' || safetyRisk === 'yes') {
       return {
-        object: 'Operational incident + ticket',
-        title: 'Emergency response has been prepared',
-        description: 'The case will page the on-call parking team immediately and keep a customer ticket open for updates.',
-        priority: 'P0 / immediate',
-        team: 'Parking Operations',
+        object: 'Operational Emergency Incident',
+        title: 'Emergency Priority Incident Dispatched',
+        description: 'Your case has paged the 24/7 On-Call Parking Operations team. A priority ticket has been created to keep you updated.',
+        priority: 'P0 / Immediate (under 2 mins)',
+        team: '24/7 Field & Parking Operations',
         createsTicket: true,
         tone: 'danger',
       };
     }
-    if (issueId === 'exit') {
+    if (issueId === 'exit' || issueId === 'bollard-stuck') {
       return {
-        object: 'Operational incident + ticket',
-        title: 'Gate connectivity needs operator attention',
-        description: 'A P1 incident will be linked to your support case so operations can restore access and keep you informed.',
-        priority: 'P1 / 5 minutes',
-        team: 'Parking Operations',
+        object: 'Operational Emergency Incident',
+        title: 'Gate & Bollard Connectivity Escalation',
+        description: 'A P1 operational incident has been logged. An operator is executing remote barrier overrides and checking IoT telemetry.',
+        priority: 'P1 / 5 Minutes Response',
+        team: 'IoT Operations Center',
         createsTicket: true,
         tone: 'warning',
       };
     }
     return {
-      object: 'Support ticket',
-      title: 'Booking validation needs a manual check',
-      description: 'Your booking and gate are online, but the access credential needs an operations review.',
-      priority: 'High / 15 minutes',
-      team: 'Parking Operations',
+      object: 'Tracked Support Ticket',
+      title: 'Manual Access Verification Underway',
+      description: 'Your booking credential and parking bay sensor are being verified against security access logs.',
+      priority: 'High / 15 Minutes Response',
+      team: 'Parking Operations Team',
       createsTicket: true,
       tone: 'info',
     };
@@ -193,95 +247,71 @@ function workflowOutcome(workflowId: WorkflowId, issueId: string, trapped: Answe
 
   if (workflowId === 'payment' && ['duplicate', 'unknown'].includes(issueId)) {
     return {
-      object: 'Dispute + ticket',
-      title: issueId === 'unknown' ? 'The transaction will be secured and reviewed' : 'A duplicate charge review is required',
-      description: 'Finance will preserve the payment evidence, investigate the charge, and communicate through a linked ticket.',
-      priority: 'High / 30 minutes',
-      team: issueId === 'unknown' ? 'Trust & Safety' : 'Payments',
+      object: 'Financial Dispute Investigation',
+      title: issueId === 'unknown' ? 'Secured Transaction Investigation Opened' : 'Duplicate Charge Reversal Under Review',
+      description: 'Finance and gateway audit logs have been compiled. Reversal approval will be processed to your original payment method.',
+      priority: 'High / 30 Minutes Response',
+      team: issueId === 'unknown' ? 'Trust & Safety Division' : 'Payments & Settlements',
       createsTicket: true,
       tone: 'danger',
     };
   }
 
-  if (workflowId === 'account' && ['payout-dispute', 'security'].includes(issueId)) {
+  if (isOwner && workflowId === 'payout') {
     return {
-      object: 'Dispute + ticket',
-      title: 'A protected review is required',
-      description: 'The support case will be linked to an investigation so evidence, decisions, and customer updates remain separate and traceable.',
-      priority: 'High / 1 hour',
-      team: issueId === 'security' ? 'Trust & Safety' : 'Owner Support',
+      object: 'Tracked Support Ticket',
+      title: 'Owner Payout Audit In Progress',
+      description: 'Your weekly booking receipts and payout batch have been linked for owner support review.',
+      priority: 'High / 1 Hour Response',
+      team: 'Owner Settlements Desk',
       createsTicket: true,
-      tone: 'danger',
+      tone: 'info',
     };
   }
 
-  if ((workflowId === 'booking' && issueId === 'expired') || (workflowId === 'payment' && issueId === 'failed')) {
+  if (
+    (workflowId === 'booking' && issueId === 'expired') ||
+    (workflowId === 'payment' && issueId === 'wallet-topup') ||
+    (workflowId === 'vehicle' && issueId === 'plate-change')
+  ) {
     return {
-      object: 'Resolved automatically',
-      title: workflowId === 'booking' ? 'Your booking is still valid' : 'No charge was completed',
-      description: workflowId === 'booking'
-        ? 'We refreshed the booking status and restored it to your active parking pass.'
-        : 'The failed authorization has been cleared. You can retry with the same or a different payment method.',
-      priority: 'Completed now',
-      team: 'Automated workflow',
+      object: 'Resolved Automatically',
+      title: 'Automated Status Synchronization Complete',
+      description: 'We refreshed the transaction telemetry and synchronized your account status. Your parking pass has been updated.',
+      priority: 'Completed Instantly',
+      team: 'ParkJom AI Smart Engine',
       createsTicket: false,
       tone: 'success',
     };
   }
 
   return {
-    object: 'Support ticket',
-    title: 'A support specialist will follow up',
-    description: 'The workflow collected the relevant account, booking, and payment context so you do not need to repeat it.',
-    priority: workflowId === 'payment' ? 'High / 30 minutes' : 'Standard / 4 hours',
-    team: workflowId === 'payment' ? 'Payments' : workflowId === 'account' ? 'Customer and Owner Support' : 'Customer Support',
+    object: 'Tracked Support Ticket',
+    title: 'Support Specialist Assigned',
+    description: 'We compiled all booking, vehicle, and payment context. A support agent will respond shortly.',
+    priority: 'Standard / Within 30 Mins',
+    team: isOwner ? 'Owner Priority Support' : 'Customer Experience Team',
     createsTicket: true,
     tone: 'info',
   };
 }
 
-function PageTitle({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="text-[11px] font-semibold uppercase text-blue-600">{eyebrow}</p>
-        <h2 className="mt-1 text-2xl font-bold text-slate-950">{title}</h2>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">{description}</p>
-      </div>
-      {action}
-    </div>
-  );
-}
-
-function ChoiceButton({ active, children, onClick }: { active: boolean; children: ReactNode; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border px-3.5 text-left text-sm font-semibold transition',
-        active ? 'border-blue-400 bg-blue-50 text-blue-800 shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-slate-50',
-      )}
-    >
-      <span>{children}</span>
-      <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border', active ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300')}>
-        {active && <Check className="h-3 w-3" />}
-      </span>
-    </button>
-  );
-}
-
 export default function UserSupportDashboard({ viewer, ticketWorkspace }: UserSupportDashboardProps) {
+  const isOwner = viewer.role === 'Owner';
+  const availableWorkflows = isOwner ? ownerWorkflows : commuterWorkflows;
+
   const [activeView, setActiveView] = useState<UserView>('home');
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<WorkflowId>('access');
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(availableWorkflows[0].id);
   const [workflowStep, setWorkflowStep] = useState(1);
-  const [selectedIssue, setSelectedIssue] = useState('enter');
+  const [selectedIssue, setSelectedIssue] = useState(availableWorkflows[0].options[0].id);
   const [trapped, setTrapped] = useState<Answer>('');
   const [safetyRisk, setSafetyRisk] = useState<Answer>('');
   const [workflowResult, setWorkflowResult] = useState<WorkflowOutcome | null>(null);
   const [workflowReference, setWorkflowReference] = useState<string | null>(null);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [workflowSubmitting, setWorkflowSubmitting] = useState(false);
+
+  // Live Chat state
   const [chatStarted, setChatStarted] = useState(false);
   const [chatComposer, setChatComposer] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -289,16 +319,14 @@ export default function UserSupportDashboard({ viewer, ticketWorkspace }: UserSu
   const [chatReference, setChatReference] = useState<string | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  const selectedWorkflow = workflows.find((item) => item.id === selectedWorkflowId) ?? workflows[0];
-  const selectedIssueLabel = selectedWorkflow.options.find((item) => item.id === selectedIssue)?.label ?? selectedWorkflow.options[0].label;
-  const isOwner = viewer.role === 'Owner';
-
   const viewerFirstName = useMemo(() => viewer.name.trim().split(/\s+/)[0] || 'there', [viewer.name]);
+  const selectedWorkflow = availableWorkflows.find((item) => item.id === selectedWorkflowId) ?? availableWorkflows[0];
+  const selectedIssueLabel = selectedWorkflow.options.find((item) => item.id === selectedIssue)?.label ?? selectedWorkflow.options[0].label;
 
-  const startWorkflow = (workflowId: WorkflowId) => {
-    const workflow = workflows.find((item) => item.id === workflowId) ?? workflows[0];
+  const startWorkflow = (workflowId: string) => {
+    const wf = availableWorkflows.find((item) => item.id === workflowId) ?? availableWorkflows[0];
     setSelectedWorkflowId(workflowId);
-    setSelectedIssue(workflow.options[0].id);
+    setSelectedIssue(wf.options[0].id);
     setWorkflowStep(1);
     setTrapped('');
     setSafetyRisk('');
@@ -310,11 +338,11 @@ export default function UserSupportDashboard({ viewer, ticketWorkspace }: UserSu
 
   const runWorkflow = async () => {
     if (selectedWorkflowId === 'access' && (!trapped || !safetyRisk)) {
-      setWorkflowError('Please confirm whether you are trapped and whether there is a safety risk.');
+      setWorkflowError('Please answer the emergency safety confirmation questions before continuing.');
       return;
     }
 
-    const result = workflowOutcome(selectedWorkflowId, selectedIssue, trapped, safetyRisk);
+    const result = calculateWorkflowOutcome(selectedWorkflowId, selectedIssue, trapped, safetyRisk, isOwner);
     setWorkflowSubmitting(true);
     setWorkflowError(null);
     try {
@@ -322,11 +350,12 @@ export default function UserSupportDashboard({ viewer, ticketWorkspace }: UserSu
         const ticket = await createSupportTicket(viewer, {
           subject: `${selectedWorkflow.title}: ${selectedIssueLabel}`,
           message: [
-            `Quick Help workflow: ${selectedWorkflow.title}`,
-            `Issue: ${selectedIssueLabel}`,
-            selectedWorkflowId === 'access' ? `Currently trapped: ${trapped}. Safety risk: ${safetyRisk}.` : '',
-            'System context collected: current booking, parking location, vehicle, payment state, and recent support history.',
-            `Routing outcome: ${result.object}. Priority: ${result.priority}. Assigned team: ${result.team}.`,
+            `Guided Triage Category: ${selectedWorkflow.title}`,
+            `Specific Issue: ${selectedIssueLabel}`,
+            selectedWorkflowId === 'access' ? `Vehicle trapped: ${trapped.toUpperCase()} | Safety risk: ${safetyRisk.toUpperCase()}` : '',
+            `User Role: ${viewer.role}`,
+            'Telemetry attached: Active booking, bay location, vehicle plate, gateway log, bollard heartbeat.',
+            `Routing decision: ${result.object} (Priority: ${result.priority}) -> Assigned to ${result.team}`,
           ].filter(Boolean).join('\n'),
           files: [],
         });
@@ -335,36 +364,61 @@ export default function UserSupportDashboard({ viewer, ticketWorkspace }: UserSu
       setWorkflowResult(result);
       setWorkflowStep(3);
     } catch (error) {
-      setWorkflowError(error instanceof Error ? error.message : 'Unable to complete this workflow.');
+      setWorkflowError(error instanceof Error ? error.message : 'Unable to complete automated triage.');
     } finally {
       setWorkflowSubmitting(false);
     }
   };
 
-  const startChat = () => {
+  const startChat = (initialPrompt?: string) => {
     setChatStarted(true);
-    setChatMessages([
+    const greeting = isOwner
+      ? `Hello ${viewerFirstName}! I'm ParkJom's Owner Support Assistant. How can I help you with your property listings, payouts, or bollard hardware today?`
+      : `Hello ${viewerFirstName}! I'm ParkJom's Support Assistant. How can I assist you with your parking booking, gate access, or payments today?`;
+
+    const initialMsgs: ChatMessage[] = [
       {
         id: crypto.randomUUID(),
         sender: 'support',
-        message: `Hi ${viewerFirstName}. I can help you choose a workflow, explain an existing case, or collect details for our support team.`,
-        time: 'Now',
+        message: greeting,
+        time: 'Just now',
       },
-    ]);
+    ];
+
+    if (initialPrompt) {
+      initialMsgs.push(
+        {
+          id: crypto.randomUUID(),
+          sender: 'user',
+          message: initialPrompt,
+          time: 'Just now',
+        },
+        {
+          id: crypto.randomUUID(),
+          sender: 'support',
+          message: `I've attached your account context for "${initialPrompt}". Let me assist you immediately or connect you with a live agent.`,
+          time: 'Just now',
+        }
+      );
+    }
+
+    setChatMessages(initialMsgs);
+    setActiveView('live-chat');
   };
 
   const sendChatMessage = (event: FormEvent) => {
     event.preventDefault();
-    const message = chatComposer.trim();
-    if (!message) return;
-    setChatMessages((current) => [
-      ...current,
-      { id: crypto.randomUUID(), sender: 'user', message, time: 'Now' },
+    const msg = chatComposer.trim();
+    if (!msg) return;
+
+    setChatMessages((curr) => [
+      ...curr,
+      { id: crypto.randomUUID(), sender: 'user', message: msg, time: 'Just now' },
       {
         id: crypto.randomUUID(),
         sender: 'support',
-        message: 'Thanks. I have attached your current account and recent booking context. A support specialist can continue here, or you can turn this conversation into a tracked case.',
-        time: 'Now',
+        message: `Thank you for the details. I have attached your profile telemetry. You can continue chatting, or click "Create Tracked Ticket" below to convert this into a prioritized case.`,
+        time: 'Just now',
       },
     ]);
     setChatComposer('');
@@ -375,180 +429,744 @@ export default function UserSupportDashboard({ viewer, ticketWorkspace }: UserSu
     setChatConverting(true);
     setChatError(null);
     try {
-      const transcript = chatMessages.map((message) => `${message.sender === 'user' ? viewer.name : 'ParkJom Support'}: ${message.message}`).join('\n\n');
+      const transcript = chatMessages.map((m) => `${m.sender === 'user' ? viewer.name : 'ParkJom Support Assistant'}: ${m.message}`).join('\n\n');
       const ticket = await createSupportTicket(viewer, {
-        subject: 'Follow-up from Live Chat',
-        message: `Conversation source: Live Chat\n\n${transcript}`,
+        subject: `Live Chat Inquiry - ${chatMessages.find((m) => m.sender === 'user')?.message.slice(0, 50) || 'Support Session'}`,
+        message: `Source: Live Chat Assistant (${viewer.role})\n\n${transcript}`,
         files: [],
       });
       setChatReference(ticket.ticketReference);
-    } catch (error) {
-      setChatError(error instanceof Error ? error.message : 'Unable to create a case from this conversation.');
+    } catch (err) {
+      setChatError(err instanceof Error ? err.message : 'Unable to create ticket from chat.');
     } finally {
       setChatConverting(false);
     }
   };
 
+  // ── Render Home ──
   const renderHome = () => (
-    <div className="space-y-6">
-      <PageTitle
-        eyebrow="Help and support"
-        title={`How can we help, ${viewerFirstName}?`}
-        description="Use a guided workflow for known issues, or start a conversation when your situation needs more explanation."
-      />
-
-      <section className="overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm">
-        <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <div className="flex flex-col justify-between gap-5 bg-rose-50/80 p-5 sm:flex-row sm:items-center sm:p-6">
-            <div className="flex items-start gap-4">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white shadow-sm"><Siren className="h-6 w-6" /></span>
-              <div>
-                <p className="text-[11px] font-semibold uppercase text-rose-700">Immediate parking access help</p>
-                <h3 className="mt-1 text-xl font-bold text-slate-950">Cannot enter or leave the parking site?</h3>
-                <p className="mt-1 max-w-xl text-sm leading-6 text-slate-600">We will check your booking, payment, gate connection, and safety status before routing the right response.</p>
-              </div>
+    <div className="space-y-5">
+      {/* Hero Welcome Card - Clean Apple/SaaS Style */}
+      <section className="rounded-2xl border border-black/[0.06] bg-white p-5 sm:p-6 shadow-[0_2px_12px_rgba(0,0,0,0.02)]">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-[#007AFF]" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6E6E73]">
+                {isOwner ? 'Owner Support Center' : 'Commuter Support Center'}
+              </span>
             </div>
-            <button type="button" onClick={() => startWorkflow('access')} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700">
-              Get access help <ArrowRight className="h-4 w-4" />
-            </button>
+            <h1 className="mt-1.5 text-xl font-bold tracking-tight text-[#1D1D1F] sm:text-2xl">
+              How can we help you, {viewerFirstName}?
+            </h1>
+            <p className="mt-1 text-xs text-[#6E6E73]">
+              {isOwner
+                ? 'Get assistance with parking bay verification, smart bollards, commuter disputes, and weekly payouts.'
+                : 'Need help entering a parking site, adjusting a booking, or resolving a charge? Run instant triage or chat with our team.'}
+            </p>
           </div>
-          <div className="flex items-center gap-3 border-t border-rose-100 bg-white p-5 lg:border-l lg:border-t-0">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Radio className="h-5 w-5" /></span>
-            <div><p className="text-sm font-semibold text-slate-900">Emergency support online</p><p className="mt-0.5 text-xs leading-5 text-slate-500">P0 and P1 access issues notify the on-call team 24/7.</p></div>
+
+          <div className="flex shrink-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => startWorkflow(isOwner ? 'hardware' : 'access')}
+              className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-3.5 text-xs font-semibold text-[#1D1D1F] transition hover:bg-[#EBEBEF]"
+            >
+              <Siren className="h-3.5 w-3.5 text-rose-600" />
+              <span>{isOwner ? 'Bollard Issue' : 'Gate & Access Help'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView('live-chat')}
+              className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 text-xs font-semibold text-white shadow-xs transition hover:bg-[#0066D6]"
+            >
+              <MessagesSquare className="h-3.5 w-3.5" />
+              <span>Live Chat</span>
+            </button>
           </div>
         </div>
       </section>
 
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-3"><div><h3 className="text-base font-bold text-slate-900">Common issues</h3><p className="mt-1 text-xs text-slate-500">Quick Help only asks for details the system cannot retrieve.</p></div><span className="hidden text-xs font-medium text-slate-400 sm:inline">Usually 1-3 minutes</span></div>
-        <div className="grid gap-3 md:grid-cols-3">
-          {workflows.filter((workflow) => workflow.id !== 'access').map((workflow) => {
-            const Icon = workflow.icon;
-            const title = workflow.id === 'account' && isOwner ? 'Account, payout or listing' : workflow.title;
+      {/* Guided Category Grid - Uniform White Cards */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-[#1D1D1F]">
+              {isOwner ? 'Owner Support Categories' : 'Guided Troubleshooting'}
+            </h2>
+            <p className="text-[11px] text-[#6E6E73]">
+              Select a topic to automatically run diagnostic checks and route to the right team.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          {availableWorkflows.map((wf) => {
+            const Icon = wf.icon;
             return (
-              <button key={workflow.id} type="button" onClick={() => startWorkflow(workflow.id)} className={cn('group min-h-44 rounded-2xl border p-4 text-left transition shadow-sm', workflow.tone)}>
-                <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', workflow.iconTone)}><Icon className="h-5 w-5" /></span>
-                <h4 className="mt-5 text-sm font-bold text-slate-900">{title}</h4>
-                <p className="mt-1 min-h-10 text-xs leading-5 text-slate-600">{workflow.description}</p>
-                <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-slate-700">Start workflow <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" /></span>
+              <button
+                key={wf.id}
+                type="button"
+                onClick={() => startWorkflow(wf.id)}
+                className="group flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-white p-4.5 text-left shadow-[0_2px_8px_rgba(0,0,0,0.02)] transition hover:border-[#007AFF]/40 hover:bg-[#F9FAFB] hover:shadow-sm cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#1D1D1F] transition group-hover:bg-blue-50 group-hover:text-[#007AFF]">
+                      <Icon className="h-4.5 w-4.5" />
+                    </span>
+                    <span className="rounded-md bg-[#F5F5F7] px-2 py-0.5 text-[9px] font-semibold text-[#6E6E73]">
+                      {wf.badge}
+                    </span>
+                  </div>
+
+                  <h3 className="mt-3.5 text-xs font-bold text-[#1D1D1F] group-hover:text-[#007AFF] transition-colors">
+                    {wf.title}
+                  </h3>
+                  <p className="mt-1 text-[11px] leading-relaxed text-[#6E6E73]">
+                    {wf.description}
+                  </p>
+                </div>
+
+                <div className="mt-4 flex items-center gap-1 text-[11px] font-semibold text-[#007AFF]">
+                  <span>Start diagnosis</span>
+                  <ChevronRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+                </div>
               </button>
             );
           })}
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,0.72fr)]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><MessageCircle className="h-5 w-5" /></span><div><h3 className="text-base font-bold text-slate-900">Need help with something else?</h3><p className="mt-1 text-xs leading-5 text-slate-500">Start Live Chat for explanations, non-standard issues, or updates on an existing case.</p></div></div>
-            <button type="button" onClick={() => setActiveView('live-chat')} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700"><MessagesSquare className="h-4 w-4" />Start Live Chat</button>
+      {/* Two-Column Utility: Live Assistant & Ticket Overview */}
+      <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        {/* Assistant Box */}
+        <div className="flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#007AFF]">
+                <Bot className="h-4.5 w-4.5" />
+              </span>
+              <div>
+                <h3 className="text-xs font-bold text-[#1D1D1F]">Need Quick Answers?</h3>
+                <p className="text-[11px] text-[#6E6E73]">Ask a question or select a frequent inquiry:</p>
+              </div>
+            </div>
+
+            <div className="mt-3.5 flex flex-wrap gap-1.5">
+              {(isOwner
+                ? ['Why is my payout lower this week?', 'Bollard not lowering', 'Overstayed car in bay']
+                : ['Barrier not opening', 'Check my refund status', 'Change number plate']
+              ).map((promptText) => (
+                <button
+                  key={promptText}
+                  type="button"
+                  onClick={() => startChat(promptText)}
+                  className="cursor-pointer rounded-lg border border-black/[0.06] bg-[#F5F5F7] px-2.5 py-1 text-[11px] font-medium text-[#1D1D1F] hover:border-[#007AFF] hover:bg-blue-50/40 hover:text-[#007AFF] transition"
+                >
+                  &ldquo;{promptText}&rdquo;
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-4 text-[11px] text-slate-500"><span className="inline-flex items-center gap-1.5"><CircleDot className="h-3.5 w-3.5 text-emerald-600" />4 agents online</span><span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />About 2 minute wait</span><span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Conversation saved securely</span></div>
+
+          <div className="mt-5 flex items-center justify-between border-t border-black/[0.06] pt-3.5 text-[11px] text-[#6E6E73]">
+            <span className="flex items-center gap-1.5">
+              <CircleDot className="h-2.5 w-2.5 text-[#34C759]" /> Support active
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveView('live-chat')}
+              className="font-semibold text-[#007AFF] hover:underline cursor-pointer"
+            >
+              Start Live Chat &rarr;
+            </button>
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3"><div><h3 className="text-base font-bold text-slate-900">Your recent cases</h3><p className="mt-1 text-xs text-slate-500">Updates from support and operations.</p></div><button type="button" onClick={() => setActiveView('cases')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">View all</button></div>
-          <div className="mt-4 divide-y divide-slate-100">
-            {recentCases.map((item) => <button key={item.reference} type="button" onClick={() => setActiveView('cases')} className="flex w-full items-center gap-3 py-3 text-left first:pt-0 last:pb-0"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500"><ReceiptText className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block font-mono text-[10px] font-semibold text-slate-400">{item.reference}</span><span className="block truncate text-xs font-semibold text-slate-800">{item.title}</span></span><span className={cn('shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold', item.tone)}>{item.status}</span></button>)}
+        {/* Tickets Tracker Summary */}
+        <div className="flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#1D1D1F]">
+                  <TicketCheck className="h-4.5 w-4.5 text-[#007AFF]" />
+                </span>
+                <div>
+                  <h3 className="text-xs font-bold text-[#1D1D1F]">My Support Tickets</h3>
+                  <p className="text-[11px] text-[#6E6E73]">Track your ongoing cases</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveView('cases')}
+                className="text-xs font-semibold text-[#007AFF] hover:underline cursor-pointer"
+              >
+                View all
+              </button>
+            </div>
+
+            <div className="mt-3.5 space-y-2 text-xs">
+              <div className="rounded-xl border border-black/[0.04] bg-[#F9FAFB] p-2.5 text-[11px] text-[#6E6E73]">
+                <p className="font-semibold text-[#1D1D1F]">Service Level Guarantee</p>
+                <p className="text-[10px] text-[#8E8E93] mt-0.5">
+                  Critical barrier and access cases trigger on-call paging within 2 minutes.
+                </p>
+              </div>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setActiveView('cases')}
+            className="mt-4 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-black/[0.08] bg-[#F5F5F7] py-2 text-xs font-semibold text-[#1D1D1F] hover:bg-[#EBEBEF]"
+          >
+            <TicketCheck className="h-3.5 w-3.5" /> Open Ticket Inbox
+          </button>
         </div>
       </section>
-
-      <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-        <p>Emergency parking access support is available 24/7. General questions can be submitted at any time and are handled during service hours.</p>
-      </div>
     </div>
   );
 
+  // ── Render Quick Help ──
   const renderQuickHelp = () => (
-    <div className="space-y-5">
-      <PageTitle eyebrow="Guided support" title="Quick Help" description="Choose a known issue. ParkJom will collect your current context, run checks, and route the correct support object." action={<button type="button" onClick={() => setActiveView('home')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600"><ArrowLeft className="h-4 w-4" />Help Center</button>} />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setActiveView('home')}
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#6E6E73] hover:bg-[#F5F5F7] hover:text-[#1D1D1F]"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to Help Center
+        </button>
 
-      <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="space-y-2">
-          {workflows.map((workflow) => {
-            const Icon = workflow.icon;
-            const active = workflow.id === selectedWorkflowId;
-            return <button key={workflow.id} type="button" onClick={() => startWorkflow(workflow.id)} className={cn('flex w-full items-center gap-3 rounded-xl border p-3 text-left transition', active ? 'border-blue-300 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50')}><span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', active ? 'bg-blue-600 text-white' : workflow.iconTone)}><Icon className="h-4 w-4" /></span><span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-900">{workflow.id === 'account' && isOwner ? 'Account, payout or listing' : workflow.title}</span><span className="mt-0.5 block text-[10px] text-slate-500">{workflow.options.length} guided options</span></span></button>;
+        <span className="rounded-full bg-[#F5F5F7] px-3 py-0.5 text-[11px] font-semibold text-[#6E6E73]">
+          Step {workflowStep} of 3
+        </span>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        {/* Left Categories List */}
+        <aside className="space-y-1.5">
+          <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
+            Categories
+          </p>
+          {availableWorkflows.map((wf) => {
+            const Icon = wf.icon;
+            const isCurrent = wf.id === selectedWorkflowId;
+            return (
+              <button
+                key={wf.id}
+                type="button"
+                onClick={() => startWorkflow(wf.id)}
+                className={cn(
+                  'flex w-full cursor-pointer items-center gap-2.5 rounded-xl border p-3 text-left transition-all',
+                  isCurrent
+                    ? 'border-[#007AFF] bg-blue-50/50 shadow-xs font-bold text-[#007AFF]'
+                    : 'border-black/[0.06] bg-white text-[#1D1D1F] hover:bg-[#F5F5F7]'
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="truncate text-xs">{wf.title}</span>
+              </button>
+            );
           })}
         </aside>
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase text-blue-600">{selectedWorkflow.title}</p><h3 className="mt-1 text-lg font-bold text-slate-950">{workflowStep === 1 ? 'What happened?' : workflowStep === 2 ? 'Review the system checks' : 'Your support route is ready'}</h3></div><span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">Step {workflowStep} of 3</span></div>
-            <div className="mt-4 grid grid-cols-3 gap-1.5">{[1, 2, 3].map((step) => <span key={step} className={cn('h-1.5 rounded-full', step <= workflowStep ? 'bg-blue-600' : 'bg-slate-200')} />)}</div>
+        {/* Right Step Card */}
+        <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.02)]">
+          <div className="border-b border-black/[0.06] p-5">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#007AFF]">
+              {selectedWorkflow.title}
+            </p>
+            <h3 className="mt-1 text-base font-bold text-[#1D1D1F]">
+              {workflowStep === 1
+                ? 'Select your specific issue'
+                : workflowStep === 2
+                ? 'Review automated diagnostics'
+                : 'Diagnostic Resolution'}
+            </h3>
+
+            {/* Stepper Dots */}
+            <div className="mt-3.5 grid grid-cols-3 gap-1.5">
+              {[1, 2, 3].map((stepNum) => (
+                <div
+                  key={stepNum}
+                  className={cn(
+                    'h-1 rounded-full transition-all duration-300',
+                    stepNum <= workflowStep ? 'bg-[#007AFF]' : 'bg-[#E5E7EB]'
+                  )}
+                />
+              ))}
+            </div>
           </div>
 
-          {workflowStep === 1 && <div className="p-4 sm:p-5"><p className="text-xs font-semibold text-slate-700">Select the option that best matches your issue.</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{selectedWorkflow.options.map((option) => <ChoiceButton key={option.id} active={selectedIssue === option.id} onClick={() => setSelectedIssue(option.id)}>{option.label}</ChoiceButton>)}</div><div className="mt-5 flex justify-end"><button type="button" onClick={() => { setWorkflowError(null); setWorkflowStep(2); }} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700">Continue <ArrowRight className="h-4 w-4" /></button></div></div>}
+          {/* Step 1: Issue Selection */}
+          {workflowStep === 1 && (
+            <div className="p-5 space-y-3.5">
+              <p className="text-xs text-[#6E6E73]">
+                Select the issue you are facing to initialize diagnosis:
+              </p>
 
-          {workflowStep === 2 && <div className="p-4 sm:p-5">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">Context collected automatically</h4>
-                <div className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200">
-                  {([
-                    { label: 'Current booking', value: selectedWorkflowId === 'account' ? 'No active booking required' : 'BKG-2026-1182 / Active', icon: CheckCircle2 },
-                    { label: 'Parking location', value: 'SS15 Courtyard / Bay 12', icon: CheckCircle2 },
-                    { label: 'Vehicle', value: 'VBY 2188 / Verified', icon: Car },
-                    { label: 'Payment', value: selectedWorkflowId === 'payment' ? 'Gateway record found' : 'Paid / RM 9.00', icon: WalletCards },
-                    { label: 'IoT connection', value: selectedWorkflowId === 'access' && selectedIssue === 'exit' ? 'Intermittent signal' : 'Online / 18 seconds ago', icon: Radio },
-                  ] as { label: string; value: string; icon: LucideIcon }[]).map(({ label, value, icon: Icon }) => <div key={label} className="flex items-center gap-3 px-3 py-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500"><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="block text-[10px] font-medium text-slate-400">{label}</span><span className="block truncate text-xs font-semibold text-slate-800">{value}</span></span><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /></div>)}
-                </div>
+              <div className="grid gap-2">
+                {selectedWorkflow.options.map((opt) => {
+                  const isChecked = selectedIssue === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSelectedIssue(opt.id)}
+                      className={cn(
+                        'flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3.5 text-left text-xs font-semibold transition-all',
+                        isChecked
+                          ? 'border-[#007AFF] bg-blue-50/40 text-[#007AFF] ring-1 ring-[#007AFF]/20'
+                          : 'border-black/[0.06] bg-white text-[#1D1D1F] hover:bg-[#F9FAFB]'
+                      )}
+                    >
+                      <span>{opt.label}</span>
+                      <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded-full border', isChecked ? 'border-[#007AFF] bg-[#007AFF] text-white' : 'border-black/[0.15]')}>
+                        {isChecked && <Check className="h-2.5 w-2.5" />}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 className="text-sm font-bold text-slate-900">Only what we still need</h4>
-                {selectedWorkflowId === 'access' ? <div className="mt-4 space-y-4"><div><p className="text-xs font-semibold text-slate-700">Are you currently trapped?</p><div className="mt-2 grid grid-cols-2 gap-2">{(['yes', 'no'] as const).map((answer) => <ChoiceButton key={answer} active={trapped === answer} onClick={() => setTrapped(answer)}>{answer === 'yes' ? 'Yes' : 'No'}</ChoiceButton>)}</div></div><div><p className="text-xs font-semibold text-slate-700">Is there an immediate safety risk?</p><div className="mt-2 grid grid-cols-2 gap-2">{(['yes', 'no'] as const).map((answer) => <ChoiceButton key={answer} active={safetyRisk === answer} onClick={() => setSafetyRisk(answer)}>{answer === 'yes' ? 'Yes' : 'No'}</ChoiceButton>)}</div></div></div> : <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3"><div className="flex items-center gap-2 text-xs font-semibold text-emerald-800"><Sparkles className="h-4 w-4" />No extra details needed</div><p className="mt-1 text-[10px] leading-4 text-emerald-700">The workflow already has the account and transaction context required for routing.</p></div>}
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkflowError(null);
+                    setWorkflowStep(2);
+                  }}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[#0066D6]"
+                >
+                  <span>Continue</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
-            {workflowError && <div role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{workflowError}</div>}
-            <div className="mt-5 flex items-center justify-between gap-3"><button type="button" onClick={() => setWorkflowStep(1)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600"><ArrowLeft className="h-4 w-4" />Back</button><button type="button" onClick={() => void runWorkflow()} disabled={workflowSubmitting} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{workflowSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSearch className="h-4 w-4" />}{workflowSubmitting ? 'Running checks...' : 'Run checks'}</button></div>
-          </div>}
+          )}
 
-          {workflowStep === 3 && workflowResult && <div className="p-4 sm:p-5">
-            <div className={cn('rounded-xl border p-4', outcomeTone[workflowResult.tone])}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/70"><CheckCircle2 className="h-5 w-5" /></span><div><p className="text-[10px] font-semibold uppercase">{workflowResult.object}</p><h4 className="mt-1 text-base font-bold">{workflowResult.title}</h4><p className="mt-1 text-xs leading-5 opacity-90">{workflowResult.description}</p></div></div></div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-medium text-slate-400">Issue</p><p className="mt-1 text-xs font-semibold text-slate-800">{selectedIssueLabel}</p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-medium text-slate-400">Priority / response</p><p className="mt-1 text-xs font-semibold text-slate-800">{workflowResult.priority}</p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-medium text-slate-400">Assigned team</p><p className="mt-1 text-xs font-semibold text-slate-800">{workflowResult.team}</p></div></div>
-            {workflowReference && <div className="mt-4 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3"><TicketCheck className="h-5 w-5 shrink-0 text-blue-600" /><div className="min-w-0 flex-1"><p className="text-[10px] font-medium text-blue-600">Case created</p><p className="font-mono text-sm font-bold text-blue-900">{workflowReference}</p></div><span className="text-[10px] font-medium text-blue-700">Notifications on</span></div>}
-            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => startWorkflow(selectedWorkflowId)} className="rounded-xl border border-slate-200 px-4 text-xs font-semibold text-slate-600">Start again</button>{workflowReference ? <button type="button" onClick={() => setActiveView('cases')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-semibold text-white"><TicketCheck className="h-4 w-4" />View my case</button> : <button type="button" onClick={() => setActiveView('home')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-semibold text-white"><Check className="h-4 w-4" />Done</button>}</div>
-          </div>}
+          {/* Step 2: Telemetry Checks */}
+          {workflowStep === 2 && (
+            <div className="p-5 space-y-4">
+              <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+                <div>
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">
+                    Automated Diagnostic Checks
+                  </h4>
+                  <div className="mt-2 divide-y divide-black/[0.04] rounded-xl border border-black/[0.06] bg-[#FAFBFD]">
+                    {[
+                      { label: 'Account', val: `${viewer.name} (${viewer.role})`, icon: User },
+                      { label: 'Active Bay', val: isOwner ? 'Bay 12, Level 3' : 'BKG-2026-1182 (Active)', icon: CheckCircle2 },
+                      { label: 'IoT Controller', val: selectedWorkflowId === 'hardware' ? 'Offline (Check required)' : 'Online (Signal 98%)', icon: Radio },
+                      { label: 'Payment Gateway', val: 'Authorization Cleared', icon: WalletCards },
+                    ].map((item) => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <div key={item.label} className="flex items-center gap-2.5 p-2.5 text-xs">
+                          <ItemIcon className="h-3.5 w-3.5 text-[#007AFF] shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[10px] text-[#8E8E93]">{item.label}</p>
+                            <p className="font-medium text-[#1D1D1F] truncate">{item.val}</p>
+                          </div>
+                          <CheckCircle2 className="h-3.5 w-3.5 text-[#34C759] shrink-0" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-black/[0.06] bg-[#FAFBFD] p-3.5">
+                  <h4 className="text-xs font-bold text-[#1D1D1F]">Verification</h4>
+                  {selectedWorkflowId === 'access' || (isOwner && selectedWorkflowId === 'overstay') ? (
+                    <div className="mt-2.5 space-y-3">
+                      <div>
+                        <p className="text-[11px] text-[#1D1D1F]">Are you currently trapped?</p>
+                        <div className="mt-1 grid grid-cols-2 gap-1.5">
+                          {(['yes', 'no'] as const).map((ans) => (
+                            <button
+                              key={ans}
+                              type="button"
+                              onClick={() => setTrapped(ans)}
+                              className={cn(
+                                'cursor-pointer rounded-lg border py-1 text-xs font-semibold transition',
+                                trapped === ans ? 'border-[#007AFF] bg-blue-50 text-[#007AFF]' : 'border-black/[0.08] bg-white text-[#6E6E73]'
+                              )}
+                            >
+                              {ans === 'yes' ? 'Yes' : 'No'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-[11px] text-[#1D1D1F]">Is there a safety hazard?</p>
+                        <div className="mt-1 grid grid-cols-2 gap-1.5">
+                          {(['yes', 'no'] as const).map((ans) => (
+                            <button
+                              key={ans}
+                              type="button"
+                              onClick={() => setSafetyRisk(ans)}
+                              className={cn(
+                                'cursor-pointer rounded-lg border py-1 text-xs font-semibold transition',
+                                safetyRisk === ans ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-black/[0.08] bg-white text-[#6E6E73]'
+                              )}
+                            >
+                              {ans === 'yes' ? 'Yes' : 'No'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-[11px] text-[#6E6E73]">
+                      All necessary telemetry is ready for routing.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {workflowError && (
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                  {workflowError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between border-t border-black/[0.06] pt-3.5">
+                <button
+                  type="button"
+                  onClick={() => setWorkflowStep(1)}
+                  className="cursor-pointer text-xs font-semibold text-[#6E6E73] hover:text-[#1D1D1F]"
+                >
+                  &larr; Back
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void runWorkflow()}
+                  disabled={workflowSubmitting}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0066D6] disabled:opacity-50"
+                >
+                  {workflowSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSearch className="h-3.5 w-3.5" />}
+                  <span>{workflowSubmitting ? 'Processing...' : 'Execute Resolution'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Result */}
+          {workflowStep === 3 && workflowResult && (
+            <div className="p-5 space-y-4">
+              <div className="rounded-xl border border-black/[0.06] bg-[#FAFBFD] p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-[#34C759] shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">
+                      {workflowResult.object}
+                    </span>
+                    <h4 className="text-sm font-bold text-[#1D1D1F]">
+                      {workflowResult.title}
+                    </h4>
+                    <p className="mt-1 text-xs text-[#6E6E73]">
+                      {workflowResult.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-2.5 sm:grid-cols-3 text-xs">
+                <div className="rounded-xl border border-black/[0.06] bg-white p-3">
+                  <p className="text-[10px] text-[#8E8E93]">Issue</p>
+                  <p className="font-semibold text-[#1D1D1F] truncate">{selectedIssueLabel}</p>
+                </div>
+                <div className="rounded-xl border border-black/[0.06] bg-white p-3">
+                  <p className="text-[10px] text-[#8E8E93]">Target Response</p>
+                  <p className="font-semibold text-[#1D1D1F]">{workflowResult.priority}</p>
+                </div>
+                <div className="rounded-xl border border-black/[0.06] bg-white p-3">
+                  <p className="text-[10px] text-[#8E8E93]">Assigned Team</p>
+                  <p className="font-semibold text-[#1D1D1F]">{workflowResult.team}</p>
+                </div>
+              </div>
+
+              {workflowReference && (
+                <div className="flex items-center justify-between rounded-xl border border-black/[0.06] bg-white p-3 text-xs">
+                  <div>
+                    <p className="text-[10px] text-[#8E8E93]">Ticket Reference</p>
+                    <p className="font-mono font-bold text-[#007AFF]">{workflowReference}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('cases')}
+                    className="cursor-pointer text-xs font-semibold text-[#007AFF] hover:underline"
+                  >
+                    View in Ticket Inbox &rarr;
+                  </button>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 border-t border-black/[0.06] pt-3.5">
+                <button
+                  type="button"
+                  onClick={() => startWorkflow(selectedWorkflowId)}
+                  className="cursor-pointer rounded-xl border border-black/[0.08] px-3.5 py-1.5 text-xs font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                >
+                  Start Over
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('home')}
+                  className="cursor-pointer rounded-xl bg-[#1D1D1F] px-4 py-1.5 text-xs font-semibold text-white hover:bg-black"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>
   );
 
+  // ── Render Live Chat ──
   const renderLiveChat = () => (
-    <div className="space-y-5">
-      <PageTitle eyebrow="Conversation support" title="Live Chat" description="Use chat when you are unsure which workflow applies, need an explanation, or want an update on an existing case." action={<span className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><CircleDot className="h-3.5 w-3.5" />4 agents online</span>} />
-      {!chatStarted ? <section className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="p-5 sm:p-7"><span className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white"><MessagesSquare className="h-6 w-6" /></span><h3 className="mt-5 text-xl font-bold text-slate-950">Start a conversation</h3><p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">We will attach your identity, current booking, and recent cases automatically. You can continue the same conversation if a ticket is created.</p><div className="mt-5 flex flex-wrap gap-2">{['General question', 'Help choosing a workflow', 'Case status', 'Complex situation'].map((label) => <span key={label} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600">{label}</span>)}</div><button type="button" onClick={startChat} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700"><MessageCircle className="h-4 w-4" />Start Live Chat</button></div>
-        <div className="border-t border-slate-100 bg-slate-50 p-5 lg:border-l lg:border-t-0"><h4 className="text-sm font-bold text-slate-900">Before the chat starts</h4><div className="mt-4 space-y-4">{([
-          { icon: ShieldCheck, title: 'Identity verified', value: viewer.email },
-          { icon: CalendarClock, title: 'Current booking', value: 'Attached when available' },
-          { icon: Clock3, title: 'Estimated wait', value: 'About 2 minutes' },
-        ] as { icon: LucideIcon; title: string; value: string }[]).map(({ icon: Icon, title, value }) => <div key={title} className="flex items-start gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm"><Icon className="h-4 w-4" /></span><div><p className="text-xs font-semibold text-slate-800">{title}</p><p className="mt-0.5 text-[10px] text-slate-500">{value}</p></div></div>)}</div></div>
-      </section> : <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid lg:min-h-[620px] lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="border-b border-slate-200 bg-slate-50 p-4 lg:border-b-0 lg:border-r"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Bot className="h-5 w-5" /></span><div><p className="text-sm font-bold text-slate-900">ParkJom Support</p><p className="text-[10px] font-medium text-emerald-700">Conversation active</p></div></div><div className="mt-5 space-y-3"><div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] font-medium text-slate-400">Conversation ID</p><p className="mt-1 font-mono text-xs font-semibold text-slate-800">CON-2026-00125</p></div><div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] font-medium text-slate-400">Context attached</p><div className="mt-2 space-y-1.5 text-[10px] text-slate-600"><p className="flex items-center gap-1.5"><Check className="h-3 w-3 text-emerald-600" />Customer profile</p><p className="flex items-center gap-1.5"><Check className="h-3 w-3 text-emerald-600" />Recent booking</p><p className="flex items-center gap-1.5"><Check className="h-3 w-3 text-emerald-600" />Recent cases</p></div></div></div></aside>
-        <div className="flex min-h-[540px] flex-col"><header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3"><div><p className="text-sm font-bold text-slate-900">Live support conversation</p><p className="text-[10px] text-slate-500">Messages are saved to your support history.</p></div><button type="button" onClick={() => { setChatStarted(false); setChatMessages([]); setChatReference(null); }} className="rounded-lg border border-slate-200 px-3 text-[10px] font-semibold text-slate-600">End chat</button></header>
-          <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/60 p-4 sm:p-5">{chatMessages.map((message) => <div key={message.id} className={cn('flex', message.sender === 'user' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[88%] sm:max-w-[72%]', message.sender === 'user' && 'text-right')}><p className="mb-1 px-1 text-[9px] font-semibold text-slate-400">{message.sender === 'user' ? viewer.name : 'ParkJom Support'} / {message.time}</p><div className={cn('rounded-2xl px-3.5 py-2.5 text-left text-xs leading-5 shadow-sm', message.sender === 'user' ? 'rounded-br-md bg-blue-600 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700')}>{message.message}</div></div></div>)}</div>
-          {chatReference && <div className="border-t border-blue-200 bg-blue-50 px-4 py-3"><div className="flex items-center gap-3"><TicketCheck className="h-5 w-5 shrink-0 text-blue-600" /><div className="min-w-0 flex-1"><p className="text-xs font-semibold text-blue-900">This conversation continues under {chatReference}.</p><p className="mt-0.5 text-[10px] text-blue-700">You can check its progress in My Cases.</p></div><button type="button" onClick={() => setActiveView('cases')} className="shrink-0 text-[10px] font-semibold text-blue-700">View case</button></div></div>}
-          {chatError && <div role="alert" className="border-t border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-700">{chatError}</div>}
-          <form onSubmit={sendChatMessage} className="border-t border-slate-200 p-3"><div className="flex items-end gap-2"><textarea value={chatComposer} onChange={(event) => setChatComposer(event.target.value)} rows={1} placeholder="Type your message..." className="min-h-11 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-3 text-xs outline-none focus:border-blue-500" /><button type="submit" disabled={!chatComposer.trim()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white disabled:opacity-40" aria-label="Send message"><Send className="h-4 w-4" /></button></div><div className="mt-2 flex items-center justify-between gap-3"><p className="text-[9px] text-slate-400">Do not share full payment card or password details.</p>{chatMessages.length > 1 && !chatReference && <button type="button" onClick={() => void convertChatToTicket()} disabled={chatConverting} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg text-[10px] font-semibold text-blue-600 disabled:opacity-60">{chatConverting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TicketCheck className="h-3.5 w-3.5" />}Create tracked case</button>}</div></form>
-        </div>
-      </section>}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setActiveView('home')}
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#6E6E73] hover:bg-[#F5F5F7] hover:text-[#1D1D1F]"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to Help Center
+        </button>
+
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#6E6E73]">
+          <CircleDot className="h-2.5 w-2.5 text-[#34C759]" /> Support Assistant Active
+        </span>
+      </div>
+
+      {!chatStarted ? (
+        <section className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_2px_12px_rgba(0,0,0,0.02)] space-y-4">
+          <div>
+            <h3 className="text-base font-bold text-[#1D1D1F]">Start Live Support Session</h3>
+            <p className="mt-1 text-xs text-[#6E6E73] max-w-lg">
+              Connect directly with our support team. Your account context and active telemetry are attached automatically.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {[
+              isOwner ? 'Payout Breakdown Query' : 'Barrier Not Opening',
+              isOwner ? 'Bollard Sensor Fault' : 'Booking Refund Status',
+              'General Question',
+            ].map((label) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => startChat(label)}
+                className="cursor-pointer rounded-lg border border-black/[0.06] bg-[#F5F5F7] px-3 py-1.5 text-xs font-medium text-[#1D1D1F] hover:border-[#007AFF] hover:bg-blue-50/40 hover:text-[#007AFF]"
+              >
+                &ldquo;{label}&rdquo;
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => startChat()}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#007AFF] px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-[#0066D6]"
+          >
+            <MessageCircle className="h-4 w-4" /> Start Conversation
+          </button>
+        </section>
+      ) : (
+        <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.02)] lg:grid lg:min-h-[580px] lg:grid-cols-[240px_minmax(0,1fr)]">
+          {/* Left Chat Meta */}
+          <aside className="border-b border-black/[0.06] bg-[#FAFBFD] p-4 lg:border-b-0 lg:border-r space-y-3 text-xs">
+            <div>
+              <p className="font-bold text-[#1D1D1F]">ParkJom Assistant</p>
+              <p className="text-[10px] text-[#34C759] font-medium">Session Connected</p>
+            </div>
+
+            <div className="rounded-lg border border-black/[0.04] bg-white p-2.5 text-[11px]">
+              <p className="text-[10px] text-[#8E8E93]">User</p>
+              <p className="font-semibold text-[#1D1D1F] truncate">{viewer.name}</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setChatStarted(false);
+                setChatMessages([]);
+                setChatReference(null);
+              }}
+              className="w-full cursor-pointer rounded-lg border border-black/[0.08] bg-white py-1.5 text-xs font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+            >
+              End Chat
+            </button>
+          </aside>
+
+          {/* Right Chat Stream */}
+          <div className="flex min-h-[500px] flex-col bg-[#FAFBFD]">
+            <div className="flex-1 space-y-3 overflow-y-auto p-4">
+              {chatMessages.map((msg) => {
+                const isUser = msg.sender === 'user';
+                return (
+                  <div key={msg.id} className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+                    <div className={cn('max-w-[85%] sm:max-w-[75%]', isUser && 'text-right')}>
+                      <p className="mb-0.5 text-[9px] text-[#8E8E93]">
+                        {isUser ? viewer.name : 'ParkJom Assistant'} · {msg.time}
+                      </p>
+                      <div
+                        className={cn(
+                          'rounded-2xl px-3.5 py-2 text-left text-xs leading-relaxed shadow-xs',
+                          isUser
+                            ? 'rounded-br-sm bg-[#007AFF] text-white'
+                            : 'rounded-bl-sm border border-black/[0.06] bg-white text-[#1D1D1F]'
+                        )}
+                      >
+                        {msg.message}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {chatReference && (
+              <div className="border-t border-black/[0.06] bg-white p-3 text-xs flex items-center justify-between">
+                <span className="font-medium text-[#1D1D1F]">
+                  Ticket Created: <span className="font-mono font-bold text-[#007AFF]">{chatReference}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('cases')}
+                  className="cursor-pointer text-xs font-bold text-[#007AFF] hover:underline"
+                >
+                  Open in Inbox &rarr;
+                </button>
+              </div>
+            )}
+
+            {chatError && (
+              <div className="border-t border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
+                {chatError}
+              </div>
+            )}
+
+            <form onSubmit={sendChatMessage} className="border-t border-black/[0.06] bg-white p-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={chatComposer}
+                  onChange={(e) => setChatComposer(e.target.value)}
+                  placeholder="Type a message..."
+                  className="min-h-9 flex-1 rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                />
+                <button
+                  type="submit"
+                  disabled={!chatComposer.trim()}
+                  className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-[#007AFF] text-white hover:bg-[#0066D6] disabled:opacity-40"
+                  aria-label="Send message"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {chatMessages.length > 1 && !chatReference && (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void convertChatToTicket()}
+                    disabled={chatConverting}
+                    className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:underline disabled:opacity-50"
+                  >
+                    {chatConverting ? <Loader2 className="h-3 w-3 animate-spin" /> : <TicketCheck className="h-3 w-3" />}
+                    <span>Convert to Tracked Ticket</span>
+                  </button>
+                </div>
+              )}
+            </form>
+          </div>
+        </section>
+      )}
     </div>
   );
 
   return (
-    <div className="space-y-5" data-support-mode="user">
-      <section className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-3 px-1"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white"><LifeBuoy className="h-5 w-5" /></span><div><p className="text-sm font-bold text-slate-950">ParkJom Support</p><p className="text-[10px] text-slate-500">Guided help, conversations, and case tracking</p></div></div>
-          <nav className="flex min-w-0 gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1" aria-label="Support sections">
-            {navigation.map((item) => { const Icon = item.icon; const active = activeView === item.id; return <button key={item.id} type="button" onClick={() => setActiveView(item.id)} aria-current={active ? 'page' : undefined} className={cn('inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-[11px] font-semibold transition', active ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800')}><Icon className="h-3.5 w-3.5" />{item.label}</button>; })}
+    <div className="space-y-4" data-component="user-support-dashboard">
+      {/* Tab Navigation Ribbon - Clean Apple Style */}
+      <section className="rounded-2xl border border-black/[0.06] bg-white p-2.5 shadow-[0_2px_8px_rgba(0,0,0,0.02)] sm:px-4">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#007AFF]">
+              <LifeBuoy className="h-4.5 w-4.5" />
+            </span>
+            <div>
+              <p className="text-xs font-bold text-[#1D1D1F]">
+                {isOwner ? 'Owner Support Center' : 'Support Center'}
+              </p>
+              <p className="text-[10px] text-[#6E6E73]">
+                Instant diagnostics and live ticket tracking
+              </p>
+            </div>
+          </div>
+
+          {/* Mobile Navigation: 4-Column Grid (No horizontal swipe) */}
+          <nav className="grid grid-cols-4 gap-1 rounded-xl bg-[#F5F5F7] p-1 sm:hidden" aria-label="Support navigation mobile">
+            {navigation.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveView(item.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={cn(
+                    'flex min-h-9 flex-col items-center justify-center gap-0.5 rounded-lg p-1 text-center text-[10px] font-semibold transition-all cursor-pointer',
+                    isActive
+                      ? 'bg-white text-[#007AFF] shadow-xs font-bold'
+                      : 'text-[#6E6E73] hover:text-[#1D1D1F]'
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="truncate max-w-full">{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Desktop Navigation: Horizontal Ribbon */}
+          <nav className="hidden sm:flex min-w-0 gap-1 rounded-xl bg-[#F5F5F7] p-1" aria-label="Support navigation">
+            {navigation.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveView(item.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={cn(
+                    'inline-flex min-h-7 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all',
+                    isActive
+                      ? 'bg-white text-[#007AFF] shadow-xs font-bold'
+                      : 'text-[#6E6E73] hover:text-[#1D1D1F]'
+                  )}
+                >
+                  <Icon className="h-3 w-3" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
           </nav>
         </div>
       </section>
 
+      {/* Dynamic Views */}
       {activeView === 'home' && renderHome()}
       {activeView === 'quick-help' && renderQuickHelp()}
       {activeView === 'live-chat' && renderLiveChat()}
