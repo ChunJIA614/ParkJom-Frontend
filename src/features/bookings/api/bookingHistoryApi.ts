@@ -28,6 +28,11 @@ export interface BookingHistoryReview {
   createdAt: string;
   updatedAt: string;
 }
+export interface BookingHistoryFilters {
+  fromDate?: string;
+  toDate?: string;
+  status?: string;
+}
 
 export interface BookingHistoryItem {
   booking: BookingHistoryBooking;
@@ -43,6 +48,9 @@ export interface BookingHistoryResponse {
   page: number;
   pageSize: number;
   totalPages: number;
+  status: string | null;
+  fromDate: string | null;
+  toDate: string | null;
   data: BookingHistoryItem[];
 }
 
@@ -212,9 +220,13 @@ async function getBookingHistory(
   token: string,
   page: number,
   pageSize: number,
+  filters: BookingHistoryFilters = {},
   signal?: AbortSignal,
 ): Promise<BookingHistoryResponse> {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (filters.fromDate) query.set('fromDate', filters.fromDate);
+  if (filters.toDate) query.set('toDate', filters.toDate);
+  if (filters.status) query.set('status', filters.status);
   const response = await apiRequest(`${path}?${query.toString()}`, {
     method: 'GET',
     headers: authorizationHeaders(token),
@@ -236,6 +248,9 @@ async function getBookingHistory(
     throw new Error('The booking service returned incomplete booking history details.');
   }
 
+  const statusValue = readField(payload, 'status', 'Status');
+  const fromDateValue = readField(payload, 'fromDate', 'FromDate');
+  const toDateValue = readField(payload, 'toDate', 'ToDate');
   const result: BookingHistoryResponse = {
     code: Number(readField(payload, 'code', 'Code') ?? response.status),
     success: Boolean(readField(payload, 'success', 'Success')),
@@ -244,6 +259,9 @@ async function getBookingHistory(
     page: Number(readField(payload, 'page', 'Page') ?? page),
     pageSize: Number(readField(payload, 'pageSize', 'PageSize') ?? pageSize),
     totalPages: Number(readField(payload, 'totalPages', 'TotalPages') ?? (data.length > 0 ? 1 : 0)),
+    status: statusValue == null ? null : String(statusValue),
+    fromDate: fromDateValue == null ? null : String(fromDateValue),
+    toDate: toDateValue == null ? null : String(toDateValue),
     data,
   };
 
@@ -255,9 +273,10 @@ export function getCommuterBookingHistory(
   token: string,
   page = 1,
   pageSize = 10,
+  filters: BookingHistoryFilters = {},
   signal?: AbortSignal,
 ) {
-  return getBookingHistory('/bookings/history', token, page, pageSize, signal);
+  return getBookingHistory('commuter/bookings/my-bookings', token, page, pageSize, filters, signal);
 }
 
 export async function getOwnerBookingHistory(

@@ -37,6 +37,8 @@ export interface BookingQuote {
   ratePerDay: number;
   rentalSubtotal: number;
   expiresAt: string;
+  platformFee: number;
+  renterTotal: number;
 }
 
 export interface ConfirmedBooking {
@@ -226,7 +228,7 @@ export async function confirmBooking(
   vehicleId: number,
   idempotencyKey: string,
 ): Promise<ConfirmBookingResponse> {
-  const response = await apiRequest('/bookings/confirm', {
+  const response = await apiRequest('commuter/bookings/confirm', {
     method: 'POST',
     headers: {
       ...authorizationHeaders(token, 'application/json'),
