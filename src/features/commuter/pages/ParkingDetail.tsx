@@ -542,7 +542,7 @@ export default function ParkingDetail() {
             </div>
             <div className="p-6 md:p-8 space-y-5">
               <div>
-                <p className="text-[11px] text-[#6e6e73]">Bay</p>
+                <p className="text-[11px] text-[#6e6e73]">Bay {spot.parkingLabel}</p>
                 <p className="font-semibold mt-1">{spot.address}</p>
                 <p className="text-[12px] text-[#6e6e73] mt-1">{stationName || 'Klang Valley transit area'}</p>
               </div>
@@ -552,7 +552,7 @@ export default function ParkingDetail() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[13px] text-[#6e6e73]">Paid total</span>
-                <strong>RM {quote?.rentalSubtotal.toFixed(2)}</strong>
+                <strong>RM {quote?.renterTotal.toFixed(2)}</strong>
               </div>
               <p className="text-[11px] text-[#6e6e73] leading-relaxed">Booking reference: {confirmedBooking?.bookingReference}</p>
               <button type="button" onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })} className="w-full min-h-11 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold">Continue to my parking pass</button>
@@ -889,9 +889,13 @@ export default function ParkingDetail() {
                 <span className="text-[#5f6368]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} day{quote.bookedDays === 1 ? '' : 's'}</span>
                 <span className="font-semibold text-[#111]">RM {quote.rentalSubtotal.toFixed(2)}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-[#5f6368]">10% platform fee</span>
+                <span className="font-semibold text-[#111]">RM {quote.platformFee.toFixed(2)}</span>
+              </div>
               <div className="flex justify-between font-bold text-[15px]">
                 <span>Total</span>
-                <span>RM {quote.rentalSubtotal.toFixed(2)}</span>
+                <span>RM {quote.renterTotal.toFixed(2)}</span>
               </div>
               <p className="text-[11px] text-[#9ca3af]">Quote expires {new Date(quote.expiresAt).toLocaleString('en-MY')}.</p>
             </div>
@@ -904,14 +908,14 @@ export default function ParkingDetail() {
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
           <div>
             <p className="font-bold text-[#111] text-[15px]">{displayedRate > 0 ? `RM ${displayedRate.toFixed(2)}` : 'Daily rate'} <span className="text-[13px] font-normal text-[#5f6368]">/ day</span></p>
-            <p className="text-[11px] text-[#9ca3af]">{quote ? `${quote.bookedDays} days · RM ${displayedTotal.toFixed(2)} total` : 'Request a quote for exact pricing'}</p>
+            <p className="text-[11px] text-[#9ca3af]">{quote ? `${quote.bookedDays} days · RM ${displayedTotal.toFixed(2)} + RM ${quote.platformFee.toFixed(2)} platform fee` : 'Request a quote for exact pricing'}</p>
           </div>
           <button onClick={handleBook} disabled={invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId)}
             className={`font-semibold text-[13px] px-8 py-3 rounded-xl transition flex items-center gap-2 ${
               invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId) ? 'bg-[#e8eaed] text-[#9ca3af] cursor-not-allowed' : 'bg-[#007AFF] text-white hover:bg-[#1d4ed8] active:scale-[0.98]'
             }`}>
             {isBookingLoading ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-            {isBookingLoading ? (quote ? 'Confirming…' : 'Creating quote…') : quote ? `Confirm & Pay · RM ${quote.rentalSubtotal.toFixed(2)}` : 'Get Booking Quote'}
+            {isBookingLoading ? (quote ? 'Confirming…' : 'Creating quote…') : quote ? `Confirm & Pay · RM ${quote.renterTotal.toFixed(2)}` : 'Get Booking Quote'}
           </button>
         </div>
       </div>
