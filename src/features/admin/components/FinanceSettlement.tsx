@@ -4,6 +4,7 @@ import {
   DollarSign, Landmark, CreditCard, Receipt, FileSpreadsheet, 
   Search, ShieldAlert, ArrowDownToLine, RefreshCw, CheckCircle, HelpCircle
 } from 'lucide-react';
+import { showAlert } from '@/contexts/ModalContext';
 import { OwnerPayout, Transaction } from '../types';
 
 interface FinanceSettlementProps {
@@ -207,7 +208,11 @@ export default function FinanceSettlement({
           <button 
             onClick={() => {
               addActivityLog('system', "Exported financial settlement journal: EXCEL_JOURNAL_2026.csv", "Admin");
-              alert("Financial audit spreadsheet exported successfully (MOCK Excel Sheet downloaded).");
+              void showAlert({
+                title: 'Export Successful',
+                message: 'Financial audit spreadsheet exported successfully (MOCK Excel Sheet downloaded).',
+                variant: 'success',
+              });
             }}
             className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >

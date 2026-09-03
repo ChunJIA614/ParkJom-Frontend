@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, LogOut, Menu, Search } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
+import { showConfirm } from '@/contexts/ModalContext';
 
 export type DashboardRole = 'commuter' | 'owner' | 'admin';
 
@@ -117,10 +118,15 @@ export default function DashboardHeader({
     };
   }, [accountOpen, searchOpen]);
 
-  const handleSignOut = () => {
-    const confirmed = window.confirm(
-      'Are you sure you want to sign out? You will need to sign in again to access your ParkJom account.',
-    );
+  const handleSignOut = async () => {
+    const confirmed = await showConfirm({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out? You will need to sign in again to access your ParkJom account.',
+      confirmText: 'Sign Out',
+      cancelText: 'Stay Signed In',
+      variant: 'danger',
+      icon: 'logout',
+    });
     if (confirmed) onSignOut();
   };
 

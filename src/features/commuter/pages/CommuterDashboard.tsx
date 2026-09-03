@@ -59,6 +59,7 @@ import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { showConfirm, showAlert } from '@/contexts/ModalContext';
 import {
   clearJourneySession,
   loadJourneySession,
@@ -552,7 +553,15 @@ export default function CommuterDashboard() {
 
   const handleClearFavorites = async () => {
     if (!user?.userId || !user.token || favoriteSpots.length === 0 || isFavoritesLoading || isClearingFavorites) return;
-    if (!window.confirm('Remove all parking spaces from your favorites?')) return;
+    const confirmed = await showConfirm({
+      title: 'Clear Favorites',
+      message: 'Remove all parking spaces from your favorites?',
+      confirmText: 'Remove All',
+      cancelText: 'Keep Favorites',
+      variant: 'danger',
+      icon: 'trash',
+    });
+    if (!confirmed) return;
 
     const spotsToRemove = [...favoriteSpots];
     let failureCount = 0;
@@ -1404,7 +1413,15 @@ export default function CommuterDashboard() {
       setVehicleFeedback({ tone: 'error', message: 'This vehicle is missing its backend vehicle ID and cannot be deleted.' });
       return;
     }
-    if (!window.confirm(`Delete vehicle ${vehicle.plate}? This action cannot be undone.`)) return;
+    const confirmed = await showConfirm({
+      title: 'Delete Vehicle',
+      message: `Delete vehicle ${vehicle.plate}? This action cannot be undone.`,
+      confirmText: 'Delete Vehicle',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      icon: 'trash',
+    });
+    if (!confirmed) return;
 
     setVehicleDeletingId(vehicle.vehicleId);
     try {
@@ -1506,12 +1523,21 @@ export default function CommuterDashboard() {
   const handleBookSpot = (spot: ParkingSpot) => {
     const activeVeh = vehicles.find(v => v.active)?.plate || 'VGV 8899';
     if (walletBalance === null) {
-      alert('Your wallet balance is not available yet. Open Wallet to review or top up your account.');
+      void showAlert({
+        title: 'Wallet Unavailable',
+        message: 'Your wallet balance is not available yet. Open Wallet to review or top up your account.',
+        variant: 'warning',
+      });
       setActiveTab('wallet');
       return;
     }
     if (walletBalance < spot.pricePerHour * 2) {
-      alert('Insufficient wallet balance. Please top up your wallet (minimum RM 10.00 required for reserve hold).');
+      void showAlert({
+        title: 'Insufficient Balance',
+        message: 'Insufficient wallet balance. Please top up your wallet (minimum RM 10.00 required for reserve hold).',
+        buttonText: 'Top Up Wallet',
+        variant: 'warning',
+      });
       openTopUpModal();
       return;
     }
@@ -1582,7 +1608,11 @@ export default function CommuterDashboard() {
   // IoT Bollard unlock flow
   const handleUnlockBollard = () => {
     if (gpsVerified !== 'verified') {
-      alert('Access Denied. You must arrive and verify your GPS location near the parking spot before unlocking.');
+      void showAlert({
+        title: 'GPS Verification Required',
+        message: 'Access Denied. You must arrive and verify your GPS location near the parking spot before unlocking.',
+        variant: 'warning',
+      });
       return;
     }
 

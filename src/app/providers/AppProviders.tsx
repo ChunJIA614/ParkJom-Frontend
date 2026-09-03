@@ -7,6 +7,7 @@ import { useEffect, type PropsWithChildren } from 'react';
 import { AuthProvider } from '@/features/auth/context/AuthContext';
 import { GOOGLE_WEB_CLIENT_ID } from '@/features/auth/googleAuth';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ModalProvider } from '@/contexts/ModalContext';
 
 function NativeUrlListener() {
   useEffect(() => {
@@ -52,7 +53,9 @@ function NativeUrlListener() {
 export function AppProviders({ children }: PropsWithChildren) {
   const auth = (
     <TooltipProvider>
-      <AuthProvider>{children}</AuthProvider>
+      <ModalProvider>
+        <AuthProvider>{children}</AuthProvider>
+      </ModalProvider>
     </TooltipProvider>
   );
 

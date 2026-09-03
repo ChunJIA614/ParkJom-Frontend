@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { showConfirm } from '@/contexts/ModalContext';
 import type { Booking, ParkingSpot } from '../types';
 import { saveJourneySession } from '../lib/journeySession';
 import { getWalkingRoute } from '@/services/walkingRoutes';
@@ -363,7 +364,15 @@ export default function ParkingDetail() {
 
   const handleDeleteReview = async (review: ParkingReview) => {
     if (!user?.token || review.reviewerId !== user.userId || reviewDeletingId !== null) return;
-    if (!window.confirm('Delete your review permanently? This cannot be undone.')) return;
+    const confirmed = await showConfirm({
+      title: 'Delete Review',
+      message: 'Delete your review permanently? This cannot be undone.',
+      confirmText: 'Delete Review',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      icon: 'trash',
+    });
+    if (!confirmed) return;
 
     setReviewDeletingId(review.reviewId);
     setReviewDeleteError(null);

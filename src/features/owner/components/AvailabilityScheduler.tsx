@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { showConfirm } from '@/contexts/ModalContext';
 import {
   createParkingAvailabilityRules,
   deleteParkingImage,
@@ -1021,9 +1022,14 @@ export default function AvailabilityScheduler({
 
   const deleteImage = async (image: ParkingSpotImage) => {
     if (!activeBay) return;
-    const confirmed = window.confirm(
-      `Delete ${image.originalFileName || 'this listing image'}? This cannot be undone.`,
-    );
+    const confirmed = await showConfirm({
+      title: 'Delete Image',
+      message: `Delete ${image.originalFileName || 'this listing image'}? This cannot be undone.`,
+      confirmText: 'Delete Image',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      icon: 'trash',
+    });
     if (!confirmed) return;
 
     const token = user?.token ?? '';

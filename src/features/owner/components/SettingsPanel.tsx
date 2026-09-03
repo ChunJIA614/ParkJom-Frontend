@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Building, Sliders, Save, CheckCircle, Wifi, Battery, Radio, ShieldAlert } from 'lucide-react';
+import { showAlert } from '@/contexts/ModalContext';
 
 interface SettingsPanelProps {
   bank: { name: string; accNo: string; holder: string };
@@ -18,7 +19,11 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
   const handleBankSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!accNo || !holder) {
-      alert('Please complete all bank credential fields.');
+      void showAlert({
+        title: 'Missing Credentials',
+        message: 'Please complete all bank credential fields before submitting.',
+        variant: 'warning',
+      });
       return;
     }
     onSaveBank({
@@ -26,7 +31,11 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
       accNo,
       holder
     });
-    alert(`Payout Preferences Updated!\n\nBank: ${bankName}\nAccount No: ${accNo}\nBeneficiary: ${holder}`);
+    void showAlert({
+      title: 'Preferences Updated',
+      message: `Your payout preferences have been saved successfully.\n\nBank: ${bankName}\nAccount No: ${accNo}\nBeneficiary: ${holder}`,
+      variant: 'success',
+    });
   };
 
   return (

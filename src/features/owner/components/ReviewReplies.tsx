@@ -18,6 +18,7 @@ import {
   type ReviewApiData,
   updateOwnerReply,
 } from '@/features/commuter/api/reviewApi';
+import { showConfirm } from '@/contexts/ModalContext';
 import type { ParkingBay } from '../types';
 
 interface ReviewRepliesProps {
@@ -143,7 +144,15 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
   };
 
   const removeReview = async (review: ReviewApiData) => {
-    if (!window.confirm('Delete this review permanently? This cannot be undone.')) return;
+    const confirmed = await showConfirm({
+      title: 'Delete Review',
+      message: 'Delete this review permanently? This cannot be undone.',
+      confirmText: 'Delete Review',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      icon: 'trash',
+    });
+    if (!confirmed) return;
 
     setDeletingId(review.reviewId);
     setReplyError(null);

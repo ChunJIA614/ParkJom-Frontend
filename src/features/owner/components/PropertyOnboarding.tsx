@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UploadCloud, CheckCircle, FileText, Landmark, ShieldCheck, HelpCircle, FileCheck, Loader2, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { showAlert } from '@/contexts/ModalContext';
 import { createParking, searchMalaysiaLocations } from '../api/propertyApi';
 import { loadRailStops } from '@/services/transitData';
 
@@ -300,15 +301,18 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       });
 
       // Success feedback
-      alert(
-        `✅ ${parkResult.message || 'Parking registered successfully.'}\n\n` +
-        `Property: ${propName}\n` +
-        `Parking Spot ID: ${parkResult.parkingSpotId}\n` +
-        `Verification Request ID: ${parkResult.verificationRequestId}\n` +
-        `Bay: ${bayNumber} (Level ${level})\n` +
-        `Station: ${stationName}\n\n` +
-        `Admin will review your documents.`
-      );
+      await showAlert({
+        title: 'Parking Registered Successfully',
+        message:
+          `${parkResult.message || 'Your parking space has been registered.'}\n\n` +
+          `Property: ${propName}\n` +
+          `Parking Spot ID: ${parkResult.parkingSpotId}\n` +
+          `Verification Request ID: ${parkResult.verificationRequestId}\n` +
+          `Bay: ${bayNumber} (Level ${level})\n` +
+          `Station: ${stationName}\n\n` +
+          `Our administration team will review your submitted verification documents shortly.`,
+        variant: 'success',
+      });
 
       // Reset Form
       setPropName('');
