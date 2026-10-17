@@ -50,6 +50,7 @@ import {
   AppNotification,
   WalletTopUpStatus,
   WalletTopUpState,
+  WalletTopUpHistoryItem,
 } from '../types';
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
@@ -73,7 +74,13 @@ import {
   getFavoriteParking,
   updateFavoriteParking,
 } from '../api/favoriteApi';
-import { createWalletTopUp, getWalletSummary, getWalletTopUpStatus } from '../api/walletApi';
+import {
+  createWalletTopUp,
+  getWalletSummary,
+  getWalletTopUpHistory,
+  getWalletTopUpStatus,
+} from '../api/walletApi';
+import { cancelBooking } from '../api/bookingApi';
 import { addVehicle, deleteVehicle, getMyVehicles, modifyVehicle } from '../api/vehicleApi';
 import { getVehicleCatalog, type VehicleCatalogEntry } from '../api/vehicleCatalogApi';
 import { updateReview } from '../api/reviewApi';
@@ -366,6 +373,9 @@ export default function CommuterDashboard() {
   const [topUpError, setTopUpError] = useState<string | null>(null);
   const [pendingTopUp, setPendingTopUp] = useState<PendingWalletTopUp | null>(() => loadPendingWalletTopUp(user?.userId));
   const [walletTopUpFeedback, setWalletTopUpFeedback] = useState<WalletTopUpFeedback | null>(null);
+  const [topUpHistory, setTopUpHistory] = useState<WalletTopUpHistoryItem[]>([]);
+  const [isTopUpHistoryLoading, setIsTopUpHistoryLoading] = useState(false);
+  const [cancelingBookingId, setCancelingBookingId] = useState<number | null>(null);
   const handledTopUpReturnRef = useRef<string | null>(null);
   const walletReconciliationRef = useRef(false);
   const localCheckoutWindowRef = useRef<Window | null>(null);
@@ -1174,13 +1184,62 @@ export default function CommuterDashboard() {
     setShowTopUpModal(true);
   };
 
+  const refreshTopUpHistory = useCallback(async () => {
+    if (!user?.token) return;
+    setIsTopUpHistoryLoading(true);
+    try {
+      const res = await getWalletTopUpHistory(user.token, 1, 10);
+      setTopUpHistory(res.data);
+    } catch {
+      // keep existing
+    } finally {
+      setIsTopUpHistoryLoading(false);
+    }
+  }, [user?.token]);
+
+  const handleCancelBooking = async (bookingId: number) => {
+    if (!user?.token || cancelingBookingId !== null) return;
+    const confirmed = await showConfirm({
+      title: 'Cancel Booking',
+      message: 'Are you sure you want to cancel this booking? This will release your parking spot.',
+      confirmText: 'Yes, Cancel',
+      cancelText: 'Keep Booking',
+      variant: 'danger',
+      icon: 'trash',
+    });
+    if (!confirmed) return;
+
+    setCancelingBookingId(bookingId);
+    try {
+      await cancelBooking(user.token, {
+        bookingId,
+        cancellationReason: 'Cancelled by commuter',
+      });
+      await showAlert({
+        title: 'Booking Cancelled',
+        message: 'Your booking has been cancelled successfully.',
+        variant: 'success',
+      });
+      setBookingHistoryRefreshKey((prev) => prev + 1);
+    } catch (err) {
+      await showAlert({
+        title: 'Cancellation Failed',
+        message: err instanceof Error ? err.message : 'Unable to cancel booking.',
+        variant: 'danger',
+      });
+    } finally {
+      setCancelingBookingId(null);
+    }
+  };
+
   useEffect(() => {
     if (activeTab !== 'wallet' || !user?.token) return;
 
     void refreshWalletBalance();
+    void refreshTopUpHistory();
     const storedPayment = loadPendingWalletTopUp(user.userId);
     if (storedPayment) void reconcilePendingTopUp(storedPayment);
-  }, [activeTab, reconcilePendingTopUp, refreshWalletBalance, user?.token, user?.userId]);
+  }, [activeTab, reconcilePendingTopUp, refreshTopUpHistory, refreshWalletBalance, user?.token, user?.userId]);
 
   // Stripe's web callback is configured for the deployed site. On localhost,
   // re-check the pending session when the local app becomes visible again.
@@ -2372,8 +2431,35 @@ export default function CommuterDashboard() {
                 )}
               </div>
               <div className="bg-white rounded-2xl border border-[#e8eaed] p-5">
-                <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider mb-3">Top-up Activity</h3>
-                {(walletTopUpFeedback?.payment || pendingTopUp) ? (
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Top-up Activity</h3>
+                  <button
+                    type="button"
+                    onClick={() => void refreshTopUpHistory()}
+                    disabled={isTopUpHistoryLoading}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:underline disabled:opacity-50"
+                  >
+                    <RefreshCw size={12} className={isTopUpHistoryLoading ? 'animate-spin' : ''} />
+                    Refresh
+                  </button>
+                </div>
+                {topUpHistory.length > 0 ? (
+                  <div className="space-y-2">
+                    {topUpHistory.map((item) => (
+                      <div key={item.paymentId} className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] p-3.5">
+                        <div>
+                          <p className="text-[13px] font-semibold text-[#111]">Wallet top-up</p>
+                          <p className="text-[11px] text-[#9ca3af]">
+                            Payment #{item.paymentId} · {item.status} · {new Date(item.createdAt).toLocaleDateString('en-MY')}
+                          </p>
+                        </div>
+                        <span className={`text-[13px] font-semibold ${item.status === 'Completed' ? 'text-[#007AFF]' : 'text-[#5f6368]'}`}>
+                          +{item.currency} {item.amount.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (walletTopUpFeedback?.payment || pendingTopUp) ? (
                   <div className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] p-3.5">
                     <div>
                       <p className="text-[13px] font-semibold text-[#111]">Wallet top-up</p>
@@ -2601,11 +2687,23 @@ export default function CommuterDashboard() {
                       </div>
                       <div className="text-left sm:text-right">
                         <span className="text-[13px] font-semibold text-[#111]">RM {booking.totalAmount.toFixed(2)}</span>
-                        <p className="text-[10px] font-medium text-[#16a34a]">{booking.bookingStatus}</p>
+                        <p className={`text-[10px] font-medium ${booking.bookingStatus.toLowerCase() === 'cancelled' ? 'text-[#dc2626]' : 'text-[#16a34a]'}`}>{booking.bookingStatus}</p>
                       </div>
                     </div>
 
-                    {item.canReview && !review && <button type="button" onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })} className="mt-3 text-[11px] font-semibold text-[#007AFF] hover:underline">Write a review</button>}
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      {item.canReview && !review && <button type="button" onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })} className="text-[11px] font-semibold text-[#007AFF] hover:underline">Write a review</button>}
+                      {booking.bookingStatus.toLowerCase() === 'confirmed' && (
+                        <button
+                          type="button"
+                          disabled={cancelingBookingId === booking.bookingId}
+                          onClick={() => void handleCancelBooking(booking.bookingId)}
+                          className="text-[11px] font-semibold text-[#dc2626] hover:underline disabled:opacity-50"
+                        >
+                          {cancelingBookingId === booking.bookingId ? 'Cancelling…' : 'Cancel booking'}
+                        </button>
+                      )}
+                    </div>
 
                     {review && !isEditingReview && <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8f9fa] p-3">
                       <div className="flex items-start justify-between gap-3">

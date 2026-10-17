@@ -1,5 +1,12 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
-import type { WalletSummary, WalletTopUpResponse, WalletTopUpState, WalletTopUpStatus } from '../types';
+import type {
+  WalletHistoryResponse,
+  WalletSummary,
+  WalletTopUpHistoryResponse,
+  WalletTopUpResponse,
+  WalletTopUpState,
+  WalletTopUpStatus,
+} from '../types';
 
 type WalletTopUpWireResponse = Partial<WalletTopUpResponse> & {
   Code?: number;
@@ -183,4 +190,68 @@ export async function createWalletTopUp(
   }
 
   return result;
+}
+
+export async function getWalletTopUpHistory(
+  token: string,
+  page = 1,
+  pageSize = 10,
+  signal?: AbortSignal,
+): Promise<WalletTopUpHistoryResponse> {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  const response = await apiRequest(`/wallet/topup/history?${query.toString()}`, {
+    method: 'GET',
+    headers: authorizationHeaders(token),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Unable to load wallet top-up history.'));
+  }
+
+  const payload = (await response.json().catch(() => null)) as WalletTopUpHistoryResponse | null;
+  if (!payload || !payload.success) {
+    throw new Error(payload?.message || 'Unable to load wallet top-up history.');
+  }
+
+  return payload;
+}
+
+export interface WalletHistoryParams {
+  page?: number;
+  pageSize?: number;
+  month?: string;
+  type?: string;
+  status?: string;
+}
+
+export async function getWalletHistory(
+  token: string,
+  params: WalletHistoryParams = {},
+  signal?: AbortSignal,
+): Promise<WalletHistoryResponse> {
+  const query = new URLSearchParams();
+  if (params.page != null) query.set('page', String(params.page));
+  if (params.pageSize != null) query.set('pageSize', String(params.pageSize));
+  if (params.month) query.set('month', params.month);
+  if (params.type) query.set('type', params.type);
+  if (params.status) query.set('status', params.status);
+  const qStr = query.toString();
+
+  const response = await apiRequest(`/wallet/history${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: authorizationHeaders(token),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Unable to load wallet transaction history.'));
+  }
+
+  const payload = (await response.json().catch(() => null)) as WalletHistoryResponse | null;
+  if (!payload || !payload.success) {
+    throw new Error(payload?.message || 'Unable to load wallet transaction history.');
+  }
+
+  return payload;
 }

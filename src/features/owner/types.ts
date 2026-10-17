@@ -164,3 +164,148 @@ export interface ScheduleBlock {
   isActive: boolean;
   rate: number;
 }
+
+export interface OwnerSpotBookingItem {
+  bookingId: number;
+  bookingReference: string;
+  parkingSpotId: number;
+  parkingLabel: string;
+  renterId: number;
+  renterName: string;
+  renterEmail: string;
+  renterPhoneNumber: string;
+  vehicleId: number;
+  vehicleNumberPlate: string;
+  startDate: string;
+  endDate: string;
+  bookedDays: number;
+  bookingStatus: string;
+  renterTotal: number;
+  ownerPayoutAmount: number;
+  createdAt: string;
+}
+
+export interface OwnerSpotBookingsResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  parkingSpotId: number;
+  month: string | null;
+  status: string | null;
+  timeZone: string;
+  totalCount: number;
+  data: OwnerSpotBookingItem[];
+}
+
+export interface OwnerSpotBookingDetail {
+  bookingId: number;
+  bookingReference: string;
+  parkingSpotId: number;
+  parkingLabel: string;
+  renter: {
+    renterId: number;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    email: string;
+    phoneNumber: string;
+  };
+  vehicle: {
+    vehicleId: number;
+    numberPlate: string;
+    brand: string;
+    model: string;
+    color: string;
+  };
+  startDate: string;
+  endDate: string;
+  bookedDays: number;
+  bookingStatus: string;
+  cancellationReason: string | null;
+  cancelledAt: string | null;
+  checkedInAt: string | null;
+  actualExitAt: string | null;
+  financial: {
+    rateType: string;
+    ratePerDaySnapshot: number;
+    rentalSubtotal: number;
+    renterTotal: number;
+    platformCommissionRate: number;
+    platformCommissionAmount: number;
+    ownerPayoutAmount: number;
+    refundAmount: number;
+    overstayHours: number;
+    overstayPenaltyAmount: number;
+  };
+  transactions: Array<{
+    transactionId: number;
+    transactionType: string;
+    amount: number;
+    paymentMethod: string;
+    transactionStatus: string;
+    referenceNumber: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OwnerSpotBookingDetailResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  timeZone: string;
+  data: OwnerSpotBookingDetail;
+}
+
+export interface OwnerEarningsSummary {
+  code: number;
+  success: boolean;
+  message: string;
+  month: string | null;
+  timeZone: string;
+  totalEarnings: number;
+  availableEarnings: number;
+  heldEarnings: number;
+  paidEarnings: number;
+  monthlyEarnings: number | null;
+  totalBookings: number;
+  grossEarnings: number;
+  bookingCounts: {
+    pending: number;
+    confirmed: number;
+    active: number;
+    completed: number;
+    cancelled: number;
+    expired: number;
+  };
+}
+
+export interface OwnerEarningsTransactionItem {
+  bookingId: number;
+  bookingReference: string;
+  parkingSpotId: number;
+  parkingLabel: string;
+  startDate: string;
+  endDate: string;
+  bookingStatus: string;
+  payout: number;
+  commission: number;
+  cancellation: number;
+  penalty: number;
+  createdAt: string;
+}
+
+export interface OwnerEarningsTransactionsResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  type: string | null;
+  month: string | null;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  data: OwnerEarningsTransactionItem[];
+}

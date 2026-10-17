@@ -128,3 +128,96 @@ export interface AppNotification {
   read: boolean;
   type: 'alert' | 'wallet' | 'booking' | 'general';
 }
+
+export interface PublicParkingSpotImage {
+  parkingSpotId: number;
+  mediaFileId: number;
+  resourceType: string;
+  format: string;
+  originalFileName: string;
+  uploadedAt: string;
+  secureUrl?: string;
+}
+
+export interface PublicParkingSpotDetail {
+  parkingSpotId: number;
+  propertyId: number;
+  propertyName: string;
+  address: string;
+  ownerId: number;
+  ownerName: string;
+  parkingLabel: string;
+  availabilityStatus: string | number;
+  verificationStatus: string | number;
+  monthlyRate: number;
+  dailyRate: number | null;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+  images: PublicParkingSpotImage[];
+}
+
+export interface PublicParkingSpotResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data: PublicParkingSpotDetail;
+}
+
+export interface WalletTopUpHistoryItem {
+  paymentId: number;
+  amount: number;
+  currency: string;
+  status: string;
+  sessionId: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface WalletTopUpHistoryResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  data: WalletTopUpHistoryItem[];
+}
+
+export interface WalletTransactionItem {
+  transactionId: number;
+  type: string;
+  amount: number;
+  status: string;
+  paymentMethod: string;
+  referenceNumber: string;
+  bookingId: number | null;
+  createdAt: string;
+}
+
+export interface WalletHistoryResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  month: string | null;
+  type: string | null;
+  status: string | null;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  data: WalletTransactionItem[];
+}
+
+export interface CancelBookingRequest {
+  bookingId: number;
+  cancellationReason: string;
+}
+
+export interface CancelBookingResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data?: unknown;
+}

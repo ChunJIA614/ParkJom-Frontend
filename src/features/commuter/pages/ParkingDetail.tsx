@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Navigation, ShieldCheck,
   Car, Wifi, CreditCard,
@@ -13,6 +13,7 @@ import { showConfirm } from '@/contexts/ModalContext';
 import type { Booking, ParkingSpot } from '../types';
 import { saveJourneySession } from '../lib/journeySession';
 import { getWalkingRoute } from '@/services/walkingRoutes';
+import { getPublicParkingSpot } from '../api/parkingApi';
 import {
   confirmBooking,
   createBookingQuote,
@@ -96,17 +97,78 @@ const getCalendarDateKeys = (month: Date) => {
 
 export default function ParkingDetail() {
   const navigate = useNavigate();
+  const { id: routeId } = useParams<{ id: string }>();
   const { user, logout } = useAuth();
   const { state } = useLocation() as {
     state?: { spot: MockParkingSpot; stationCoords: { lat: number; lon: number } | null; stationName: string };
   };
 
-  const spot = state?.spot;
-  const stationCoords = state?.stationCoords;
-  const stationName = state?.stationName;
+  const [fetchedSpot, setFetchedSpot] = useState<MockParkingSpot | null>(null);
+  const [isFetchingSpot, setIsFetchingSpot] = useState(false);
+  const [fetchSpotError, setFetchSpotError] = useState<string | null>(null);
+
+  const spot = state?.spot ?? fetchedSpot;
+  const stationCoords = state?.stationCoords ?? null;
+  const stationName = state?.stationName ?? (spot ? `${spot.propertyName || spot.address}` : '');
 
   const [walkingInfo, setWalkingInfo] = useState<WalkingInfo | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+
+  useEffect(() => {
+    if (state?.spot || !routeId) return;
+    const controller = new AbortController();
+    setIsFetchingSpot(true);
+    setFetchSpotError(null);
+    getPublicParkingSpot(routeId, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        const d = result.data;
+        const primaryImg =
+          d.images?.[0]?.secureUrl ||
+          (d.images?.[0]?.mediaFileId ? `/api/media/view/image/${d.images[0].mediaFileId}` : '') ||
+          'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80';
+        const mockSpot: MockParkingSpot = {
+          id: String(d.parkingSpotId),
+          parkingSpotId: d.parkingSpotId,
+          parkingLabel: d.parkingLabel || 'Bay',
+          propertyId: d.propertyId,
+          propertyName: d.propertyName,
+          address: d.address,
+          latitude: 0,
+          longitude: 0,
+          lat: 0,
+          lng: 0,
+          lon: 0,
+          stationName: '',
+          distanceToStation: 0,
+          timeToStationInMinutes: 0,
+          availabilityStatus: String(d.availabilityStatus),
+          monthlyRate: d.monthlyRate,
+          dailyRate: d.dailyRate,
+          primaryImageUrl: primaryImg,
+          photoUrl: primaryImg,
+          price: d.dailyRate ?? (d.monthlyRate ? Number((d.monthlyRate / 30).toFixed(2)) : 0),
+          station: 'Transit Area',
+          name: d.propertyName || d.address,
+          pricePerHour: d.dailyRate ?? 0,
+          distance: 0,
+          available: d.isPublished,
+          type: 'Condo Bay',
+          owner: d.ownerName || 'Bay Owner',
+        };
+        setFetchedSpot(mockSpot);
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          setFetchSpotError(err instanceof Error ? err.message : 'Unable to load parking details.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsFetchingSpot(false);
+      });
+
+    return () => controller.abort();
+  }, [routeId, state?.spot]);
 
   // ── Booking ──
   const today = new Date();
@@ -393,12 +455,23 @@ export default function ParkingDetail() {
     }
   };
 
+  if (isFetchingSpot) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
+        <div className="text-center space-y-4">
+          <Loader2 size={36} className="mx-auto text-[#007AFF] animate-spin" />
+          <p className="text-[#5f6368] font-medium text-[14px]">Loading parking spot...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!spot) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
         <div className="text-center space-y-4">
           <MapPin size={40} className="mx-auto text-[#dadce0]" />
-          <p className="text-[#5f6368] font-medium text-[15px]">No parking spot selected.</p>
+          <p className="text-[#5f6368] font-medium text-[15px]">{fetchSpotError || 'No parking spot selected.'}</p>
           <button onClick={() => navigate('/commuter')} className="text-[13px] text-[#007AFF] font-semibold hover:underline">
             &larr; Back to Transit Map
           </button>

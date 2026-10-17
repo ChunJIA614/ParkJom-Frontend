@@ -5,10 +5,12 @@ export function searchMalaysiaLocations(query: string): Promise<Response> {
   return fetch(url);
 }
 
-export function createParking(token: string, formData: FormData): Promise<Response> {
-  return apiRequest('/parking/create-parking', {
+export function registerParking(token: string, formData: FormData): Promise<Response> {
+  return apiRequest('/owner/parking/register', {
     method: 'POST',
     headers: authorizationHeaders(token),
     body: formData,
   });
 }
+
+export const createParking = registerParking;

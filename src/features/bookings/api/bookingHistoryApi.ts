@@ -273,17 +273,29 @@ export function getCommuterBookingHistory(
   token: string,
   page = 1,
   pageSize = 10,
-  filters: BookingHistoryFilters = {},
+  filters?: BookingHistoryFilters | AbortSignal,
   signal?: AbortSignal,
 ) {
-  return getBookingHistory('commuter/bookings/my-bookings', token, page, pageSize, filters, signal);
+  const actualSignal = filters instanceof AbortSignal ? filters : signal;
+  const actualFilters = filters instanceof AbortSignal ? {} : (filters ?? {});
+  return getBookingHistory('/commuter/bookings/my-bookings', token, page, pageSize, actualFilters, actualSignal);
 }
 
 export async function getOwnerBookingHistory(
   token: string,
-  signal?: AbortSignal,
+  params?: { spotId?: number; month?: string; status?: string } | AbortSignal,
+  maybeSignal?: AbortSignal,
 ): Promise<OwnerBookingHistoryResponse> {
-  const response = await apiRequest('/parking/bookings/history', {
+  const signal = params instanceof AbortSignal ? params : maybeSignal;
+  const options = params instanceof AbortSignal ? undefined : params;
+
+  const query = new URLSearchParams();
+  if (options?.spotId != null) query.set('spotId', String(options.spotId));
+  if (options?.month) query.set('month', options.month);
+  if (options?.status) query.set('status', options.status);
+  const qStr = query.toString();
+
+  const response = await apiRequest(`/owner/bookings${qStr ? `?${qStr}` : ''}`, {
     method: 'GET',
     headers: authorizationHeaders(token),
     signal,

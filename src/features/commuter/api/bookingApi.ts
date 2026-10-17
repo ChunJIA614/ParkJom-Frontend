@@ -228,7 +228,7 @@ export async function confirmBooking(
   vehicleId: number,
   idempotencyKey: string,
 ): Promise<ConfirmBookingResponse> {
-  const response = await apiRequest('commuter/bookings/confirm', {
+  const response = await apiRequest('/commuter/bookings/confirm', {
     method: 'POST',
     headers: {
       ...authorizationHeaders(token, 'application/json'),
@@ -242,4 +242,32 @@ export async function confirmBooking(
     'Unable to confirm this booking.',
     'The booking service returned an unreadable confirmation.',
   );
+}
+
+export async function cancelBooking(
+  token: string,
+  payload: { bookingId: number; cancellationReason: string },
+): Promise<{ code: number; success: boolean; message: string; data?: unknown }> {
+  const response = await apiRequest('/commuter/bookings/cancel', {
+    method: 'POST',
+    headers: authorizationHeaders(token, 'application/json'),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Unable to cancel this booking.'));
+  }
+
+  const result = (await response.json().catch(() => null)) as {
+    code: number;
+    success: boolean;
+    message: string;
+    data?: unknown;
+  } | null;
+
+  if (!result || !result.success) {
+    throw new Error(result?.message || 'Unable to cancel this booking.');
+  }
+
+  return result;
 }
