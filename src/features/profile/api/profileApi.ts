@@ -10,7 +10,6 @@ import {
   type AdminUserVehicle,
   type BackendUserType,
   type DeactivateAccountRequest,
-  type SelfServiceUserType,
   type UpdateUserProfileRequest,
   type UserProfile,
   type UserProfileResult,
@@ -219,16 +218,6 @@ export async function removeProfilePicture(token: string): Promise<UserProfileRe
     headers: authorizationHeaders(token),
   });
   return toProfileResult(response, 'Unable to remove your profile picture.');
-}
-
-/** PUT /api/user/profile/role — 2 = PropertyOwner, 3 = Renter. Returns a refreshed jwtToken. */
-export async function switchMyRole(token: string, userType: SelfServiceUserType): Promise<UserProfileResult> {
-  const response = await apiRequest('/user/profile/role', {
-    method: 'PUT',
-    headers: authorizationHeaders(token, 'application/json'),
-    body: JSON.stringify({ userType }),
-  });
-  return toProfileResult(response, 'Unable to switch your role.');
 }
 
 /**

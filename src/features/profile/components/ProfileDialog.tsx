@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
-  ArrowLeftRight,
   Building2,
   Camera,
   Car,
@@ -21,25 +20,23 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { showAlert, showConfirm } from '@/contexts/ModalContext';
-import { getDashboardPath } from '@/app/routes/roleRouting';
 import {
   deactivateMyAccount,
   getMyProfile,
   removeProfilePicture,
-  switchMyRole,
   updateMyProfile,
   uploadProfilePicture,
   validateProfilePicture,
 } from '../api/profileApi';
-import { mergeProfileIntoSession, roleForUserType } from '../lib/session';
-import { USER_TYPE_LABELS, type SelfServiceUserType, type UserProfile, type UserProfileResult } from '../types';
+import { mergeProfileIntoSession } from '../lib/session';
+import { USER_TYPE_LABELS, type UserProfile, type UserProfileResult } from '../types';
 
 interface ProfileDialogProps {
   open: boolean;
   onClose: () => void;
 }
 
-type BusyAction = 'load' | 'save' | 'upload' | 'remove' | 'role' | 'deactivate' | null;
+type BusyAction = 'load' | 'save' | 'upload' | 'remove' | 'deactivate' | null;
 
 const currency = (value: number) => `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -194,33 +191,6 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
     });
   };
 
-  const handleSwitchRole = async () => {
-    if (!profile || profile.userType === 1) return;
-    const target: SelfServiceUserType = profile.userType === 2 ? 3 : 2;
-    const confirmed = await showConfirm({
-      title: `Switch to ${USER_TYPE_LABELS[target]}`,
-      message: target === 2
-        ? 'You will move to the Owner Portal to list and manage parking spaces. You can switch back at any time.'
-        : 'You will move to the Commuter workspace to find and book parking. Your listings stay saved and you can switch back at any time.',
-      confirmText: 'Switch role',
-      variant: 'info',
-      icon: 'info',
-    });
-    if (!confirmed) return;
-
-    void runAction('role', async () => {
-      const result = await switchMyRole(token, target);
-      applyResult(result);
-      onClose();
-      navigate(getDashboardPath(roleForUserType(result.profile.userType)), { replace: true });
-      void showAlert({
-        title: 'Role switched',
-        message: result.message || `You are now using ParkJom as a ${USER_TYPE_LABELS[result.profile.userType]}.`,
-        variant: 'success',
-        icon: 'success',
-      });
-    });
-  };
 
   const handleDeactivate = async () => {
     if (!deactivateAcknowledged) return;
@@ -432,27 +402,20 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
             </div>
           </form>
 
-          {/* Role switching (Renter ↔ PropertyOwner only) */}
-          {!isAdmin && profile && (
-            <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.06] bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          {/* Account role (Single fixed role) */}
+          {profile && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-black/[0.06] bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div>
                 <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f]">
-                  <ArrowLeftRight size={15} className="text-[var(--workspace-accent,#007AFF)]" /> Account role
+                  <UserRound size={15} className="text-[var(--workspace-accent,#007AFF)]" /> Account role
                 </h3>
                 <p className="mt-1 text-[11px] text-[#6e6e73]">
-                  You are using ParkJom as a <strong>{USER_TYPE_LABELS[userType]}</strong>.
-                  {userType === 3 ? ' Have a parking space? Switch to list it.' : ' Need parking yourself? Switch to book spaces.'}
+                  You are registered as a <strong>{USER_TYPE_LABELS[userType]}</strong>. Each account is assigned a single fixed role.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleSwitchRole()}
-                disabled={isBusy}
-                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] transition-colors hover:bg-[#f5f5f7] disabled:opacity-50"
-              >
-                {busy === 'role' ? <Loader2 size={14} className="animate-spin" /> : <ArrowLeftRight size={14} />}
-                Switch to {USER_TYPE_LABELS[userType === 2 ? 3 : 2]}
-              </button>
+              <span className="inline-flex shrink-0 items-center rounded-full bg-[#f5f5f7] px-3.5 py-1.5 text-[12px] font-medium text-[#1d1d1f]">
+                {USER_TYPE_LABELS[userType]}
+              </span>
             </div>
           )}
 

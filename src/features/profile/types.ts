@@ -6,7 +6,6 @@
 
 /** Backend enum: Admin=1, PropertyOwner=2, Renter=3 */
 export type BackendUserType = 1 | 2 | 3;
-export type SelfServiceUserType = 2 | 3;
 export type AccountStatus = 'Active' | 'Suspended' | 'Deactivated';
 
 export const USER_TYPE_LABELS: Record<BackendUserType, string> = {
@@ -53,10 +52,6 @@ export interface UpdateUserProfileRequest {
   firstName?: string;
   lastName?: string;
   phoneNumber?: string;
-}
-
-export interface SwitchUserRoleRequest {
-  userType: SelfServiceUserType;
 }
 
 export interface DeactivateAccountRequest {
