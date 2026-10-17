@@ -1,11 +1,11 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
+import { SUPPORT_API } from './supportApiConfig';
 import type {
   AccessOverrideResult,
   AssignIncidentInput,
   CreateOperationalIncidentInput,
   ExecuteAccessOverrideInput,
   OperationalIncidentDetail,
-  OperationalIncidentItem,
   OperationalIncidentListResponse,
   SupportTicket,
   TransitionIncidentInput,
@@ -14,17 +14,15 @@ import { normalizeTicket } from './supportTicketService';
 
 async function readJson<T>(response: Response, fallback: string): Promise<T> {
   if (!response.ok) throw new Error(await readApiError(response, fallback));
-  const payload = (await response.json().catch(() => null)) as {
-    code?: number;
-    success?: boolean;
-    message?: string;
-    data?: T;
-  } | null;
+  const payload = (await response.json().catch(() => null)) as any;
 
-  if (!payload || payload.success === false || payload.data === undefined) {
+  if (!payload) {
+    throw new Error(fallback);
+  }
+  if (payload.success === false && payload.data === undefined) {
     throw new Error(payload?.message || fallback);
   }
-  return payload.data;
+  return (payload.data !== undefined ? payload.data : payload) as T;
 }
 
 /**
@@ -35,7 +33,7 @@ export async function createOperationalIncident(
   token: string,
   input: CreateOperationalIncidentInput,
 ): Promise<OperationalIncidentDetail> {
-  const response = await apiRequest('/admin/support/incidents', {
+  const response = await apiRequest(SUPPORT_API.ADMIN.INCIDENTS.CREATE, {
     method: 'POST',
     headers: authorizationHeaders(token, 'application/json'),
     body: JSON.stringify({
@@ -54,27 +52,34 @@ export async function createOperationalIncident(
 
 /**
  * 2. List Operational Incidents
- * GET /api/admin/support/incidents?page=1&pageSize=20
+ * GET /api/admin/support/incidents?status=&priority=&team=&page=1&pageSize=25
  */
 export async function listOperationalIncidents(
   token: string,
   page = 1,
-  pageSize = 20,
+  pageSize = 25,
   status?: string,
+  priority?: string,
+  team?: string,
 ): Promise<OperationalIncidentListResponse> {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (status && status !== 'All') {
     query.set('status', status);
   }
+  if (priority && priority !== 'All') {
+    query.set('priority', priority);
+  }
+  if (team && team !== 'All') {
+    query.set('team', team);
+  }
 
-  const response = await apiRequest(`/admin/support/incidents?${query.toString()}`, {
+  const response = await apiRequest(`${SUPPORT_API.ADMIN.INCIDENTS.LIST}?${query.toString()}`, {
     method: 'GET',
     headers: authorizationHeaders(token),
   });
 
   const raw = await readJson<any>(response, 'Unable to load operational incidents.');
 
-  // Normalize if raw is wrapped in items or an array
   if (Array.isArray(raw)) {
     return {
       items: raw,
@@ -98,13 +103,13 @@ export async function listOperationalIncidents(
 
 /**
  * 2b. Get Operational Incident Details
- * GET /api/admin/support/incidents/{incidentId}
+ * GET /api/admin/support/incidents/{incidentIdentifier}
  */
 export async function getOperationalIncidentDetails(
   token: string,
   incidentId: number | string,
 ): Promise<OperationalIncidentDetail> {
-  const response = await apiRequest(`/admin/support/incidents/${encodeURIComponent(String(incidentId))}`, {
+  const response = await apiRequest(SUPPORT_API.ADMIN.INCIDENTS.DETAIL(incidentId), {
     method: 'GET',
     headers: authorizationHeaders(token),
   });
@@ -114,14 +119,13 @@ export async function getOperationalIncidentDetails(
 
 /**
  * 3. Acknowledge Incident
-
  * POST /api/admin/support/incidents/{incidentId}/acknowledge
  */
 export async function acknowledgeIncident(
   token: string,
   incidentId: number | string,
 ): Promise<OperationalIncidentDetail> {
-  const response = await apiRequest(`/admin/support/incidents/${encodeURIComponent(String(incidentId))}/acknowledge`, {
+  const response = await apiRequest(SUPPORT_API.ADMIN.INCIDENTS.ACKNOWLEDGE(incidentId), {
     method: 'POST',
     headers: authorizationHeaders(token, 'application/json'),
     body: '{}',
@@ -133,19 +137,19 @@ export async function acknowledgeIncident(
 /**
  * 4. Assign Incident Responder
  * POST /api/admin/support/incidents/{incidentId}/assign
- * JSON: { assignedTeam, assignedUserId }
+ * JSON: { assignedUserId?, assignedTeam? }
  */
 export async function assignIncidentResponder(
   token: string,
   incidentId: number | string,
   input: AssignIncidentInput,
 ): Promise<OperationalIncidentDetail> {
-  const response = await apiRequest(`/admin/support/incidents/${encodeURIComponent(String(incidentId))}/assign`, {
+  const response = await apiRequest(SUPPORT_API.ADMIN.INCIDENTS.ASSIGN(incidentId), {
     method: 'POST',
     headers: authorizationHeaders(token, 'application/json'),
     body: JSON.stringify({
       assignedTeam: input.assignedTeam || 'ParkingOperations',
-      assignedUserId: Number(input.assignedUserId),
+      ...(input.assignedUserId !== undefined ? { assignedUserId: Number(input.assignedUserId) } : {}),
     }),
   });
 
@@ -155,7 +159,7 @@ export async function assignIncidentResponder(
 /**
  * 5. Execute Remote Gate Access Override
  * POST /api/admin/support/incidents/{incidentId}/access-override
- * JSON: { bookingId, reason, action }
+ * JSON: { bookingId, reason, confirmation, action }
  */
 export async function executeAccessOverride(
   token: string,
@@ -163,13 +167,14 @@ export async function executeAccessOverride(
   input: ExecuteAccessOverrideInput,
 ): Promise<AccessOverrideResult> {
   const response = await apiRequest(
-    `/admin/support/incidents/${encodeURIComponent(String(incidentId))}/access-override`,
+    SUPPORT_API.ADMIN.INCIDENTS.ACCESS_OVERRIDE(incidentId),
     {
       method: 'POST',
       headers: authorizationHeaders(token, 'application/json'),
       body: JSON.stringify({
         bookingId: Number(input.bookingId),
         reason: input.reason.trim(),
+        confirmation: input.confirmation ?? true,
         action: input.action || 'RemoteOpenGate',
       }),
     },
@@ -195,7 +200,7 @@ export async function linkTicketToIncident(
     : { incidentReference: incStr };
 
   const response = await apiRequest(
-    `/admin/support/tickets/${encodeURIComponent(String(ticketIdentifier).trim())}/link-incident`,
+    SUPPORT_API.ADMIN.TICKETS.LINK_INCIDENT(String(ticketIdentifier).trim()),
     {
       method: 'POST',
       headers: authorizationHeaders(token, 'application/json'),
@@ -224,7 +229,7 @@ export async function linkTicketFromIncident(
     : { ticketReference: tktStr };
 
   const response = await apiRequest(
-    `/admin/support/incidents/${encodeURIComponent(String(incidentIdentifier).trim())}/link-ticket`,
+    SUPPORT_API.ADMIN.INCIDENTS.LINK_TICKET(String(incidentIdentifier).trim()),
     {
       method: 'POST',
       headers: authorizationHeaders(token, 'application/json'),
@@ -238,19 +243,21 @@ export async function linkTicketFromIncident(
 /**
  * 7. Transition Incident Status
  * POST /api/admin/support/incidents/{incidentId}/transition
- * JSON: { toStatus, rootCause }
+ * JSON: { toStatus, reason?, rootCause? }
  */
 export async function transitionIncidentStatus(
   token: string,
   incidentId: number | string,
   input: TransitionIncidentInput,
 ): Promise<OperationalIncidentDetail> {
-  const response = await apiRequest(`/admin/support/incidents/${encodeURIComponent(String(incidentId))}/transition`, {
+  const reasonText = (input.reason || input.rootCause || '').trim();
+  const response = await apiRequest(SUPPORT_API.ADMIN.INCIDENTS.TRANSITION(incidentId), {
     method: 'POST',
     headers: authorizationHeaders(token, 'application/json'),
     body: JSON.stringify({
       toStatus: input.toStatus,
-      rootCause: input.rootCause.trim(),
+      reason: reasonText,
+      rootCause: reasonText,
     }),
   });
 

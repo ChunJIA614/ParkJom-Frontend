@@ -1,5 +1,6 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
 import { publishLocalSupportEvent } from '../realtime/supportRealtime';
+import { SUPPORT_API } from './supportApiConfig';
 import type {
   CloseSupportTicketInput,
   CreateAdminSupportTicketInput,
@@ -8,17 +9,61 @@ import type {
   ReopenSupportTicketInput,
   SupportAttachment,
   SupportAuditTimelineEvent,
+  SupportIssueCode,
   SupportMessage,
   SupportTicket,
   SupportTicketStatus,
   SupportViewer,
+  TicketRefundSummary,
   TransitionSupportTicketStatusInput,
+  UserTicketDisplayStatus,
 } from '../types';
 
 const STORAGE_KEY = 'parkjom.supportTickets.v1';
 const useRemoteApi = () => import.meta.env.VITE_SUPPORT_API_MODE !== 'local';
 const now = () => new Date().toISOString();
 const makeId = () => crypto.randomUUID();
+
+const ISSUE_CODE_DEFAULT_SUBJECTS: Record<string, string> = {
+  GATE_STUCK: 'Emergency Gate / Barrier Unlock Issue',
+  SPOT_OCCUPIED: 'Reserved Parking Spot Occupied',
+  REFUND_REQUEST: 'Booking Refund Request',
+  DUPLICATE_CHARGE: 'Duplicate or Incorrect Charge Inquiry',
+  RENTER_OVERSTAY: 'Renter Overstay on Property Spot',
+  IOT_OFFLINE: 'IoT Barrier / Sensor Device Offline',
+  OWNER_PAYOUT: 'Property Owner Payout & Settlement Inquiry',
+  OTHER: 'General Support Inquiry',
+};
+
+export function deriveUserDisplayStatus(
+  status?: string | null,
+  explicitDisplayStatus?: string | null,
+): UserTicketDisplayStatus {
+  if (explicitDisplayStatus) return explicitDisplayStatus;
+  const s = (status || '').toLowerCase();
+  if (s === 'waitingforcustomer' || s === 'actionrequired') return 'ActionRequired';
+  if (s === 'resolved') return 'Resolved';
+  if (s === 'closed') return 'Closed';
+  return 'Processing';
+}
+
+export function deriveUserStatusLabel(
+  displayStatus: UserTicketDisplayStatus,
+  explicitLabel?: string | null,
+): string {
+  if (explicitLabel) return explicitLabel;
+  switch (displayStatus) {
+    case 'ActionRequired':
+      return 'Action Required';
+    case 'Resolved':
+      return 'Resolved';
+    case 'Closed':
+      return 'Closed';
+    case 'Processing':
+    default:
+      return 'Processing';
+  }
+}
 
 const readLocalTickets = (): SupportTicket[] => {
   try {
@@ -114,12 +159,37 @@ export const normalizeMessage = (raw: any): SupportMessage => {
   };
 };
 
+export const normalizeRefundSummary = (raw: any): TicketRefundSummary | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    disputeId: raw.disputeId ?? raw.disputeInvestigationId ?? undefined,
+    disputeReference: raw.disputeReference ?? undefined,
+    disputeType: raw.disputeType ?? raw.type ?? undefined,
+    status: raw.status || 'UnderReview',
+    statusLabel: raw.statusLabel ?? raw.userStatusLabel ?? undefined,
+    claimAmount: raw.claimAmount ?? raw.amount ?? undefined,
+    amount: raw.amount ?? raw.claimAmount ?? undefined,
+    approvedAmount: raw.approvedAmount ?? null,
+    currency: raw.currency || 'MYR',
+    reason: raw.reason ?? null,
+    decision: raw.decision ?? null,
+    decisionReason: raw.decisionReason ?? null,
+    requiredEvidence: raw.requiredEvidence ?? null,
+    customerMessage: raw.customerMessage ?? null,
+    evidenceDeadlineAt: raw.evidenceDeadlineAt ?? raw.deadline ?? null,
+    decidedAt: raw.decidedAt ?? null,
+    updatedAt: raw.updatedAt ?? null,
+  };
+};
+
 export const normalizeTicket = (raw: any): SupportTicket => {
   if (!raw) {
     return {
       ticketId: makeId(),
       ticketReference: `TKT-${new Date().getFullYear()}-00000`,
       status: 'New',
+      userDisplayStatus: 'Processing',
+      userStatusLabel: 'Processing',
       subject: '',
       customerUserId: 0,
       customerName: '',
@@ -137,17 +207,28 @@ export const normalizeTicket = (raw: any): SupportTicket => {
   const rawAttachments = Array.isArray(raw.attachments) ? raw.attachments : [];
   const attachments = rawAttachments.map(normalizeAttachment);
   const auditTimeline: SupportAuditTimelineEvent[] = Array.isArray(raw.auditTimeline) ? raw.auditTimeline : [];
+  const status = raw.status || 'New';
+  const userDisplayStatus = deriveUserDisplayStatus(status, raw.userDisplayStatus);
+  const userStatusLabel = deriveUserStatusLabel(userDisplayStatus, raw.userStatusLabel);
+  const issueCode: SupportIssueCode | null = raw.issueCode ?? null;
 
   return {
     ticketId: raw.ticketId ?? makeId(),
     ticketReference: raw.ticketReference || `TKT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
     ticketType: raw.ticketType || 'Custom',
+    issueCode,
     source: raw.source || 'QuickHelp',
     category: raw.category || 'General',
     priority: raw.priority || 'P2',
-    status: raw.status || 'New',
-    subject: raw.subject || 'Support Inquiry',
+    status,
+    userDisplayStatus,
+    userStatusLabel,
+    subject:
+      raw.subject ||
+      (issueCode && ISSUE_CODE_DEFAULT_SUBJECTS[issueCode]) ||
+      'Support Inquiry',
     description: raw.description || '',
+    claimAmount: raw.claimAmount ?? null,
     customerUserId: raw.customerUserId || 0,
     customerName: raw.customerName || 'Customer',
     customerEmail: raw.customerEmail || '',
@@ -167,6 +248,7 @@ export const normalizeTicket = (raw: any): SupportTicket => {
     incidentReference: raw.incidentReference ?? null,
     disputeInvestigationId: raw.disputeInvestigationId ?? null,
     disputeReference: raw.disputeReference ?? null,
+    refundSummary: normalizeRefundSummary(raw.refundSummary),
     acceptedAt: raw.acceptedAt ?? null,
     firstResponseAt: raw.firstResponseAt ?? null,
     firstResponseDueAt: raw.firstResponseDueAt ?? null,
@@ -191,33 +273,41 @@ const publish = (
 
 async function readJson<T>(response: Response, fallback: string): Promise<T> {
   if (!response.ok) throw new Error(await readApiError(response, fallback));
-  const payload = (await response.json().catch(() => null)) as {
-    success?: boolean;
-    message?: string;
-    data?: T;
-  } | null;
-  if (!payload || payload.success === false || payload.data === undefined) {
+  const payload = (await response.json().catch(() => null)) as any;
+  if (!payload) {
+    throw new Error(fallback);
+  }
+  if (payload.success === false && payload.data === undefined) {
     throw new Error(payload?.message || fallback);
   }
-  return payload.data;
+  return (payload.data !== undefined ? payload.data : payload) as T;
 }
 
 const appendFiles = (form: FormData, files?: File[]) => {
   if (!files || files.length === 0) return;
   files.forEach((file) => {
-    form.append('Attachments', file, file.name);
+    form.append('attachments', file, file.name);
   });
 };
 
+export interface ListSupportTicketsFilterOptions {
+  priority?: string;
+  team?: string;
+  assignee?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 /**
  * List Support Tickets for Customer or Admin
- * - Customer: GET /api/support/tickets/mine
- * - Admin: GET /api/admin/support/tickets?page=1&pageSize=50
+ * - Customer: GET /api/support/tickets/mine?status=&search=
+ * - Admin: GET /api/admin/support/tickets?status=&priority=&team=&assignee=&search=&page=1&pageSize=100
  */
 export async function listSupportTickets(
   viewer: SupportViewer,
   status?: SupportTicketStatus,
   search = '',
+  options?: ListSupportTicketsFilterOptions,
 ): Promise<SupportTicket[]> {
   if (!useRemoteApi()) {
     const normalized = search.trim().toLowerCase();
@@ -228,23 +318,39 @@ export async function listSupportTickets(
           ticket.customerUserId === viewer.userId ||
           ticket.customerEmail.toLowerCase() === viewer.email.toLowerCase(),
       )
-      .filter((ticket) => !status || ticket.status === status)
+      .filter((ticket) => {
+        if (!status || status === 'All') return true;
+        return (
+          ticket.status === status ||
+          ticket.userDisplayStatus === status ||
+          deriveUserDisplayStatus(ticket.status, ticket.userDisplayStatus) === status
+        );
+      })
       .filter(
         (ticket) =>
           !normalized ||
           [ticket.ticketReference, ticket.subject, ticket.customerName, ticket.customerEmail].some((value) =>
-            value.toLowerCase().includes(normalized),
+            (value || '').toLowerCase().includes(normalized),
           ),
       )
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  const params = new URLSearchParams({ page: '1', pageSize: '50' });
+  const isAdmin = viewer.role === 'Admin';
+  const params = new URLSearchParams();
+  if (isAdmin) {
+    params.set('page', String(options?.page ?? 1));
+    params.set('pageSize', String(options?.pageSize ?? 100));
+    if (options?.priority && options.priority !== 'All') params.set('priority', options.priority);
+    if (options?.team && options.team !== 'All') params.set('team', options.team);
+    if (options?.assignee && options.assignee !== 'All') params.set('assignee', options.assignee);
+  }
   if (status && status !== 'All') params.set('status', status);
   if (search.trim()) params.set('search', search.trim());
 
-  const path = viewer.role === 'Admin' ? '/admin/support/tickets' : '/support/tickets/mine';
-  const response = await apiRequest(`${path}?${params}`, {
+  const path = isAdmin ? SUPPORT_API.ADMIN.TICKETS.LIST : SUPPORT_API.USER.GET_MY_TICKETS;
+  const queryStr = params.toString();
+  const response = await apiRequest(queryStr ? `${path}?${queryStr}` : path, {
     headers: authorizationHeaders(viewer.token),
   });
 
@@ -256,22 +362,24 @@ export async function listSupportTickets(
 /**
  * Get Ticket Full Details
  * - Customer: GET /api/support/tickets/{ticketId}
- * - Admin: GET /api/admin/support/tickets/{ticketId}
+ * - Admin: GET /api/admin/support/tickets/{ticketIdentifier}
  */
 export async function getSupportTicketDetails(
   viewer: SupportViewer,
   ticketId: string | number,
 ): Promise<SupportTicket> {
   if (!useRemoteApi()) {
-    const ticket = readLocalTickets().find((t) => String(t.ticketId) === String(ticketId));
+    const ticket = readLocalTickets().find(
+      (t) => String(t.ticketId) === String(ticketId) || t.ticketReference === String(ticketId),
+    );
     if (!ticket) throw new Error('Ticket not found.');
     return ticket;
   }
 
   const path =
     viewer.role === 'Admin'
-      ? `/admin/support/tickets/${encodeURIComponent(String(ticketId))}`
-      : `/support/tickets/${encodeURIComponent(String(ticketId))}`;
+      ? SUPPORT_API.ADMIN.TICKETS.DETAIL(ticketId)
+      : SUPPORT_API.USER.GET_TICKET_DETAIL(ticketId);
 
   const response = await apiRequest(path, {
     headers: authorizationHeaders(viewer.token),
@@ -283,12 +391,19 @@ export async function getSupportTicketDetails(
 
 /**
  * Customer: POST /api/support/tickets
- * Form-data: Subject, Message, Category, Priority, BookingId, Attachments
+ * FormData: issueCode, message, bookingId?, parkingSpotId?, vehicleId?, claimAmount?, attachments?
  */
 export async function createSupportTicket(
   viewer: SupportViewer,
   input: CreateSupportTicketInput,
 ): Promise<SupportTicket> {
+  const issueCode = input.issueCode || 'OTHER';
+  const resolvedSubject =
+    input.subject?.trim() ||
+    ISSUE_CODE_DEFAULT_SUBJECTS[issueCode] ||
+    input.message.trim().slice(0, 72) ||
+    'Support Inquiry';
+
   if (!useRemoteApi()) {
     const ticketId = makeId();
     const createdAt = now();
@@ -308,17 +423,24 @@ export async function createSupportTicket(
     const ticket: SupportTicket = {
       ticketId,
       ticketReference: `TKT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+      issueCode,
       customerUserId: viewer.userId,
       customerName: viewer.name,
       customerEmail: viewer.email,
-      customerRole: viewer.role === 'Owner' ? 'Owner' : 'Commuter',
+      customerRole: viewer.role === 'Owner' || viewer.role === 'PropertyOwner' ? 'Owner' : 'Commuter',
       createdByUserId: viewer.userId,
       assignedAdminUserId: null,
       assignedAdminName: null,
-      subject: input.subject.trim(),
+      subject: resolvedSubject,
       category: input.category || 'General',
-      priority: input.priority || 'P2',
+      priority: input.priority || (issueCode === 'GATE_STUCK' ? 'P0' : 'P2'),
       status: 'New',
+      userDisplayStatus: 'Processing',
+      userStatusLabel: 'Processing',
+      bookingId: input.bookingId ?? null,
+      parkingSpotId: input.parkingSpotId ?? null,
+      vehicleId: input.vehicleId ?? null,
+      claimAmount: input.claimAmount ?? null,
       createdAt,
       updatedAt: createdAt,
       acceptedAt: null,
@@ -343,16 +465,30 @@ export async function createSupportTicket(
   }
 
   const form = new FormData();
-  form.append('Subject', input.subject.trim());
-  form.append('Message', input.message.trim());
-  form.append('Category', input.category || 'General');
-  form.append('Priority', input.priority || 'P2');
+  form.append('issueCode', issueCode);
+  form.append('message', input.message.trim());
+  form.append('subject', resolvedSubject);
+  if (input.category) {
+    form.append('category', input.category);
+  }
+  if (input.priority) {
+    form.append('priority', input.priority);
+  }
   if (input.bookingId) {
-    form.append('BookingId', String(input.bookingId));
+    form.append('bookingId', String(input.bookingId));
+  }
+  if (input.parkingSpotId) {
+    form.append('parkingSpotId', String(input.parkingSpotId));
+  }
+  if (input.vehicleId) {
+    form.append('vehicleId', String(input.vehicleId));
+  }
+  if (input.claimAmount !== undefined && input.claimAmount !== null && !Number.isNaN(Number(input.claimAmount))) {
+    form.append('claimAmount', String(input.claimAmount));
   }
   appendFiles(form, input.files || input.attachments);
 
-  const response = await apiRequest('/support/tickets', {
+  const response = await apiRequest(SUPPORT_API.USER.CREATE_TICKET, {
     method: 'POST',
     headers: authorizationHeaders(viewer.token),
     body: form,
@@ -372,6 +508,13 @@ export async function createAdminSupportTicket(
   viewer: SupportViewer,
   input: CreateAdminSupportTicketInput,
 ): Promise<SupportTicket> {
+  const issueCode = input.issueCode || 'OTHER';
+  const resolvedSubject =
+    input.subject?.trim() ||
+    ISSUE_CODE_DEFAULT_SUBJECTS[issueCode] ||
+    input.message.trim().slice(0, 72) ||
+    'Administrative Support Ticket';
+
   if (!useRemoteApi()) {
     const ticketId = makeId();
     const createdAt = now();
@@ -394,6 +537,7 @@ export async function createAdminSupportTicket(
     const ticket: SupportTicket = {
       ticketId,
       ticketReference: `TKT-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+      issueCode,
       customerUserId,
       customerName: input.customerName?.trim() || 'Customer',
       customerEmail: input.customerEmail?.trim() || '',
@@ -402,10 +546,12 @@ export async function createAdminSupportTicket(
       assignedAdminUserId: viewer.userId,
       assignedAdminName: viewer.name,
       assignedTeam: input.assignedTeam || 'ParkingOperations',
-      subject: input.subject.trim(),
+      subject: resolvedSubject,
       category: input.category || 'ParkingAccess',
       priority: input.priority || 'P1',
       status: 'Assigned',
+      userDisplayStatus: 'Processing',
+      userStatusLabel: 'Processing',
       createdAt,
       updatedAt: createdAt,
       acceptedAt: createdAt,
@@ -430,15 +576,28 @@ export async function createAdminSupportTicket(
   }
 
   const form = new FormData();
-  form.append('CustomerUserId', String(input.customerUserId || 1));
-  form.append('Subject', input.subject.trim());
-  form.append('Message', input.message.trim());
-  form.append('Category', input.category || 'ParkingAccess');
-  form.append('Priority', input.priority || 'P1');
-  form.append('AssignedTeam', input.assignedTeam || 'ParkingOperations');
+  form.append('customerUserId', String(input.customerUserId || 1));
+  form.append('issueCode', issueCode);
+  form.append('subject', resolvedSubject);
+  form.append('message', input.message.trim());
+  form.append('category', input.category || 'ParkingAccess');
+  form.append('priority', input.priority || 'P1');
+  form.append('assignedTeam', input.assignedTeam || 'ParkingOperations');
+  if (input.bookingId) {
+    form.append('bookingId', String(input.bookingId));
+  }
+  if (input.parkingSpotId) {
+    form.append('parkingSpotId', String(input.parkingSpotId));
+  }
+  if (input.vehicleId) {
+    form.append('vehicleId', String(input.vehicleId));
+  }
+  if (input.claimAmount !== undefined && input.claimAmount !== null && !Number.isNaN(Number(input.claimAmount))) {
+    form.append('claimAmount', String(input.claimAmount));
+  }
   appendFiles(form, input.files || input.attachments);
 
-  const response = await apiRequest('/admin/support/tickets', {
+  const response = await apiRequest(SUPPORT_API.ADMIN.TICKETS.CREATE, {
     method: 'POST',
     headers: authorizationHeaders(viewer.token),
     body: form,
@@ -453,13 +612,17 @@ export async function createAdminSupportTicket(
 /**
  * Reply to Support Ticket (Customer or Admin)
  * POST /api/support/tickets/{ticketId}/messages
+ * Supports isInternal: true for Admin internal notes
  */
 export async function sendSupportMessage(
   viewer: SupportViewer,
   ticketId: string | number,
   message: string,
   files?: File[],
+  options?: { isInternal?: boolean } | boolean,
 ): Promise<SupportMessage> {
+  const isInternal = typeof options === 'boolean' ? options : Boolean(options?.isInternal);
+
   if (!useRemoteApi()) {
     const tickets = readLocalTickets();
     const ticket = tickets.find((item) => String(item.ticketId) === String(ticketId));
@@ -485,6 +648,7 @@ export async function sendSupportMessage(
       senderName: viewer.name,
       senderRole: viewer.role,
       body: message.trim(),
+      isInternal,
       attachments: localAttachments,
       createdAt: now(),
     });
@@ -498,13 +662,15 @@ export async function sendSupportMessage(
 
   const form = new FormData();
   if (message.trim()) {
-    form.append('Message', message.trim());
+    form.append('message', message.trim());
+  }
+  if (isInternal) {
+    form.append('isInternal', 'true');
   }
   appendFiles(form, files);
 
-  const queryParam = message.trim() ? `?Message=${encodeURIComponent(message.trim())}` : '';
   const response = await apiRequest(
-    `/support/tickets/${encodeURIComponent(String(ticketId))}/messages${queryParam}`,
+    SUPPORT_API.USER.SEND_MESSAGE(ticketId),
     {
       method: 'POST',
       headers: authorizationHeaders(viewer.token),
@@ -526,7 +692,7 @@ export async function downloadSupportAttachment(
   token: string,
   attachmentId: string | number,
 ): Promise<SupportAttachment> {
-  const response = await apiRequest(`/support/attachments/${encodeURIComponent(String(attachmentId))}`, {
+  const response = await apiRequest(SUPPORT_API.USER.GET_ATTACHMENT(attachmentId), {
     headers: authorizationHeaders(token),
   });
 
@@ -543,14 +709,14 @@ export async function downloadAndOpenAttachment(
 ) {
   try {
     if (attachment.attachmentId) {
-      const response = await apiRequest(`/support/attachments/${encodeURIComponent(String(attachment.attachmentId))}`, {
+      const response = await apiRequest(SUPPORT_API.USER.GET_ATTACHMENT(attachment.attachmentId), {
         headers: authorizationHeaders(token),
       });
 
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const json = await response.json().catch(() => null);
-        const resolvedUrl = json?.data?.fileUrl || json?.data?.url || attachment.fileUrl || attachment.url;
+        const resolvedUrl = json?.data?.fileUrl || json?.data?.url || json?.fileUrl || json?.url || attachment.fileUrl || attachment.url;
         if (resolvedUrl) {
           window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
           return;
@@ -590,7 +756,7 @@ export async function acceptSupportTicket(
     const tickets = readLocalTickets();
     const ticket = tickets.find((item) => String(item.ticketId) === String(ticketId));
     if (!ticket) throw new Error('Ticket not found.');
-    ticket.status = 'Assigned';
+    ticket.status = 'Accepted';
     ticket.assignedAdminUserId = viewer.userId;
     ticket.assignedAdminName = viewer.name;
     ticket.acceptedAt = now();
@@ -600,7 +766,7 @@ export async function acceptSupportTicket(
     return ticket;
   }
 
-  const response = await apiRequest(`/admin/support/tickets/${encodeURIComponent(String(ticketId))}/accept`, {
+  const response = await apiRequest(SUPPORT_API.ADMIN.TICKETS.ACCEPT(ticketId), {
     method: 'POST',
     headers: authorizationHeaders(viewer.token, 'application/json'),
     body: '{}',
@@ -615,14 +781,14 @@ export async function acceptSupportTicket(
 /**
  * Admin: Reassign Support Ticket
  * POST /api/admin/support/tickets/{ticketId}/assign
- * JSON: { assignedTeam, reason, assignedAdminUserId }
+ * JSON: { assignedAdminUserId?, assignedTeam?, reason? }
  */
 export async function reassignSupportTicket(
   viewer: SupportViewer,
   ticketId: string | number,
   input: ReassignSupportTicketInput,
 ): Promise<SupportTicket> {
-  const response = await apiRequest(`/admin/support/tickets/${encodeURIComponent(String(ticketId))}/assign`, {
+  const response = await apiRequest(SUPPORT_API.ADMIN.TICKETS.ASSIGN(ticketId), {
     method: 'POST',
     headers: authorizationHeaders(viewer.token, 'application/json'),
     body: JSON.stringify({
@@ -641,19 +807,20 @@ export async function reassignSupportTicket(
 /**
  * Admin: Transition Ticket Status
  * POST /api/admin/support/tickets/{ticketId}/transition
- * JSON: { toStatus, reason }
+ * JSON: { toStatus, reason?, resolutionCode? }
  */
 export async function transitionSupportTicketStatus(
   viewer: SupportViewer,
   ticketId: string | number,
   input: TransitionSupportTicketStatusInput,
 ): Promise<SupportTicket> {
-  const response = await apiRequest(`/admin/support/tickets/${encodeURIComponent(String(ticketId))}/transition`, {
+  const response = await apiRequest(SUPPORT_API.ADMIN.TICKETS.TRANSITION(ticketId), {
     method: 'POST',
     headers: authorizationHeaders(viewer.token, 'application/json'),
     body: JSON.stringify({
       toStatus: input.toStatus,
       reason: input.reason,
+      ...(input.resolutionCode ? { resolutionCode: input.resolutionCode } : {}),
     }),
   });
 
@@ -664,25 +831,33 @@ export async function transitionSupportTicketStatus(
 }
 
 /**
- * Admin: Close Ticket
- * POST /api/admin/support/tickets/{ticketId}/close
- * JSON: { reason }
+ * Customer or Admin: Close Ticket
+ * - Customer: POST /api/support/tickets/{ticketId}/close { reason?: string }
+ * - Admin: POST /api/admin/support/tickets/{ticketId}/close { reason?: string }
  */
 export async function closeSupportTicket(
   viewer: SupportViewer,
   ticketId: string | number,
-  closingInput: string | CloseSupportTicketInput,
+  closingInput?: string | CloseSupportTicketInput,
 ): Promise<SupportTicket> {
+  const defaultReason =
+    viewer.role === 'Admin'
+      ? 'Resolved and closed by staff'
+      : 'Confirmed resolved by customer';
   const reasonText =
-    typeof closingInput === 'string'
-      ? closingInput.trim()
-      : closingInput.reason?.trim() || 'Resolved and closed by staff';
+    closingInput === undefined
+      ? defaultReason
+      : typeof closingInput === 'string'
+      ? closingInput.trim() || defaultReason
+      : closingInput.reason?.trim() || defaultReason;
 
   if (!useRemoteApi()) {
     const tickets = readLocalTickets();
     const ticket = tickets.find((item) => String(item.ticketId) === String(ticketId));
     if (!ticket) throw new Error('Ticket not found.');
     ticket.status = 'Closed';
+    ticket.userDisplayStatus = 'Closed';
+    ticket.userStatusLabel = 'Closed';
     ticket.closedAt = now();
     ticket.updatedAt = now();
     writeLocalTickets(tickets);
@@ -690,7 +865,12 @@ export async function closeSupportTicket(
     return ticket;
   }
 
-  const response = await apiRequest(`/admin/support/tickets/${encodeURIComponent(String(ticketId))}/close`, {
+  const endpoint =
+    viewer.role === 'Admin'
+      ? SUPPORT_API.ADMIN.TICKETS.CLOSE(ticketId)
+      : SUPPORT_API.USER.CLOSE_TICKET(ticketId);
+
+  const response = await apiRequest(endpoint, {
     method: 'POST',
     headers: authorizationHeaders(viewer.token, 'application/json'),
     body: JSON.stringify({ reason: reasonText }),
@@ -717,7 +897,7 @@ export async function reopenSupportTicket(
       ? reopenInput.trim()
       : reopenInput.reason?.trim() || 'Issue reopened by customer';
 
-  const response = await apiRequest(`/support/tickets/${encodeURIComponent(String(ticketId))}/reopen`, {
+  const response = await apiRequest(SUPPORT_API.USER.REOPEN_TICKET(ticketId), {
     method: 'POST',
     headers: authorizationHeaders(viewer.token, 'application/json'),
     body: JSON.stringify({ reason: reasonText }),
@@ -746,7 +926,7 @@ export async function linkTicketToIncident(
     : { incidentReference: incStr };
 
   const response = await apiRequest(
-    `/admin/support/tickets/${encodeURIComponent(String(ticketIdentifier).trim())}/link-incident`,
+    SUPPORT_API.ADMIN.TICKETS.LINK_INCIDENT(String(ticketIdentifier).trim()),
     {
       method: 'POST',
       headers: authorizationHeaders(viewer.token, 'application/json'),
@@ -777,7 +957,7 @@ export async function linkTicketToDispute(
     : { disputeReference: dspStr };
 
   const response = await apiRequest(
-    `/admin/support/tickets/${encodeURIComponent(String(ticketIdentifier).trim())}/link-dispute`,
+    SUPPORT_API.ADMIN.TICKETS.LINK_DISPUTE(String(ticketIdentifier).trim()),
     {
       method: 'POST',
       headers: authorizationHeaders(viewer.token, 'application/json'),

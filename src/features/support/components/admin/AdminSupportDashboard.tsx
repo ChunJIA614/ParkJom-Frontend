@@ -70,18 +70,11 @@ import {
   updateOnCallPolicy,
 } from '../../api/supportCommandCenterService';
 import {
-  closeAdminConversation,
-  createAdminTicketFromConversation,
-  dispatchWorkflowToConversation,
-  getConversationDetails,
-  listAdminConversationQueue,
-  sendAdminConversationMessage,
-} from '../../api/supportConversationService';
-import {
   adminRequestCustomerEvidence,
   adminUploadDisputeEvidence,
   assignDisputeCase,
   finalizeDisputeDecision,
+  getAdminDisputeDetails,
   linkTicketToDispute as apiLinkTicketToDispute,
   listAdminDisputes,
 } from '../../api/supportDisputeService';
@@ -91,34 +84,31 @@ import {
   createOperationalIncident as apiCreateOperationalIncident,
   executeAccessOverride as apiExecuteAccessOverride,
   getOperationalIncidentDetails,
+  linkTicketFromIncident as apiLinkTicketFromIncident,
   linkTicketToIncident as apiLinkTicketToIncident,
   listOperationalIncidents as apiListOperationalIncidents,
   transitionIncidentStatus as apiTransitionIncidentStatus,
 } from '../../api/supportIncidentService';
-import { createAdminSupportTicket } from '../../api/supportTicketService';
+import { connectSupportRealtime } from '../../realtime/supportRealtime';
 import type {
   AccessOverrideResult,
   AdminDashboardMetrics,
   DisputeCase,
-  DisputeEvidence,
-  OnCallPolicy,
   OnCallRosterStatus,
   OperationalIncidentDetail,
   OperationalIncidentItem,
-  SupportAuditEvent,
   SupportAuditLogResponse,
-  SupportConversation,
-  SupportConversationDetail,
   SupportViewer,
   TestOnCallAlertResult,
 } from '../../types';
+import { cleanSupportText } from '../../utils/supportText';
 
 interface AdminSupportDashboardProps {
   viewer: SupportViewer;
   ticketWorkspace: ReactNode;
 }
 
-type AdminView = 'menu' | 'command' | 'conversations' | 'tickets' | 'incidents' | 'disputes' | 'on-call' | 'audit';
+type AdminView = 'command' | 'tickets' | 'incidents' | 'disputes' | 'on-call' | 'audit';
 
 function MetricCard({
   icon: Icon,
@@ -134,20 +124,20 @@ function MetricCard({
   badge?: string;
 }) {
   return (
-    <div className="rounded-lg border border-black/[0.06] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.03)] sm:p-5">
+    <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5">
       <div className="flex items-start justify-between gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#F5F5F7] text-[#1D1D1F]">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#1D1D1F]">
           <Icon className="h-4.5 w-4.5" />
         </span>
         {badge && (
-          <span className="rounded-md border border-black/[0.06] bg-[#F5F5F7] px-2 py-0.5 text-[9px] font-semibold text-[#6E6E73]">
+          <span className="rounded-full border border-black/[0.06] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#6E6E73]">
             {badge}
           </span>
         )}
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight text-[#1D1D1F]">{value}</p>
-      <p className="mt-0.5 text-xs font-bold text-[#1D1D1F]">{label}</p>
-      <p className="mt-0.5 text-[11px] text-[#6E6E73]">{detail}</p>
+      <p className="mt-3 text-2xl font-semibold tracking-tight text-[#1D1D1F]">{value}</p>
+      <p className="mt-0.5 text-xs font-medium text-[#1D1D1F]">{label}</p>
+      <p className="mt-0.5 text-[11px] text-[#86868B]">{detail}</p>
     </div>
   );
 }
@@ -183,32 +173,8 @@ function formatDateTime(value?: string | null) {
 }
 
 export default function AdminSupportDashboard({ viewer, ticketWorkspace }: AdminSupportDashboardProps) {
-  const [activeView, setActiveView] = useState<AdminView>('menu');
-  const [conversationSearch, setConversationSearch] = useState('');
-  const [reply, setReply] = useState('');
-  const [isInternalNote, setIsInternalNote] = useState(false);
+  const [activeView, setActiveView] = useState<AdminView>('command');
   const [notice, setNotice] = useState<string | null>(null);
-
-  // Live Queue & Conversation Details state
-  const [conversations, setConversations] = useState<SupportConversation[]>([]);
-  const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null);
-  const [selectedConversationDetail, setSelectedConversationDetail] = useState<SupportConversationDetail | null>(null);
-  const [loadingQueue, setLoadingQueue] = useState(false);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [sendingReply, setSendingReply] = useState(false);
-  const [dispatchingWorkflow, setDispatchingWorkflow] = useState(false);
-  const [closingConv, setClosingConv] = useState(false);
-  const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
-
-  // Ticket creation modal state
-  const [createTicketOpen, setCreateTicketOpen] = useState(false);
-  const [ticketSubject, setTicketSubject] = useState('');
-  const [ticketCategory, setTicketCategory] = useState('ParkingAccess');
-  const [ticketPriority, setTicketPriority] = useState('P1');
-  const [ticketTeam, setTicketTeam] = useState('ParkingOperations');
-  const [ticketSummary, setTicketSummary] = useState('');
-  const [ticketCreating, setTicketCreating] = useState(false);
-  const [ticketError, setTicketError] = useState<string | null>(null);
 
   // ── Operational Incidents State ──
   const [incidents, setIncidents] = useState<OperationalIncidentItem[]>([]);
@@ -284,6 +250,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
   const [dspAssignStatus, setDspAssignStatus] = useState('EvidenceReview');
   const [dspAssignError, setDspAssignError] = useState<string | null>(null);
 
+  const [dspReqEvidence, setDspReqEvidence] = useState('Bank / Card Deduction Screenshot');
   const [dspReqMessage, setDspReqMessage] = useState('Please upload bank transaction screenshot showing deduction.');
   const [dspReqDays, setDspReqDays] = useState('3');
   const [dspReqError, setDspReqError] = useState<string | null>(null);
@@ -315,6 +282,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
   const [testAlertOpen, setTestAlertOpen] = useState(false);
   const [testAlertChannel, setTestAlertChannel] = useState('Push');
   const [testAlertUserId, setTestAlertUserId] = useState<number>(1);
+  const [testAlertRecipient, setTestAlertRecipient] = useState('oncall@parkjom.com');
   const [testAlertMessage, setTestAlertMessage] = useState('Test alert notification from ParkJom Command Center');
   const [testingAlert, setTestingAlert] = useState(false);
   const [testAlertResult, setTestAlertResult] = useState<TestOnCallAlertResult | null>(null);
@@ -372,6 +340,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       if (data.primaryResponder?.userId) {
         setTestAlertUserId(data.primaryResponder.userId);
       }
+      if (data.primaryResponder?.email || data.primaryResponder?.phone) {
+        setTestAlertRecipient(data.primaryResponder.email || data.primaryResponder.phone);
+      }
       if (data.policy) {
         setP0BackupDelay(data.policy.p0BackupDelayMinutes);
         setP0SupervisorDelay(data.policy.p0SupervisorDelayMinutes);
@@ -401,7 +372,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     try {
       const res = await testOnCallAlert(viewer.token, {
         channel: testAlertChannel,
+        recipient: testAlertRecipient,
         targetUserId: Number(testAlertUserId),
+        message: testAlertMessage,
         testMessage: testAlertMessage,
       });
       setTestAlertResult(res);
@@ -461,24 +434,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     }
   };
 
-  // Fetch admin conversations queue
-  const fetchQueue = async () => {
-    if (!viewer.token) return;
-    setLoadingQueue(true);
-    try {
-      const response = await listAdminConversationQueue(viewer.token, 1, 50);
-      const items = response?.items || [];
-      setConversations(items);
-      if (items.length > 0 && selectedConversationId === null) {
-        setSelectedConversationId(items[0].conversationId);
-      }
-    } catch {
-      // Continue gracefully
-    } finally {
-      setLoadingQueue(false);
-    }
-  };
-
   // Fetch operational incidents from backend
   const fetchIncidents = async () => {
     if (!viewer.token) return;
@@ -531,7 +486,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
   useEffect(() => {
     if (viewer.token) {
-      void fetchQueue();
       void fetchDashboardMetrics();
       void fetchOnCallStatus();
       void fetchAuditLogs();
@@ -567,28 +521,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       void fetchDisputes();
     }
   }, [viewer.token, activeView, disputeFilter]);
-
-  // Fetch conversation detail when selected
-  useEffect(() => {
-    if (!viewer.token || !selectedConversationId) return;
-    let active = true;
-    setLoadingDetail(true);
-
-    getConversationDetails(viewer.token, selectedConversationId)
-      .then((detail) => {
-        if (active) setSelectedConversationDetail(detail);
-      })
-      .catch(() => {
-        // Continue gracefully
-      })
-      .finally(() => {
-        if (active) setLoadingDetail(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [viewer.token, selectedConversationId]);
 
   // Fetch operational incident detail when selected
   useEffect(() => {
@@ -644,21 +576,49 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     };
   }, [viewer.token, selectedIncidentId, incidents]);
 
-  // Update selected dispute detail when selected
+  // Fetch full dispute detail when selected (GET /api/admin/support/disputes/{disputeId})
   useEffect(() => {
-    if (!selectedDisputeId || disputes.length === 0) return;
+    if (!viewer.token || !selectedDisputeId) return;
+    let active = true;
     const found = disputes.find((d) => d.disputeId === selectedDisputeId);
     if (found) setSelectedDisputeDetail(found);
-  }, [selectedDisputeId, disputes]);
 
-  const visibleConversations = useMemo(() => {
-    const query = conversationSearch.trim().toLowerCase();
-    if (!query) return conversations;
-    return conversations.filter((c) =>
-      [String(c.conversationId), c.conversationReference, c.customerName, c.customerEmail, c.lastMessageSnippet || '']
-        .some((v) => v.toLowerCase().includes(query))
-    );
-  }, [conversations, conversationSearch]);
+    getAdminDisputeDetails(viewer.token, selectedDisputeId)
+      .then((detail) => {
+        if (active) setSelectedDisputeDetail(detail);
+      })
+      .catch(() => {
+        // Fallback to list item already set
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [viewer.token, selectedDisputeId, disputes]);
+
+  // Subscribe to realtime Support events (SignalR / WebSocket)
+  useEffect(() => {
+    if (!viewer.token) return;
+    return connectSupportRealtime({
+      token: viewer.token,
+      onEvent: (event) => {
+        const evt = String(event.eventType || event.type || '');
+        if (
+          evt.includes('Incident') ||
+          evt.includes('AccessOverride') ||
+          evt.includes('GateUnlock')
+        ) {
+          void fetchIncidents();
+          void fetchDashboardMetrics();
+        } else if (evt.includes('Dispute')) {
+          void fetchDisputes();
+          void fetchDashboardMetrics();
+        } else if (evt.includes('Ticket')) {
+          void fetchDashboardMetrics();
+        }
+      },
+    });
+  }, [viewer.token]);
 
   const visibleIncidents = useMemo(() => {
     const query = incidentSearch.trim().toLowerCase();
@@ -677,91 +637,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         .some((v) => v && v.toLowerCase().includes(query))
     );
   }, [disputes, disputeSearch]);
-
-  const openTicketFromConversation = () => {
-    if (!selectedConversationDetail) return;
-    setTicketSubject(`Escalated Live Chat: ${selectedConversationDetail.customerName}`);
-    setTicketCategory('ParkingAccess');
-    setTicketPriority('P1');
-    setTicketTeam('ParkingOperations');
-    setTicketSummary(`Originating live chat reference: ${selectedConversationDetail.conversationReference}\nUser inquiry: ${selectedConversationDetail.lastMessageSnippet || 'No summary'}`);
-    setCreateTicketOpen(true);
-  };
-
-  const createConversationTicket = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!selectedConversationDetail || !ticketSubject.trim() || !ticketSummary.trim()) return;
-    setTicketCreating(true);
-    setTicketError(null);
-
-    try {
-      const ticket = await createAdminTicketFromConversation(viewer.token, selectedConversationDetail.conversationId, {
-        subject: ticketSubject.trim(),
-        category: ticketCategory,
-        priority: ticketPriority,
-        assignedTeam: ticketTeam,
-        internalSummary: ticketSummary.trim(),
-      });
-      showNotice(`Tracked ticket ${ticket.ticketReference} created.`);
-      setCreateTicketOpen(false);
-      void fetchQueue();
-    } catch (err) {
-      setTicketError(err instanceof Error ? err.message : 'Unable to create ticket.');
-    } finally {
-      setTicketCreating(false);
-    }
-  };
-
-  const sendReply = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!reply.trim() || !selectedConversationDetail) return;
-    setSendingReply(true);
-
-    try {
-      await sendAdminConversationMessage(viewer.token, selectedConversationDetail.conversationId, reply.trim(), isInternalNote);
-      setReply('');
-      showNotice(isInternalNote ? 'Internal note recorded.' : `Reply sent to ${selectedConversationDetail.customerName}.`);
-      const updated = await getConversationDetails(viewer.token, selectedConversationDetail.conversationId);
-      setSelectedConversationDetail(updated);
-      void fetchQueue();
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Unable to send message.');
-    } finally {
-      setSendingReply(false);
-    }
-  };
-
-  const handleDispatchWorkflow = async (key: string, label: string) => {
-    if (!selectedConversationDetail) return;
-    setDispatchingWorkflow(true);
-    try {
-      await dispatchWorkflowToConversation(viewer.token, selectedConversationDetail.conversationId, { key, label });
-      showNotice(`Workflow recommendation "${label}" dispatched.`);
-      const updated = await getConversationDetails(viewer.token, selectedConversationDetail.conversationId);
-      setSelectedConversationDetail(updated);
-      void fetchQueue();
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Unable to dispatch workflow.');
-    } finally {
-      setDispatchingWorkflow(false);
-    }
-  };
-
-  const handleCloseConversation = async () => {
-    if (!selectedConversationDetail) return;
-    setClosingConv(true);
-    try {
-      await closeAdminConversation(viewer.token, selectedConversationDetail.conversationId, 'Resolved by staff operator');
-      showNotice(`Conversation #${selectedConversationDetail.conversationId} closed.`);
-      const updated = await getConversationDetails(viewer.token, selectedConversationDetail.conversationId);
-      setSelectedConversationDetail(updated);
-      void fetchQueue();
-    } catch (err) {
-      showNotice(err instanceof Error ? err.message : 'Unable to close conversation.');
-    } finally {
-      setClosingConv(false);
-    }
-  };
 
   // ── Incident Action Handlers ──
   const handleAcknowledgeIncident = async () => {
@@ -881,7 +756,11 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     try {
       const ticketRef = linkTicketId.trim();
       const incRef = selectedIncidentDetail.incidentReference || selectedIncidentDetail.incidentId;
-      await apiLinkTicketToIncident(viewer.token, ticketRef, incRef);
+      try {
+        await apiLinkTicketFromIncident(viewer.token, incRef, ticketRef);
+      } catch {
+        await apiLinkTicketToIncident(viewer.token, ticketRef, incRef);
+      }
       showNotice(`Ticket ${ticketRef} linked to incident #${incRef}.`);
       setLinkTicketOpen(false);
       setLinkTicketId('');
@@ -924,6 +803,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     setDspReqError(null);
     try {
       await adminRequestCustomerEvidence(viewer.token, selectedDisputeDetail.disputeId, {
+        requiredEvidence: dspReqEvidence.trim() || 'Supporting Receipt / Screenshot',
         customerMessage: dspReqMessage.trim(),
         deadlineDays: Number(dspReqDays) || 3,
       });
@@ -969,7 +849,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     try {
       const updated = await finalizeDisputeDecision(viewer.token, selectedDisputeDetail.disputeId, {
         decision: dspDecision,
+        reason: dspDecisionReason.trim(),
         decisionReason: dspDecisionReason.trim(),
+        amount: dspDecision === 'ApproveReversal' ? Number(dspApprovedAmount) : undefined,
         approvedAmount: dspDecision === 'ApproveReversal' ? Number(dspApprovedAmount) : 0,
       });
       setSelectedDisputeDetail(updated);
@@ -1019,14 +901,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       badgeLabel: 'Live KPIs',
     },
     {
-      id: 'conversations',
-      label: 'Live Queue',
-      description: 'Real-time customer live chat triage, workflow dispatch, and ticket escalation.',
-      icon: MessagesSquare,
-      count: dashboardMetrics?.waitingConversationsCount ?? conversations.length,
-      badgeLabel: 'Waiting Queue',
-    },
-    {
       id: 'tickets',
       label: 'Support Tickets',
       description: 'Customer inquiries, team assignments, SLA monitoring, and lifecycle resolution.',
@@ -1052,7 +926,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     },
     {
       id: 'on-call',
-      label: '24/7 On-Call Escalation',
+      label: '24/7 On-Call',
       description: 'Automated 4-tier responder shifts, failover policy schedules, and alert dispatch.',
       icon: BellRing,
       badgeLabel: 'On-Call Roster',
@@ -1067,118 +941,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     },
   ];
 
-  // ── Render Full Menu Launchpad Page ──
-  const renderMenuPage = () => {
-    return (
-      <div className="space-y-6" data-component="admin-menu-page">
-        {/* Portal Hero Card */}
-        <section className="rounded-lg border border-black/[0.06] bg-white p-5 sm:p-6 shadow-[0_2px_12px_rgba(0,0,0,0.03)] space-y-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3.5">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#F5F5F7] text-[#007AFF] shadow-2xs">
-                <Headphones className="h-6 w-6" />
-              </span>
-              <div>
-                <h1 className="text-lg font-bold text-[#0F172A] sm:text-xl">Support Operations Command Portal</h1>
-                <p className="text-xs text-[#64748B] mt-0.5">
-                  Select an operational module below to access real-time queues, dispatch responses, and oversee site services.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 border border-slate-200/60">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live Operations Online
-              </span>
-            </div>
-          </div>
-
-          {/* Quick Metrics Ticker */}
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 pt-2 border-t border-black/[0.04]">
-            <div className="rounded-md border border-black/[0.04] bg-[#FAFBFD] p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93] block">Waiting Queue</span>
-              <span className="font-mono text-lg font-bold text-[#0F172A] block mt-0.5">
-                {dashboardMetrics?.waitingConversationsCount ?? conversations.length}
-              </span>
-            </div>
-            <div className="rounded-md border border-black/[0.04] bg-[#FAFBFD] p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93] block">Open Tickets</span>
-              <span className="font-mono text-lg font-bold text-[#007AFF] block mt-0.5">
-                {dashboardMetrics?.openTicketsCount ?? 0}
-              </span>
-            </div>
-            <div className="rounded-md border border-black/[0.04] bg-[#FAFBFD] p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93] block">Active Incidents</span>
-              <span className="font-mono text-lg font-bold text-rose-600 block mt-0.5">
-                {dashboardMetrics?.activeIncidentsCount ?? incidents.filter((i) => i.status !== 'Resolved' && i.status !== 'Closed').length}
-              </span>
-            </div>
-            <div className="rounded-md border border-black/[0.04] bg-[#FAFBFD] p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93] block">Open Disputes</span>
-              <span className="font-mono text-lg font-bold text-amber-600 block mt-0.5">
-                {dashboardMetrics?.openDisputesCount ?? disputes.filter((d) => d.status !== 'Approved' && d.status !== 'Declined' && d.status !== 'Closed').length}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* Full Menu Grid (Launchpad Cards) */}
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#64748B]">Operational Modules</h2>
-            <span className="text-[11px] text-[#8E8E93]">7 Functional Domains</span>
-          </div>
-
-          <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {adminNavigation.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveView(item.id)}
-                  className="group relative flex flex-col justify-between rounded-lg border border-black/[0.06] bg-white p-4.5 text-left shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all hover:border-[#007AFF]/40 hover:shadow-[0_4px_16px_rgba(0,122,255,0.08)] hover:-translate-y-0.5 cursor-pointer"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[#F5F5F7] text-[#007AFF] transition-colors group-hover:bg-blue-50">
-                        <Icon className="h-5 w-5" />
-                      </span>
-                      {typeof item.count === 'number' && item.count > 0 ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-[#0F172A] border border-slate-200/60">
-                          {item.count}
-                        </span>
-                      ) : item.badgeLabel ? (
-                        <span className="rounded-md bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500 border border-slate-200/40">
-                          {item.badgeLabel}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div>
-                      <h3 className="text-sm font-bold text-[#0F172A] group-hover:text-[#007AFF] transition-colors">
-                        {item.label}
-                      </h3>
-                      <p className="mt-1 text-xs text-[#64748B] leading-relaxed">
-                        {item.description}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="pt-3 mt-3 border-t border-black/[0.04] flex items-center justify-between text-xs font-semibold text-[#007AFF]">
-                    <span>Open Module</span>
-                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // ── Render Command Center ──
   const renderCommandCenter = () => {
     const recentTickets = dashboardMetrics?.recentTickets || [];
@@ -1188,11 +950,11 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       <div className="space-y-5" data-component="admin-command-center">
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-bold tracking-tight text-[#1D1D1F]">
+            <h2 className="text-lg font-semibold tracking-tight text-[#1D1D1F]">
               Support & Operations Command Center
             </h2>
             <p className="text-xs text-[#6E6E73]">
-              Live customer telemetry, ticket backlog, hardware disruptions, and financial settlements
+              Live ticket backlog, action-required cases, hardware disruptions, and financial settlements
             </p>
           </div>
 
@@ -1203,36 +965,35 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 void fetchDashboardMetrics();
                 void fetchIncidents();
                 void fetchDisputes();
-                void fetchQueue();
               }}
               disabled={loadingMetrics}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#1D1D1F] shadow-xs hover:bg-[#F5F5F7]"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7]"
             >
-              <RefreshCw className={cn('h-3.5 w-3.5', loadingMetrics && 'animate-spin text-[#007AFF]')} />
+              <RefreshCw className={cn('h-3.5 w-3.5 text-[#6E6E73]', loadingMetrics && 'animate-spin text-[#007AFF]')} />
               <span>Refresh Metrics</span>
             </button>
-            <div className="inline-flex items-center gap-2 rounded-md border border-black/[0.06] bg-white px-3 py-1.5 text-xs font-semibold text-[#1D1D1F] shadow-xs">
-              <CircleDot className="h-3 w-3 text-[#34C759]" />
+            <div className="inline-flex items-center gap-2 rounded-xl border border-black/[0.06] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F]">
+              <span className="h-2 w-2 rounded-full bg-[#34C759]" />
               <span>Live API Synced</span>
             </div>
           </div>
         </div>
 
-        {/* Live Metrics Grid */}
+        {/* Live Metrics Grid (5 SUPPORT_API.ADMIN.DASHBOARD KPIs) */}
         <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-5">
-          <MetricCard
-            icon={MessagesSquare}
-            label="Live Queue Conversations"
-            value={dashboardMetrics ? String(dashboardMetrics.waitingConversationsCount) : String(conversations.length)}
-            detail="Active chat requests"
-            badge="Live Chat"
-          />
           <MetricCard
             icon={TicketCheck}
             label="Open Support Tickets"
             value={dashboardMetrics ? String(dashboardMetrics.openTicketsCount) : '0'}
             detail="Tracked customer cases"
             badge="Ticketing"
+          />
+          <MetricCard
+            icon={AlertCircle}
+            label="Action Required Tickets"
+            value={dashboardMetrics ? String(dashboardMetrics.actionRequiredTicketsCount ?? 0) : '0'}
+            detail="Waiting on customer reply"
+            badge="Action Req"
           />
           <MetricCard
             icon={Siren}
@@ -1258,55 +1019,55 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         </div>
 
         {/* Operational Priority Shortcuts */}
-        <div className="rounded-lg border border-black/[0.06] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.03)] sm:p-5 space-y-3">
+        <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-[#1D1D1F] uppercase tracking-wider">Quick Action Shortcuts</h3>
-            <span className="text-[10px] text-[#8E8E93]">Unified Operations Hub</span>
+            <h3 className="text-[11px] font-semibold text-[#86868B] uppercase tracking-wider">Quick Action Shortcuts</h3>
+            <span className="text-[10px] text-[#86868B]">Unified Operations Hub</span>
           </div>
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2.5 sm:grid-cols-4">
             <button
               type="button"
-              onClick={() => setActiveView('conversations')}
-              className="flex items-center justify-between p-3 rounded-md border border-black/[0.06] bg-[#FAFBFD] hover:bg-blue-50/50 hover:border-[#007AFF]/30 transition text-left cursor-pointer"
+              onClick={() => setActiveView('tickets')}
+              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer"
             >
               <div>
-                <p className="font-semibold text-xs text-[#1D1D1F]">Review Live Chats</p>
-                <p className="text-[10px] text-[#6E6E73]">{dashboardMetrics?.waitingConversationsCount ?? conversations.length} customer inquiries</p>
+                <p className="font-medium text-xs text-[#1D1D1F]">Manage Support Tickets</p>
+                <p className="text-[11px] text-[#6E6E73] mt-0.5">{dashboardMetrics?.openTicketsCount ?? 0} open customer cases</p>
               </div>
-              <ArrowRight className="h-4 w-4 text-[#007AFF]" />
+              <ArrowRight className="h-4 w-4 text-[#86868B]" />
             </button>
             <button
               type="button"
               onClick={() => setActiveView('incidents')}
-              className="flex items-center justify-between p-3 rounded-md border border-rose-200/80 bg-rose-50/40 hover:bg-rose-50 hover:border-rose-300 transition text-left cursor-pointer"
+              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer"
             >
               <div>
-                <p className="font-semibold text-xs text-rose-800">Operational Incidents</p>
-                <p className="text-[10px] text-rose-700">{dashboardMetrics?.activeIncidentsCount ?? incidents.length} active site disruptions</p>
+                <p className="font-medium text-xs text-[#1D1D1F]">Operational Incidents</p>
+                <p className="text-[11px] text-[#6E6E73] mt-0.5">{dashboardMetrics?.activeIncidentsCount ?? incidents.length} active site disruptions</p>
               </div>
-              <ArrowRight className="h-4 w-4 text-rose-600" />
+              <ArrowRight className="h-4 w-4 text-[#86868B]" />
             </button>
             <button
               type="button"
               onClick={() => setActiveView('disputes')}
-              className="flex items-center justify-between p-3 rounded-md border border-amber-200/80 bg-amber-50/40 hover:bg-amber-50 hover:border-amber-300 transition text-left cursor-pointer"
+              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer"
             >
               <div>
-                <p className="font-semibold text-xs text-amber-800">Financial Disputes</p>
-                <p className="text-[10px] text-amber-700">{dashboardMetrics?.openDisputesCount ?? disputes.length} cases under review</p>
+                <p className="font-medium text-xs text-[#1D1D1F]">Financial Disputes</p>
+                <p className="text-[11px] text-[#6E6E73] mt-0.5">{dashboardMetrics?.openDisputesCount ?? disputes.length} cases under review</p>
               </div>
-              <ArrowRight className="h-4 w-4 text-amber-600" />
+              <ArrowRight className="h-4 w-4 text-[#86868B]" />
             </button>
             <button
               type="button"
               onClick={() => setActiveView('on-call')}
-              className="flex items-center justify-between p-3 rounded-md border border-indigo-200/80 bg-indigo-50/40 hover:bg-indigo-50 hover:border-indigo-300 transition text-left cursor-pointer"
+              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer"
             >
               <div>
-                <p className="font-semibold text-xs text-indigo-800">24/7 On-Call Matrix</p>
-                <p className="text-[10px] text-indigo-700">{onCallStatus?.primaryResponder?.name || 'Active duty roster'}</p>
+                <p className="font-medium text-xs text-[#1D1D1F]">24/7 On-Call Matrix</p>
+                <p className="text-[11px] text-[#6E6E73] mt-0.5">{onCallStatus?.primaryResponder?.name || 'Active duty roster'}</p>
               </div>
-              <ArrowRight className="h-4 w-4 text-indigo-600" />
+              <ArrowRight className="h-4 w-4 text-[#86868B]" />
             </button>
           </div>
         </div>
@@ -1314,46 +1075,49 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         {/* Two-Column Section: Recent Incidents & Recent Tickets */}
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Recent Operational Incidents */}
-          <div className="rounded-lg border border-black/[0.06] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.03)] sm:p-5 flex flex-col justify-between">
+          <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 flex flex-col justify-between">
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
                 <div className="flex items-center gap-2">
-                  <Siren className="h-4 w-4 text-rose-600" />
-                  <h3 className="text-sm font-bold text-[#1D1D1F]">Recent Operational Incidents</h3>
+                  <Siren className="h-4 w-4 text-[#1D1D1F]" />
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Recent Operational Incidents</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setActiveView('incidents')}
-                  className="text-xs font-semibold text-[#007AFF] hover:underline cursor-pointer"
+                  className="text-xs font-medium text-[#007AFF] hover:underline cursor-pointer"
                 >
                   View All &rarr;
                 </button>
               </div>
 
               {recentIncidents.length === 0 ? (
-                <p className="text-xs text-[#8E8E93] py-4 text-center">No active incidents reported.</p>
+                <p className="text-xs text-[#86868B] py-4 text-center">No active incidents reported.</p>
               ) : (
                 <div className="space-y-2">
                   {recentIncidents.map((inc) => (
                     <div
                       key={inc.incidentId}
-                      className="flex items-center justify-between p-2.5 rounded-md border border-black/[0.04] bg-[#FAFBFD] hover:bg-[#F5F5F7] transition"
+                      className="flex items-center justify-between p-3 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/50 hover:bg-[#F5F5F7] transition"
                     >
                       <div className="min-w-0 flex-1 pr-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] font-bold text-rose-700">{inc.incidentReference}</span>
-                          <span className={cn(
-                            'rounded px-1.5 py-0.2 text-[9px] font-bold',
-                            inc.priority === 'P0' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
-                          )}>
+                          <span className="font-mono text-[10px] font-semibold text-[#6E6E73]">{inc.incidentReference}</span>
+                          <span className="inline-flex items-center gap-1 rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F]">
+                            <span
+                              className={cn(
+                                'h-1.5 w-1.5 rounded-full',
+                                inc.priority === 'P0' ? 'bg-[#FF3B30]' : 'bg-[#FF9500]'
+                              )}
+                            />
                             {inc.priority}
                           </span>
-                          <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[9px] font-semibold text-[#6E6E73]">
+                          <span className="rounded-full border border-black/[0.06] bg-white px-2 py-0.5 text-[9px] font-medium text-[#6E6E73]">
                             {inc.status}
                           </span>
                         </div>
-                        <p className="text-xs font-bold text-[#1D1D1F] truncate mt-1">{inc.title}</p>
-                        <p className="text-[10px] text-[#8E8E93] mt-0.5">
+                        <p className="text-xs font-semibold text-[#1D1D1F] truncate mt-1">{cleanSupportText(inc.title)}</p>
+                        <p className="text-[10px] text-[#86868B] mt-0.5">
                           Team: {inc.assignedTeam || 'ParkingOperations'} · {inc.affectedCustomerCount} affected
                         </p>
                       </div>
@@ -1364,7 +1128,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                           setSelectedIncidentId(inc.incidentId);
                           setActiveView('incidents');
                         }}
-                        className="rounded-lg bg-white border border-black/[0.08] px-2.5 py-1 text-[11px] font-semibold text-[#1D1D1F] hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition shrink-0 cursor-pointer"
+                        className="rounded-xl bg-white border border-black/[0.08] px-3 py-1.5 text-[11px] font-medium text-[#1D1D1F] hover:bg-[#E8E8ED] transition shrink-0 cursor-pointer"
                       >
                         Inspect
                       </button>
@@ -1376,46 +1140,43 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
           </div>
 
           {/* Recent Support Tickets */}
-          <div className="rounded-lg border border-black/[0.06] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.03)] sm:p-5 flex flex-col justify-between">
+          <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 flex flex-col justify-between">
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
                 <div className="flex items-center gap-2">
-                  <TicketCheck className="h-4 w-4 text-[#007AFF]" />
-                  <h3 className="text-sm font-bold text-[#1D1D1F]">Recent Support Tickets</h3>
+                  <TicketCheck className="h-4 w-4 text-[#1D1D1F]" />
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Recent Support Tickets</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setActiveView('tickets')}
-                  className="text-xs font-semibold text-[#007AFF] hover:underline cursor-pointer"
+                  className="text-xs font-medium text-[#007AFF] hover:underline cursor-pointer"
                 >
                   View All &rarr;
                 </button>
               </div>
 
               {recentTickets.length === 0 ? (
-                <p className="text-xs text-[#8E8E93] py-4 text-center">No recent tickets logged.</p>
+                <p className="text-xs text-[#86868B] py-4 text-center">No recent tickets logged.</p>
               ) : (
                 <div className="space-y-2">
                   {recentTickets.slice(0, 5).map((tkt) => (
                     <div
                       key={tkt.ticketId}
-                      className="flex items-center justify-between p-2.5 rounded-md border border-black/[0.04] bg-[#FAFBFD] hover:bg-[#F5F5F7] transition"
+                      className="flex items-center justify-between p-3 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/50 hover:bg-[#F5F5F7] transition"
                     >
                       <div className="min-w-0 flex-1 pr-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] font-bold text-[#007AFF]">{tkt.ticketReference}</span>
-                          <span className={cn(
-                            'rounded px-1.5 py-0.2 text-[9px] font-bold',
-                            tkt.priority === 'P0' || tkt.priority === 'P1' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-[#6E6E73]'
-                          )}>
+                          <span className="font-mono text-[10px] font-semibold text-[#6E6E73]">{tkt.ticketReference}</span>
+                          <span className="rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F]">
                             {tkt.priority}
                           </span>
-                          <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[9px] font-semibold text-[#6E6E73]">
+                          <span className="rounded-full border border-black/[0.06] bg-white px-2 py-0.5 text-[9px] font-medium text-[#6E6E73]">
                             {tkt.status}
                           </span>
                         </div>
-                        <p className="text-xs font-bold text-[#1D1D1F] truncate mt-1">{tkt.subject}</p>
-                        <p className="text-[10px] text-[#8E8E93] mt-0.5">
+                        <p className="text-xs font-semibold text-[#1D1D1F] truncate mt-1">{tkt.subject}</p>
+                        <p className="text-[10px] text-[#86868B] mt-0.5">
                           {tkt.customerName} · Category: {tkt.category}
                         </p>
                       </div>
@@ -1423,7 +1184,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                       <button
                         type="button"
                         onClick={() => setActiveView('tickets')}
-                        className="rounded-lg bg-white border border-black/[0.08] px-2.5 py-1 text-[11px] font-semibold text-[#1D1D1F] hover:bg-blue-50 hover:text-[#007AFF] hover:border-blue-200 transition shrink-0 cursor-pointer"
+                        className="rounded-xl bg-white border border-black/[0.08] px-3 py-1.5 text-[11px] font-medium text-[#1D1D1F] hover:bg-[#E8E8ED] transition shrink-0 cursor-pointer"
                       >
                         Open
                       </button>
@@ -1438,234 +1199,17 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
     );
   };
 
-  // ── Render Conversations ──
-  const renderConversations = () => (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-bold text-[#1D1D1F]">Live Support Queue</h2>
-        <p className="text-xs text-[#6E6E73]">Real-time customer messaging & triage dispatch</p>
-      </div>
-
-      <section className="overflow-hidden rounded-lg border border-black/[0.06] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.02)] lg:grid lg:min-h-[580px] lg:grid-cols-[300px_minmax(0,1fr)_260px]">
-        {/* Left: Queue List */}
-        <div className={cn('border-b border-black/[0.06] lg:border-b-0 lg:border-r flex flex-col bg-white', mobileConversationOpen ? 'hidden lg:flex' : 'flex')}>
-          <div className="p-2.5 border-b border-black/[0.06]">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#8E8E93]" />
-              <input
-                type="search"
-                value={conversationSearch}
-                onChange={(e) => setConversationSearch(e.target.value)}
-                placeholder="Search live queue..."
-                className="min-h-8 w-full rounded-md border border-black/[0.08] bg-[#F5F5F7] pl-8 pr-3 text-xs outline-none focus:border-[#007AFF] focus:bg-white"
-              />
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-2 space-y-1.5 max-h-[520px]">
-            {loadingQueue ? (
-              <div className="flex h-32 items-center justify-center text-xs text-[#8E8E93]">
-                <Loader2 className="h-4 w-4 animate-spin text-[#007AFF]" />
-              </div>
-            ) : visibleConversations.length === 0 ? (
-              <div className="p-4 text-center text-xs text-[#8E8E93]">No active conversations</div>
-            ) : (
-              visibleConversations.map((c) => {
-                const isSelected = c.conversationId === selectedConversationId;
-                return (
-                  <button
-                    key={c.conversationId}
-                    type="button"
-                    onClick={() => {
-                      setSelectedConversationId(c.conversationId);
-                      setMobileConversationOpen(true);
-                    }}
-                    className={cn(
-                      'w-full cursor-pointer rounded-md border p-2.5 text-left transition-all',
-                      isSelected
-                        ? 'border-[#007AFF] bg-blue-50/40 shadow-xs'
-                        : 'border-black/[0.04] bg-white hover:bg-[#F5F5F7]'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-[9px] font-bold text-[#007AFF]">{c.conversationReference}</span>
-                      <span className="text-[9px] text-[#8E8E93]">{formatMsgDate(c.lastMessageAt)}</span>
-                    </div>
-                    <p className="mt-1 font-semibold text-xs text-[#1D1D1F] truncate">{c.customerName}</p>
-                    <p className="text-[11px] text-[#6E6E73] truncate">{c.lastMessageSnippet || 'Conversation started'}</p>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Center: Message Thread */}
-        <div className={cn('flex flex-col bg-[#FAFBFD] border-b border-black/[0.06] lg:border-b-0', mobileConversationOpen ? 'flex' : 'hidden lg:flex')}>
-          {selectedConversationDetail ? (
-            <>
-              <div className="flex items-center justify-between border-b border-black/[0.06] bg-white px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setMobileConversationOpen(false)}
-                    className="cursor-pointer rounded-md p-1.5 text-[#0F172A] hover:bg-slate-100 lg:hidden min-h-[30px] min-w-[30px] flex items-center justify-center shrink-0 border border-slate-200"
-                    aria-label="Back to conversations list"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </button>
-                  <div>
-                    <h3 className="font-bold text-xs text-[#1D1D1F]">{selectedConversationDetail.customerName}</h3>
-                    <p className="text-[10px] text-[#8E8E93]">
-                      {selectedConversationDetail.conversationReference} · {selectedConversationDetail.channel}
-                    </p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[9px] font-semibold text-[#007AFF]">
-                  {selectedConversationDetail.status}
-                </span>
-              </div>
-
-              <div className="flex-1 space-y-3 overflow-y-auto p-4 max-h-[420px]">
-                {loadingDetail ? (
-                  <div className="flex h-32 items-center justify-center text-xs text-[#8E8E93]">
-                    <Loader2 className="h-4 w-4 animate-spin text-[#007AFF]" />
-                  </div>
-                ) : (
-                  selectedConversationDetail.messages?.map((msg) => {
-                    const isStaff = msg.senderRole === 'Admin';
-                    return (
-                      <div key={msg.messageId} className={cn('flex', isStaff ? 'justify-end' : 'justify-start')}>
-                        <div
-                          className={cn(
-                            'max-w-[75%] rounded-lg px-3.5 py-2 text-xs',
-                            msg.isInternal
-                              ? 'bg-amber-50 border border-amber-200 text-amber-900'
-                              : isStaff
-                              ? 'bg-[#007AFF] text-white'
-                              : 'bg-white border border-black/[0.06] text-[#1D1D1F]'
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="text-[9px] font-bold opacity-80">{msg.senderName}</span>
-                            <span className="text-[8px] opacity-60">{formatMsgDate(msg.createdAt)}</span>
-                          </div>
-                          <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <form onSubmit={sendReply} className="border-t border-black/[0.06] bg-white p-3 space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-[#6E6E73]">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isInternalNote}
-                      onChange={(e) => setIsInternalNote(e.target.checked)}
-                      className="rounded border-black/[0.15] text-[#007AFF]"
-                    />
-                    <span>Post as Internal Staff Note</span>
-                  </label>
-                  {isInternalNote && <span className="font-semibold text-amber-700">Internal only</span>}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={reply}
-                    onChange={(e) => setReply(e.target.value)}
-                    placeholder={isInternalNote ? 'Write internal note for staff...' : 'Reply to customer...'}
-                    className="flex-1 rounded-md border border-black/[0.08] px-3 py-2 text-xs outline-none focus:border-[#007AFF]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={sendingReply || !reply.trim()}
-                    className="cursor-pointer rounded-md bg-[#007AFF] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#0066D6] disabled:opacity-50"
-                  >
-                    {sendingReply ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-              </form>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-xs text-[#8E8E93]">
-              Select a conversation to view transcript
-            </div>
-          )}
-        </div>
-
-        {/* Right: Context Sidebar */}
-        <aside className={cn('border-t border-black/[0.06] bg-[#FAFBFD] p-3.5 lg:border-t-0 lg:border-l space-y-3.5 text-xs', mobileConversationOpen ? 'block' : 'hidden lg:block')}>
-          {selectedConversationDetail && (
-            <>
-              <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">Context</h4>
-                <div className="mt-2 space-y-0 divide-y divide-black/[0.04] text-[11px]">
-                  <div className="py-1.5">
-                    <p className="text-[9px] text-[#8E8E93]">Email</p>
-                    <p className="font-semibold text-[#1D1D1F] truncate">{selectedConversationDetail.customerEmail}</p>
-                  </div>
-                  <div className="py-1.5">
-                    <p className="text-[9px] text-[#8E8E93]">Booking ID</p>
-                    <p className="font-mono font-bold text-[#007AFF]">{selectedConversationDetail.currentBookingId || 'None'}</p>
-                  </div>
-                  <div className="py-1.5">
-                    <p className="text-[9px] text-[#8E8E93]">Status</p>
-                    <p className="font-semibold text-[#1D1D1F]">{selectedConversationDetail.status}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-[#8E8E93]">Quick Actions</h4>
-                <div className="mt-2 space-y-1.5">
-                  <button
-                    type="button"
-                    onClick={openTicketFromConversation}
-                    className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#0066D6]"
-                  >
-                    <TicketCheck className="h-3.5 w-3.5" /> Create Ticket
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleDispatchWorkflow('parking-access', 'Parking Access Troubleshooting')}
-                    disabled={dispatchingWorkflow || selectedConversationDetail.status === 'Closed'}
-                    className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7] disabled:opacity-50"
-                  >
-                    <Workflow className="h-3.5 w-3.5 text-[#007AFF]" /> Dispatch Access Workflow
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleCloseConversation()}
-                    disabled={closingConv || selectedConversationDetail.status === 'Closed'}
-                    className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                  >
-                    <X className="h-3.5 w-3.5" /> Close Conversation
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </aside>
-      </section>
-    </div>
-  );
-
   // ── Render Operational Incidents & Hardware Access Override ──
   const renderIncidents = () => (
     <div className="space-y-4" data-component="operational-incidents">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-[#1D1D1F] sm:text-lg">
+            <h2 className="text-base font-semibold tracking-tight text-[#1D1D1F] sm:text-lg">
               Operational Incidents & Hardware Access
             </h2>
-            <span className="rounded-full bg-rose-50 border border-rose-200 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F5F5F7] border border-black/[0.08] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#FF3B30]" />
               {incidents.filter((i) => i.priority === 'P0').length} P0 Emergency
             </span>
           </div>
@@ -1679,16 +1223,16 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             type="button"
             onClick={() => void fetchIncidents()}
             disabled={loadingIncidents}
-            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-black/[0.08] bg-white px-3 text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7]"
+            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7]"
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', loadingIncidents && 'animate-spin text-[#007AFF]')} />
+            <RefreshCw className={cn('h-3.5 w-3.5 text-[#6E6E73]', loadingIncidents && 'animate-spin text-[#007AFF]')} />
             <span>Sync Incidents</span>
           </button>
 
           <button
             type="button"
             onClick={() => setCreateIncidentOpen(true)}
-            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md bg-[#007AFF] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#0066D6]"
+            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 text-xs font-medium text-white hover:bg-[#0066D6]"
           >
             <Plus className="h-4 w-4" />
             <span>Create Incident</span>
@@ -1696,29 +1240,29 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-lg border border-black/[0.06] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.03)] lg:grid lg:min-h-[620px] lg:grid-cols-[340px_minmax(0,1fr)]">
+      <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] lg:grid lg:min-h-[620px] lg:grid-cols-[340px_minmax(0,1fr)]">
         {/* Left: Incident Queue */}
         <div className={cn('flex flex-col border-b border-black/[0.06] lg:border-b-0 lg:border-r bg-white', mobileIncidentDetailOpen ? 'hidden lg:flex' : 'flex')}>
-          <div className="p-3 border-b border-black/[0.06] space-y-2">
+          <div className="p-3.5 border-b border-black/[0.06] space-y-2">
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#8E8E93]" />
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
               <input
                 type="search"
                 value={incidentSearch}
                 onChange={(e) => setIncidentSearch(e.target.value)}
                 placeholder="Search reference, title, type..."
-                className="min-h-8 w-full rounded-md border border-black/[0.08] bg-[#F5F5F7] pl-8 pr-3 text-xs outline-none focus:border-[#007AFF] focus:bg-white"
+                className="min-h-8 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/70 pl-8 pr-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <label htmlFor="incident-status-filter" className="text-[11px] font-bold text-[#6E6E73] shrink-0">Status:</label>
+              <label htmlFor="incident-status-filter" className="text-[11px] font-medium text-[#6E6E73] shrink-0">Status:</label>
               <div className="relative flex-1">
                 <select
                   id="incident-status-filter"
                   value={incidentFilter}
                   onChange={(e) => setIncidentFilter(e.target.value)}
-                  className="min-h-8 w-full cursor-pointer appearance-none rounded-md border border-black/[0.08] bg-[#F5F5F7] pl-3 pr-8 text-xs font-semibold text-[#1D1D1F] outline-none hover:bg-white focus:border-[#007AFF] focus:bg-white transition"
+                  className="min-h-8 w-full cursor-pointer appearance-none rounded-xl border border-black/[0.08] bg-[#F5F5F7]/70 pl-3 pr-8 text-xs font-medium text-[#1D1D1F] outline-none hover:bg-[#F5F5F7] focus:border-[#007AFF] focus:bg-white transition"
                 >
                   <option value="All">All Incidents ({incidents.length})</option>
                   <option value="Open">Open</option>
@@ -1726,21 +1270,21 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="Escalated">Escalated</option>
                   <option value="Resolved">Resolved</option>
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#8E8E93]" />
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
               </div>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-1.5 max-h-[540px]">
+          <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 max-h-[540px]">
             {loadingIncidents ? (
               <div className="flex h-40 flex-col items-center justify-center gap-2 text-xs text-[#6E6E73]">
                 <Loader2 className="h-4 w-4 animate-spin text-[#007AFF]" />
                 <span>Loading operational incidents...</span>
               </div>
             ) : visibleIncidents.length === 0 ? (
-              <div className="p-6 text-center text-xs text-[#8E8E93]">
-                <Siren className="h-6 w-6 mx-auto text-[#8E8E93]/60 mb-2" />
-                <p className="font-bold text-[#1D1D1F]">No incidents found</p>
+              <div className="p-6 text-center text-xs text-[#86868B]">
+                <Siren className="h-6 w-6 mx-auto text-[#86868B]/60 mb-2" />
+                <p className="font-semibold text-[#1D1D1F]">No incidents found</p>
                 <p className="text-[11px] mt-0.5">Hardware and barriers are running nominally.</p>
               </div>
             ) : (
@@ -1757,37 +1301,33 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                       setMobileIncidentDetailOpen(true);
                     }}
                     className={cn(
-                      'w-full cursor-pointer rounded-md border p-3 text-left transition-all relative',
+                      'w-full cursor-pointer rounded-xl border p-3 text-left transition-all relative',
                       isSelected
-                        ? 'border-[#007AFF]/40 bg-blue-50/50 shadow-xs ring-1 ring-[#007AFF]/20'
-                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/70'
+                        ? 'border-black/[0.12] bg-[#F5F5F7] shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
+                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/60'
                     )}
                   >
                     <div className="flex items-center justify-between gap-1.5">
-                      <span className="font-mono text-[10px] font-bold text-[#007AFF]">{inc.incidentReference}</span>
+                      <span className="font-mono text-[10px] font-semibold text-[#6E6E73]">{inc.incidentReference}</span>
                       <div className="flex items-center gap-1">
-                        <span
-                          className={cn(
-                            'rounded px-1.5 py-0.2 text-[9px] font-bold',
-                            isP0 ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'bg-amber-100 text-amber-800'
-                          )}
-                        >
+                        <span className="inline-flex items-center gap-1 rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F]">
+                          <span className={cn('h-1.5 w-1.5 rounded-full', isP0 ? 'bg-[#FF3B30]' : 'bg-[#FF9500]')} />
                           {inc.priority}
                         </span>
-                        <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[9px] font-medium text-[#475569]">
+                        <span className="rounded-full border border-black/[0.06] bg-white px-2 py-0.5 text-[9px] font-medium text-[#6E6E73]">
                           {inc.status}
                         </span>
                       </div>
                     </div>
 
-                    <h4 className="mt-1.5 text-xs font-bold text-[#1D1D1F] line-clamp-1">{inc.title}</h4>
+                    <h4 className="mt-1.5 text-xs font-semibold text-[#1D1D1F] line-clamp-1">{cleanSupportText(inc.title)}</h4>
 
                     <div className="mt-1 flex items-center justify-between text-[10px] text-[#6E6E73]">
                       <span className="truncate">{inc.assignedTeam || 'ParkingOperations'} · {inc.incidentType}</span>
-                      <span className="font-medium text-[9px] shrink-0">{formatMsgDate(inc.createdAt)}</span>
+                      <span className="font-medium text-[9px] shrink-0 text-[#86868B]">{formatMsgDate(inc.createdAt)}</span>
                     </div>
 
-                    <div className="mt-1 flex items-center gap-2 text-[9px] text-[#8E8E93]">
+                    <div className="mt-1 flex items-center gap-2 text-[9px] text-[#86868B]">
                       <span>{inc.affectedCustomerCount} customer affected</span>
                     </div>
                   </button>
@@ -1804,45 +1344,44 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               <Loader2 className="h-5 w-5 animate-spin text-[#007AFF]" />
             </div>
           ) : !selectedIncidentDetail ? (
-            <div className="flex min-h-[400px] flex-1 flex-col items-center justify-center text-center p-8 text-xs text-[#8E8E93]">
-              <Siren className="h-10 w-10 text-[#8E8E93]/50 mb-2" />
-              <p className="font-bold text-sm text-[#1D1D1F]">Select an incident</p>
+            <div className="flex min-h-[400px] flex-1 flex-col items-center justify-center text-center p-8 text-xs text-[#86868B]">
+              <Siren className="h-10 w-10 text-[#86868B]/40 mb-2" />
+              <p className="font-semibold text-sm text-[#1D1D1F]">Select an incident</p>
               <p className="text-xs text-[#6E6E73] mt-1 max-w-xs">
-                Review automated IoT telemetry, responder assignments, gate override overrides, and escalation chains.
+                Review automated IoT telemetry, responder assignments, gate access overrides, and escalation chains.
               </p>
             </div>
           ) : (
             <div className="p-4 sm:p-5 space-y-4">
               {/* Incident Header: Identity & Actions Row + Title Row */}
-              <div className="border-b border-slate-100 pb-3 space-y-2">
+              <div className="border-b border-black/[0.06] pb-3.5 space-y-2">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setMobileIncidentDetailOpen(false)}
-                      className="cursor-pointer rounded-md p-1.5 text-[#0F172A] hover:bg-slate-100 lg:hidden min-h-[30px] min-w-[30px] flex items-center justify-center shrink-0 border border-slate-200 mr-1"
+                      className="cursor-pointer rounded-xl p-1.5 text-[#1D1D1F] hover:bg-[#F5F5F7] lg:hidden min-h-[30px] min-w-[30px] flex items-center justify-center shrink-0 border border-black/[0.08] mr-1"
                       aria-label="Back to incidents list"
                     >
                       <ArrowLeft className="h-4 w-4" />
                     </button>
-                    <span className="font-mono text-xs font-bold text-[#007AFF]">
+                    <span className="font-mono text-xs font-semibold text-[#6E6E73]">
                       {selectedIncidentDetail.incidentReference}
                     </span>
-                    <span
-                      className={cn(
-                        'rounded px-1.5 py-0.5 text-[10px] font-bold',
-                        selectedIncidentDetail.priority === 'P0'
-                          ? 'bg-rose-100 text-rose-700 border border-rose-200 animate-pulse'
-                          : 'bg-amber-100 text-amber-800'
-                      )}
-                    >
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F]">
+                      <span
+                        className={cn(
+                          'h-1.5 w-1.5 rounded-full',
+                          selectedIncidentDetail.priority === 'P0' ? 'bg-[#FF3B30]' : 'bg-[#FF9500]'
+                        )}
+                      />
                       {selectedIncidentDetail.priority}
                     </span>
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">
+                    <span className="rounded-full border border-black/[0.08] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#6E6E73]">
                       {selectedIncidentDetail.status}
                     </span>
                     {selectedIncidentDetail.escalationLevel > 0 && (
-                      <span className="rounded bg-purple-50 border border-purple-200 px-1.5 py-0.5 text-[10px] font-bold text-purple-700">
+                      <span className="rounded-full border border-black/[0.08] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F]">
                         Level {selectedIncidentDetail.escalationLevel}
                       </span>
                     )}
@@ -1854,10 +1393,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                       type="button"
                       onClick={() => setShowIncidentDetails((prev) => !prev)}
                       className={cn(
-                        'inline-flex cursor-pointer items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition select-none',
+                        'inline-flex cursor-pointer items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-medium transition select-none',
                         showIncidentDetails
-                          ? 'bg-[#0F172A] text-white shadow-2xs'
-                          : 'bg-slate-100 text-[#475569] hover:bg-slate-200/80 hover:text-[#0F172A]'
+                          ? 'bg-[#1D1D1F] text-white'
+                          : 'bg-[#F5F5F7] text-[#1D1D1F] hover:bg-[#E8E8ED]'
                       )}
                     >
                       <Info className="h-3.5 w-3.5" />
@@ -1870,7 +1409,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                         type="button"
                         onClick={handleAcknowledgeIncident}
                         disabled={incidentActionLoading}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[#1D1D1F] px-3 py-1 text-xs font-semibold text-white hover:bg-black disabled:opacity-50 shadow-xs"
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#007AFF] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                       >
                         {incidentActionLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3" />}
                         <span>Acknowledge</span>
@@ -1881,10 +1420,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                       <button
                         type="button"
                         onClick={() => setIncidentActionMenuOpen((prev) => !prev)}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#0F172A] hover:bg-slate-50 shadow-2xs transition"
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-black/[0.08] bg-white px-2.5 py-1.5 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] transition"
                       >
                         <span>Actions</span>
-                        <ChevronDown className="h-3 w-3 text-slate-400" />
+                        <ChevronDown className="h-3 w-3 text-[#86868B]" />
                       </button>
 
                       {incidentActionMenuOpen && (
@@ -1893,7 +1432,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                             className="fixed inset-0 z-40"
                             onClick={() => setIncidentActionMenuOpen(false)}
                           />
-                          <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-md border border-black/[0.08] bg-white p-1 shadow-lg divide-y divide-black/[0.04] text-xs">
+                          <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-2xl border border-black/[0.08] bg-white p-1.5 shadow-lg divide-y divide-black/[0.04] text-xs">
                             <div className="py-1">
                               <button
                                 type="button"
@@ -1901,9 +1440,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                   setIncidentActionMenuOpen(false);
                                   setAssignIncidentOpen(true);
                                 }}
-                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded cursor-pointer"
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] rounded-lg cursor-pointer"
                               >
-                                <Users className="h-3.5 w-3.5 text-[#007AFF]" />
+                                <Users className="h-3.5 w-3.5 text-[#6E6E73]" />
                                 <span>Assign Responder...</span>
                               </button>
 
@@ -1915,9 +1454,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                   setOverrideError(null);
                                   setOverrideModalOpen(true);
                                 }}
-                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-amber-700 hover:bg-amber-50 rounded cursor-pointer"
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] rounded-lg cursor-pointer"
                               >
-                                <KeyRound className="h-3.5 w-3.5 text-amber-600" />
+                                <KeyRound className="h-3.5 w-3.5 text-[#6E6E73]" />
                                 <span>Gate Override...</span>
                               </button>
 
@@ -1927,9 +1466,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                   setIncidentActionMenuOpen(false);
                                   setTransitionIncidentOpen(true);
                                 }}
-                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-emerald-700 hover:bg-emerald-50 rounded cursor-pointer"
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] rounded-lg cursor-pointer"
                               >
-                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                <CheckCircle2 className="h-3.5 w-3.5 text-[#6E6E73]" />
                                 <span>Resolve Status...</span>
                               </button>
                             </div>
@@ -1941,9 +1480,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                   setIncidentActionMenuOpen(false);
                                   setLinkTicketOpen(true);
                                 }}
-                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded cursor-pointer"
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] rounded-lg cursor-pointer"
                               >
-                                <Link2 className="h-3.5 w-3.5 text-[#007AFF]" />
+                                <Link2 className="h-3.5 w-3.5 text-[#6E6E73]" />
                                 <span>Link Support Ticket...</span>
                               </button>
                             </div>
@@ -1955,10 +1494,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 </div>
 
                 <div>
-                  <h3 className="text-base font-bold text-[#0F172A] sm:text-lg">
-                    {selectedIncidentDetail.title}
+                  <h3 className="text-base font-semibold tracking-tight text-[#1D1D1F] sm:text-lg">
+                    {cleanSupportText(selectedIncidentDetail.title)}
                   </h3>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-[#6E6E73]">
                     {selectedIncidentDetail.propertyName ? `${selectedIncidentDetail.propertyName} · ` : ''}
                     {selectedIncidentDetail.spotNumber ? `Bay ${selectedIncidentDetail.spotNumber} · ` : ''}
                     Logged {formatDateTime(selectedIncidentDetail.createdAt)} · Source: {selectedIncidentDetail.source}
@@ -1968,47 +1507,47 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
               {/* Collapsible Incident Metadata Drawer */}
               {showIncidentDetails && (
-                <div className="grid gap-3 sm:grid-cols-2 text-xs bg-slate-50/80 p-3.5 rounded-md border border-slate-200/70 animate-in fade-in-0 duration-150">
+                <div className="grid gap-3 sm:grid-cols-2 text-xs bg-[#F5F5F7]/70 p-4 rounded-2xl border border-black/[0.06] animate-in fade-in-0 duration-150">
                   <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] block">
                       Incident Description & Symptoms
                     </span>
-                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
-                      {selectedIncidentDetail.description}
+                    <p className="text-xs text-[#1D1D1F] leading-relaxed whitespace-pre-wrap">
+                      {cleanSupportText(selectedIncidentDetail.description)}
                     </p>
-                    <div className="pt-1 flex items-center gap-2 text-[10px] text-slate-500">
-                      <span>Type: <strong className="text-slate-800">{selectedIncidentDetail.incidentType}</strong></span>
+                    <div className="pt-1 flex items-center gap-2 text-[10px] text-[#6E6E73]">
+                      <span>Type: <strong className="text-[#1D1D1F]">{selectedIncidentDetail.incidentType}</strong></span>
                       <span>·</span>
-                      <span>Affected: <strong className="text-slate-800">{selectedIncidentDetail.affectedCustomerCount} driver(s)</strong></span>
+                      <span>Affected: <strong className="text-[#1D1D1F]">{selectedIncidentDetail.affectedCustomerCount} driver(s)</strong></span>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] block">
                       Hardware & Facility Telemetry
                     </span>
                     <div className="grid grid-cols-2 gap-2 text-[11px]">
                       <div>
-                        <p className="text-[9px] text-slate-400">Property</p>
-                        <p className="font-semibold text-slate-800 truncate">
+                        <p className="text-[9px] text-[#86868B]">Property</p>
+                        <p className="font-medium text-[#1D1D1F] truncate">
                           {selectedIncidentDetail.propertyName || `Property #${selectedIncidentDetail.propertyId || 'N/A'}`}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-400">Bay / Barrier</p>
-                        <p className="font-semibold text-slate-800">
+                        <p className="text-[9px] text-[#86868B]">Bay / Barrier</p>
+                        <p className="font-medium text-[#1D1D1F]">
                           {selectedIncidentDetail.spotNumber || 'Main Entrance Gate'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-400">IoT Controller</p>
-                        <p className="font-mono text-[10px] text-[#007AFF] font-bold">
+                        <p className="text-[9px] text-[#86868B]">IoT Controller</p>
+                        <p className="font-mono text-[10px] text-[#1D1D1F] font-semibold">
                           {selectedIncidentDetail.ioTDeviceId || selectedIncidentDetail.esp32Serial || 'ESP32-GATE-01'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-400">Assigned Staff</p>
-                        <p className="font-semibold text-slate-800">
+                        <p className="text-[9px] text-[#86868B]">Assigned Staff</p>
+                        <p className="font-medium text-[#1D1D1F]">
                           {selectedIncidentDetail.assignedUserName || 'Unassigned'} ({selectedIncidentDetail.assignedTeam || 'Operations'})
                         </p>
                       </div>
@@ -2017,39 +1556,39 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 </div>
               )}
 
-              {/* Linked Support Tickets Section (Clean, flat, border-divided) */}
+              {/* Linked Support Tickets Section */}
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                    <TicketCheck className="h-4 w-4 text-[#007AFF]" />
+                  <div className="flex items-center gap-1.5 font-semibold text-[#1D1D1F]">
+                    <TicketCheck className="h-4 w-4 text-[#1D1D1F]" />
                     <span>Linked Support Tickets ({selectedIncidentDetail.linkedTickets?.length || 0})</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setLinkTicketOpen(true)}
-                    className="text-xs font-semibold text-[#007AFF] hover:underline cursor-pointer"
+                    className="text-xs font-medium text-[#007AFF] hover:underline cursor-pointer"
                   >
                     + Link Ticket
                   </button>
                 </div>
 
                 {(!selectedIncidentDetail.linkedTickets || selectedIncidentDetail.linkedTickets.length === 0) ? (
-                  <p className="text-xs text-slate-400 italic py-1">No support tickets currently linked to this incident.</p>
+                  <p className="text-xs text-[#86868B] italic py-1">No support tickets currently linked to this incident.</p>
                 ) : (
-                  <div className="divide-y divide-slate-100 border border-slate-100 rounded-md">
+                  <div className="divide-y divide-black/[0.06] border border-black/[0.06] rounded-xl overflow-hidden">
                     {selectedIncidentDetail.linkedTickets.map((t) => (
                       <div
                         key={t.ticketId}
-                        className="flex items-center justify-between p-2.5 hover:bg-slate-50 transition text-xs"
+                        className="flex items-center justify-between p-3 hover:bg-[#F5F5F7]/60 transition text-xs"
                       >
                         <div className="min-w-0 flex-1 pr-2">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-mono text-[10px] font-bold text-[#007AFF]">{t.ticketReference}</span>
-                            <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[9px] font-semibold text-slate-600">{t.status}</span>
-                            <span className="rounded bg-rose-50 border border-rose-200 px-1 py-0.2 text-[9px] font-bold text-rose-700">{t.priority}</span>
+                            <span className="font-mono text-[10px] font-semibold text-[#6E6E73]">{t.ticketReference}</span>
+                            <span className="rounded-full bg-[#F5F5F7] border border-black/[0.08] px-2 py-0.5 text-[9px] font-medium text-[#6E6E73]">{t.status}</span>
+                            <span className="rounded-full bg-[#F5F5F7] border border-black/[0.08] px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F]">{t.priority}</span>
                           </div>
-                          <p className="font-semibold text-xs text-slate-800 mt-0.5 truncate">{t.subject}</p>
-                          <p className="text-[10px] text-slate-400">Customer: {t.customerName} ({t.customerEmail})</p>
+                          <p className="font-medium text-xs text-[#1D1D1F] mt-0.5 truncate">{t.subject}</p>
+                          <p className="text-[10px] text-[#86868B]">Customer: {t.customerName} ({t.customerEmail})</p>
                         </div>
                       </div>
                     ))}
@@ -2057,30 +1596,31 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 )}
               </div>
 
-              {/* Automated Escalation Broadcasts Section (Flat list, no bubble boxes) */}
+              {/* Automated Escalation Broadcasts Section */}
               {selectedIncidentDetail.notificationAttempts && selectedIncidentDetail.notificationAttempts.length > 0 && (
-                <div className="space-y-2 pt-2 border-t border-slate-100">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
-                    <BellRing className="h-4 w-4 text-purple-600" />
+                <div className="space-y-2 pt-2 border-t border-black/[0.06]">
+                  <div className="flex items-center gap-1.5 font-semibold text-[#1D1D1F] text-xs">
+                    <BellRing className="h-4 w-4 text-[#1D1D1F]" />
                     <span>Automated Escalation Broadcasts ({selectedIncidentDetail.notificationAttempts.length})</span>
                   </div>
-                  <div className="divide-y divide-slate-100 border border-slate-100 rounded-md">
+                  <div className="divide-y divide-black/[0.06] border border-black/[0.06] rounded-xl overflow-hidden">
                     {selectedIncidentDetail.notificationAttempts.map((notif) => (
                       <div
                         key={notif.notificationAttemptId}
-                        className="flex items-center justify-between p-2.5 hover:bg-slate-50 transition text-xs"
+                        className="flex items-center justify-between p-3 hover:bg-[#F5F5F7]/60 transition text-xs"
                       >
                         <div className="min-w-0 flex-1 pr-2">
                           <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-slate-800">{notif.recipient}</span>
-                            <span className="rounded bg-purple-50 px-1.5 py-0.2 text-[9px] font-semibold text-purple-700 border border-purple-100">
+                            <span className="font-semibold text-[#1D1D1F]">{notif.recipient}</span>
+                            <span className="rounded-full bg-[#F5F5F7] px-2 py-0.5 text-[9px] font-medium text-[#6E6E73] border border-black/[0.08]">
                               {notif.channel}
                             </span>
-                            <span className="text-[10px] text-slate-400">{formatDateTime(notif.sentAt || notif.createdAt)}</span>
+                            <span className="text-[10px] text-[#86868B]">{formatDateTime(notif.sentAt || notif.createdAt)}</span>
                           </div>
-                          <p className="text-xs text-slate-600 mt-0.5">{notif.message}</p>
+                          <p className="text-xs text-[#6E6E73] mt-0.5">{notif.message}</p>
                         </div>
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full shrink-0">
+                        <span className="inline-flex items-center gap-1 text-[9px] font-medium text-[#1D1D1F] bg-[#F5F5F7] border border-black/[0.08] px-2 py-0.5 rounded-full shrink-0">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#34C759]" />
                           {notif.status}
                         </span>
                       </div>
@@ -2091,17 +1631,17 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
               {/* Incident Audit Timeline Section */}
               {selectedIncidentDetail.auditTimeline && selectedIncidentDetail.auditTimeline.length > 0 && (
-                <div className="pt-2 border-t border-slate-100 text-xs">
+                <div className="pt-2 border-t border-black/[0.06] text-xs">
                   <button
                     type="button"
                     onClick={() => setShowIncidentAudit((prev) => !prev)}
-                    className="flex w-full cursor-pointer items-center justify-between rounded-lg border border-black/[0.06] bg-slate-50/70 hover:bg-slate-100/80 px-3.5 py-2.5 text-left transition select-none"
+                    className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-black/[0.06] bg-[#F5F5F7]/70 hover:bg-[#F5F5F7] px-3.5 py-2.5 text-left transition select-none"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-[#007AFF]">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-white border border-black/[0.06] text-[#1D1D1F]">
                         <History className="h-3.5 w-3.5" />
                       </div>
-                      <span className="font-bold text-slate-800 text-xs">
+                      <span className="font-semibold text-[#1D1D1F] text-xs">
                         Incident Audit Timeline ({selectedIncidentDetail.auditTimeline.length})
                       </span>
                     </div>
@@ -2110,27 +1650,27 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                         {showIncidentAudit ? 'Hide timeline' : 'View history'}
                       </span>
                       {showIncidentAudit ? (
-                        <ChevronUp className="h-4 w-4 text-slate-500" />
+                        <ChevronUp className="h-4 w-4 text-[#86868B]" />
                       ) : (
-                        <ChevronDown className="h-4 w-4 text-slate-500" />
+                        <ChevronDown className="h-4 w-4 text-[#86868B]" />
                       )}
                     </div>
                   </button>
 
                   {showIncidentAudit && (
-                    <div className="mt-3 relative border-l-2 border-slate-200 ml-3 space-y-2.5 pl-3.5 pt-1 transition-all">
+                    <div className="mt-3 relative border-l-2 border-black/[0.08] ml-3 space-y-2.5 pl-3.5 pt-1 transition-all">
                       {selectedIncidentDetail.auditTimeline.map((ev, idx) => (
                         <div key={idx} className="relative">
-                          <div className="absolute -left-[19px] top-1.5 h-2 w-2 rounded-full bg-[#007AFF] ring-4 ring-white" />
-                          <div className="p-2.5 rounded-md bg-white border border-slate-200/80 shadow-2xs">
+                          <div className="absolute -left-[19px] top-1.5 h-2 w-2 rounded-full bg-[#1D1D1F] ring-4 ring-white" />
+                          <div className="p-2.5 rounded-xl bg-white border border-black/[0.06]">
                             <div className="flex items-center justify-between text-[10px]">
-                              <span className="font-bold text-[#007AFF]">{ev.action}</span>
-                              <span className="text-slate-400">{formatDateTime(ev.timestamp)}</span>
+                              <span className="font-semibold text-[#1D1D1F]">{ev.action}</span>
+                              <span className="text-[#86868B]">{formatDateTime(ev.timestamp)}</span>
                             </div>
-                            <p className="text-xs text-slate-700 mt-0.5 leading-snug">{ev.detail}</p>
-                            <div className="mt-1 flex items-center gap-1 text-[9px] text-slate-400">
+                            <p className="text-xs text-[#6E6E73] mt-0.5 leading-snug">{ev.detail}</p>
+                            <div className="mt-1 flex items-center gap-1 text-[9px] text-[#86868B]">
                               <span>Actor:</span>
-                              <span className="font-medium text-slate-600">{ev.actorName} ({ev.actorRole})</span>
+                              <span className="font-medium text-[#1D1D1F]">{ev.actorName} ({ev.actorRole})</span>
                               {ev.newState && <span>· State: {ev.newState}</span>}
                             </div>
                           </div>
@@ -2148,39 +1688,39 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Create Operational Incident Modal ── */}
       {createIncidentOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <Siren className="h-5 w-5 text-rose-600" />
+                <Siren className="h-4 w-4 text-[#1D1D1F]" />
                 <div>
-                  <h3 className="text-sm font-bold text-[#1D1D1F]">Create Operational Incident</h3>
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Create Operational Incident</h3>
                   <p className="text-[10px] text-[#6E6E73]">Log site barrier failure or emergency trapped customer</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setCreateIncidentOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setCreateIncidentOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleCreateIncident} className="space-y-3 text-xs">
               <label className="block space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Incident Title *</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Incident Title *</span>
                 <input
                   value={incTitle}
                   onChange={(e) => setIncTitle(e.target.value)}
                   required
                   placeholder="e.g. Main Entrance Barrier Stuck Offline"
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </label>
 
               <div className="grid grid-cols-2 gap-2.5">
                 <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Priority</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Priority</span>
                   <select
                     value={incPriority}
                     onChange={(e) => setIncPriority(e.target.value)}
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white font-bold"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
                   >
                     <option value="P0">P0 - Critical Emergency</option>
                     <option value="P1">P1 - High Disruption</option>
@@ -2189,11 +1729,11 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 </label>
 
                 <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Incident Type</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Incident Type</span>
                   <select
                     value={incType}
                     onChange={(e) => setIncType(e.target.value)}
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                   >
                     <option value="GateOffline">Gate Offline</option>
                     <option value="UserTrapped">User Trapped</option>
@@ -2206,22 +1746,22 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
               <div className="grid grid-cols-2 gap-2.5">
                 <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Property ID</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Property ID</span>
                   <input
                     type="number"
                     value={incPropertyId}
                     onChange={(e) => setIncPropertyId(e.target.value)}
                     placeholder="e.g. 1"
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF]"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                   />
                 </label>
 
                 <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Assigned Team</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Assigned Team</span>
                   <select
                     value={incAssignedTeam}
                     onChange={(e) => setIncAssignedTeam(e.target.value)}
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                   >
                     <option value="ParkingOperations">Parking Operations</option>
                     <option value="CustomerSupport">Customer Support</option>
@@ -2231,34 +1771,34 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </div>
 
               <label className="block space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">
                   Initial Ticket Reference (Optional)
                 </span>
                 <input
                   value={incInitialTicketReference}
                   onChange={(e) => setIncInitialTicketReference(e.target.value)}
                   placeholder="e.g. TKT-2026-35442"
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] font-mono"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-mono"
                 />
-                <p className="text-[10px] text-[#8E8E93]">
+                <p className="text-[10px] text-[#86868B]">
                   Directly link an originating customer support ticket when raising this incident
                 </p>
               </label>
 
               <label className="block space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Detailed Description *</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Detailed Description *</span>
                 <textarea
                   rows={3}
                   value={incDescription}
                   onChange={(e) => setIncDescription(e.target.value)}
                   required
                   placeholder="Describe the hardware issue, error code, or telemetry logs..."
-                  className="w-full rounded-md border border-black/[0.08] p-2.5 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </label>
 
               {createIncidentError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {createIncidentError}
                 </div>
               )}
@@ -2267,14 +1807,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setCreateIncidentOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={incidentActionLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-4 py-1.5 font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {incidentActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   <span>Create Incident</span>
@@ -2288,24 +1828,24 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Assign Incident Responder Modal ── */}
       {assignIncidentOpen && selectedIncidentDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-[#007AFF]" />
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Assign Incident Responder</h3>
+                <Users className="h-4 w-4 text-[#1D1D1F]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Assign Incident Responder</h3>
               </div>
-              <button type="button" onClick={() => setAssignIncidentOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setAssignIncidentOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleAssignResponder} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Operational Team *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Operational Team *</label>
                 <select
                   value={assignTeam}
                   onChange={(e) => setAssignTeam(e.target.value)}
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                 >
                   <option value="ParkingOperations">Parking Operations</option>
                   <option value="CustomerSupport">Customer Support</option>
@@ -2315,19 +1855,19 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Responder User ID *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Responder User ID *</label>
                 <input
                   type="number"
                   value={assignUserId}
                   onChange={(e) => setAssignUserId(e.target.value)}
                   required
                   placeholder="e.g. 1"
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </div>
 
               {assignError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {assignError}
                 </div>
               )}
@@ -2336,14 +1876,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setAssignIncidentOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={incidentActionLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#007AFF] px-4 py-1.5 font-semibold text-white hover:bg-[#0066D6] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {incidentActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
                   <span>Assign Responder</span>
@@ -2357,34 +1897,34 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Remote Gate Access Override Modal ── */}
       {overrideModalOpen && selectedIncidentDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <KeyRound className="h-4 w-4 text-amber-600" />
+                <KeyRound className="h-4 w-4 text-[#1D1D1F]" />
                 <div>
-                  <h3 className="text-sm font-bold text-[#1D1D1F]">Execute Barrier Override</h3>
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Execute Barrier Override</h3>
                   <p className="text-[10px] text-[#6E6E73]">Direct IoT access bypass for trapped driver</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setOverrideModalOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setOverrideModalOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {overrideResult ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3.5 space-y-2 text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-emerald-800">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <div className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-3.5 space-y-2 text-xs">
+                <div className="flex items-center gap-1.5 font-semibold text-[#1D1D1F]">
+                  <CheckCircle2 className="h-4 w-4 text-[#34C759]" />
                   <span>Override Dispatched Successfully!</span>
                 </div>
-                <p className="text-[#1D1D1F]">{overrideResult.message}</p>
-                <div className="font-mono text-[10px] text-emerald-700 bg-white/70 p-2 rounded-lg border border-emerald-200/60">
+                <p className="text-[#6E6E73]">{overrideResult.message}</p>
+                <div className="font-mono text-[10px] text-[#1D1D1F] bg-white p-2 rounded-lg border border-black/[0.06]">
                   Command: {overrideResult.commandId}
                 </div>
                 <button
                   type="button"
                   onClick={() => setOverrideModalOpen(false)}
-                  className="w-full rounded-md bg-emerald-600 py-1.5 font-semibold text-white hover:bg-emerald-700 text-xs mt-2"
+                  className="w-full rounded-xl bg-[#007AFF] py-2 font-medium text-white hover:bg-[#0066D6] text-xs mt-2"
                 >
                   Done
                 </button>
@@ -2392,23 +1932,23 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             ) : (
               <form onSubmit={handleExecuteOverride} className="space-y-3 text-xs">
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Booking ID *</label>
+                  <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Booking ID *</label>
                   <input
                     type="number"
                     value={overrideBookingId}
                     onChange={(e) => setOverrideBookingId(e.target.value)}
                     required
                     placeholder="e.g. 4"
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF]"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Override Action</label>
+                  <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Override Action</label>
                   <select
                     value={overrideAction}
                     onChange={(e) => setOverrideAction(e.target.value)}
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white font-semibold"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
                   >
                     <option value="RemoteOpenGate">Remote Open Barrier Gate</option>
                     <option value="ForceBarrierOpen">Force Barrier Hold Open</option>
@@ -2417,19 +1957,19 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Justification Reason *</label>
+                  <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Justification Reason *</label>
                   <textarea
                     rows={2}
                     value={overrideReason}
                     onChange={(e) => setOverrideReason(e.target.value)}
                     required
                     placeholder="e.g. Driver trapped at barrier during system offline"
-                    className="w-full rounded-md border border-black/[0.08] p-2.5 outline-none focus:border-[#007AFF]"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
                   />
                 </div>
 
                 {overrideError && (
-                  <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                  <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                     {overrideError}
                   </div>
                 )}
@@ -2438,14 +1978,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <button
                     type="button"
                     onClick={() => setOverrideModalOpen(false)}
-                    className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                    className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={incidentActionLoading}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-amber-500 px-4 py-1.5 font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                   >
                     {incidentActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
                     <span>Dispatch Override</span>
@@ -2460,24 +2000,24 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Transition Incident Status Modal ── */}
       {transitionIncidentOpen && selectedIncidentDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Transition Incident Status</h3>
+                <CheckCircle2 className="h-4 w-4 text-[#1D1D1F]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Transition Incident Status</h3>
               </div>
-              <button type="button" onClick={() => setTransitionIncidentOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setTransitionIncidentOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleTransitionIncident} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Target Status *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Target Status *</label>
                 <select
                   value={incToStatus}
                   onChange={(e) => setIncToStatus(e.target.value)}
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white font-semibold"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
                 >
                   <option value="Resolved">Resolved (Disruption Rectified)</option>
                   <option value="Monitoring">Monitoring (Telemetry Under Observation)</option>
@@ -2486,19 +2026,19 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Root Cause / Recovery Note *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Root Cause / Recovery Note *</label>
                 <textarea
                   rows={3}
                   value={incRootCause}
                   onChange={(e) => setIncRootCause(e.target.value)}
                   required
                   placeholder="e.g. Power supply rebooted; hardware online."
-                  className="w-full rounded-md border border-black/[0.08] p-2.5 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </div>
 
               {transitionIncError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {transitionIncError}
                 </div>
               )}
@@ -2507,14 +2047,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setTransitionIncidentOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={incidentActionLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-1.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {incidentActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   <span>Update Incident</span>
@@ -2528,35 +2068,35 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Link Support Ticket to Incident Modal ── */}
       {linkTicketOpen && selectedIncidentDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <Link2 className="h-4 w-4 text-[#007AFF]" />
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Link Support Ticket</h3>
+                <Link2 className="h-4 w-4 text-[#1D1D1F]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Link Support Ticket</h3>
               </div>
-              <button type="button" onClick={() => setLinkTicketOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setLinkTicketOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleLinkTicket} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Ticket Reference or ID *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Ticket Reference or ID *</label>
                 <input
                   type="text"
                   value={linkTicketId}
                   onChange={(e) => setLinkTicketId(e.target.value)}
                   required
                   placeholder="e.g. TKT-2026-35442 or 8"
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] font-mono text-xs"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-mono text-xs"
                 />
-                <p className="text-[10px] text-[#8E8E93] mt-1">
+                <p className="text-[10px] text-[#86868B] mt-1">
                   Associate customer ticket (e.g. TKT-2026-35442) with incident #{selectedIncidentDetail.incidentReference}
                 </p>
               </div>
 
               {linkTicketError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {linkTicketError}
                 </div>
               )}
@@ -2565,14 +2105,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setLinkTicketOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={incidentActionLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#007AFF] px-4 py-1.5 font-semibold text-white hover:bg-[#0066D6] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {incidentActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
                   <span>Link Ticket</span>
@@ -2592,10 +2132,11 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-[#1D1D1F] sm:text-lg">
+            <h2 className="text-base font-semibold tracking-tight text-[#1D1D1F] sm:text-lg">
               Financial Dispute Register & Reversals
             </h2>
-            <span className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F5F5F7] border border-black/[0.08] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#FF9500]" />
               {disputes.filter((d) => d.status !== 'Approved' && d.status !== 'Declined' && d.status !== 'Closed').length} Active Claims
             </span>
           </div>
@@ -2609,38 +2150,38 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             type="button"
             onClick={() => void fetchDisputes()}
             disabled={loadingDisputes}
-            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-black/[0.08] bg-white px-3 text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7]"
+            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7]"
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', loadingDisputes && 'animate-spin text-[#007AFF]')} />
+            <RefreshCw className={cn('h-3.5 w-3.5 text-[#6E6E73]', loadingDisputes && 'animate-spin text-[#007AFF]')} />
             <span>Sync Disputes</span>
           </button>
         </div>
       </div>
 
       {/* Main Split Section */}
-      <section className="overflow-hidden rounded-lg border border-black/[0.06] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.03)] lg:grid lg:min-h-[620px] lg:grid-cols-[340px_minmax(0,1fr)]">
+      <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] lg:grid lg:min-h-[620px] lg:grid-cols-[340px_minmax(0,1fr)]">
         {/* Left: Dispute Queue List */}
         <div className={cn('flex flex-col border-b border-black/[0.06] lg:border-b-0 lg:border-r bg-white', mobileDisputeDetailOpen ? 'hidden lg:flex' : 'flex')}>
-          <div className="p-3 border-b border-black/[0.06] space-y-2">
+          <div className="p-3.5 border-b border-black/[0.06] space-y-2">
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#8E8E93]" />
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
               <input
                 type="search"
                 value={disputeSearch}
                 onChange={(e) => setDisputeSearch(e.target.value)}
                 placeholder="Search reference, customer, type..."
-                className="min-h-8 w-full rounded-md border border-black/[0.08] bg-[#F5F5F7] pl-8 pr-3 text-xs outline-none focus:border-[#007AFF] focus:bg-white"
+                className="min-h-8 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/70 pl-8 pr-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <label htmlFor="dispute-status-filter" className="text-[11px] font-bold text-[#6E6E73] shrink-0">Status:</label>
+              <label htmlFor="dispute-status-filter" className="text-[11px] font-medium text-[#6E6E73] shrink-0">Status:</label>
               <div className="relative flex-1">
                 <select
                   id="dispute-status-filter"
                   value={disputeFilter}
                   onChange={(e) => setDisputeFilter(e.target.value)}
-                  className="min-h-8 w-full cursor-pointer appearance-none rounded-md border border-black/[0.08] bg-[#F5F5F7] pl-3 pr-8 text-xs font-semibold text-[#1D1D1F] outline-none hover:bg-white focus:border-[#007AFF] focus:bg-white transition"
+                  className="min-h-8 w-full cursor-pointer appearance-none rounded-xl border border-black/[0.08] bg-[#F5F5F7]/70 pl-3 pr-8 text-xs font-medium text-[#1D1D1F] outline-none hover:bg-[#F5F5F7] focus:border-[#007AFF] focus:bg-white transition"
                 >
                   <option value="All">All Disputes ({disputes.length})</option>
                   <option value="Opened">Opened</option>
@@ -2649,21 +2190,21 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="Approved">Approved</option>
                   <option value="Declined">Declined</option>
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#8E8E93]" />
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
               </div>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-1.5 max-h-[540px]">
+          <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 max-h-[540px]">
             {loadingDisputes ? (
               <div className="flex h-40 flex-col items-center justify-center gap-2 text-xs text-[#6E6E73]">
                 <Loader2 className="h-4 w-4 animate-spin text-[#007AFF]" />
                 <span>Loading financial disputes...</span>
               </div>
             ) : visibleDisputes.length === 0 ? (
-              <div className="p-6 text-center text-xs text-[#8E8E93]">
-                <ShieldAlert className="h-6 w-6 mx-auto text-[#8E8E93]/60 mb-2" />
-                <p className="font-bold text-[#1D1D1F]">No dispute cases found</p>
+              <div className="p-6 text-center text-xs text-[#86868B]">
+                <ShieldAlert className="h-6 w-6 mx-auto text-[#86868B]/60 mb-2" />
+                <p className="font-semibold text-[#1D1D1F]">No dispute cases found</p>
                 <p className="text-[11px] mt-0.5">Payment ledgers are fully reconciled.</p>
               </div>
             ) : (
@@ -2682,39 +2223,40 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                       setMobileDisputeDetailOpen(true);
                     }}
                     className={cn(
-                      'w-full cursor-pointer rounded-md border p-3 text-left transition-all relative',
+                      'w-full cursor-pointer rounded-xl border p-3 text-left transition-all relative',
                       isSelected
-                        ? 'border-[#007AFF]/40 bg-blue-50/50 shadow-xs ring-1 ring-[#007AFF]/20'
-                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/70'
+                        ? 'border-black/[0.12] bg-[#F5F5F7] shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
+                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/60'
                     )}
                   >
                     <div className="flex items-center justify-between gap-1.5">
-                      <span className="font-mono text-[10px] font-bold text-[#007AFF]">{dsp.disputeReference}</span>
+                      <span className="font-mono text-[10px] font-semibold text-[#6E6E73]">{dsp.disputeReference}</span>
                       <div className="flex items-center gap-1">
-                        <span
-                          className={cn(
-                            'rounded-full px-2 py-0.2 text-[9px] font-bold',
-                            isApproved
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : isDeclined
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          )}
-                        >
+                        <span className="inline-flex items-center gap-1 rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F]">
+                          <span
+                            className={cn(
+                              'h-1.5 w-1.5 rounded-full',
+                              isApproved
+                                ? 'bg-[#34C759]'
+                                : isDeclined
+                                ? 'bg-[#86868B]'
+                                : 'bg-[#FF9500]'
+                            )}
+                          />
                           {dsp.status}
                         </span>
                         {dsp.amount > 0 && (
-                          <span className="font-bold text-[10px] text-[#1D1D1F]">
+                          <span className="font-semibold text-[10px] text-[#1D1D1F]">
                             {dsp.currency} {dsp.amount.toFixed(2)}
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <h4 className="mt-1.5 text-xs font-bold text-[#1D1D1F] line-clamp-1">{dsp.disputeType}</h4>
+                    <h4 className="mt-1.5 text-xs font-semibold text-[#1D1D1F] line-clamp-1">{dsp.disputeType}</h4>
                     <p className="text-[11px] text-[#6E6E73] line-clamp-1">{dsp.reason || 'No description provided'}</p>
 
-                    <div className="mt-1 flex items-center justify-between text-[10px] text-[#8E8E93]">
+                    <div className="mt-1 flex items-center justify-between text-[10px] text-[#86868B]">
                       <span className="truncate">{dsp.customerName}</span>
                       <span className="font-medium text-[9px] shrink-0">{formatMsgDate(dsp.createdAt)}</span>
                     </div>
@@ -2728,9 +2270,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         {/* Right: Full Dispute Case Details */}
         <div className={cn('flex flex-col bg-white', mobileDisputeDetailOpen ? 'flex' : 'hidden lg:flex')}>
           {!selectedDisputeDetail ? (
-            <div className="flex min-h-[400px] flex-1 flex-col items-center justify-center text-center p-8 text-xs text-[#8E8E93]">
-              <ShieldAlert className="h-10 w-10 text-[#8E8E93]/50 mb-2" />
-              <p className="font-bold text-sm text-[#1D1D1F]">Select a dispute case</p>
+            <div className="flex min-h-[400px] flex-1 flex-col items-center justify-center text-center p-8 text-xs text-[#86868B]">
+              <ShieldAlert className="h-10 w-10 text-[#86868B]/40 mb-2" />
+              <p className="font-semibold text-sm text-[#1D1D1F]">Select a dispute case</p>
               <p className="text-xs text-[#6E6E73] mt-1 max-w-xs">
                 Review payment duplicate claims, examine uploaded bank receipts, verify gateway logs, and execute financial reversals.
               </p>
@@ -2738,28 +2280,38 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
           ) : (
             <div className="p-4 sm:p-5 space-y-4">
               {/* Dispute Header: Identity & Actions Row + Title Row */}
-              <div className="border-b border-slate-100 pb-3 space-y-2">
+              <div className="border-b border-black/[0.06] pb-3.5 space-y-2">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setMobileDisputeDetailOpen(false)}
-                      className="cursor-pointer rounded-md p-1.5 text-[#0F172A] hover:bg-slate-100 lg:hidden min-h-[30px] min-w-[30px] flex items-center justify-center shrink-0 border border-slate-200 mr-1"
+                      className="cursor-pointer rounded-xl p-1.5 text-[#1D1D1F] hover:bg-[#F5F5F7] lg:hidden min-h-[30px] min-w-[30px] flex items-center justify-center shrink-0 border border-black/[0.08] mr-1"
                       aria-label="Back to disputes list"
                     >
                       <ArrowLeft className="h-4 w-4" />
                     </button>
-                    <span className="font-mono text-xs font-bold text-[#007AFF]">
+                    <span className="font-mono text-xs font-semibold text-[#6E6E73]">
                       {selectedDisputeDetail.disputeReference}
                     </span>
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F]">
+                      <span
+                        className={cn(
+                          'h-1.5 w-1.5 rounded-full',
+                          selectedDisputeDetail.status === 'Approved'
+                            ? 'bg-[#34C759]'
+                            : selectedDisputeDetail.status === 'Declined'
+                            ? 'bg-[#86868B]'
+                            : 'bg-[#FF9500]'
+                        )}
+                      />
                       {selectedDisputeDetail.status}
                     </span>
-                    <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                    <span className="rounded-full border border-black/[0.08] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#6E6E73]">
                       {selectedDisputeDetail.disputeType}
                     </span>
                     {selectedDisputeDetail.amount > 0 && (
-                      <span className="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                      <span className="rounded-full border border-black/[0.08] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-semibold text-[#1D1D1F]">
                         {selectedDisputeDetail.currency} {selectedDisputeDetail.amount.toFixed(2)}
                       </span>
                     )}
@@ -2771,10 +2323,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                       type="button"
                       onClick={() => setShowDisputeDetails((prev) => !prev)}
                       className={cn(
-                        'inline-flex cursor-pointer items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition select-none',
+                        'inline-flex cursor-pointer items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-medium transition select-none',
                         showDisputeDetails
-                          ? 'bg-[#0F172A] text-white shadow-2xs'
-                          : 'bg-slate-100 text-[#475569] hover:bg-slate-200/80 hover:text-[#0F172A]'
+                          ? 'bg-[#1D1D1F] text-white'
+                          : 'bg-[#F5F5F7] text-[#1D1D1F] hover:bg-[#E8E8ED]'
                       )}
                     >
                       <Info className="h-3.5 w-3.5" />
@@ -2789,7 +2341,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                           setDspApprovedAmount(String(selectedDisputeDetail.amount || '15.00'));
                           setDecisionDisputeOpen(true);
                         }}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98]"
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#007AFF] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0066D6] active:scale-[0.98]"
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         <span>Finalize Decision</span>
@@ -2800,10 +2352,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                       <button
                         type="button"
                         onClick={() => setDisputeActionMenuOpen((prev) => !prev)}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#0F172A] hover:bg-slate-50 shadow-2xs transition"
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-black/[0.08] bg-white px-2.5 py-1.5 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] transition"
                       >
                         <span>Actions</span>
-                        <ChevronDown className="h-3 w-3 text-slate-400" />
+                        <ChevronDown className="h-3 w-3 text-[#86868B]" />
                       </button>
 
                       {disputeActionMenuOpen && (
@@ -2812,7 +2364,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                             className="fixed inset-0 z-40"
                             onClick={() => setDisputeActionMenuOpen(false)}
                           />
-                          <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-md border border-black/[0.08] bg-white p-1 shadow-lg divide-y divide-black/[0.04] text-xs">
+                          <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-2xl border border-black/[0.08] bg-white p-1.5 shadow-lg divide-y divide-black/[0.04] text-xs">
                             <div className="py-1">
                               <button
                                 type="button"
@@ -2820,9 +2372,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                   setDisputeActionMenuOpen(false);
                                   setAssignDisputeOpen(true);
                                 }}
-                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded cursor-pointer"
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] rounded-lg cursor-pointer"
                               >
-                                <Users className="h-3.5 w-3.5 text-[#007AFF]" />
+                                <Users className="h-3.5 w-3.5 text-[#6E6E73]" />
                                 <span>Assign Case...</span>
                               </button>
 
@@ -2832,9 +2384,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                   setDisputeActionMenuOpen(false);
                                   setRequestEvidenceOpen(true);
                                 }}
-                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-purple-700 hover:bg-purple-50 rounded cursor-pointer"
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] rounded-lg cursor-pointer"
                               >
-                                <Send className="h-3.5 w-3.5 text-purple-600" />
+                                <Send className="h-3.5 w-3.5 text-[#6E6E73]" />
                                 <span>Request Evidence...</span>
                               </button>
 
@@ -2844,9 +2396,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                   setDisputeActionMenuOpen(false);
                                   setUploadDisputeEvidenceOpen(true);
                                 }}
-                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded cursor-pointer"
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] rounded-lg cursor-pointer"
                               >
-                                <UploadCloud className="h-3.5 w-3.5 text-[#007AFF]" />
+                                <UploadCloud className="h-3.5 w-3.5 text-[#6E6E73]" />
                                 <span>Upload Proof...</span>
                               </button>
                             </div>
@@ -2858,9 +2410,9 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                   setDisputeActionMenuOpen(false);
                                   setLinkTicketDisputeOpen(true);
                                 }}
-                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded cursor-pointer"
+                                className="flex w-full items-center gap-2 px-2.5 py-1.5 font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] rounded-lg cursor-pointer"
                               >
-                                <Link2 className="h-3.5 w-3.5 text-[#007AFF]" />
+                                <Link2 className="h-3.5 w-3.5 text-[#6E6E73]" />
                                 <span>Link Support Ticket...</span>
                               </button>
                             </div>
@@ -2872,10 +2424,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 </div>
 
                 <div>
-                  <h3 className="text-base font-bold text-[#0F172A] sm:text-lg">
+                  <h3 className="text-base font-semibold tracking-tight text-[#1D1D1F] sm:text-lg">
                     {selectedDisputeDetail.reason || 'Dispute Investigation Case'}
                   </h3>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-[#6E6E73]">
                     Claimant: {selectedDisputeDetail.customerName} ({selectedDisputeDetail.customerEmail}) · Logged {formatDateTime(selectedDisputeDetail.createdAt)}
                   </p>
                 </div>
@@ -2883,31 +2435,31 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
               {/* Collapsible Dispute Metadata Drawer */}
               {showDisputeDetails && (
-                <div className="grid gap-3 sm:grid-cols-2 text-xs bg-slate-50/80 p-3.5 rounded-md border border-slate-200/70 animate-in fade-in-0 duration-150">
+                <div className="grid gap-3 sm:grid-cols-2 text-xs bg-[#F5F5F7]/70 p-4 rounded-2xl border border-black/[0.06] animate-in fade-in-0 duration-150">
                   <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] block">
                       Case & Customer Metadata
                     </span>
                     <div className="grid grid-cols-2 gap-2 text-[11px]">
                       <div>
-                        <p className="text-[9px] text-slate-400">Customer User ID</p>
-                        <p className="font-semibold text-slate-800">{selectedDisputeDetail.customerUserId}</p>
+                        <p className="text-[9px] text-[#86868B]">Customer User ID</p>
+                        <p className="font-medium text-[#1D1D1F]">{selectedDisputeDetail.customerUserId}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-400">Booking Reference</p>
-                        <p className="font-mono text-[10px] text-[#007AFF]">
+                        <p className="text-[9px] text-[#86868B]">Booking Reference</p>
+                        <p className="font-mono text-[10px] text-[#1D1D1F]">
                           {selectedDisputeDetail.bookingId ? `Booking #${selectedDisputeDetail.bookingId}` : 'None'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-400">Linked Ticket</p>
-                        <p className="font-mono text-[10px] text-[#007AFF]">
+                        <p className="text-[9px] text-[#86868B]">Linked Ticket</p>
+                        <p className="font-mono text-[10px] text-[#1D1D1F]">
                           {selectedDisputeDetail.ticketId ? `Ticket #${selectedDisputeDetail.ticketId}` : 'Unlinked'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[9px] text-slate-400">Assigned Officer</p>
-                        <p className="font-semibold text-slate-800">
+                        <p className="text-[9px] text-[#86868B]">Assigned Officer</p>
+                        <p className="font-medium text-[#1D1D1F]">
                           {selectedDisputeDetail.assignedUserName || 'Unassigned'} ({selectedDisputeDetail.assignedTeam || 'Finance'})
                         </p>
                       </div>
@@ -2915,26 +2467,26 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] block">
                       Settlement & Decision Status
                     </span>
                     {selectedDisputeDetail.decision ? (
                       <div className="space-y-1 text-[11px]">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-800">Decision:</span>
-                          <span className={cn('font-bold', selectedDisputeDetail.decision === 'ApproveReversal' ? 'text-emerald-700' : 'text-rose-700')}>
+                          <span className="font-medium text-[#6E6E73]">Decision:</span>
+                          <span className="font-semibold text-[#1D1D1F]">
                             {selectedDisputeDetail.decision}
                           </span>
                         </div>
                         {selectedDisputeDetail.decisionReason && (
-                          <p className="text-slate-600">{selectedDisputeDetail.decisionReason}</p>
+                          <p className="text-[#6E6E73]">{selectedDisputeDetail.decisionReason}</p>
                         )}
-                        <p className="text-[10px] text-slate-400">
+                        <p className="text-[10px] text-[#86868B]">
                           Decided by {selectedDisputeDetail.decidedByUserName || 'Finance'} at {formatDateTime(selectedDisputeDetail.decidedAt)}
                         </p>
                       </div>
                     ) : (
-                      <p className="text-slate-500 text-[11px] leading-relaxed">
+                      <p className="text-[#6E6E73] text-[11px] leading-relaxed">
                         Investigation in progress. Awaiting proof verification before executing financial reversal or settlement payout.
                       </p>
                     )}
@@ -2945,21 +2497,21 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               {/* Evidence Files Gallery */}
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                    <FileSearch className="h-4 w-4 text-[#007AFF]" />
+                  <div className="flex items-center gap-1.5 font-semibold text-[#1D1D1F]">
+                    <FileSearch className="h-4 w-4 text-[#1D1D1F]" />
                     <span>Evidence Audit Register ({selectedDisputeDetail.evidences?.length || 0})</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setUploadDisputeEvidenceOpen(true)}
-                    className="text-xs font-semibold text-[#007AFF] hover:underline cursor-pointer"
+                    className="text-xs font-medium text-[#007AFF] hover:underline cursor-pointer"
                   >
                     + Upload Proof File
                   </button>
                 </div>
 
                 {(!selectedDisputeDetail.evidences || selectedDisputeDetail.evidences.length === 0) ? (
-                  <p className="text-xs text-slate-400 italic py-1">
+                  <p className="text-xs text-[#86868B] italic py-1">
                     No evidence files uploaded yet. Click &ldquo;Request Evidence&rdquo; to notify the customer.
                   </p>
                 ) : (
@@ -2967,27 +2519,23 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     {selectedDisputeDetail.evidences.map((ev) => (
                       <div
                         key={ev.disputeEvidenceId}
-                        className="flex flex-col justify-between p-3 rounded-md border border-slate-100 bg-slate-50/50 hover:bg-slate-50 space-y-2 text-xs"
+                        className="flex flex-col justify-between p-3 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/50 hover:bg-[#F5F5F7] space-y-2 text-xs"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            <FileText className="h-4 w-4 text-[#007AFF] shrink-0" />
+                            <FileText className="h-4 w-4 text-[#1D1D1F] shrink-0" />
                             <div className="min-w-0">
-                              <p className="font-semibold text-xs text-slate-800 truncate">{ev.fileName}</p>
-                              <span className="text-[9px] text-slate-400">{ev.evidenceType}</span>
+                              <p className="font-medium text-xs text-[#1D1D1F] truncate">{ev.fileName}</p>
+                              <span className="text-[9px] text-[#86868B]">{ev.evidenceType}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            <span
-                              className={cn(
-                                'rounded px-1.5 py-0.2 text-[9px] font-semibold',
-                                ev.uploadedRole === 'Admin' ? 'bg-blue-50 text-[#007AFF]' : 'bg-slate-100 text-slate-600'
-                              )}
-                            >
+                            <span className="rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#6E6E73]">
                               {ev.uploadedRole}
                             </span>
                             {ev.isVerified && (
-                              <span className="rounded bg-emerald-50 px-1 py-0.2 text-[8px] font-bold text-emerald-700">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[8px] font-medium text-[#1D1D1F]">
+                                <span className="h-1 w-1 rounded-full bg-[#34C759]" />
                                 Verified
                               </span>
                             )}
@@ -2995,17 +2543,17 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                         </div>
 
                         {ev.description && (
-                          <p className="text-[10px] text-slate-500 line-clamp-2">{ev.description}</p>
+                          <p className="text-[10px] text-[#6E6E73] line-clamp-2">{ev.description}</p>
                         )}
 
-                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[9px] text-slate-400">
+                        <div className="flex items-center justify-between pt-1 border-t border-black/[0.06] text-[9px] text-[#86868B]">
                           <span>{formatDateTime(ev.createdAt)}</span>
                           {ev.fileUrl && (
                             <a
                               href={ev.fileUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="font-semibold text-[#007AFF] hover:underline flex items-center gap-1"
+                              className="font-medium text-[#007AFF] hover:underline flex items-center gap-1"
                             >
                               <span>View File</span>
                               <ExternalLink className="h-2.5 w-2.5" />
@@ -3020,17 +2568,17 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
               {/* Audit Timeline */}
               {selectedDisputeDetail.auditTimeline && selectedDisputeDetail.auditTimeline.length > 0 && (
-                <div className="pt-2 border-t border-slate-100 text-xs">
+                <div className="pt-2 border-t border-black/[0.06] text-xs">
                   <button
                     type="button"
                     onClick={() => setShowDisputeAudit((prev) => !prev)}
-                    className="flex w-full cursor-pointer items-center justify-between rounded-lg border border-black/[0.06] bg-slate-50/70 hover:bg-slate-100/80 px-3.5 py-2.5 text-left transition select-none"
+                    className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-black/[0.06] bg-[#F5F5F7]/70 hover:bg-[#F5F5F7] px-3.5 py-2.5 text-left transition select-none"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-[#007AFF]">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-white border border-black/[0.06] text-[#1D1D1F]">
                         <History className="h-3.5 w-3.5" />
                       </div>
-                      <span className="font-bold text-slate-800 text-xs">
+                      <span className="font-semibold text-[#1D1D1F] text-xs">
                         Dispute Audit Timeline ({selectedDisputeDetail.auditTimeline.length})
                       </span>
                     </div>
@@ -3039,27 +2587,27 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                         {showDisputeAudit ? 'Hide timeline' : 'View history'}
                       </span>
                       {showDisputeAudit ? (
-                        <ChevronUp className="h-4 w-4 text-slate-500" />
+                        <ChevronUp className="h-4 w-4 text-[#86868B]" />
                       ) : (
-                        <ChevronDown className="h-4 w-4 text-slate-500" />
+                        <ChevronDown className="h-4 w-4 text-[#86868B]" />
                       )}
                     </div>
                   </button>
 
                   {showDisputeAudit && (
-                    <div className="mt-3 relative border-l-2 border-slate-200 ml-2.5 space-y-2.5 pl-3.5 pt-1 transition-all">
+                    <div className="mt-3 relative border-l-2 border-black/[0.08] ml-2.5 space-y-2.5 pl-3.5 pt-1 transition-all">
                       {selectedDisputeDetail.auditTimeline.map((ev, idx) => (
                         <div key={idx} className="relative">
-                          <div className="absolute -left-[19px] top-1.5 h-2 w-2 rounded-full bg-[#007AFF] ring-4 ring-white" />
-                          <div className="p-2.5 rounded-md bg-white border border-slate-200/80 shadow-2xs">
+                          <div className="absolute -left-[19px] top-1.5 h-2 w-2 rounded-full bg-[#1D1D1F] ring-4 ring-white" />
+                          <div className="p-2.5 rounded-xl bg-white border border-black/[0.06]">
                             <div className="flex items-center justify-between text-[10px]">
-                              <span className="font-bold text-[#007AFF]">{ev.action}</span>
-                              <span className="text-slate-400">{formatDateTime(ev.timestamp)}</span>
+                              <span className="font-semibold text-[#1D1D1F]">{ev.action}</span>
+                              <span className="text-[#86868B]">{formatDateTime(ev.timestamp)}</span>
                             </div>
-                            <p className="text-xs text-slate-700 mt-0.5 leading-snug">{ev.detail}</p>
-                            <div className="mt-1 flex items-center gap-1 text-[9px] text-slate-400">
+                            <p className="text-xs text-[#6E6E73] mt-0.5 leading-snug">{ev.detail}</p>
+                            <div className="mt-1 flex items-center gap-1 text-[9px] text-[#86868B]">
                               <span>Actor:</span>
-                              <span className="font-medium text-slate-600">{ev.actorName} ({ev.actorRole})</span>
+                              <span className="font-medium text-[#1D1D1F]">{ev.actorName} ({ev.actorRole})</span>
                               {ev.newState && <span>· State: {ev.newState}</span>}
                             </div>
                           </div>
@@ -3077,24 +2625,24 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Assign Dispute Modal ── */}
       {assignDisputeOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-[#007AFF]" />
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Assign Dispute Case</h3>
+                <Users className="h-4 w-4 text-[#1D1D1F]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Assign Dispute Case</h3>
               </div>
-              <button type="button" onClick={() => setAssignDisputeOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setAssignDisputeOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleAssignDispute} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Operational Team *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Operational Team *</label>
                 <select
                   value={dspAssignTeam}
                   onChange={(e) => setDspAssignTeam(e.target.value)}
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                 >
                   <option value="Finance">Finance & Settlements</option>
                   <option value="Payments">Payments Support</option>
@@ -3103,23 +2651,23 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Assignee User ID *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Assignee User ID *</label>
                 <input
                   type="number"
                   value={dspAssignUserId}
                   onChange={(e) => setDspAssignUserId(e.target.value)}
                   required
                   placeholder="e.g. 8"
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Case Status</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Case Status</label>
                 <select
                   value={dspAssignStatus}
                   onChange={(e) => setDspAssignStatus(e.target.value)}
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white font-semibold"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
                 >
                   <option value="EvidenceReview">Evidence Review</option>
                   <option value="MoreInfo">Waiting for More Info</option>
@@ -3128,7 +2676,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </div>
 
               {dspAssignError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {dspAssignError}
                 </div>
               )}
@@ -3137,14 +2685,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setAssignDisputeOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={disputeActionLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#007AFF] px-4 py-1.5 font-semibold text-white hover:bg-[#0066D6] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {disputeActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
                   <span>Assign Case</span>
@@ -3158,44 +2706,56 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Request Customer Evidence Modal ── */}
       {requestEvidenceOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <Send className="h-4 w-4 text-purple-600" />
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Request Customer Evidence</h3>
+                <Send className="h-4 w-4 text-[#1D1D1F]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Request Customer Evidence</h3>
               </div>
-              <button type="button" onClick={() => setRequestEvidenceOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setRequestEvidenceOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleRequestEvidence} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Prompt / Message to Customer *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Required Evidence Type *</label>
+                <input
+                  type="text"
+                  value={dspReqEvidence}
+                  onChange={(e) => setDspReqEvidence(e.target.value)}
+                  required
+                  placeholder="e.g. Bank / Card Deduction Screenshot"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Prompt / Message to Customer *</label>
                 <textarea
                   rows={3}
                   value={dspReqMessage}
                   onChange={(e) => setDspReqMessage(e.target.value)}
                   required
                   placeholder="e.g. Please upload bank transaction screenshot showing deduction."
-                  className="w-full rounded-md border border-black/[0.08] p-2.5 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Deadline (Days)</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Deadline (Days)</label>
                 <input
                   type="number"
                   value={dspReqDays}
                   onChange={(e) => setDspReqDays(e.target.value)}
                   min="1"
                   max="30"
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </div>
 
               {dspReqError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {dspReqError}
                 </div>
               )}
@@ -3204,14 +2764,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setRequestEvidenceOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={disputeActionLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-1.5 font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {disputeActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                   <span>Send Request</span>
@@ -3225,24 +2785,24 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Admin Upload Evidence Modal ── */}
       {uploadDisputeEvidenceOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <UploadCloud className="h-4 w-4 text-[#007AFF]" />
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Upload Audit Proof</h3>
+                <UploadCloud className="h-4 w-4 text-[#1D1D1F]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Upload Audit Proof</h3>
               </div>
-              <button type="button" onClick={() => setUploadDisputeEvidenceOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setUploadDisputeEvidenceOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleUploadDisputeEvidence} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Evidence Type *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Evidence Type *</label>
                 <select
                   value={dspEvType}
                   onChange={(e) => setDspEvType(e.target.value)}
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white font-semibold"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
                 >
                   <option value="GatewayLog">Gateway Log (Stripe / Bank Trace)</option>
                   <option value="BankReceipt">Bank Receipt / Statement</option>
@@ -3252,28 +2812,28 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Document File *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Document File *</label>
                 <input
                   type="file"
                   onChange={(e) => setDspEvFile(e.target.files?.[0] || null)}
                   required
-                  className="w-full rounded-md border border-black/[0.08] p-2 text-xs outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2 text-xs outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Notes / Description</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Notes / Description</label>
                 <textarea
                   rows={2}
                   value={dspEvNotes}
                   onChange={(e) => setDspEvNotes(e.target.value)}
                   placeholder="e.g. Stripe webhook log showing charge status."
-                  className="w-full rounded-md border border-black/[0.08] p-2.5 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </div>
 
               {dspEvError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {dspEvError}
                 </div>
               )}
@@ -3282,14 +2842,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setUploadDisputeEvidenceOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={disputeActionLoading || !dspEvFile}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#007AFF] px-4 py-1.5 font-semibold text-white hover:bg-[#0066D6] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {disputeActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                   <span>Upload Evidence</span>
@@ -3303,58 +2863,59 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Finalize Dispute Decision Modal ── */}
       {decisionDisputeOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Finalize Dispute Decision</h3>
+                <CheckCircle2 className="h-4 w-4 text-[#1D1D1F]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Finalize Dispute Decision</h3>
               </div>
-              <button type="button" onClick={() => setDecisionDisputeOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setDecisionDisputeOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleFinalizeDecision} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Decision Action *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Decision Action *</label>
                 <select
                   value={dspDecision}
                   onChange={(e) => setDspDecision(e.target.value)}
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white font-bold"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
                 >
                   <option value="ApproveReversal">Approve Financial Reversal (Refund)</option>
-                  <option value="DeclineDispute">Decline Dispute (Valid Charge)</option>
+                  <option value="Decline">Decline Dispute (Valid Charge)</option>
+                  <option value="NeedMoreInfo">Need More Info (Request Evidence)</option>
                 </select>
               </div>
 
               {dspDecision === 'ApproveReversal' && (
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Approved Reversal Amount (MYR) *</label>
+                  <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Approved Reversal Amount (MYR) *</label>
                   <input
                     type="number"
                     step="0.01"
                     value={dspApprovedAmount}
                     onChange={(e) => setDspApprovedAmount(e.target.value)}
                     required
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] font-bold"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-semibold"
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Decision Justification *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Decision Justification *</label>
                 <textarea
                   rows={3}
                   value={dspDecisionReason}
                   onChange={(e) => setDspDecisionReason(e.target.value)}
                   required
                   placeholder="e.g. Verified double deduction on bank record"
-                  className="w-full rounded-md border border-black/[0.08] p-2.5 outline-none focus:border-[#007AFF]"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
                 />
               </div>
 
               {dspDecisionError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {dspDecisionError}
                 </div>
               )}
@@ -3363,14 +2924,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setDecisionDisputeOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={disputeActionLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-1.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {disputeActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   <span>Execute Decision</span>
@@ -3384,35 +2945,35 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Link Ticket to Dispute Modal ── */}
       {linkTicketDisputeOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
-                <Link2 className="h-4 w-4 text-[#007AFF]" />
-                <h3 className="text-sm font-bold text-[#1D1D1F]">Link Ticket to Dispute</h3>
+                <Link2 className="h-4 w-4 text-[#1D1D1F]" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Link Ticket to Dispute</h3>
               </div>
-              <button type="button" onClick={() => setLinkTicketDisputeOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setLinkTicketDisputeOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleLinkTicketToDispute} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Ticket Reference or ID *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Ticket Reference or ID *</label>
                 <input
                   type="text"
                   value={dspLinkTicketId}
                   onChange={(e) => setDspLinkTicketId(e.target.value)}
                   required
                   placeholder="e.g. TKT-2026-35442 or 8"
-                  className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] font-mono text-xs"
+                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-mono text-xs"
                 />
-                <p className="text-[10px] text-[#8E8E93] mt-1">
+                <p className="text-[10px] text-[#86868B] mt-1">
                   Connect ticket to dispute #{selectedDisputeDetail.disputeReference}
                 </p>
               </div>
 
               {dspLinkTicketError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                   {dspLinkTicketError}
                 </div>
               )}
@@ -3421,14 +2982,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <button
                   type="button"
                   onClick={() => setLinkTicketDisputeOpen(false)}
-                  className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={disputeActionLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#007AFF] px-4 py-1.5 font-semibold text-white hover:bg-[#0066D6] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                 >
                   {disputeActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
                   <span>Link Ticket</span>
@@ -3454,10 +3015,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold tracking-tight text-[#1D1D1F]">
+              <h2 className="text-lg font-semibold tracking-tight text-[#1D1D1F]">
                 24/7 On-Call Escalation & Alert Management
               </h2>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200/60">
+              <span className="rounded-full bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#6E6E73] border border-black/[0.08]">
                 Live Roster
               </span>
             </div>
@@ -3471,23 +3032,23 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               type="button"
               onClick={() => void fetchOnCallStatus()}
               disabled={loadingOnCall}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7]"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7]"
             >
-              <RefreshCw className={cn('h-3.5 w-3.5', loadingOnCall && 'animate-spin text-[#007AFF]')} />
+              <RefreshCw className={cn('h-3.5 w-3.5 text-[#6E6E73]', loadingOnCall && 'animate-spin text-[#007AFF]')} />
               <span>Refresh Roster</span>
             </button>
             <button
               type="button"
               onClick={() => setTestAlertOpen(true)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7] shadow-2xs"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7]"
             >
-              <Bell className="h-3.5 w-3.5 text-[#64748B]" />
+              <Bell className="h-3.5 w-3.5 text-[#6E6E73]" />
               <span>Test Alert Dispatch</span>
             </button>
             <button
               type="button"
               onClick={() => setEditPolicyOpen(true)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[#007AFF] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0066D6] shadow-xs"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#007AFF] px-3.5 py-2 text-xs font-medium text-white hover:bg-[#0066D6]"
             >
               <Sliders className="h-3.5 w-3.5" />
               <span>Configure Policy Delays</span>
@@ -3496,19 +3057,19 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         </div>
 
         {/* Active Shift Header Banner */}
-        <section className="rounded-lg border border-black/[0.06] bg-white p-4 sm:p-5 shadow-[0_2px_12px_rgba(0,0,0,0.02)] space-y-3">
+        <section className="rounded-2xl border border-black/[0.06] bg-white p-4 sm:p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-slate-100 text-slate-600">
-                <BellRing className="h-5 w-5" />
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#1D1D1F]">
+                <BellRing className="h-4.5 w-4.5" />
               </span>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-[#1D1D1F]">
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">
                     {onCallStatus?.shiftName || '24/7 Primary Shift'}
                   </h3>
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200/60 flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <span className="rounded-full bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F] border border-black/[0.08] flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#34C759]" />
                     Active Shift
                   </span>
                 </div>
@@ -3519,16 +3080,16 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-wider">Active Channels:</span>
+              <span className="text-[10px] font-semibold text-[#86868B] uppercase tracking-wider">Active Channels:</span>
               {(onCallStatus?.activeChannels || ['Push', 'SMS', 'Phone', 'Email']).map((ch) => (
                 <span
                   key={ch}
-                  className="rounded-md bg-slate-50 border border-black/[0.06] px-2 py-0.5 text-[10px] font-medium text-[#334155]"
+                  className="rounded-full bg-[#F5F5F7] border border-black/[0.06] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F]"
                 >
                   {ch}
                 </span>
               ))}
-              <span className="rounded-md bg-slate-100 border border-slate-200/60 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+              <span className="rounded-full bg-[#F5F5F7] border border-black/[0.08] px-2.5 py-0.5 text-[10px] font-medium text-[#6E6E73]">
                 Auto-Escalation: {policy?.autoEscalateEnabled !== false ? 'Enforced' : 'Disabled'}
               </span>
             </div>
@@ -3537,94 +3098,94 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
         {/* Recent Test Alert Feedback Banner */}
         {testAlertResult && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3.5 space-y-1 text-xs">
-            <div className="flex items-center justify-between font-bold text-[#0F172A]">
+          <div className="rounded-2xl border border-black/[0.08] bg-[#F5F5F7] p-3.5 space-y-1 text-xs">
+            <div className="flex items-center justify-between font-semibold text-[#1D1D1F]">
               <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <CheckCircle2 className="h-4 w-4 text-[#34C759]" />
                 <span>Test Notification Dispatched Successfully</span>
               </div>
-              <span className="font-mono text-[10px] text-slate-500">{formatDateTime(testAlertResult.timestamp)}</span>
+              <span className="font-mono text-[10px] text-[#86868B]">{formatDateTime(testAlertResult.timestamp)}</span>
             </div>
-            <p className="text-slate-700">
-              Provider confirmed delivery to <strong>{testAlertResult.recipient}</strong> over <strong>{testAlertResult.channel}</strong> channel.
+            <p className="text-[#6E6E73]">
+              Provider confirmed delivery to <strong className="text-[#1D1D1F]">{testAlertResult.recipient}</strong> over <strong className="text-[#1D1D1F]">{testAlertResult.channel}</strong> channel.
             </p>
-            <p className="text-[11px] text-slate-500 italic">{testAlertResult.detail}</p>
+            <p className="text-[11px] text-[#86868B] italic">{testAlertResult.detail}</p>
           </div>
         )}
 
         {/* Four-Tier Responder Hierarchy Cards */}
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
           {/* L0 Primary */}
-          <div className="flex flex-col justify-between rounded-lg border border-black/[0.06] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.02)] space-y-3">
+          <div className="flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div>
               <div className="flex items-center justify-between">
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200/60">
+                <span className="rounded-full bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F] border border-black/[0.08]">
                   Tier 1 · Primary Lead
                 </span>
-                <span className="text-[10px] text-[#8E8E93] font-mono">L0</span>
+                <span className="text-[10px] text-[#86868B] font-mono">L0</span>
               </div>
-              <h4 className="mt-2 text-sm font-bold text-[#1D1D1F]">{primary?.name || 'Unassigned'}</h4>
+              <h4 className="mt-2.5 text-sm font-semibold text-[#1D1D1F]">{primary?.name || 'Unassigned'}</h4>
               <p className="text-xs text-[#6E6E73] truncate mt-0.5">{primary?.email || 'oncall@parkjom.com'}</p>
               <p className="text-xs font-mono text-[#1D1D1F] mt-1">{primary?.phone || '011-16326494'}</p>
             </div>
-            <div className="pt-2 border-t border-black/[0.04] text-[10px] text-[#64748B] font-mono flex items-center justify-between">
+            <div className="pt-2 border-t border-black/[0.04] text-[10px] text-[#86868B] font-mono flex items-center justify-between">
               <span>Immediate Triage</span>
               <span>0m delay</span>
             </div>
           </div>
 
           {/* L1 Backup */}
-          <div className="flex flex-col justify-between rounded-lg border border-black/[0.06] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.02)] space-y-3">
+          <div className="flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div>
               <div className="flex items-center justify-between">
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200/60">
+                <span className="rounded-full bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F] border border-black/[0.08]">
                   Tier 2 · Backup Responder
                 </span>
-                <span className="text-[10px] text-[#8E8E93] font-mono">L1</span>
+                <span className="text-[10px] text-[#86868B] font-mono">L1</span>
               </div>
-              <h4 className="mt-2 text-sm font-bold text-[#1D1D1F]">{backup?.name || 'Standby Backup Responder'}</h4>
+              <h4 className="mt-2.5 text-sm font-semibold text-[#1D1D1F]">{backup?.name || 'Standby Backup Responder'}</h4>
               <p className="text-xs text-[#6E6E73] truncate mt-0.5">{backup?.email || 'backup-duty@parkjom.com'}</p>
               <p className="text-xs font-mono text-[#1D1D1F] mt-1">{backup?.phone || 'Automated Failover'}</p>
             </div>
-            <div className="pt-2 border-t border-black/[0.04] text-[10px] text-[#64748B] font-mono flex items-center justify-between">
+            <div className="pt-2 border-t border-black/[0.04] text-[10px] text-[#86868B] font-mono flex items-center justify-between">
               <span>P0 Timeout Trigger</span>
               <span>+{policy?.p0BackupDelayMinutes ?? 2}m</span>
             </div>
           </div>
 
           {/* L2 Supervisor */}
-          <div className="flex flex-col justify-between rounded-lg border border-black/[0.06] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.02)] space-y-3">
+          <div className="flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div>
               <div className="flex items-center justify-between">
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200/60">
+                <span className="rounded-full bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F] border border-black/[0.08]">
                   Tier 3 · Supervisor
                 </span>
-                <span className="text-[10px] text-[#8E8E93] font-mono">L2</span>
+                <span className="text-[10px] text-[#86868B] font-mono">L2</span>
               </div>
-              <h4 className="mt-2 text-sm font-bold text-[#1D1D1F]">{supervisor?.name || 'Operations Supervisor'}</h4>
+              <h4 className="mt-2.5 text-sm font-semibold text-[#1D1D1F]">{supervisor?.name || 'Operations Supervisor'}</h4>
               <p className="text-xs text-[#6E6E73] truncate mt-0.5">{supervisor?.email || 'supervisor@parkjom.com'}</p>
               <p className="text-xs font-mono text-[#1D1D1F] mt-1">{supervisor?.phone || 'Multi-Channel Alert'}</p>
             </div>
-            <div className="pt-2 border-t border-black/[0.04] text-[10px] text-[#64748B] font-mono flex items-center justify-between">
+            <div className="pt-2 border-t border-black/[0.04] text-[10px] text-[#86868B] font-mono flex items-center justify-between">
               <span>P0 Timeout Trigger</span>
               <span>+{policy?.p0SupervisorDelayMinutes ?? 5}m</span>
             </div>
           </div>
 
           {/* L3 Operations Manager */}
-          <div className="flex flex-col justify-between rounded-lg border border-black/[0.06] bg-white p-4 shadow-[0_2px_12px_rgba(0,0,0,0.02)] space-y-3">
+          <div className="flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
             <div>
               <div className="flex items-center justify-between">
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200/60">
+                <span className="rounded-full bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F] border border-black/[0.08]">
                   Tier 4 · Ops Manager
                 </span>
-                <span className="text-[10px] text-[#8E8E93] font-mono">L3</span>
+                <span className="text-[10px] text-[#86868B] font-mono">L3</span>
               </div>
-              <h4 className="mt-2 text-sm font-bold text-[#1D1D1F]">{manager?.name || 'Head of Operations'}</h4>
+              <h4 className="mt-2.5 text-sm font-semibold text-[#1D1D1F]">{manager?.name || 'Head of Operations'}</h4>
               <p className="text-xs text-[#6E6E73] truncate mt-0.5">{manager?.email || 'ops-director@parkjom.com'}</p>
               <p className="text-xs font-mono text-[#1D1D1F] mt-1">{manager?.phone || 'Executive Escalation'}</p>
             </div>
-            <div className="pt-2 border-t border-black/[0.04] text-[10px] text-[#64748B] font-mono flex items-center justify-between">
+            <div className="pt-2 border-t border-black/[0.04] text-[10px] text-[#86868B] font-mono flex items-center justify-between">
               <span>P0 Timeout Trigger</span>
               <span>+{policy?.p0ManagerDelayMinutes ?? 15}m</span>
             </div>
@@ -3632,16 +3193,16 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         </div>
 
         {/* Live Escalation Policy Matrix Table */}
-        <section className="rounded-lg border border-black/[0.06] bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.02)] space-y-3">
+        <section className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3">
           <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
             <div>
-              <h3 className="text-sm font-bold text-[#1D1D1F]">Escalation Timeout Rules & Fallback Policy</h3>
+              <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Escalation Timeout Rules & Fallback Policy</h3>
               <p className="text-xs text-[#6E6E73]">Configured timeout delays before incident escalates to higher staff tiers</p>
             </div>
             <button
               type="button"
               onClick={() => setEditPolicyOpen(true)}
-              className="text-xs font-semibold text-[#007AFF] hover:underline cursor-pointer"
+              className="text-xs font-medium text-[#007AFF] hover:underline cursor-pointer"
             >
               Edit Delays &rarr;
             </button>
@@ -3657,7 +3218,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 p0: 'Immediate (0m)',
                 p1: 'Immediate (0m)',
                 method: 'Push + SMS',
-                badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
               },
               {
                 tier: 'Level 1',
@@ -3666,7 +3226,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 p0: `+${policy?.p0BackupDelayMinutes ?? 2} mins`,
                 p1: `+${policy?.p1BackupDelayMinutes ?? 5} mins`,
                 method: 'Push + SMS + Phone',
-                badge: 'bg-blue-50 text-[#007AFF] border-blue-200',
               },
               {
                 tier: 'Level 2',
@@ -3675,7 +3234,6 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 p0: `+${policy?.p0SupervisorDelayMinutes ?? 5} mins`,
                 p1: `+${policy?.p1SupervisorDelayMinutes ?? 15} mins`,
                 method: 'Push + SMS + Phone + Email',
-                badge: 'bg-amber-50 text-amber-800 border-amber-200',
               },
               {
                 tier: 'Level 3',
@@ -3684,26 +3242,25 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 p0: `+${policy?.p0ManagerDelayMinutes ?? 15} mins`,
                 p1: `+${policy?.p1ManagerDelayMinutes ?? 30} mins`,
                 method: 'All Broadcast Channels',
-                badge: 'bg-purple-50 text-purple-700 border-purple-200',
               },
             ].map((item, idx) => (
-              <div key={idx} className="rounded-lg border border-black/[0.06] bg-[#FAFBFD] p-3 space-y-2 text-xs">
+              <div key={idx} className="rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 p-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold border', item.badge)}>
+                    <span className="rounded-full bg-white border border-black/[0.08] px-2 py-0.5 text-[10px] font-medium text-[#1D1D1F]">
                       {item.tier}
                     </span>
-                    <span className="font-bold text-[#1D1D1F] text-xs">{item.role}</span>
+                    <span className="font-semibold text-[#1D1D1F] text-xs">{item.role}</span>
                   </div>
                   <span className="text-[10px] font-mono text-[#6E6E73]">{item.method}</span>
                 </div>
                 <div className="flex items-center justify-between text-[11px] pt-1 border-t border-black/[0.04]">
                   <span className="text-[#6E6E73]">
-                    Target: <strong className="text-[#1D1D1F] font-semibold">{item.responder}</strong>
+                    Target: <strong className="text-[#1D1D1F] font-medium">{item.responder}</strong>
                   </span>
-                  <div className="flex items-center gap-2 font-mono text-[10px]">
-                    <span className="text-rose-600 font-semibold">P0: {item.p0}</span>
-                    <span className="text-[#007AFF] font-semibold">P1: {item.p1}</span>
+                  <div className="flex items-center gap-2 font-mono text-[10px] text-[#1D1D1F]">
+                    <span>P0: {item.p0}</span>
+                    <span>P1: {item.p1}</span>
                   </div>
                 </div>
               </div>
@@ -3714,7 +3271,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full min-w-[580px] text-left text-xs">
               <thead>
-                <tr className="border-b border-black/[0.06] text-[10px] uppercase font-bold text-[#8E8E93]">
+                <tr className="border-b border-black/[0.06] text-[10px] uppercase font-semibold text-[#86868B]">
                   <th className="pb-2">Escalation Tier</th>
                   <th className="pb-2">Target Responder</th>
                   <th className="pb-2">P0 Emergency Timeout</th>
@@ -3724,31 +3281,31 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </thead>
               <tbody className="divide-y divide-black/[0.04]">
                 <tr>
-                  <td className="py-2.5 font-bold text-[#1D1D1F]">Level 0 (Initial Dispatch)</td>
+                  <td className="py-2.5 font-semibold text-[#1D1D1F]">Level 0 (Initial Dispatch)</td>
                   <td className="py-2.5 text-[#6E6E73]">{primary?.name || 'Primary Responder'}</td>
-                  <td className="py-2.5 font-mono text-[#0F172A]">Immediate (0 min)</td>
-                  <td className="py-2.5 font-mono text-[#0F172A]">Immediate (0 min)</td>
+                  <td className="py-2.5 font-mono text-[#1D1D1F]">Immediate (0 min)</td>
+                  <td className="py-2.5 font-mono text-[#1D1D1F]">Immediate (0 min)</td>
                   <td className="py-2.5 font-mono text-[11px] text-[#6E6E73]">Push + SMS</td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 font-bold text-[#1D1D1F]">Level 1 (Backup Escalation)</td>
+                  <td className="py-2.5 font-semibold text-[#1D1D1F]">Level 1 (Backup Escalation)</td>
                   <td className="py-2.5 text-[#6E6E73]">{backup?.name || 'Secondary On-Call'}</td>
-                  <td className="py-2.5 font-mono text-[#0F172A]">{policy?.p0BackupDelayMinutes ?? 2} minutes</td>
-                  <td className="py-2.5 font-mono text-[#0F172A]">{policy?.p1BackupDelayMinutes ?? 5} minutes</td>
+                  <td className="py-2.5 font-mono text-[#1D1D1F]">{policy?.p0BackupDelayMinutes ?? 2} minutes</td>
+                  <td className="py-2.5 font-mono text-[#1D1D1F]">{policy?.p1BackupDelayMinutes ?? 5} minutes</td>
                   <td className="py-2.5 font-mono text-[11px] text-[#6E6E73]">Push + SMS + Phone</td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 font-bold text-[#1D1D1F]">Level 2 (Supervisor Escalation)</td>
+                  <td className="py-2.5 font-semibold text-[#1D1D1F]">Level 2 (Supervisor Escalation)</td>
                   <td className="py-2.5 text-[#6E6E73]">{supervisor?.name || 'Operations Supervisor'}</td>
-                  <td className="py-2.5 font-mono text-[#0F172A]">{policy?.p0SupervisorDelayMinutes ?? 5} minutes</td>
-                  <td className="py-2.5 font-mono text-[#0F172A]">{policy?.p1SupervisorDelayMinutes ?? 15} minutes</td>
+                  <td className="py-2.5 font-mono text-[#1D1D1F]">{policy?.p0SupervisorDelayMinutes ?? 5} minutes</td>
+                  <td className="py-2.5 font-mono text-[#1D1D1F]">{policy?.p1SupervisorDelayMinutes ?? 15} minutes</td>
                   <td className="py-2.5 font-mono text-[11px] text-[#6E6E73]">Push + SMS + Phone + Email</td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 font-bold text-[#1D1D1F]">Level 3 (Management Escalation)</td>
+                  <td className="py-2.5 font-semibold text-[#1D1D1F]">Level 3 (Management Escalation)</td>
                   <td className="py-2.5 text-[#6E6E73]">{manager?.name || 'Head of Operations'}</td>
-                  <td className="py-2.5 font-mono text-[#0F172A]">{policy?.p0ManagerDelayMinutes ?? 15} minutes</td>
-                  <td className="py-2.5 font-mono text-[#0F172A]">{policy?.p1ManagerDelayMinutes ?? 30} minutes</td>
+                  <td className="py-2.5 font-mono text-[#1D1D1F]">{policy?.p0ManagerDelayMinutes ?? 15} minutes</td>
+                  <td className="py-2.5 font-mono text-[#1D1D1F]">{policy?.p1ManagerDelayMinutes ?? 30} minutes</td>
                   <td className="py-2.5 font-mono text-[11px] text-[#6E6E73]">All Broadcast Channels</td>
                 </tr>
               </tbody>
@@ -3759,24 +3316,24 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         {/* ── Test Alert Notification Modal ── */}
         {testAlertOpen && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
               <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
                 <div className="flex items-center gap-2">
-                  <Bell className="h-4 w-4 text-purple-600" />
-                  <h3 className="text-sm font-bold text-[#1D1D1F]">Test On-Call Alert Notification</h3>
+                  <Bell className="h-4 w-4 text-[#1D1D1F]" />
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Test On-Call Alert Notification</h3>
                 </div>
-                <button type="button" onClick={() => setTestAlertOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+                <button type="button" onClick={() => setTestAlertOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
               <form onSubmit={handleTestAlert} className="space-y-3 text-xs">
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Dispatch Channel *</label>
+                  <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Dispatch Channel *</label>
                   <select
                     value={testAlertChannel}
                     onChange={(e) => setTestAlertChannel(e.target.value)}
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF] bg-white font-semibold"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
                   >
                     <option value="Push">Push Notification</option>
                     <option value="SMS">SMS Text Alert</option>
@@ -3785,33 +3342,42 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Target User ID *</label>
-                  <input
-                    type="number"
-                    value={testAlertUserId}
-                    onChange={(e) => setTestAlertUserId(Number(e.target.value))}
-                    required
-                    className="w-full rounded-md border border-black/[0.08] px-3 py-2 outline-none focus:border-[#007AFF]"
-                  />
-                  <p className="text-[10px] text-[#8E8E93] mt-1">
-                    Enter the staff responder user ID to dispatch this simulated alert to.
-                  </p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Recipient (Email / Phone) *</label>
+                    <input
+                      type="text"
+                      value={testAlertRecipient}
+                      onChange={(e) => setTestAlertRecipient(e.target.value)}
+                      required
+                      placeholder="oncall@parkjom.com or +6012..."
+                      className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Target User ID</label>
+                    <input
+                      type="number"
+                      value={testAlertUserId}
+                      onChange={(e) => setTestAlertUserId(Number(e.target.value))}
+                      className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1">Alert Message *</label>
+                  <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Alert Message *</label>
                   <textarea
                     rows={2}
                     value={testAlertMessage}
                     onChange={(e) => setTestAlertMessage(e.target.value)}
                     required
-                    className="w-full rounded-md border border-black/[0.08] p-2.5 outline-none focus:border-[#007AFF]"
+                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
                   />
                 </div>
 
                 {testAlertError && (
-                  <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                  <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                     {testAlertError}
                   </div>
                 )}
@@ -3820,14 +3386,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <button
                     type="button"
                     onClick={() => setTestAlertOpen(false)}
-                    className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                    className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={testingAlert}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-1.5 font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                   >
                     {testingAlert ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                     <span>Dispatch Test Alert</span>
@@ -3841,97 +3407,97 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         {/* ── Configure Escalation Policy Modal ── */}
         {editPolicyOpen && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
                 <div className="flex items-center gap-2">
-                  <Sliders className="h-4 w-4 text-[#007AFF]" />
-                  <h3 className="text-sm font-bold text-[#1D1D1F]">Configure Escalation Delays & Policy</h3>
+                  <Sliders className="h-4 w-4 text-[#1D1D1F]" />
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Configure Escalation Delays & Policy</h3>
                 </div>
-                <button type="button" onClick={() => setEditPolicyOpen(false)} className="text-[#8E8E93] hover:text-[#1D1D1F]">
+                <button type="button" onClick={() => setEditPolicyOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
               <form onSubmit={handleSavePolicy} className="space-y-4 text-xs">
                 {/* P0 Delays */}
-                <div className="rounded-md border border-rose-200/80 bg-rose-50/30 p-3.5 space-y-2.5">
-                  <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider block">
+                <div className="rounded-xl border border-black/[0.06] bg-[#F5F5F7]/70 p-3.5 space-y-2.5">
+                  <span className="text-[11px] font-semibold text-[#1D1D1F] uppercase tracking-wider block">
                     P0 Emergency Escalation Delays (Minutes)
                   </span>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[10px] font-semibold text-[#1D1D1F] mb-1">L1 Backup Delay</label>
+                      <label className="block text-[10px] font-medium text-[#6E6E73] mb-1">L1 Backup Delay</label>
                       <input
                         type="number"
                         min="1"
                         value={p0BackupDelay}
                         onChange={(e) => setP0BackupDelay(Number(e.target.value))}
                         required
-                        className="w-full rounded-lg border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
+                        className="w-full rounded-xl border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-[#1D1D1F] mb-1">L2 Supervisor</label>
+                      <label className="block text-[10px] font-medium text-[#6E6E73] mb-1">L2 Supervisor</label>
                       <input
                         type="number"
                         min="1"
                         value={p0SupervisorDelay}
                         onChange={(e) => setP0SupervisorDelay(Number(e.target.value))}
                         required
-                        className="w-full rounded-lg border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
+                        className="w-full rounded-xl border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-[#1D1D1F] mb-1">L3 Manager</label>
+                      <label className="block text-[10px] font-medium text-[#6E6E73] mb-1">L3 Manager</label>
                       <input
                         type="number"
                         min="1"
                         value={p0ManagerDelay}
                         onChange={(e) => setP0ManagerDelay(Number(e.target.value))}
                         required
-                        className="w-full rounded-lg border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
+                        className="w-full rounded-xl border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* P1 Delays */}
-                <div className="rounded-md border border-amber-200/80 bg-amber-50/30 p-3.5 space-y-2.5">
-                  <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block">
+                <div className="rounded-xl border border-black/[0.06] bg-[#F5F5F7]/70 p-3.5 space-y-2.5">
+                  <span className="text-[11px] font-semibold text-[#1D1D1F] uppercase tracking-wider block">
                     P1 High Priority Escalation Delays (Minutes)
                   </span>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[10px] font-semibold text-[#1D1D1F] mb-1">L1 Backup Delay</label>
+                      <label className="block text-[10px] font-medium text-[#6E6E73] mb-1">L1 Backup Delay</label>
                       <input
                         type="number"
                         min="1"
                         value={p1BackupDelay}
                         onChange={(e) => setP1BackupDelay(Number(e.target.value))}
                         required
-                        className="w-full rounded-lg border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
+                        className="w-full rounded-xl border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-[#1D1D1F] mb-1">L2 Supervisor</label>
+                      <label className="block text-[10px] font-medium text-[#6E6E73] mb-1">L2 Supervisor</label>
                       <input
                         type="number"
                         min="1"
                         value={p1SupervisorDelay}
                         onChange={(e) => setP1SupervisorDelay(Number(e.target.value))}
                         required
-                        className="w-full rounded-lg border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
+                        className="w-full rounded-xl border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-[#1D1D1F] mb-1">L3 Manager</label>
+                      <label className="block text-[10px] font-medium text-[#6E6E73] mb-1">L3 Manager</label>
                       <input
                         type="number"
                         min="1"
                         value={p1ManagerDelay}
                         onChange={(e) => setP1ManagerDelay(Number(e.target.value))}
                         required
-                        className="w-full rounded-lg border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
+                        className="w-full rounded-xl border border-black/[0.08] p-2 bg-white outline-none focus:border-[#007AFF]"
                       />
                     </div>
                   </div>
@@ -3939,7 +3505,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
                 {/* Enabled Channels & Auto Escalation */}
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1D1D1F] mb-1.5">Enabled Notification Channels</label>
+                  <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1.5">Enabled Notification Channels</label>
                   <div className="flex flex-wrap gap-2">
                     {['Push', 'SMS', 'Phone', 'Email'].map((channel) => {
                       const isChecked = policyChannels.includes(channel);
@@ -3947,8 +3513,8 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                         <label
                           key={channel}
                           className={cn(
-                            'flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition',
-                            isChecked ? 'border-[#007AFF] bg-blue-50 text-[#007AFF]' : 'border-black/[0.08] bg-white text-[#6E6E73]'
+                            'flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition',
+                            isChecked ? 'border-[#1D1D1F] bg-[#1D1D1F] text-white' : 'border-black/[0.08] bg-[#F5F5F7] text-[#6E6E73]'
                           )}
                         >
                           <input
@@ -3961,7 +3527,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                                 setPolicyChannels(policyChannels.filter((c) => c !== channel));
                               }
                             }}
-                            className="h-3 w-3 rounded text-[#007AFF]"
+                            className="sr-only"
                           />
                           <span>{channel}</span>
                         </label>
@@ -3972,7 +3538,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
                 <div className="flex items-center justify-between pt-1">
                   <div>
-                    <p className="font-bold text-xs text-[#1D1D1F]">Automated Escalation Engine</p>
+                    <p className="font-medium text-xs text-[#1D1D1F]">Automated Escalation Engine</p>
                     <p className="text-[10px] text-[#6E6E73]">Automatically bump unacknowledged incidents to the next tier</p>
                   </div>
                   <input
@@ -3984,7 +3550,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 </div>
 
                 {policyError && (
-                  <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">
+                  <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
                     {policyError}
                   </div>
                 )}
@@ -3993,14 +3559,14 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <button
                     type="button"
                     onClick={() => setEditPolicyOpen(false)}
-                    className="rounded-md border border-black/[0.08] px-3.5 py-1.5 font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
+                    className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={savingPolicy}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-[#007AFF] px-4 py-1.5 font-semibold text-white hover:bg-[#0066D6] disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-1.5 font-medium text-white hover:bg-[#0066D6] disabled:opacity-50"
                   >
                     {savingPolicy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                     <span>Save Escalation Policy</span>
@@ -4033,10 +3599,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold tracking-tight text-[#1D1D1F]">
+              <h2 className="text-lg font-semibold tracking-tight text-[#1D1D1F]">
                 Support & Incident Audit Trail
               </h2>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-[#1D1D1F]">
+              <span className="rounded-full bg-[#F5F5F7] border border-black/[0.08] px-2.5 py-0.5 text-[10px] font-medium text-[#1D1D1F]">
                 {auditLogResponse?.totalCount || items.length} Total Events
               </span>
             </div>
@@ -4050,117 +3616,100 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               type="button"
               onClick={() => void fetchAuditLogs()}
               disabled={loadingAudit}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7]"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7]"
             >
-              <RefreshCw className={cn('h-3.5 w-3.5', loadingAudit && 'animate-spin text-[#007AFF]')} />
+              <RefreshCw className={cn('h-3.5 w-3.5 text-[#6E6E73]', loadingAudit && 'animate-spin text-[#007AFF]')} />
               <span>Refresh Log</span>
             </button>
           </div>
         </div>
 
         {/* Filters & Search Toolbar */}
-        <div className="flex flex-col gap-2.5 rounded-lg border border-black/[0.06] bg-white p-3 shadow-[0_2px_12px_rgba(0,0,0,0.02)] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2.5 rounded-2xl border border-black/[0.06] bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <label htmlFor="audit-filter-select" className="text-xs font-bold text-[#6E6E73] shrink-0">Entity Type:</label>
+            <label htmlFor="audit-filter-select" className="text-xs font-medium text-[#6E6E73] shrink-0">Entity Type:</label>
             <div className="relative min-w-[170px]">
               <select
                 id="audit-filter-select"
                 value={auditFilter}
                 onChange={(e) => setAuditFilter(e.target.value)}
-                className="min-h-8 w-full cursor-pointer appearance-none rounded-md border border-black/[0.08] bg-[#F5F5F7] pl-3 pr-8 text-xs font-semibold text-[#1D1D1F] outline-none hover:bg-white focus:border-[#007AFF] focus:bg-white transition"
+                className="min-h-8 w-full cursor-pointer appearance-none rounded-xl border border-black/[0.08] bg-[#F5F5F7]/70 pl-3 pr-8 text-xs font-medium text-[#1D1D1F] outline-none hover:bg-[#F5F5F7] focus:border-[#007AFF] focus:bg-white transition"
               >
                 <option value="All">All Entities</option>
                 <option value="Ticket">Ticket Events</option>
                 <option value="Incident">Incident Events</option>
                 <option value="Dispute">Dispute Events</option>
-                <option value="Conversation">Live Conversations</option>
                 <option value="OnCall">On-Call Alerts</option>
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#8E8E93]" />
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
             </div>
           </div>
 
           <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[#8E8E93]" />
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
             <input
               type="search"
               value={auditSearch}
               onChange={(e) => setAuditSearch(e.target.value)}
               placeholder="Search reference, action, user..."
-              className="w-full rounded-md border border-black/[0.08] bg-[#F5F5F7] pl-8 pr-3 py-1.5 text-xs outline-none focus:border-[#007AFF] focus:bg-white"
+              className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/70 pl-8 pr-3 py-1.5 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
             />
           </div>
         </div>
 
         {/* Audit Events Stream */}
-        <section className="rounded-lg border border-black/[0.06] bg-white shadow-[0_2px_12px_rgba(0,0,0,0.02)] overflow-hidden">
+        <section className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
           {loadingAudit ? (
-            <div className="flex h-48 items-center justify-center text-xs text-[#8E8E93]">
+            <div className="flex h-48 items-center justify-center text-xs text-[#86868B]">
               <Loader2 className="h-5 w-5 animate-spin text-[#007AFF]" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[#8E8E93]">
-              <History className="h-8 w-8 mx-auto text-[#8E8E93]/40 mb-2" />
-              <p className="font-bold text-[#1D1D1F]">No audit log events matched</p>
+            <div className="p-8 text-center text-xs text-[#86868B]">
+              <History className="h-8 w-8 mx-auto text-[#86868B]/40 mb-2" />
+              <p className="font-semibold text-[#1D1D1F]">No audit log events matched</p>
               <p className="text-[11px] mt-0.5">Try clearing filters or check another entity type.</p>
             </div>
           ) : (
             <div className="divide-y divide-black/[0.04]">
-              {filtered.map((ev) => {
-                const isTicket = ev.objectType === 'Ticket';
-                const isIncident = ev.objectType === 'Incident';
-                const isDispute = ev.objectType === 'Dispute';
-                const isOnCall = ev.objectType === 'OnCall';
-
-                return (
-                  <div key={ev.auditEventId} className="p-3.5 sm:p-4 hover:bg-[#FAFBFD] transition flex flex-col gap-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] text-[#8E8E93]">#{ev.auditEventId}</span>
-                        <span
-                          className={cn(
-                            'rounded-md px-1.5 py-0.2 text-[9px] font-bold border',
-                            isTicket && 'bg-blue-50 text-[#007AFF] border-blue-200',
-                            isIncident && 'bg-rose-50 text-rose-700 border-rose-200',
-                            isDispute && 'bg-amber-50 text-amber-800 border-amber-200',
-                            isOnCall && 'bg-purple-50 text-purple-700 border-purple-200',
-                            !isTicket && !isIncident && !isDispute && !isOnCall && 'bg-slate-100 text-slate-700 border-slate-200'
-                          )}
-                        >
-                          {ev.objectType}
-                        </span>
-                        <span className="font-mono text-xs font-bold text-[#1D1D1F]">
-                          {ev.objectReference}
-                        </span>
-                        <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[10px] font-bold text-[#1D1D1F]">
-                          {ev.action}
-                        </span>
-                      </div>
-
-                      <span className="text-[10px] text-[#8E8E93] font-mono">
-                        {formatDateTime(ev.timestamp)}
+              {filtered.map((ev) => (
+                <div key={ev.auditEventId} className="p-3.5 sm:p-4 hover:bg-[#F5F5F7]/50 transition flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] text-[#86868B]">#{ev.auditEventId}</span>
+                      <span className="rounded-full bg-[#F5F5F7] border border-black/[0.08] px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F]">
+                        {ev.objectType}
+                      </span>
+                      <span className="font-mono text-xs font-semibold text-[#1D1D1F]">
+                        {ev.objectReference}
+                      </span>
+                      <span className="rounded-full bg-[#F5F5F7] border border-black/[0.06] px-2 py-0.5 text-[10px] font-medium text-[#6E6E73]">
+                        {ev.action}
                       </span>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs gap-1">
-                      <p className="text-[#1D1D1F] text-xs">
-                        {ev.detail || `Action performed on ${ev.objectReference}`}
-                      </p>
-                      <div className="flex items-center gap-2 text-[11px] text-[#6E6E73] shrink-0">
-                        <span>Actor: <strong>{ev.actorName}</strong></span>
-                        <span className="rounded bg-slate-100 px-1 py-0.2 text-[9px] font-semibold">
-                          {ev.actorRole}
+                    <span className="text-[10px] text-[#86868B] font-mono">
+                      {formatDateTime(ev.timestamp)}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs gap-1">
+                    <p className="text-[#1D1D1F] text-xs">
+                      {ev.detail || `Action performed on ${ev.objectReference}`}
+                    </p>
+                    <div className="flex items-center gap-2 text-[11px] text-[#6E6E73] shrink-0">
+                      <span>Actor: <strong className="text-[#1D1D1F] font-medium">{ev.actorName}</strong></span>
+                      <span className="rounded-full bg-[#F5F5F7] border border-black/[0.06] px-2 py-0.5 text-[9px] font-medium text-[#6E6E73]">
+                        {ev.actorRole}
+                      </span>
+                      {(ev.previousState || ev.newState) && (
+                        <span className="font-mono text-[10px] text-[#86868B]">
+                          ({ev.previousState || 'None'} &rarr; {ev.newState || 'Current'})
                         </span>
-                        {(ev.previousState || ev.newState) && (
-                          <span className="font-mono text-[10px] text-[#8E8E93]">
-                            ({ev.previousState || 'None'} &rarr; {ev.newState || 'Current'})
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -4170,188 +3719,62 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
   return (
     <div className="space-y-4" data-component="admin-support-dashboard">
-      {/* Function Sub-Page Top Header (Only shown when viewing a specific function) */}
-      {activeView !== 'menu' && (
-        <section className="border-b border-black/[0.06] bg-white px-4 py-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            <div className="flex items-center gap-3">
+      {/* Persistent Top Segmented Navigation Bar for the 6 SUPPORT_API.ADMIN Modules */}
+      <section className="rounded-2xl border border-black/[0.06] bg-[#F5F5F7] p-1.5">
+        <div className="flex flex-wrap items-center gap-1">
+          {adminNavigation.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeView === item.id;
+            return (
               <button
+                key={item.id}
                 type="button"
-                onClick={() => setActiveView('menu')}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] hover:bg-[#F8FAFC] transition active:scale-[0.98]"
+                onClick={() => setActiveView(item.id)}
+                className={cn(
+                  'inline-flex cursor-pointer items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium transition-all',
+                  isActive
+                    ? 'bg-white text-[#1D1D1F] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                    : 'text-[#6E6E73] hover:text-[#1D1D1F]'
+                )}
               >
-                <ArrowLeft className="h-3.5 w-3.5 text-[#007AFF]" />
-                <span>Back to Operations Menu</span>
+                <Icon className="h-3.5 w-3.5" />
+                <span>{item.label}</span>
+                {typeof item.count === 'number' && item.count > 0 && (
+                  <span
+                    className={cn(
+                      'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                      isActive
+                        ? 'bg-[#F5F5F7] text-[#1D1D1F]'
+                        : 'bg-white/80 text-[#6E6E73]'
+                    )}
+                  >
+                    {item.count}
+                  </span>
+                )}
               </button>
-              <span className="text-slate-300">|</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-[#0F172A]">
-                  {adminNavigation.find((n) => n.id === activeView)?.label || 'Support Operations'}
-                </span>
-                {(() => {
-                  const curr = adminNavigation.find((n) => n.id === activeView);
-                  return typeof curr?.count === 'number' && curr.count > 0 ? (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.2 text-[10px] font-bold text-slate-700 border border-slate-200/60">
-                      {curr.count}
-                    </span>
-                  ) : null;
-                })()}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveView('menu')}
-                className="text-xs font-medium text-[#64748B] hover:text-[#007AFF] transition cursor-pointer"
-              >
-                All Modules &rarr;
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
+            );
+          })}
+        </div>
+      </section>
 
       {/* Floating Notice Toast */}
       {notice && (
         <div
           role="status"
-          className="flex items-center gap-2 rounded-md border border-black/[0.06] bg-white px-3.5 py-2 text-xs font-semibold text-[#1D1D1F] shadow-xs"
+          className="flex items-center gap-2 rounded-2xl border border-black/[0.06] bg-white px-4 py-2.5 text-xs font-medium text-[#1D1D1F] shadow-[0_1px_3px_rgba(0,0,0,0.03)]"
         >
-          <CheckCircle2 className="h-3.5 w-3.5 text-[#34C759]" />
+          <CheckCircle2 className="h-4 w-4 text-[#34C759]" />
           <span>{notice}</span>
         </div>
       )}
 
-      {/* Dynamic Views */}
-      {activeView === 'menu' && renderMenuPage()}
+      {/* Dynamic Views (SUPPORT_API.ADMIN Modules Only) */}
       {activeView === 'command' && renderCommandCenter()}
-      {activeView === 'conversations' && renderConversations()}
       {activeView === 'tickets' && ticketWorkspace}
       {activeView === 'incidents' && renderIncidents()}
       {activeView === 'disputes' && renderDisputes()}
       {activeView === 'on-call' && renderOnCall()}
       {activeView === 'audit' && renderAuditLogs()}
-
-      {/* Admin Custom Ticket Creator Modal */}
-      {createTicketOpen && (
-        <div
-          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/40 p-0 backdrop-blur-xs sm:items-center sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="admin-ticket-title"
-        >
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-lg border border-black/[0.08]">
-            <div className="flex items-center justify-between border-b border-black/[0.06] p-4">
-              <div className="flex items-center gap-2">
-                <TicketCheck className="h-4.5 w-4.5 text-[#007AFF]" />
-                <h3 id="admin-ticket-title" className="text-sm font-bold text-[#1D1D1F]">
-                  Create Tracked Ticket from Conversation
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCreateTicketOpen(false)}
-                className="cursor-pointer rounded-lg p-1.5 text-[#8E8E93] hover:bg-[#F5F5F7]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={createConversationTicket} className="space-y-3.5 p-4 sm:p-5">
-              <label className="block space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Subject *</span>
-                <input
-                  value={ticketSubject}
-                  onChange={(e) => setTicketSubject(e.target.value)}
-                  required
-                  placeholder="Summary of issue"
-                  className="min-h-9 w-full rounded-md border border-black/[0.08] px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF]"
-                />
-              </label>
-
-              <div className="grid grid-cols-3 gap-2">
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Category</span>
-                  <select
-                    value={ticketCategory}
-                    onChange={(e) => setTicketCategory(e.target.value)}
-                    className="min-h-9 w-full rounded-md border border-black/[0.08] bg-white px-2 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF]"
-                  >
-                    <option value="ParkingAccess">Parking Access</option>
-                    <option value="Booking">Booking</option>
-                    <option value="Payment">Payment</option>
-                    <option value="Account">Account</option>
-                  </select>
-                </label>
-
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Priority</span>
-                  <select
-                    value={ticketPriority}
-                    onChange={(e) => setTicketPriority(e.target.value)}
-                    className="min-h-9 w-full rounded-md border border-black/[0.08] bg-white px-2 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF]"
-                  >
-                    <option value="P0">P0 - Emergency</option>
-                    <option value="P1">P1 - High</option>
-                    <option value="P2">P2 - Standard</option>
-                  </select>
-                </label>
-
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Assigned Team</span>
-                  <select
-                    value={ticketTeam}
-                    onChange={(e) => setTicketTeam(e.target.value)}
-                    className="min-h-9 w-full rounded-md border border-black/[0.08] bg-white px-2 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF]"
-                  >
-                    <option value="ParkingOperations">Parking Operations</option>
-                    <option value="CustomerSupport">Customer Support</option>
-                    <option value="Payments">Payments</option>
-                    <option value="OwnerSupport">Owner Support</option>
-                    <option value="TrustSafety">Trust & Safety</option>
-                  </select>
-                </label>
-              </div>
-
-              <label className="block space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Internal Summary / Notes *</span>
-                <textarea
-                  value={ticketSummary}
-                  onChange={(e) => setTicketSummary(e.target.value)}
-                  rows={3}
-                  required
-                  className="w-full resize-none rounded-md border border-black/[0.08] p-2.5 text-xs leading-relaxed text-[#1D1D1F] outline-none focus:border-[#007AFF]"
-                />
-              </label>
-
-              {ticketError && (
-                <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
-                  {ticketError}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 border-t border-black/[0.06] pt-3">
-                <button
-                  type="button"
-                  onClick={() => setCreateTicketOpen(false)}
-                  className="cursor-pointer rounded-md border border-black/[0.08] px-3.5 py-1.5 text-xs font-semibold text-[#6E6E73] hover:bg-[#F5F5F7]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={ticketCreating}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[#007AFF] px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-[#0066D6] disabled:opacity-50"
-                >
-                  {ticketCreating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TicketCheck className="h-3.5 w-3.5" />}
-                  <span>{ticketCreating ? 'Creating...' : 'Create Ticket'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

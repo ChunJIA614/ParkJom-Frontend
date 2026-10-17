@@ -11,7 +11,8 @@ function hasAuthorizationHeader(headers?: HeadersInit) {
 }
 
 export function apiRequest(path: string, init?: RequestInit): Promise<Response> {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
+  const normalizedPath = withLeadingSlash.replace(/^\/api(?=\/|$)/, '') || '/';
   return fetch(`${API_BASE}${normalizedPath}`, init).then(async (response) => {
     const isAuthenticatedRequest = hasAuthorizationHeader(init?.headers);
     if (isAuthenticatedRequest && (response.status === 401 || response.status === 403)) {

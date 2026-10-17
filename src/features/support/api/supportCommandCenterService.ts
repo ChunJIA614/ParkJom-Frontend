@@ -1,9 +1,9 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
+import { SUPPORT_API } from './supportApiConfig';
 import type {
   AdminDashboardMetrics,
   OnCallPolicy,
   OnCallRosterStatus,
-  SupportAuditEvent,
   SupportAuditLogResponse,
   TestOnCallAlertInput,
   TestOnCallAlertResult,
@@ -12,17 +12,15 @@ import type {
 
 async function readJson<T>(response: Response, fallback: string): Promise<T> {
   if (!response.ok) throw new Error(await readApiError(response, fallback));
-  const payload = (await response.json().catch(() => null)) as {
-    code?: number;
-    success?: boolean;
-    message?: string;
-    data?: T;
-  } | null;
+  const payload = (await response.json().catch(() => null)) as any;
 
-  if (!payload || payload.success === false || payload.data === undefined) {
+  if (!payload) {
+    throw new Error(fallback);
+  }
+  if (payload.success === false && payload.data === undefined) {
     throw new Error(payload?.message || fallback);
   }
-  return payload.data;
+  return (payload.data !== undefined ? payload.data : payload) as T;
 }
 
 /**
@@ -30,7 +28,7 @@ async function readJson<T>(response: Response, fallback: string): Promise<T> {
  * GET /api/admin/support/dashboard
  */
 export async function getAdminDashboardMetrics(token: string): Promise<AdminDashboardMetrics> {
-  const response = await apiRequest('/admin/support/dashboard', {
+  const response = await apiRequest(SUPPORT_API.ADMIN.DASHBOARD, {
     method: 'GET',
     headers: authorizationHeaders(token),
   });
@@ -42,7 +40,7 @@ export async function getAdminDashboardMetrics(token: string): Promise<AdminDash
  * GET /api/admin/support/on-call
  */
 export async function getOnCallRosterStatus(token: string): Promise<OnCallRosterStatus> {
-  const response = await apiRequest('/admin/support/on-call', {
+  const response = await apiRequest(SUPPORT_API.ADMIN.ON_CALL.STATUS, {
     method: 'GET',
     headers: authorizationHeaders(token),
   });
@@ -52,18 +50,22 @@ export async function getOnCallRosterStatus(token: string): Promise<OnCallRoster
 /**
  * 3. Test On-Call Alert Notification
  * POST /api/admin/support/on-call/test
+ * Body: { channel, recipient, message? }
  */
 export async function testOnCallAlert(
   token: string,
-  input: TestOnCallAlertInput
+  input: TestOnCallAlertInput,
 ): Promise<TestOnCallAlertResult> {
-  const response = await apiRequest('/admin/support/on-call/test', {
+  const msg = (input.message || input.testMessage || '').trim();
+  const response = await apiRequest(SUPPORT_API.ADMIN.ON_CALL.TEST_NOTIFICATION, {
     method: 'POST',
     headers: authorizationHeaders(token, 'application/json'),
     body: JSON.stringify({
       channel: input.channel,
+      recipient: input.recipient,
       targetUserId: input.targetUserId,
-      testMessage: input.testMessage.trim(),
+      message: msg,
+      testMessage: msg,
     }),
   });
   return readJson<TestOnCallAlertResult>(response, 'Unable to dispatch test alert notification.');
@@ -75,9 +77,9 @@ export async function testOnCallAlert(
  */
 export async function updateOnCallPolicy(
   token: string,
-  input: UpdateOnCallPolicyInput
+  input: UpdateOnCallPolicyInput,
 ): Promise<OnCallPolicy> {
-  const response = await apiRequest('/admin/support/on-call/policy', {
+  const response = await apiRequest(SUPPORT_API.ADMIN.ON_CALL.UPDATE_POLICY, {
     method: 'PUT',
     headers: authorizationHeaders(token, 'application/json'),
     body: JSON.stringify(input),
@@ -87,13 +89,14 @@ export async function updateOnCallPolicy(
 
 /**
  * 5. Query Support Audit Event Timeline
- * GET /api/admin/support/audit?page=1&pageSize=100
+ * GET /api/admin/support/audit?objectType=&objectId=&page=1&pageSize=50
  */
 export async function querySupportAuditTimeline(
   token: string,
   page = 1,
-  pageSize = 100,
-  objectType?: string
+  pageSize = 50,
+  objectType?: string,
+  objectId?: string | number,
 ): Promise<SupportAuditLogResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -102,8 +105,11 @@ export async function querySupportAuditTimeline(
   if (objectType && objectType !== 'All') {
     params.set('objectType', objectType);
   }
+  if (objectId !== undefined && objectId !== null && String(objectId).trim() !== '') {
+    params.set('objectId', String(objectId).trim());
+  }
 
-  const response = await apiRequest(`/admin/support/audit?${params.toString()}`, {
+  const response = await apiRequest(`${SUPPORT_API.ADMIN.AUDIT_LOGS}?${params.toString()}`, {
     method: 'GET',
     headers: authorizationHeaders(token),
   });

@@ -1,26 +1,25 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
+import { SUPPORT_API } from './supportApiConfig';
 import type {
-  ExecuteWorkflowRunInput,
+  QuickIssueTemplate,
+  SelfUnlockGateInput,
+  SelfUnlockGateResult,
   SupportContextData,
-  SupportWorkflowDefinition,
-  SupportWorkflowRun,
 } from '../types';
 
 async function readJson<T>(response: Response, fallback: string): Promise<T> {
   if (!response.ok) {
     throw new Error(await readApiError(response, fallback));
   }
-  const payload = (await response.json().catch(() => null)) as {
-    code?: number;
-    success?: boolean;
-    message?: string;
-    data?: T;
-  } | null;
+  const payload = (await response.json().catch(() => null)) as any;
 
-  if (!payload || payload.success === false || payload.data === undefined) {
-    throw new Error(payload?.message || fallback);
+  if (!payload) {
+    throw new Error(fallback);
   }
-  return payload.data;
+  if (payload.success === false && payload.data === undefined) {
+    throw new Error(payload.message || fallback);
+  }
+  return (payload.data !== undefined ? payload.data : payload) as T;
 }
 
 /**
@@ -37,7 +36,7 @@ export async function getSupportContext(
   if (vehicleId) params.set('vehicleId', String(vehicleId));
 
   const query = params.toString() ? `?${params.toString()}` : '';
-  const response = await apiRequest(`/support/context${query}`, {
+  const response = await apiRequest(`${SUPPORT_API.USER.GET_CONTEXT}${query}`, {
     method: 'GET',
     headers: authorizationHeaders(token),
   });
@@ -46,69 +45,72 @@ export async function getSupportContext(
 }
 
 /**
- * 2. List Active Support Workflows
- * GET /api/support/workflows
+ * 2. Get Role-Specific Quick Issue Templates (Commuter vs PropertyOwner)
+ * GET /api/support/templates
  */
-export async function listSupportWorkflows(token: string): Promise<SupportWorkflowDefinition[]> {
-  const response = await apiRequest('/support/workflows', {
+export async function getSupportTemplates(token: string): Promise<QuickIssueTemplate[]> {
+  const response = await apiRequest(SUPPORT_API.USER.GET_TEMPLATES, {
     method: 'GET',
     headers: authorizationHeaders(token),
   });
 
-  return readJson<SupportWorkflowDefinition[]>(response, 'Unable to load support workflows.');
+  const data = await readJson<any>(response, 'Unable to load quick issue templates.');
+  if (Array.isArray(data)) return data as QuickIssueTemplate[];
+  if (Array.isArray(data?.templates)) return data.templates as QuickIssueTemplate[];
+  if (Array.isArray(data?.items)) return data.items as QuickIssueTemplate[];
+  return [];
 }
 
 /**
- * 3. Get Support Workflow Schema
- * GET /api/support/workflows/{workflowKey}
+ * 3. Self-Service Emergency Gate Unlock
+ * POST /api/support/gate-unlock
+ * Body (JSON): { bookingId?: number, action?: 'Enter' | 'Exit' }
  */
-export async function getSupportWorkflowSchema(
+export async function selfUnlockGate(
   token: string,
-  workflowKey: string,
-): Promise<SupportWorkflowDefinition> {
-  const response = await apiRequest(`/support/workflows/${encodeURIComponent(workflowKey)}`, {
-    method: 'GET',
-    headers: authorizationHeaders(token),
-  });
+  input: SelfUnlockGateInput = {},
+): Promise<SelfUnlockGateResult> {
+  const body: Record<string, unknown> = {
+    action: input.action || 'Enter',
+  };
+  if (input.bookingId) {
+    body.bookingId = Number(input.bookingId);
+  }
 
-  return readJson<SupportWorkflowDefinition>(response, `Unable to load workflow schema for "${workflowKey}".`);
-}
-
-/**
- * 4. Execute Support Workflow Run
- * POST /api/support/workflows/{workflowKey}/runs
- */
-export async function executeWorkflowRun(
-  token: string,
-  workflowKey: string,
-  input: ExecuteWorkflowRunInput,
-): Promise<SupportWorkflowRun> {
-  const response = await apiRequest(`/support/workflows/${encodeURIComponent(workflowKey)}/runs`, {
+  const response = await apiRequest(SUPPORT_API.USER.SELF_UNLOCK_GATE, {
     method: 'POST',
     headers: authorizationHeaders(token, 'application/json'),
-    body: JSON.stringify({
-      answers: input.answers ?? {},
-      bookingId: input.bookingId ?? null,
-      vehicleId: input.vehicleId ?? null,
-      clientRequestId: input.clientRequestId || `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    }),
+    body: JSON.stringify(body),
   });
 
-  return readJson<SupportWorkflowRun>(response, 'Unable to execute support workflow triage.');
+  const payload = (await response.json().catch(() => null)) as any;
+  const inner = payload?.data !== undefined ? payload.data : payload;
+
+  if (!response.ok) {
+    if (inner && (inner.suggestUrgentTicket !== undefined || inner.success === false)) {
+      return {
+        success: false,
+        message: inner.message || payload?.message || 'Unable to unlock gate automatically.',
+        commandId: inner.commandId ?? null,
+        bookingId: inner.bookingId ?? input.bookingId ?? null,
+        action: inner.action ?? input.action ?? 'Enter',
+        suggestUrgentTicket: Boolean(inner.suggestUrgentTicket ?? payload?.suggestUrgentTicket ?? true),
+        executedAt: inner.executedAt ?? new Date().toISOString(),
+      };
+    }
+    throw new Error(
+      inner?.message || payload?.message || (await readApiError(response, 'Unable to unlock gate.')),
+    );
+  }
+
+  return {
+    success: inner?.success ?? payload?.success ?? true,
+    message: inner?.message || payload?.message || 'Gate unlock signal dispatched.',
+    commandId: inner?.commandId ?? null,
+    bookingId: inner?.bookingId ?? input.bookingId ?? null,
+    action: inner?.action ?? input.action ?? 'Enter',
+    suggestUrgentTicket: Boolean(inner?.suggestUrgentTicket ?? payload?.suggestUrgentTicket ?? false),
+    executedAt: inner?.executedAt ?? new Date().toISOString(),
+  };
 }
 
-/**
- * 5. Get Workflow Run Status
- * GET /api/support/workflow-runs/{runId}
- */
-export async function getWorkflowRunStatus(
-  token: string,
-  runId: number | string,
-): Promise<SupportWorkflowRun> {
-  const response = await apiRequest(`/support/workflow-runs/${encodeURIComponent(runId)}`, {
-    method: 'GET',
-    headers: authorizationHeaders(token),
-  });
-
-  return readJson<SupportWorkflowRun>(response, `Unable to load workflow run status for #${runId}.`);
-}
