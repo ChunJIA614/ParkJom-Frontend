@@ -76,9 +76,12 @@ export default function GoogleLoginButton() {
       throw new Error(data.message || 'Backend login failed');
     }
 
-    const accountStatus = data.user?.accountStatus ?? data.accountStatus;
-    if (accountStatus?.trim().toLowerCase() === 'suspended') {
+    const accountStatus = (data.user?.accountStatus ?? data.accountStatus)?.trim().toLowerCase();
+    if (accountStatus === 'suspended') {
       throw new Error('This account has been suspended. Please contact ParkJom support.');
+    }
+    if (accountStatus === 'deactivated') {
+      throw new Error('This account has been deactivated. Please contact ParkJom support to reactivate.');
     }
 
     const userId = Number(data.user?.userId);

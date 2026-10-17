@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, LogOut, Menu, Search } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Search, UserRound } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
 import { showConfirm } from '@/contexts/ModalContext';
+import ProfileDialog from '@/features/profile/components/ProfileDialog';
 
 export type DashboardRole = 'commuter' | 'owner' | 'admin';
 
@@ -81,6 +82,7 @@ export default function DashboardHeader({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const mobileSearchRef = useRef<HTMLDivElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
@@ -349,6 +351,15 @@ export default function DashboardHeader({
                     <p className="truncate text-[12px] font-semibold text-[#111]">{displayName}</p>
                     {user.email && <p className="mt-0.5 truncate text-[10px] text-[#8e8e93]">{user.email}</p>}
                   </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { setAccountOpen(false); setProfileOpen(true); }}
+                    className="workspace-header__account-menu-item"
+                  >
+                    <UserRound size={16} aria-hidden="true" />
+                    <span>My profile</span>
+                  </button>
                   <button type="button" role="menuitem" onClick={handleSignOut} className="workspace-header__account-menu-item">
                     <LogOut size={16} aria-hidden="true" />
                     <span>Sign out</span>
@@ -359,6 +370,7 @@ export default function DashboardHeader({
           )}
         </div>
       </div>
+      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
     </header>
   );
 }

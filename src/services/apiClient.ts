@@ -17,10 +17,13 @@ export function apiRequest(path: string, init?: RequestInit): Promise<Response> 
     const isAuthenticatedRequest = hasAuthorizationHeader(init?.headers);
     if (isAuthenticatedRequest && (response.status === 401 || response.status === 403)) {
       const message = await response.clone().text().catch(() => '');
-      const isSuspended = /suspend|disabled|account\s+(?:is\s+)?inactive/i.test(message);
-      if (response.status === 401 || isSuspended) {
+      const isSuspendedOrDeactivated = /suspend|deactivat|disabled|account\s+(?:is\s+)?inactive/i.test(message);
+      if (response.status === 401 || isSuspendedOrDeactivated || response.status === 403) {
+        const reason = isSuspendedOrDeactivated
+          ? (/deactivat/i.test(message) ? 'deactivated' : 'suspended')
+          : (response.status === 403 ? 'forbidden' : 'unauthorized');
         window.dispatchEvent(new CustomEvent(AUTH_REJECTED_EVENT, {
-          detail: { reason: isSuspended ? 'suspended' : 'unauthorized' },
+          detail: { reason },
         }));
       }
     }

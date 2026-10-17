@@ -45,7 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (saved) {
       try {
         const restored = JSON.parse(saved) as AuthUser;
-        if (restored.accountStatus?.toLowerCase() === 'suspended') {
+        const accountStatus = restored.accountStatus?.toLowerCase();
+        if (accountStatus === 'suspended' || accountStatus === 'deactivated') {
           localStorage.removeItem('parkjom_user');
         } else {
           setUser(restored);

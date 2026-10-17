@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Building, Sliders, Save, CheckCircle, Wifi, Battery, Radio, ShieldAlert } from 'lucide-react';
+import { Building, Sliders, Save, CheckCircle, Wifi, Battery, Radio, ShieldAlert, UserRound } from 'lucide-react';
 import { showAlert } from '@/contexts/ModalContext';
+import { useAuth } from '@/features/auth/context/AuthContext';
+import ProfileDialog from '@/features/profile/components/ProfileDialog';
 
 interface SettingsPanelProps {
   bank: { name: string; accNo: string; holder: string };
@@ -8,6 +10,8 @@ interface SettingsPanelProps {
 }
 
 export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) {
+  const { user } = useAuth();
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [bankName, setBankName] = useState(bank.name);
   const [accNo, setAccNo] = useState(bank.accNo);
   const [holder, setHolder] = useState(bank.holder);
@@ -47,6 +51,41 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
           Manage payout credentials, configure automatic wallet settlement rules, and audit active IoT edge hardware nodes.
         </p>
       </div>
+
+      {/* Account Profile Card */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          {user?.picture ? (
+            <img src={user.picture} alt="" className="h-12 w-12 rounded-full object-cover ring-1 ring-slate-200" />
+          ) : (
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-600 ring-1 ring-slate-200">
+              {(user?.firstName?.charAt(0) || user?.email?.charAt(0) || '?').toUpperCase()}
+            </span>
+          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-900 truncate">
+                {`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email}
+              </h2>
+              <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 ring-blue-200">
+                Property Owner
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 truncate mt-0.5">{user?.email}</p>
+            {user?.phoneNumber && <p className="text-[11px] text-slate-400 mt-0.5">{user.phoneNumber}</p>}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowProfileDialog(true)}
+          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs self-start sm:self-auto cursor-pointer"
+        >
+          <UserRound className="w-4 h-4 text-blue-600" />
+          Manage Profile &amp; Role
+        </button>
+      </div>
+
+      <ProfileDialog open={showProfileDialog} onClose={() => setShowProfileDialog(false)} />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Payout configuration */}

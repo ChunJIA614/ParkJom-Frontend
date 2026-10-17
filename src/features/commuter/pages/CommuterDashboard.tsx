@@ -60,6 +60,7 @@ import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import ProfileDialog from '@/features/profile/components/ProfileDialog';
 import { showConfirm, showAlert } from '@/contexts/ModalContext';
 import {
   clearJourneySession,
@@ -292,6 +293,7 @@ export default function CommuterDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
   const supportViewer = useMemo(() => user ? ({
     userId: user.userId,
     name: `${user.firstName} ${user.lastName}`.trim() || user.email,
@@ -2495,6 +2497,40 @@ export default function CommuterDashboard() {
           {/* ─── TAB: Profile / Vehicles ─── */}
           {activeTab === 'profile' && (
             <div className="space-y-4">
+              <div className="bg-white rounded-2xl border border-[#e8eaed] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  {user?.picture ? (
+                    <img src={user.picture} alt="" className="h-12 w-12 rounded-full object-cover ring-1 ring-black/[0.08]" />
+                  ) : (
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e8f0fe] text-[16px] font-bold text-[#007AFF] ring-1 ring-black/[0.08]">
+                      {(user?.firstName?.charAt(0) || user?.email?.charAt(0) || '?').toUpperCase()}
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-[15px] font-bold text-[#1d1d1f]">
+                        {`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email}
+                      </p>
+                      <span className="rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[10px] font-semibold text-[#007AFF]">
+                        Commuter
+                      </span>
+                    </div>
+                    <p className="truncate text-[12px] text-[#6e6e73]">{user?.email}</p>
+                    {user?.phoneNumber && <p className="text-[11px] text-[#8e8e93] mt-0.5">{user.phoneNumber}</p>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileDialog(true)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors self-start sm:self-auto cursor-pointer"
+                >
+                  <User size={14} className="text-[#007AFF]" />
+                  Manage Profile &amp; Role
+                </button>
+              </div>
+
+              <ProfileDialog open={showProfileDialog} onClose={() => setShowProfileDialog(false)} />
+
               <div className="bg-white rounded-2xl border border-[#e8eaed] p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Your Vehicles</h3>
