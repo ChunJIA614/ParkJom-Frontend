@@ -2900,6 +2900,14 @@ html {
   overflow-y: auto;
 }
 
+.map-toolbar {
+  pointer-events: none !important;
+}
+
+.map-toolbar > * {
+  pointer-events: auto !important;
+}
+
 .workspace-map-control,
 .map-toolbar > :where(button, select) {
   min-height: 2.75rem;
@@ -2916,25 +2924,54 @@ html {
 }
 
 .custom-station-icon {
-  display: grid !important;
-  place-items: center;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
   cursor: pointer !important;
   pointer-events: auto !important;
+  background: transparent !important;
+  border: none !important;
 }
 
 .custom-station-icon * {
-  pointer-events: none !important;
-}
-
-.custom-parking-icon {
-  display: grid !important;
-  place-items: center;
   cursor: pointer !important;
   pointer-events: auto !important;
 }
 
+.custom-parking-icon {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  background: transparent !important;
+  border: none !important;
+}
+
 .custom-parking-icon * {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+.leaflet-pane.leaflet-railPane-pane,
+.leaflet-pane.leaflet-railPane-pane svg,
+.leaflet-pane.leaflet-railPane-pane path {
   pointer-events: none !important;
+}
+
+.station-tooltip {
+  background: rgba(15, 23, 42, 0.92) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 3px 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.station-tooltip::before {
+  border-top-color: rgba(15, 23, 42, 0.92) !important;
 }
 
 .map-relocate-btn {
@@ -3086,6 +3123,11 @@ html {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
+    pointer-events: none !important;
+  }
+
+  .map-toolbar > * {
+    pointer-events: auto !important;
   }
 
   .map-toolbar__station {
