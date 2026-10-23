@@ -1,14 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GeoJSON, MapContainer, Marker, Polyline, Popup, TileLayer, useMap, ZoomControl } from 'react-leaflet';
+import {
+  Circle,
+  GeoJSON,
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap,
+  ZoomControl,
+} from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import stationData from '../data/mrt_lrt_stations.json';
 import { ParkingSpot } from '../types';
 import { loadRailNetworkData } from '@/services/transitData';
+import { watchDeviceLocation } from '@/services/deviceCapabilities';
+import { showAlert } from '@/contexts/ModalContext';
 import {
-  Search, Navigation, Car, Train,
-  Clock, ChevronRight, Layers, Loader2
+  Search,
+  Navigation,
+  Car,
+  Train,
+  Clock,
+  ChevronRight,
+  Layers,
+  Loader2,
+  LocateFixed,
 } from 'lucide-react';
 
 // ---- GTFS GeoJSON types ----
@@ -27,6 +46,24 @@ interface GeoJsonCollection<T> {
   features: T[];
 }
 
+// ---- Distance calculation helper (Haversine formula in km) ----
+const distanceBetweenKm = (
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+) => {
+  const earthRadiusKm = 6371;
+  const toRadians = (degrees: number) => degrees * (Math.PI / 180);
+  const latitudeDelta = toRadians(destination.lat - origin.lat);
+  const longitudeDelta = toRadians(destination.lng - origin.lng);
+  const originLatitude = toRadians(origin.lat);
+  const destinationLatitude = toRadians(destination.lat);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(originLatitude) * Math.cos(destinationLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+};
+
 // ---- Custom Marker Icons ----
 const parkingIcon = L.divIcon({
   className: 'custom-parking-icon',
@@ -34,12 +71,43 @@ const parkingIcon = L.divIcon({
     background: #34C759;
     width: 28px; height: 28px;
     border-radius: 50%;
-    border: 3px solid white;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    border: 2.5px solid white;
+    box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.25), 0 2px 8px rgba(0,0,0,0.22);
     display: flex; align-items: center; justify-content: center;
-  "><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 20V4h5.5a4 4 0 010 8H8"/></svg></div>`,
-  iconSize: [34, 34],
-  iconAnchor: [17, 17],
+    color: white; font-weight: 800; font-size: 11px;
+  ">P</div>`,
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
+  popupAnchor: [0, -18],
+});
+
+const selectedParkingIcon = L.divIcon({
+  className: 'custom-parking-icon',
+  html: `<div style="
+    background: #007AFF;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 0 0 5px rgba(0, 122, 255, 0.35), 0 2px 8px rgba(0,0,0,0.25);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-weight: 800; font-size: 12px;
+  ">P</div>`,
+  iconSize: [38, 38],
+  iconAnchor: [19, 19],
+  popupAnchor: [0, -19],
+});
+
+// Modern user location pulsing dot icon
+const userLocationIcon = L.divIcon({
+  className: 'custom-user-location-icon',
+  html: `
+    <div class="user-marker-pulse-wrapper">
+      <div class="user-marker-pulse"></div>
+      <div class="user-marker-core"></div>
+    </div>
+  `,
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
   popupAnchor: [0, -18],
 });
 
@@ -63,7 +131,7 @@ const buildStationIcon = (isSelected: boolean, condition: StationParkingConditio
       : condition === 'full'
         ? stationStatusPalette.full
         : stationStatusPalette.default;
-  const ringColor = isSelected ? 'rgba(10,132,255,0.25)' : 'rgba(0,0,0,0.12)';
+  const ringColor = isSelected ? 'rgba(10,132,255,0.3)' : 'rgba(0,0,0,0.12)';
 
   return L.divIcon({
     className: 'custom-station-icon',
@@ -75,8 +143,6 @@ const buildStationIcon = (isSelected: boolean, condition: StationParkingConditio
       box-shadow: 0 0 0 5px ${ringColor}, 0 2px 8px rgba(0,0,0,0.24);
       display: flex; align-items: center; justify-content: center;
     "><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="14" rx="3"/><path d="M8 20l2-3m6 3-2-3M9 8h6m-6 4h.01m5.99 0h.01"/></svg></div>`,
-    // Keep a generous invisible hit area around the small visual marker. This
-    // makes desktop pointer selection as forgiving as the mobile touch target.
     iconSize: [36, 36],
     iconAnchor: [18, 18],
     popupAnchor: [0, -18],
@@ -100,37 +166,87 @@ interface CommuterMapProps {
   onSpotClick: (spot: ParkingSpot) => void;
   distanceRadius: number;
   onDistanceRadiusChange: (radius: number) => void;
+  userLocation?: { lat: number; lng: number } | null;
+  locationAccuracy?: number | null;
+  locationStatus?: 'locating' | 'ready' | 'denied' | 'unavailable';
+  onRequestLocation?: () => void;
 }
 
-// ---- Focus component — jumps to the selected station without a bounce animation ----
-function FlyToStation({ lat, lng }: { lat: number; lng: number }) {
+interface MapTarget {
+  lat: number;
+  lng: number;
+  zoom?: number;
+  animate?: boolean;
+  timestamp?: number;
+}
+
+// ---- Map View Controller: Handles programmatic pans and flies to stations or user location ----
+function MapViewController({ target }: { target: MapTarget | null }) {
   const map = useMap();
+
   useEffect(() => {
-    map.setView([lat, lng], 15, { animate: false });
-  }, [lat, lng, map]);
+    if (!target) return;
+    if (target.animate === false) {
+      map.setView([target.lat, target.lng], target.zoom ?? 15);
+    } else {
+      map.flyTo([target.lat, target.lng], target.zoom ?? 15, {
+        duration: 1,
+        easeLinearity: 0.25,
+      });
+    }
+  }, [target, map]);
+
   return null;
 }
 
-function FocusSelectedRoute({
-  station,
-  spot,
+// ---- Camera bounds manager: Fits station and ALL parking spots within range ----
+function FitStationAndSpotsBounds({
+  stationCoords,
+  spots,
+  selectedSpot,
+  radiusMeters,
 }: {
-  station: { lat: number; lon: number };
-  spot: ParkingSpot;
+  stationCoords: { lat: number; lng: number } | null;
+  spots: ParkingSpot[];
+  selectedSpot: ParkingSpot | null;
+  radiusMeters: number;
 }) {
   const map = useMap();
+  const lastKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    map.fitBounds(
-      [[station.lat, station.lon], [spot.lat, spot.lng]],
-      { padding: [72, 72], maxZoom: 16, animate: false },
-    );
-  }, [map, spot.id, spot.lat, spot.lng, station.lat, station.lon]);
+    if (!stationCoords) return;
+
+    if (selectedSpot) {
+      // Focus on route between station and this specific selected spot
+      map.fitBounds(
+        [[stationCoords.lat, stationCoords.lng], [selectedSpot.lat, selectedSpot.lng]],
+        { padding: [60, 60], maxZoom: 16, animate: true },
+      );
+      return;
+    }
+
+    // Fit bounds to show station and ALL available spots in range
+    const currentKey = `${stationCoords.lat.toFixed(4)}:${stationCoords.lng.toFixed(4)}:${spots.length}:${radiusMeters}`;
+    if (lastKeyRef.current === currentKey) return;
+    lastKeyRef.current = currentKey;
+
+    if (spots.length > 0) {
+      const allPoints: [number, number][] = [
+        [stationCoords.lat, stationCoords.lng],
+        ...spots.map((s): [number, number] => [s.lat, s.lng]),
+      ];
+      map.fitBounds(allPoints, { padding: [55, 55], maxZoom: 15, animate: true });
+    } else {
+      const zoom = radiusMeters <= 500 ? 16 : radiusMeters <= 1500 ? 15 : radiusMeters <= 3000 ? 14 : 13;
+      map.setView([stationCoords.lat, stationCoords.lng], zoom, { animate: true });
+    }
+  }, [map, stationCoords, spots, selectedSpot?.id, radiusMeters]);
 
   return null;
 }
 
-// ---- Creates a custom pane above markers so rail lines/stops render on top ----
+// ---- Custom Panes ----
 function RailPane() {
   const map = useMap();
   useEffect(() => {
@@ -138,7 +254,7 @@ function RailPane() {
       map.createPane('railPane');
       const pane = map.getPane('railPane');
       if (pane) {
-        pane.style.zIndex = '625'; // above markerPane (600), below popupPane (700)
+        pane.style.zIndex = '625';
         pane.style.pointerEvents = 'none';
       }
     }
@@ -153,6 +269,18 @@ function StationPane() {
       map.createPane('stationPane');
       const pane = map.getPane('stationPane');
       if (pane) pane.style.zIndex = '650';
+    }
+  }, [map]);
+  return null;
+}
+
+function UserLocationPane() {
+  const map = useMap();
+  useEffect(() => {
+    if (!map.getPane('userLocationPane')) {
+      map.createPane('userLocationPane');
+      const pane = map.getPane('userLocationPane');
+      if (pane) pane.style.zIndex = '660';
     }
   }, [map]);
   return null;
@@ -262,6 +390,12 @@ function MapLegend() {
         <div className="w-4 h-4 rounded-full bg-[#34C759] border-2 border-white shadow flex items-center justify-center text-[8px] text-white font-black">P</div>
         <span className="text-slate-600 font-medium">Available Parking</span>
       </div>
+      <div className="flex items-center gap-2">
+        <div className="w-3.5 h-3.5 rounded-full bg-[#007AFF] ring-2 ring-[#007AFF]/30 border-2 border-white shadow flex items-center justify-center">
+          <span className="w-1.5 h-1.5 rounded-full bg-white" />
+        </div>
+        <span className="text-slate-600 font-medium">Your Location</span>
+      </div>
     </div>
   );
 }
@@ -276,11 +410,68 @@ export default function CommuterMap({
   onSpotClick,
   distanceRadius,
   onDistanceRadiusChange,
+  userLocation,
+  locationAccuracy,
+  locationStatus,
+  onRequestLocation,
 }: CommuterMapProps) {
   const klCenter: [number, number] = [3.1390, 101.6869];
-  const [flyToCoords, setFlyToCoords] = useState<[number, number] | null>(null);
+  const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
   const [openPanel, setOpenPanel] = useState<'stations' | 'lines' | null>(null);
   const [stationFilter, setStationFilter] = useState('');
+
+  // Local fallback location watcher if parent does not provide userLocation
+  const [localLocation, setLocalLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [localAccuracy, setLocalAccuracy] = useState<number | null>(null);
+  const [localStatus, setLocalStatus] = useState<'locating' | 'ready' | 'denied' | 'unavailable'>('locating');
+
+  useEffect(() => {
+    if (userLocation !== undefined) return;
+
+    let isActive = true;
+    let stopWatching: (() => void) | undefined;
+    setLocalStatus('locating');
+
+    void watchDeviceLocation(
+      (pos) => {
+        if (!isActive) return;
+        setLocalLocation({ lat: pos.lat, lng: pos.lng });
+        setLocalAccuracy(pos.accuracy);
+        setLocalStatus('ready');
+      },
+      (err) => {
+        if (!isActive) return;
+        setLocalStatus(err?.code === 1 ? 'denied' : 'unavailable');
+      },
+    ).then((stop) => {
+      if (isActive) stopWatching = stop;
+      else stop();
+    });
+
+    return () => {
+      isActive = false;
+      stopWatching?.();
+    };
+  }, [userLocation]);
+
+  const effectiveUserLocation = userLocation ?? localLocation;
+  const effectiveAccuracy = locationAccuracy ?? localAccuracy;
+  const effectiveStatus = locationStatus ?? localStatus;
+
+  // Auto-center on user location when first acquired, if no station is pre-selected
+  const hasAutoCenteredOnUserRef = useRef(false);
+  useEffect(() => {
+    if (effectiveUserLocation && !selectedStationCoords && !hasAutoCenteredOnUserRef.current) {
+      hasAutoCenteredOnUserRef.current = true;
+      setMapTarget({
+        lat: effectiveUserLocation.lat,
+        lng: effectiveUserLocation.lng,
+        zoom: 14,
+        animate: true,
+        timestamp: Date.now(),
+      });
+    }
+  }, [effectiveUserLocation, selectedStationCoords]);
 
   // react-router navigation
   const navigate = useNavigate();
@@ -302,7 +493,6 @@ export default function CommuterMap({
         const linesData = lines as GeoJsonCollection<RailLineFeature>;
         setAllLines(linesData);
 
-        // Extract all unique route_names from data, all enabled by default
         const uniqueRoutes = [
           ...new Set<string>(linesData.features.map((f: RailLineFeature) => f.properties.route_name)),
         ];
@@ -321,8 +511,7 @@ export default function CommuterMap({
     loadGtfsData();
   }, []);
 
-  // ---- Compute filteredLines directly during render (no useEffect to avoid GeoJSON stale redraw) ----
-  const filteredLines: GeoJsonCollection<RailLineFeature> | null = React.useMemo(() => {
+  const filteredLines: GeoJsonCollection<RailLineFeature> | null = useMemo(() => {
     if (!allLines) return null;
     const filtered = allLines.features.filter(
       (feature) => visibleLines[feature.properties.route_name] === true
@@ -330,26 +519,25 @@ export default function CommuterMap({
     return { type: 'FeatureCollection', features: filtered };
   }, [allLines, visibleLines]);
 
-  const stationIcons = React.useMemo(createStationIconSet, []);
+  const stationIcons = useMemo(createStationIconSet, []);
 
   // Filter stations: only LRT, MRT, Monorail (exclude KTM Komuter, ERL, etc.)
-  const transitStations = React.useMemo(() => (stationData as any).features.filter((f: any) => {
+  const transitStations = useMemo(() => (stationData as any).features.filter((f: any) => {
     const name = f.properties?.name || '';
     const network = f.properties?.network || '';
     const station = f.properties?.station || '';
 
-    // Keep only LRT, MRT, Monorail stations
     return (
       station === 'light_rail' ||
       station === 'monorail' ||
       network?.toLowerCase().includes('mrt') ||
       network?.toLowerCase().includes('lrt') ||
       name?.includes('MRT') ||
-      name?.match(/^(AG|SP|KJ|KG|PY|MR)\d/) // LRT/MRT/Monorail station codes
+      name?.match(/^(AG|SP|KJ|KG|PY|MR)\d/)
     );
   }), []);
 
-  const stationFeatures = React.useMemo(() => {
+  const stationFeatures = useMemo(() => {
     const deduped = new Map<string, any>();
 
     transitStations.forEach((feature: any) => {
@@ -367,7 +555,7 @@ export default function CommuterMap({
     return [...deduped.values()];
   }, [transitStations]);
 
-  const stationParkingConditions = React.useMemo(() => {
+  const stationParkingConditions = useMemo(() => {
     const conditionByStation = new Map<string, StationParkingCondition>();
     const groupedByStation = new Map<string, ParkingSpot[]>();
 
@@ -400,39 +588,162 @@ export default function CommuterMap({
     return conditionByStation;
   }, [spots, stationFeatures]);
 
+  // Distribute spots with identical coordinates slightly (~18m) so every bay is visible and clickable
+  const displaySpots = useMemo(() => {
+    const coordCounts = new Map<string, number>();
+    const coordIndices = new Map<string, number>();
+
+    spots.forEach((spot) => {
+      const key = `${spot.lat.toFixed(5)}:${spot.lng.toFixed(5)}`;
+      coordCounts.set(key, (coordCounts.get(key) || 0) + 1);
+    });
+
+    return spots.map((spot) => {
+      const key = `${spot.lat.toFixed(5)}:${spot.lng.toFixed(5)}`;
+      const count = coordCounts.get(key) || 1;
+      if (count <= 1) {
+        return { ...spot, displayLat: spot.lat, displayLng: spot.lng, siblingCount: 1 };
+      }
+
+      const index = coordIndices.get(key) || 0;
+      coordIndices.set(key, index + 1);
+
+      const angle = (index / count) * 2 * Math.PI;
+      const offsetMeters = 18;
+      const latOffset = (offsetMeters / 111320) * Math.sin(angle);
+      const lngOffset = (offsetMeters / (111320 * Math.cos((spot.lat * Math.PI) / 180))) * Math.cos(angle);
+
+      return {
+        ...spot,
+        displayLat: spot.lat + latOffset,
+        displayLng: spot.lng + lngOffset,
+        siblingCount: count,
+      };
+    });
+  }, [spots]);
+
   // Get unique station names for the list
   const allNames: string[] = transitStations
     .map((f: any) => String(f.properties?.name || ''))
     .filter((n: string) => n.length > 0);
   const stationNames: string[] = [...new Set<string>(allNames)].sort();
 
-  const filteredList = stationNames.filter(n =>
+  // Distances from effective user location to stations
+  const stationDistances = useMemo(() => {
+    if (!effectiveUserLocation) return new Map<string, number>();
+
+    const distances = new Map<string, number>();
+    stationFeatures.forEach((feature: any) => {
+      const coords = feature.geometry?.coordinates;
+      const name = feature.properties?.name || feature.properties?.['name:en'] || '';
+      if (coords && coords.length >= 2 && name) {
+        const dist = distanceBetweenKm(effectiveUserLocation, { lat: coords[1], lng: coords[0] });
+        distances.set(name, dist);
+        const norm = normalizeStationKey(name);
+        if (norm) distances.set(norm, dist);
+      }
+    });
+
+    return distances;
+  }, [effectiveUserLocation, stationFeatures]);
+
+  // Nearest stations for quick selection
+  const nearestStations = useMemo(() => {
+    if (!effectiveUserLocation) return [];
+    return stationNames
+      .map((name) => {
+        const dist = stationDistances.get(name) ?? stationDistances.get(normalizeStationKey(name));
+        return { name, distance: dist ?? Infinity };
+      })
+      .filter((s) => s.distance !== Infinity)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 3);
+  }, [effectiveUserLocation, stationNames, stationDistances]);
+
+  const filteredList = stationNames.filter((n) =>
     n.toLowerCase().includes(stationFilter.toLowerCase())
   );
 
   const selectedStationKey = normalizeStationKey(selectedStation || '');
 
-  const handleStationClick = (feature: any) => {
+  // Directly clicking station marker: Select station & trigger popup without calling flyTo
+  // (flyTo fires movestart which cancels popups on desktop PC)
+  const handleStationMarkerClick = (feature: any) => {
     const coords = feature.geometry.coordinates;
     const name = feature.properties?.name || feature.properties?.['name:en'] || 'Unknown Station';
-    if (!coords || coords.length < 2) {
-      console.warn('Invalid station coordinates');
-      return;
-    }
-    setFlyToCoords([coords[1], coords[0]]);
+    if (!coords || coords.length < 2) return;
     onStationSelect(name, coords[1], coords[0]);
     setOpenPanel(null);
   };
 
+  // Selecting station from dropdown list: Pan/fly to station
   const handleListStationClick = (name: string) => {
     const normalizedTarget = normalizeStationKey(name);
     const feature = stationFeatures.find((f: any) => getStationKeys(f).includes(normalizedTarget));
     if (feature) {
       const coords = feature.geometry.coordinates;
       if (!coords || coords.length < 2) return;
-      setFlyToCoords([coords[1], coords[0]]);
+      setMapTarget({
+        lat: coords[1],
+        lng: coords[0],
+        zoom: 15,
+        animate: true,
+        timestamp: Date.now(),
+      });
       onStationSelect(name, coords[1], coords[0]);
       setOpenPanel(null);
+    }
+  };
+
+  const handleLocateUser = () => {
+    if (effectiveUserLocation) {
+      setMapTarget({
+        lat: effectiveUserLocation.lat,
+        lng: effectiveUserLocation.lng,
+        zoom: 15,
+        animate: true,
+        timestamp: Date.now(),
+      });
+    } else {
+      onRequestLocation?.();
+      if (effectiveStatus === 'denied') {
+        void showAlert({
+          title: 'Location Permission Denied',
+          message: 'Please allow location permissions in your browser or device settings to view your current location on the map.',
+          variant: 'warning',
+        });
+      }
+    }
+  };
+
+  const handleSelectClosestStation = () => {
+    if (!effectiveUserLocation || stationFeatures.length === 0) return;
+
+    let closestFeature: any = null;
+    let minDistance = Infinity;
+
+    stationFeatures.forEach((feature: any) => {
+      const coords = feature.geometry?.coordinates;
+      if (coords && coords.length >= 2) {
+        const dist = distanceBetweenKm(effectiveUserLocation, { lat: coords[1], lng: coords[0] });
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestFeature = feature;
+        }
+      }
+    });
+
+    if (closestFeature) {
+      const coords = closestFeature.geometry.coordinates;
+      const name = closestFeature.properties?.name || closestFeature.properties?.['name:en'] || 'Station';
+      setMapTarget({
+        lat: coords[1],
+        lng: coords[0],
+        zoom: 15,
+        animate: true,
+        timestamp: Date.now(),
+      });
+      onStationSelect(name, coords[1], coords[0]);
     }
   };
 
@@ -444,8 +755,8 @@ export default function CommuterMap({
     }));
   };
 
-  // Don't show parking spots until a station is explicitly selected
-  const shouldShowParking = !!selectedStation && selectedStation.length > 0 && spots.length > 0;
+  // Show parking spots whenever a station is selected
+  const shouldShowParking = Boolean(selectedStation && selectedStationCoords);
 
   useEffect(() => {
     if (!openPanel) return;
@@ -476,7 +787,7 @@ export default function CommuterMap({
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
       >
-        {/* CartoDB Dataviz Light Tile Layer — clean light style, suitable for data overlay */}
+        {/* CartoDB Dataviz Light Tile Layer */}
         <TileLayer
           url={
             import.meta.env.VITE_CARTO_API_KEY
@@ -486,19 +797,46 @@ export default function CommuterMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
         />
 
-        {/* Custom pane: z-index 625, above markers so rail renders on top of station icons */}
+        {/* Custom panes */}
         <RailPane />
-        {/* Station markers sit above rail geometry for reliable desktop clicks. */}
         <StationPane />
+        <UserLocationPane />
+
+        {/* Map View Controller for smooth animated centering */}
+        <MapViewController target={mapTarget} />
+
+        {/* Camera bounds manager: ensures station and ALL parking spots inside range are shown */}
+        <FitStationAndSpotsBounds
+          stationCoords={selectedStationCoords}
+          spots={spots}
+          selectedSpot={selectedSpot}
+          radiusMeters={distanceRadius}
+        />
+
+        {/* Station Search Radius Circle on the Map */}
+        {selectedStationCoords && (
+          <Circle
+            center={[selectedStationCoords.lat, selectedStationCoords.lng]}
+            radius={distanceRadius}
+            interactive={false}
+            pathOptions={{
+              color: '#007AFF',
+              fillColor: '#007AFF',
+              fillOpacity: 0.05,
+              weight: 1.5,
+              dashArray: '6 6',
+            }}
+          />
+        )}
 
         {/* ---- GTFS Rail Lines (GeoJSON LineStrings) ----
-             Use dynamic key={JSON.stringify(visibleLines)} to force React-Leaflet
-             to destroy and rebuild GeoJSON layer on each toggle change ---- */}
+            interactive={false} prevents rail line paths from blocking clicks on stations on PC view */}
         {filteredLines && (
           <GeoJSON
             key={JSON.stringify(visibleLines)}
             data={filteredLines}
             pane="railPane"
+            interactive={false}
             style={(feature) => ({
               color: feature?.properties?.route_color || '#3388ff',
               weight: 5,
@@ -509,19 +847,71 @@ export default function CommuterMap({
 
         <ZoomControl position="bottomright" />
 
+        {/* Polyline connecting selected station to selected parking spot */}
         {selectedStationCoords && selectedSpot && (
+          <Polyline
+            positions={[
+              [selectedStationCoords.lat, selectedStationCoords.lng],
+              [selectedSpot.lat, selectedSpot.lng],
+            ]}
+            interactive={false}
+            pathOptions={{ color: '#007AFF', weight: 4, opacity: 0.9, dashArray: '8 10' }}
+          />
+        )}
+
+        {/* ---- Render User Current Location Marker & Accuracy Circle ---- */}
+        {effectiveUserLocation && (
           <>
-            <Polyline
-              positions={[
-                [selectedStationCoords.lat, selectedStationCoords.lng],
-                [selectedSpot.lat, selectedSpot.lng],
-              ]}
-              pathOptions={{ color: '#007AFF', weight: 4, opacity: 0.9, dashArray: '8 10' }}
-            />
-            <FocusSelectedRoute
-              station={{ lat: selectedStationCoords.lat, lon: selectedStationCoords.lng }}
-              spot={selectedSpot}
-            />
+            {effectiveAccuracy && effectiveAccuracy > 0 && effectiveAccuracy <= 2000 && (
+              <Circle
+                center={[effectiveUserLocation.lat, effectiveUserLocation.lng]}
+                radius={effectiveAccuracy}
+                interactive={false}
+                pathOptions={{
+                  color: '#007AFF',
+                  fillColor: '#007AFF',
+                  fillOpacity: 0.1,
+                  weight: 1.5,
+                  opacity: 0.35,
+                }}
+              />
+            )}
+            <Marker
+              position={[effectiveUserLocation.lat, effectiveUserLocation.lng]}
+              icon={userLocationIcon}
+              pane="userLocationPane"
+              zIndexOffset={1000}
+            >
+              <Popup autoPan={true}>
+                <div className="text-xs min-w-[160px] py-1">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#007AFF] shadow-xs" />
+                    <span>Your Current Location</span>
+                  </div>
+                  <p className="text-slate-500 text-[11px] mt-1">
+                    {effectiveAccuracy
+                      ? `Accurate to ~${Math.round(effectiveAccuracy)} m`
+                      : 'GPS position active'}
+                  </p>
+                  <div className="mt-1 text-[10px] text-slate-400 font-mono">
+                    {effectiveUserLocation.lat.toFixed(5)}, {effectiveUserLocation.lng.toFixed(5)}
+                  </div>
+                  {stationFeatures.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectClosestStation();
+                      }}
+                      className="mt-2.5 w-full flex items-center justify-center gap-1.5 bg-[#007AFF] hover:bg-[#0066D6] text-white text-[11px] font-semibold py-1.5 px-2.5 rounded-lg transition-colors shadow-xs"
+                    >
+                      <Train className="w-3.5 h-3.5" />
+                      <span>Select Nearest Station</span>
+                    </button>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
           </>
         )}
 
@@ -545,73 +935,100 @@ export default function CommuterMap({
               pane="stationPane"
               icon={isSelected ? stationIcons.selected : stationIcons[stationCondition]}
               eventHandlers={{
-                click: () => handleStationClick(feature),
+                click: () => handleStationMarkerClick(feature),
               }}
             >
-              <Popup>
-                <div className="text-xs min-w-[140px]">
-                  <strong className="text-slate-800">{name}</strong>
+              <Popup autoPan={true} closeButton={true}>
+                <div className="text-xs min-w-[150px] py-0.5">
+                  <strong className="text-slate-800 text-sm block">{name}</strong>
                   <p className="text-slate-500 mt-0.5">{network || 'Transit Station'}</p>
-                  <p className="mt-2 text-[10px] font-semibold text-[#007AFF]">Finding nearby bays…</p>
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-emerald-600">
+                      {isSelected ? `${spots.length} bays in range` : 'Tap to view bays'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {distanceRadius < 1000 ? `${distanceRadius}m` : `${distanceRadius / 1000}km`}
+                    </span>
+                  </div>
                 </div>
               </Popup>
             </Marker>
           );
         })}
 
-        {/* Render nearby parking spots returned by the backend */}
-        {shouldShowParking && spots.map((spot) => (
-          <Marker
-            key={spot.id}
-            position={[spot.lat, spot.lng]}
-            icon={parkingIcon}
-            eventHandlers={{ click: () => onSpotClick(spot) }}
-          >
-            <Popup>
-              <div className="text-xs min-w-[180px]">
-                <strong className="text-slate-800">{spot.name}</strong>
-                <div className="flex items-center gap-1 text-slate-500 mt-1">
-                  <Clock className="w-3 h-3" />
-                  <span>{spot.dailyRate !== null
-                    ? `RM ${spot.dailyRate.toFixed(2)}/day`
-                    : spot.monthlyRate > 0
-                      ? `RM ${spot.monthlyRate.toFixed(2)}/month`
-                      : 'Rate not set'}</span>
+        {/* Render ALL available parking spots in range of selected station */}
+        {shouldShowParking && displaySpots.map((spot) => {
+          const isThisSelected = selectedSpot?.id === spot.id;
+          return (
+            <Marker
+              key={spot.id}
+              position={[spot.displayLat, spot.displayLng]}
+              icon={isThisSelected ? selectedParkingIcon : parkingIcon}
+              zIndexOffset={isThisSelected ? 800 : 500}
+              eventHandlers={{ click: () => onSpotClick(spot) }}
+            >
+              <Popup autoPan={true}>
+                <div className="text-xs min-w-[190px]">
+                  <div className="flex items-center justify-between gap-1">
+                    <strong className="text-slate-800 text-sm">{spot.name}</strong>
+                    <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                      Bay {spot.parkingLabel}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-slate-600 mt-1 font-semibold">
+                    <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>
+                      {spot.dailyRate !== null
+                        ? `RM ${spot.dailyRate.toFixed(2)}/day`
+                        : spot.monthlyRate > 0
+                          ? `RM ${spot.monthlyRate.toFixed(2)}/month`
+                          : 'Rate not set'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-slate-500 mt-0.5">
+                    <Navigation className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>
+                      {spot.distanceToStation ? spot.distanceToStation.toFixed(2) : (spot.distance / 1000).toFixed(2)} km to {selectedStation || 'station'}
+                      {spot.timeToStationInMinutes ? ` · ${spot.timeToStationInMinutes} min walk` : ''}
+                    </span>
+                  </div>
+                  {spot.siblingCount > 1 && (
+                    <div className="mt-1 text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                      1 of ${spot.siblingCount} available bays at this property
+                    </div>
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-400 leading-tight">{spot.address}</p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSpotClick(spot);
+                      navigate(`/commuter/parking/${spot.id}`, {
+                        state: {
+                          spot: {
+                            ...spot,
+                            id: spot.id,
+                            lat: spot.lat,
+                            lon: spot.lng,
+                            address: spot.address,
+                            photoUrl: spot.primaryImageUrl ?? '',
+                            price: spot.pricePerHour,
+                          },
+                          stationCoords: selectedStationCoords
+                            ? { lat: selectedStationCoords.lat, lon: selectedStationCoords.lng }
+                            : null,
+                          stationName: spot.station || selectedStation,
+                        },
+                      });
+                    }}
+                    className="mt-2.5 w-full bg-[#007AFF] hover:bg-[#0066D6] text-white text-[11px] font-bold py-1.5 px-3 rounded-lg transition-colors shadow-xs"
+                  >
+                    View Details &amp; Book
+                  </button>
                 </div>
-                <div className="flex items-center gap-1 text-slate-500 mt-0.5">
-                  <Navigation className="w-3 h-3" />
-                  <span>{spot.distanceToStation.toFixed(2)} km · {spot.timeToStationInMinutes} min</span>
-                </div>
-                <div className="flex items-center gap-1 text-slate-500 mt-0.5">
-                  <Car className="w-3 h-3" />
-                  <span>Bay {spot.parkingLabel} · {spot.availabilityStatus}</span>
-                </div>
-                <p className="mt-1 text-[10px] text-slate-400">{spot.address}</p>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSpotClick(spot);
-                    navigate(`/commuter/parking/${spot.id}`, {
-                      state: {
-                        spot: { ...spot, id: spot.id, lat: spot.lat, lon: spot.lng, address: spot.address, photoUrl: spot.primaryImageUrl ?? '', price: spot.pricePerHour },
-                        stationCoords: selectedStationCoords
-                          ? { lat: selectedStationCoords.lat, lon: selectedStationCoords.lng }
-                          : null,
-                        stationName: spot.station,
-                      },
-                    });
-                  }}
-                  className="mt-2 w-full bg-[#007AFF] hover:bg-[#0066D6] text-white text-[10px] font-bold py-1.5 px-3 rounded-lg transition-colors"
-                >
-                  View Details &amp; Book
-                </button>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-
-        {/* Fly to selected station */}
-        {flyToCoords && <FlyToStation lat={flyToCoords[0]} lng={flyToCoords[1]} />}
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
 
       {/* Map Legend */}
@@ -634,8 +1051,8 @@ export default function CommuterMap({
         </div>
       )}
 
-      {/* Top Bar: Station Search & Filter */}
-      <div className="map-toolbar absolute top-4 left-4 right-4 z-[1000] flex gap-2">
+      {/* Top Bar: Station Search & Filter (Strictly clean 3 controls, no extra wrapped buttons) */}
+      <div className="map-toolbar absolute top-4 left-4 right-4 z-[1000] flex items-center gap-2">
         {/* Station Selector Button */}
         <button
           type="button"
@@ -645,9 +1062,9 @@ export default function CommuterMap({
           aria-controls="station-picker"
           className="map-toolbar__station bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-4 py-2.5 flex items-center gap-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
         >
-          <Train className="w-4 h-4 text-blue-600" />
+          <Train className="w-4 h-4 text-blue-600 shrink-0" />
           <span className="truncate">{selectedStation || 'Select Station'}</span>
-          <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform ${openPanel === 'stations' ? 'rotate-90' : ''}`} />
+          <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${openPanel === 'stations' ? 'rotate-90' : ''}`} />
         </button>
 
         {/* Radius Filter — auto-refilters nearby spots on change */}
@@ -692,6 +1109,23 @@ export default function CommuterMap({
         </div>
       </div>
 
+      {/* Floating My Location Button (Neatly placed directly above bottom-right zoom controls) */}
+      <button
+        type="button"
+        onClick={handleLocateUser}
+        title={effectiveUserLocation ? 'Center map on your location' : 'Locate your current position'}
+        aria-label={effectiveUserLocation ? 'Center map on your location' : 'Locate your current position'}
+        className={`map-relocate-btn ${
+          effectiveUserLocation ? 'text-blue-600 border-blue-300 bg-blue-50/70' : 'text-slate-600'
+        }`}
+      >
+        {effectiveStatus === 'locating' ? (
+          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+        ) : (
+          <LocateFixed className={`w-4 h-4 ${effectiveUserLocation ? 'text-blue-600' : 'text-slate-500'}`} />
+        )}
+      </button>
+
       {/* Station List Dropdown */}
       {openPanel === 'stations' && (
         <div id="station-picker" data-map-control className="map-station-dropdown absolute top-[60px] left-4 z-[1000] w-72 bg-white/98 backdrop-blur rounded-xl border border-slate-200 shadow-xl overflow-hidden">
@@ -707,19 +1141,57 @@ export default function CommuterMap({
               />
             </div>
           </div>
+
+          {/* Quick select: nearest stations */}
+          {effectiveUserLocation && !stationFilter && nearestStations.length > 0 && (
+            <div className="p-2 border-b border-slate-100 bg-slate-50/60">
+              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-2 py-1 flex items-center gap-1">
+                <Navigation className="w-3 h-3 text-blue-600" />
+                Nearest to you
+              </div>
+              <div className="space-y-0.5 mt-1">
+                {nearestStations.map((station) => (
+                  <button
+                    key={`nearest-${station.name}`}
+                    onClick={() => handleListStationClick(station.name)}
+                    className="w-full text-left px-2.5 py-1.5 text-xs rounded-lg hover:bg-white hover:shadow-xs transition-all flex items-center justify-between text-slate-700"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Train className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span className="truncate font-medium">{station.name}</span>
+                    </div>
+                    <span className="text-[10px] text-blue-600 font-semibold shrink-0 ml-2">
+                      {station.distance < 1 ? `${Math.round(station.distance * 1000)}m` : `${station.distance.toFixed(1)}km`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="map-station-dropdown__list overflow-y-auto">
-            {filteredList.slice(0, 50).map((name) => (
-              <button
-                key={name}
-                onClick={() => handleListStationClick(name)}
-                className={`w-full text-left px-4 py-2 text-xs hover:bg-slate-50 transition-colors flex items-center gap-2 ${
-                  selectedStation === name ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'
-                }`}
-              >
-                <Train className={`w-3.5 h-3.5 ${selectedStation === name ? 'text-blue-600' : 'text-slate-400'}`} />
-                {name}
-              </button>
-            ))}
+            {filteredList.slice(0, 50).map((name) => {
+              const distance = stationDistances.get(name) ?? stationDistances.get(normalizeStationKey(name));
+              return (
+                <button
+                  key={name}
+                  onClick={() => handleListStationClick(name)}
+                  className={`w-full text-left px-4 py-2 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                    selectedStation === name ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Train className={`w-3.5 h-3.5 shrink-0 ${selectedStation === name ? 'text-blue-600' : 'text-slate-400'}`} />
+                    <span className="truncate">{name}</span>
+                  </div>
+                  {distance !== undefined && (
+                    <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-2">
+                      {distance < 1 ? `${Math.round(distance * 1000)}m` : `${distance.toFixed(1)}km`}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             {filteredList.length === 0 && (
               <div className="px-4 py-4 text-xs text-slate-400 text-center">
                 No stations found

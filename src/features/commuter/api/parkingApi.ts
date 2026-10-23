@@ -4,11 +4,30 @@ import type { PublicParkingSpotResponse } from '../types';
 export function getNearbyParking(
   latitude: number,
   longitude: number,
+  radiusKmOrSignal?: number | AbortSignal,
   signal?: AbortSignal,
 ): Promise<Response> {
-  const params = new URLSearchParams({ latitude: latitude.toString(), longitude: longitude.toString() });
+  let radiusKm: number | undefined;
+  let abortSignal: AbortSignal | undefined;
+
+  if (typeof radiusKmOrSignal === 'number') {
+    radiusKm = radiusKmOrSignal;
+    abortSignal = signal;
+  } else if (radiusKmOrSignal instanceof AbortSignal) {
+    abortSignal = radiusKmOrSignal;
+  }
+
+  const params = new URLSearchParams({
+    latitude: latitude.toString(),
+    longitude: longitude.toString(),
+  });
+  if (radiusKm !== undefined) {
+    params.set('radiusKm', radiusKm.toString());
+  }
+  params.set('pageSize', '100');
+
   return apiRequest(`/parking/nearby?${params.toString()}`, {
-    signal,
+    signal: abortSignal,
     headers: { Accept: 'application/json' },
   });
 }

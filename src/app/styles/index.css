@@ -2918,6 +2918,112 @@ html {
 .custom-station-icon {
   display: grid !important;
   place-items: center;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+.custom-station-icon * {
+  pointer-events: none !important;
+}
+
+.custom-parking-icon {
+  display: grid !important;
+  place-items: center;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+.custom-parking-icon * {
+  pointer-events: none !important;
+}
+
+.map-relocate-btn {
+  position: absolute;
+  bottom: 78px;
+  right: 10px;
+  z-index: 999;
+  width: 34px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.map-relocate-btn:hover {
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
+}
+
+.map-relocate-btn:active {
+  transform: scale(0.95);
+}
+
+.custom-user-location-icon {
+  display: grid !important;
+  place-items: center;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer;
+}
+
+.user-marker-pulse-wrapper {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-marker-pulse {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background-color: rgba(0, 122, 255, 0.35);
+  animation: user-marker-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.user-marker-core {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background-color: #007aff;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 122, 255, 0.4), 0 2px 8px rgba(0, 0, 0, 0.35);
+  z-index: 2;
+}
+
+@keyframes user-marker-ping {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.95;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-marker-pulse {
+    animation: none;
+    transform: scale(1.2);
+    opacity: 0.4;
+  }
 }
 
 @media (max-width: 767px) {

@@ -290,12 +290,15 @@ export async function getOwnerBookingHistory(
   const options = params instanceof AbortSignal ? undefined : params;
 
   const query = new URLSearchParams();
-  if (options?.spotId != null) query.set('spotId', String(options.spotId));
   if (options?.month) query.set('month', options.month);
   if (options?.status) query.set('status', options.status);
   const qStr = query.toString();
 
-  const response = await apiRequest(`/owner/bookings${qStr ? `?${qStr}` : ''}`, {
+  const endpoint = options?.spotId != null
+    ? `/owner/parking/${options.spotId}/bookings`
+    : `/owner/bookings`;
+
+  const response = await apiRequest(`${endpoint}${qStr ? `?${qStr}` : ''}`, {
     method: 'GET',
     headers: authorizationHeaders(token),
     signal,
@@ -325,7 +328,7 @@ export async function getOwnerBookingHistory(
     code: Number(readField(payload, 'code', 'Code') ?? response.status),
     success: Boolean(readField(payload, 'success', 'Success')),
     message: String(readField(payload, 'message', 'Message') ?? ''),
-    parkingSpotId: typeof parkingSpotIdValue === 'number' ? parkingSpotIdValue : null,
+    parkingSpotId: typeof parkingSpotIdValue === 'number' ? parkingSpotIdValue : (options?.spotId ?? null),
     month: monthValue == null ? null : String(monthValue),
     status: statusValue == null ? null : String(statusValue),
     timeZone: String(readField(payload, 'timeZone', 'TimeZone') ?? 'Asia/Kuala_Lumpur'),
@@ -335,4 +338,76 @@ export async function getOwnerBookingHistory(
 
   if (!result.success) throw new Error(result.message || 'Unable to load owner booking history.');
   return result;
+}
+
+
+export async function getOwnerAllSpotsBookingHistory(
+  token: string,
+  spotIds: number[],
+  params?: { month?: string; status?: string },
+  signal?: AbortSignal,
+): Promise<OwnerBookingHistoryResponse> {
+  if (spotIds.length === 0) {
+    return {
+      code: 200,
+      success: true,
+      message: 'No parking spots found.',
+      parkingSpotId: null,
+      month: params?.month ?? null,
+      status: params?.status ?? null,
+      timeZone: 'Asia/Kuala_Lumpur',
+      totalCount: 0,
+      data: [],
+    };
+  }
+
+  const results = await Promise.allSettled(
+    spotIds.map((spotId) =>
+      getOwnerBookingHistory(token, { spotId, month: params?.month, status: params?.status }, signal)
+    )
+  );
+
+  const allBookings: OwnerBookingHistoryItem[] = [];
+  const seenBookingIds = new Set<number>();
+  let lastErrorMessage: string | null = null;
+  let successCount = 0;
+
+  for (const res of results) {
+    if (res.status === 'fulfilled') {
+      successCount++;
+      for (const booking of res.value.data) {
+        if (!seenBookingIds.has(booking.bookingId)) {
+          seenBookingIds.add(booking.bookingId);
+          allBookings.push(booking);
+        }
+      }
+    } else {
+      const msg = res.reason instanceof Error ? res.reason.message : String(res.reason);
+      if (!/404|not found/i.test(msg)) {
+        lastErrorMessage = msg;
+      }
+    }
+  }
+
+  if (successCount === 0 && lastErrorMessage) {
+    throw new Error(lastErrorMessage);
+  }
+
+  allBookings.sort((a, b) => {
+    const timeA = new Date(a.createdAt || a.startDate).getTime();
+    const timeB = new Date(b.createdAt || b.startDate).getTime();
+    return timeB - timeA;
+  });
+
+  return {
+    code: 200,
+    success: true,
+    message: `Retrieved ${allBookings.length} booking(s) successfully.`,
+    parkingSpotId: null,
+    month: params?.month ?? null,
+    status: params?.status ?? null,
+    timeZone: 'Asia/Kuala_Lumpur',
+    totalCount: allBookings.length,
+    data: allBookings,
+  };
 }

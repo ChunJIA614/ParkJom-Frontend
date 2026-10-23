@@ -710,15 +710,18 @@ export default function CommuterDashboard() {
 
   const mapNearbySpots = nearbySpots.filter((spot) => {
     if (spotTypeFilter !== 'all' && spot.type !== spotTypeFilter) return false;
-    if (spot.distance > distanceFilter) return false;
+    const actualDistance = selectedStationCoords
+      ? distanceBetweenKm(selectedStationCoords, { lat: spot.lat, lng: spot.lng }) * 1000
+      : spot.distance;
+    if (actualDistance > distanceFilter) return false;
     if (activeBooking && activeBooking.spot.id === spot.id) return false;
     return spot.available;
   });
 
   const lensSpots = mapNearbySpots;
   const lensSelectedSpot = selectedSpot ?? lensSpots[0] ?? null;
-  const getStationCacheKey = (stationName: string, lat: number, lng: number) =>
-    `${stationName.trim().toLowerCase()}::${lat.toFixed(5)}:${lng.toFixed(5)}`;
+  const getStationCacheKey = (stationName: string, lat: number, lng: number, radius: number = 3000) =>
+    `${stationName.trim().toLowerCase()}::${lat.toFixed(5)}:${lng.toFixed(5)}::${radius}`;
   const journeyStep = activeBooking
     ? journeyStage === 'parked'
       ? 3
@@ -783,10 +786,12 @@ export default function CommuterDashboard() {
   }, [location.pathname, navigate, returnedCheckoutSessionId, topUpReturnStatus, user?.userId]);
 
   useEffect(() => {
-    if (activeTab !== 'home') return;
+    if (activeTab !== 'home' && activeTab !== 'map') return;
 
     setLocationError(null);
-    setLocationStatus('locating');
+    if (!currentLocation) {
+      setLocationStatus('locating');
+    }
 
     let isActive = true;
     let stopWatching: (() => void) | undefined;
@@ -871,15 +876,16 @@ export default function CommuterDashboard() {
       return;
     }
 
+    const radiusKm = Math.max(0.5, distanceFilter / 1000);
     const cacheKey = selectedStation
-      ? getStationCacheKey(selectedStation, selectedStationCoords.lat, selectedStationCoords.lng)
+      ? getStationCacheKey(selectedStation, selectedStationCoords.lat, selectedStationCoords.lng, distanceFilter)
       : '';
 
     if (cacheKey && nearbySpotCache[cacheKey]) {
       setNearbySpots(nearbySpotCache[cacheKey]);
       setNearbyError(null);
       setIsNearbyLoading(false);
-      setSelectedSpot(nearbySpotCache[cacheKey][0] ?? null);
+      setSelectedSpot(null);
       return;
     }
 
@@ -890,7 +896,7 @@ export default function CommuterDashboard() {
       setNearbyError(null);
 
       try {
-        const res = await getNearbyParking(selectedStationCoords.lat, selectedStationCoords.lng, controller.signal);
+        const res = await getNearbyParking(selectedStationCoords.lat, selectedStationCoords.lng, radiusKm, controller.signal);
 
         const data = await res.json().catch(() => null) as ParkingSearchResponse | null;
         if (!res.ok || !data?.success) throw new Error(data?.message || `Nearby search failed (${res.status})`);
@@ -901,9 +907,9 @@ export default function CommuterDashboard() {
         setNearbySpots(fetchedSpots);
         setNearbySpotCache((previousCache) => ({
           ...previousCache,
-          [cacheKey || getStationCacheKey(selectedStation || '', selectedStationCoords.lat, selectedStationCoords.lng)]: fetchedSpots,
+          [cacheKey || getStationCacheKey(selectedStation || '', selectedStationCoords.lat, selectedStationCoords.lng, distanceFilter)]: fetchedSpots,
         }));
-        setSelectedSpot(fetchedSpots[0] ?? null);
+        setSelectedSpot(null);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setNearbySpots([]);
@@ -918,7 +924,7 @@ export default function CommuterDashboard() {
     loadNearbySpots();
 
     return () => controller.abort();
-  }, [nearbySpotCache, selectedStation, selectedStationCoords]);
+  }, [distanceFilter, nearbySpotCache, selectedStation, selectedStationCoords]);
 
   const handleParkingSearch = async (event: FormEvent) => {
     event.preventDefault();
@@ -2117,10 +2123,14 @@ export default function CommuterDashboard() {
                   onStationSelect={handleMapStationSelect}
                   selectedStation={selectedStation}
                   selectedStationCoords={selectedStationCoords}
-                  selectedSpot={lensSelectedSpot}
+                  selectedSpot={selectedSpot}
                   onSpotClick={(spot) => setSelectedSpot(spot)}
                   distanceRadius={distanceFilter}
                   onDistanceRadiusChange={setDistanceFilter}
+                  userLocation={currentLocation}
+                  locationAccuracy={locationAccuracy}
+                  locationStatus={locationStatus}
+                  onRequestLocation={() => setLocationRequestKey((request) => request + 1)}
                 />
               </div>
 
