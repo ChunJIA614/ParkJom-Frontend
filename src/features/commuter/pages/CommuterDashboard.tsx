@@ -55,6 +55,8 @@ import {
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
 import JourneyStrip from '../components/JourneyStrip';
+import TransitHubSheet from '../components/TransitHubSheet';
+import type { StationNearbyParkingSpot } from '@/services/gtfsApi';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
@@ -336,6 +338,7 @@ export default function CommuterDashboard() {
     () => localStorage.getItem('parkjom_commuter_sidebar_collapsed') === 'true',
   );
   const [selectedStation, setSelectedStation] = useState<string>('');
+  const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [selectedStationCoords, setSelectedStationCoords] = useState<StationCoordinates | null>(null);
   const [distanceFilter, setDistanceFilter] = useState<number>(3000); // meters
   const [spotTypeFilter, setSpotTypeFilter] = useState<string>('all');
@@ -958,10 +961,46 @@ export default function CommuterDashboard() {
     }
   };
 
-  const handleMapStationSelect = (name: string, lat: number, lng: number) => {
+  const handleMapStationSelect = (name: string, lat: number, lng: number, stopId?: string) => {
     setSelectedStation(name);
     setSelectedStationCoords({ lat, lng });
+    if (stopId) setSelectedStationId(stopId);
     setSelectedSpot(null);
+  };
+
+  const handleSheetParkingSpotSelect = (spot: StationNearbyParkingSpot) => {
+    const existing = lensSpots.find((s) => s.parkingSpotId === spot.parkingSpotId);
+    if (existing) {
+      setSelectedSpot(existing);
+      return;
+    }
+    const syntheticSpot: ParkingSpot = {
+      id: String(spot.parkingSpotId),
+      parkingSpotId: spot.parkingSpotId,
+      parkingLabel: spot.parkingLabel,
+      propertyId: spot.propertyId,
+      propertyName: spot.propertyName,
+      address: spot.address,
+      latitude: selectedStationCoords?.lat || 0,
+      longitude: selectedStationCoords?.lng || 0,
+      stationName: selectedStation,
+      distanceToStation: spot.distanceMeters / 1000,
+      timeToStationInMinutes: spot.walkingTimeMinutes,
+      availabilityStatus: spot.availabilityStatus,
+      monthlyRate: spot.monthlyRate,
+      dailyRate: spot.dailyRate,
+      primaryImageUrl: spot.primaryImageUrl,
+      station: selectedStation,
+      name: spot.propertyName,
+      pricePerHour: 0,
+      distance: Math.round(spot.distanceMeters),
+      lat: selectedStationCoords?.lat || 0,
+      lng: selectedStationCoords?.lng || 0,
+      available: spot.availabilityStatus.toLowerCase() === 'available',
+      type: 'Condo Bay',
+      owner: `Property #${spot.propertyId}`,
+    };
+    setSelectedSpot(syntheticSpot);
   };
 
   const handleCommuterBrandClick = () => {
@@ -2117,12 +2156,13 @@ export default function CommuterDashboard() {
           {/* ─── TAB: Map ─── */}
           {activeTab === 'map' && (
             <div className="map-lens">
-              <div className="map-lens__map">
+              <div className="map-lens__map relative">
                 <CommuterMap
                   spots={lensSpots}
                   onStationSelect={handleMapStationSelect}
                   selectedStation={selectedStation}
                   selectedStationCoords={selectedStationCoords}
+                  selectedStationId={selectedStationId}
                   selectedSpot={selectedSpot}
                   onSpotClick={(spot) => setSelectedSpot(spot)}
                   distanceRadius={distanceFilter}
@@ -2131,6 +2171,18 @@ export default function CommuterDashboard() {
                   locationAccuracy={locationAccuracy}
                   locationStatus={locationStatus}
                   onRequestLocation={() => setLocationRequestKey((request) => request + 1)}
+                />
+
+                {/* Floating Liquid Glass Apple HIG Transit Hub Sheet */}
+                <TransitHubSheet
+                  userLocation={currentLocation}
+                  selectedStationId={selectedStationId}
+                  selectedStationName={selectedStation}
+                  onSelectStation={(stop) => {
+                    handleMapStationSelect(stop.stopName, stop.latitude, stop.longitude, stop.stopId);
+                  }}
+                  onSelectParkingSpot={handleSheetParkingSpotSelect}
+                  onOpenParkingDetail={(spot) => openParkingDetail(spot)}
                 />
               </div>
 

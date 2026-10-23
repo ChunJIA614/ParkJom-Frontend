@@ -2923,6 +2923,7 @@ html {
   inset: auto;
 }
 
+/* ── Station Marker System (LRT / MRT Design Spec) ── */
 .custom-station-icon {
   display: flex !important;
   align-items: center;
@@ -2936,6 +2937,136 @@ html {
 .custom-station-icon * {
   cursor: pointer !important;
   pointer-events: auto !important;
+}
+
+.station-marker-hitbox {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.station-marker-disc {
+  position: relative;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.16s ease;
+  z-index: 10;
+}
+
+/* Hover or Focus: scales to 122% and shows station name above */
+.station-marker-hitbox:hover .station-marker-disc,
+.station-marker-hitbox:focus .station-marker-disc {
+  transform: scale(1.22);
+  z-index: 30;
+}
+
+.station-marker-hitbox.is-interchange {
+  z-index: 20;
+}
+
+.station-marker-hitbox.is-selected,
+.station-marker-hitbox.is-search-origin {
+  z-index: 50;
+}
+
+/* Name Pill Tooltip */
+.station-pill-label {
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 100;
+}
+
+.station-pill-label::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px 4px 0 4px;
+  border-style: solid;
+  border-color: #0f172a transparent transparent transparent;
+}
+
+.station-marker-hitbox:hover .station-pill-label,
+.station-marker-hitbox:focus .station-pill-label,
+.station-marker-hitbox.is-selected .station-pill-label,
+.station-marker-hitbox.is-search-origin .station-pill-label {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Selected Station: pulsing halo */
+@keyframes station-halo-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(217, 36, 138, 0.6), 0 0 0 0 rgba(15, 23, 42, 0.2);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(217, 36, 138, 0), 0 0 0 6px rgba(15, 23, 42, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(217, 36, 138, 0), 0 0 0 0 rgba(15, 23, 42, 0);
+  }
+}
+
+/* Search Origin: teal glow marks where the radius is centred */
+@keyframes station-origin-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 2.5px #ffffff, 0 0 0 6px rgba(20, 184, 166, 0.45), 0 0 16px rgba(20, 184, 166, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 2.5px #ffffff, 0 0 0 9px rgba(20, 184, 166, 0.25), 0 0 24px rgba(20, 184, 166, 0.75);
+  }
+}
+
+.station-marker-disc.is-selected-pulse {
+  animation: station-halo-pulse 2.2s infinite ease-out;
+}
+
+.station-marker-disc.is-origin-glow {
+  animation: station-origin-glow 2.4s infinite ease-in-out;
+}
+
+/* Cluster: Navy bubble with count, shown when zoomed out */
+.station-cluster-bubble {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 3px solid rgba(20, 184, 166, 0.7);
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.25), 0 3px 10px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+}
+
+.station-cluster-bubble:hover {
+  transform: scale(1.16);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.45), 0 4px 14px rgba(0, 0, 0, 0.45);
 }
 
 .custom-parking-icon {

@@ -8,7 +8,6 @@ import {
   Polyline,
   Popup,
   TileLayer,
-  Tooltip,
   useMap,
   ZoomControl,
 } from 'react-leaflet';
@@ -22,13 +21,13 @@ import { showAlert } from '@/contexts/ModalContext';
 import {
   Search,
   Navigation,
-  Car,
   Train,
   Clock,
   ChevronRight,
   Layers,
   Loader2,
   LocateFixed,
+  Info,
 } from 'lucide-react';
 
 // ---- GTFS GeoJSON types ----
@@ -36,11 +35,6 @@ interface RailLineFeature {
   type: 'Feature';
   properties: { route_id: string; route_name: string; route_color: string };
   geometry: { type: 'LineString'; coordinates: [number, number][] };
-}
-interface RailStopFeature {
-  type: 'Feature';
-  properties: { stop_id: string; stop_name: string };
-  geometry: { type: 'Point'; coordinates: [number, number] };
 }
 interface GeoJsonCollection<T> {
   type: 'FeatureCollection';
@@ -64,6 +58,88 @@ const distanceBetweenKm = (
 
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 };
+
+// ---- Official Line Colors & Design Specification ----
+export const TRANSIT_LINE_COLORS: Record<string, { name: string; color: string; code: string }> = {
+  KJ: { name: 'Kelana Jaya', color: '#D9248A', code: 'KJ' },
+  AG: { name: 'Ampang', color: '#F59E0B', code: 'AG' },
+  SP: { name: 'Sri Petaling', color: '#8E2A4E', code: 'SP' },
+  KG: { name: 'Kajang Line', color: '#059669', code: 'KG' },
+  PY: { name: 'Putrajaya Line', color: '#FFCD00', code: 'PY' },
+  MR: { name: 'KL Monorail', color: '#84BD00', code: 'MR' },
+  SA: { name: 'Shah Alam Line', color: '#0284C7', code: 'SA' },
+  KT: { name: 'KLIA Transit / Ekspres', color: '#7B1FA2', code: 'KT' },
+  BRT: { name: 'BRT Sunway', color: '#115740', code: 'BRT' },
+};
+
+export function cleanStationName(rawName: string): string {
+  return rawName
+    .replace(/^(?:(?:AG|SP|KJ|KG|PY|MR|SA|KT|KB|KC|KA|KD)d*\s*)+/i, '')
+    .replace(/\s+(?:LRT|MRT|Station)$/i, '')
+    .trim() || rawName;
+}
+
+export function getStationLines(feature: any): string[] {
+  const p = feature.properties || {};
+  const name = String(p.name || '');
+  const ref = String(p.ref || '');
+  const network = String(p.network || '');
+  const combined = (name + ' ' + ref + ' ' + network);
+
+  const matched: string[] = [];
+  const matches: string[] = Array.from(combined.match(/\b(KJ|AG|SP|KG|PY|MR|SA)\d*\b/g) ?? []);
+  matches.forEach((m: string) => {
+    const code = m.slice(0, 2);
+    if (TRANSIT_LINE_COLORS[code] && !matched.includes(code)) {
+      matched.push(code);
+    }
+  });
+
+  if (/kelana jaya/i.test(combined) && !matched.includes('KJ')) matched.push('KJ');
+  if (/ampang/i.test(combined) && !matched.includes('AG')) matched.push('AG');
+  if (/sri petaling/i.test(combined) && !matched.includes('SP')) matched.push('SP');
+  if (/(kajang|sbk)/i.test(combined) && !matched.includes('KG')) matched.push('KG');
+  if (/(putrajaya|ssp)/i.test(combined) && !matched.includes('PY')) matched.push('PY');
+  if (/monorail/i.test(combined) && !matched.includes('MR')) matched.push('MR');
+
+  // Key Klang Valley interchanges and shared corridors
+  if (/Masjid Jamek/i.test(name)) {
+    ['AG', 'SP', 'KJ'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Pasar Seni/i.test(name)) {
+    ['KJ', 'KG'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/KL Sentral/i.test(name)) {
+    ['KJ', 'MR', 'KG'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Titiwangsa/i.test(name)) {
+    ['AG', 'SP', 'MR', 'PY'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Hang Tuah/i.test(name)) {
+    ['AG', 'SP', 'MR'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Chan Sow Lin/i.test(name)) {
+    ['AG', 'SP', 'PY'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Tun Razak Exchange/i.test(name)) {
+    ['KG', 'PY'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Maluri/i.test(name)) {
+    ['AG', 'KG'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Bukit Bintang/i.test(name)) {
+    ['MR', 'KG'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  }
+
+  // Shared track corridor for Ampang & Sri Petaling (Sentul Timur to Chan Sow Lin)
+  const sharedAgSp = ['Sentul Timur', 'Sentul', 'PWTC', 'Sultan Ismail', 'Bandaraya', 'Plaza Rakyat', 'Pudu'];
+  if (sharedAgSp.some((s) => name.includes(s))) {
+    if (!matched.includes('AG')) matched.push('AG');
+    if (!matched.includes('SP')) matched.push('SP');
+  }
+
+  return matched.length > 0 ? matched : ['KJ'];
+}
+
+function getRingBackground(lineCodes: string[]): string {
+  const colors = lineCodes.map((c) => TRANSIT_LINE_COLORS[c]?.color || '#007AFF');
+  if (colors.length === 1) return colors[0];
+  const step = 360 / colors.length;
+  const segments = colors.map((col, i) => `${col} ${i * step}deg ${(i + 1) * step}deg`);
+  return `conic-gradient(${segments.join(', ')})`;
+}
 
 // ---- Custom Marker Icons ----
 const parkingIcon = L.divIcon({
@@ -114,62 +190,121 @@ const userLocationIcon = L.divIcon({
   popupAnchor: [0, -18],
 });
 
-const normalizeStationKey = (value: string) => value.trim().toLowerCase().replace(/\s+(lrt|mrt)$/i, '');
+// ---- Station Marker Generator based on Station Marker System Spec ----
+interface StationMarkerOptions {
+  rawName: string;
+  lines: string[];
+  isInterchange: boolean;
+  isSelected: boolean;
+  isSearchOrigin: boolean;
+}
 
-const stationStatusPalette = {
-  default: '#007AFF',
-  selected: '#0A84FF',
-  available: '#248a3d',
-  full: '#d97706',
-  unknown: '#94a3b8',
-} as const;
+function createStationMarkerIcon(opts: StationMarkerOptions): L.DivIcon {
+  const { rawName, lines, isInterchange, isSelected, isSearchOrigin } = opts;
+  const cleanName = cleanStationName(rawName);
 
-type StationParkingCondition = 'available' | 'full' | 'unknown';
+  let discSize = 18;
+  let centerSize = 9;
+  let hitboxSize = 36;
 
-const buildStationIcon = (isSelected: boolean, condition: StationParkingCondition) => {
-  const fillColor = isSelected
-    ? stationStatusPalette.selected
-    : condition === 'available'
-      ? stationStatusPalette.available
-      : condition === 'full'
-        ? stationStatusPalette.full
-        : stationStatusPalette.default;
-  const ringColor = isSelected ? 'rgba(10,132,255,0.35)' : 'rgba(0,0,0,0.14)';
+  if (isSelected || isSearchOrigin) {
+    discSize = 36;
+    centerSize = 22;
+    hitboxSize = 48;
+  } else if (isInterchange) {
+    discSize = 28;
+    centerSize = 14;
+    hitboxSize = 42;
+  }
+
+  const gradient = getRingBackground(lines);
+
+  let discClasses = 'station-marker-disc';
+  let discStyle = `width: ${discSize}px; height: ${discSize}px; background: ${gradient};`;
+  let centerHtml = '';
+
+  if (isSelected || isSearchOrigin) {
+    discClasses += isSearchOrigin ? ' is-origin-glow' : ' is-selected-pulse';
+    centerHtml = `
+      <div style="width: ${centerSize}px; height: ${centerSize}px; border-radius: 50%; background: #0F172A; display: flex; align-items: center; justify-content: center;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="3" width="14" height="14" rx="3.5"/>
+          <path d="M7 19l2-2.5m8 2.5-2-2.5M8 7h8m-8 4h.01m7.99 0h.01"/>
+        </svg>
+      </div>
+    `;
+    if (!isSearchOrigin) {
+      discStyle += `box-shadow: 0 0 0 2.5px #ffffff, 0 4px 12px rgba(15,23,42,0.35);`;
+    }
+  } else {
+    discStyle += `box-shadow: 0 0 0 2px #ffffff, 0 2px 6px rgba(0,0,0,0.22);`;
+    centerHtml = `<div style="width: ${centerSize}px; height: ${centerSize}px; border-radius: 50%; background: #ffffff;"></div>`;
+  }
+
+  const hitboxClasses = [
+    'station-marker-hitbox',
+    isSelected ? 'is-selected' : '',
+    isSearchOrigin ? 'is-search-origin' : '',
+    isInterchange ? 'is-interchange' : '',
+  ].filter(Boolean).join(' ');
+
+  const labelText = isSearchOrigin ? `${cleanName} · Origin` : cleanName;
+
+  const html = `
+    <div class="${hitboxClasses}" style="width: ${hitboxSize}px; height: ${hitboxSize}px;">
+      <div class="station-pill-label">
+        <span>${labelText}</span>
+      </div>
+      <div class="${discClasses}" style="${discStyle}">
+        ${centerHtml}
+      </div>
+    </div>
+  `;
 
   return L.divIcon({
     className: 'custom-station-icon',
-    html: `<div class="station-icon-hitbox" style="
-      width: 36px; height: 36px;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-    ">
-      <div style="
-        background: ${fillColor};
-        width: 25px; height: 25px;
-        border-radius: 50%;
-        border: 3px solid white;
-        box-shadow: 0 0 0 5px ${ringColor}, 0 2px 8px rgba(0,0,0,0.24);
-        display: flex; align-items: center; justify-content: center;
-        pointer-events: auto;
-      "><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="14" rx="3"/><path d="M8 20l2-3m6 3-2-3M9 8h6m-6 4h.01m5.99 0h.01"/></svg></div>
-    </div>`,
+    html,
+    iconSize: [hitboxSize, hitboxSize],
+    iconAnchor: [hitboxSize / 2, hitboxSize / 2],
+    popupAnchor: [0, -(hitboxSize / 2) - 4],
+  });
+}
+
+function createClusterIcon(count: number): L.DivIcon {
+  const html = `
+    <div class="station-cluster-bubble">
+      ${count}
+    </div>
+  `;
+  return L.divIcon({
+    className: 'custom-station-icon',
+    html,
     iconSize: [36, 36],
     iconAnchor: [18, 18],
     popupAnchor: [0, -18],
   });
-};
+}
 
-const createStationIconSet = () => ({
-  selected: buildStationIcon(true, 'unknown'),
-  available: buildStationIcon(false, 'available'),
-  full: buildStationIcon(false, 'full'),
-  unknown: buildStationIcon(false, 'unknown'),
-});
+const normalizeStationKey = (value: string) => value.trim().toLowerCase().replace(/\s+(lrt|mrt)$/i, '');
+
+const getStationKeys = (feature: any): string[] => {
+  const p = feature.properties || {};
+  return [
+    p.name,
+    p['name:en'],
+    p.full_name,
+    p.ref,
+    cleanStationName(p.name || ''),
+  ]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map(normalizeStationKey);
+};
 
 // ---- Props ----
 interface CommuterMapProps {
   spots: ParkingSpot[];
-  onStationSelect: (stationName: string, lat: number, lng: number) => void;
+  onStationSelect: (stationName: string, lat: number, lng: number, stopId?: string) => void;
+  selectedStationId?: string | null;
   selectedStation: string | null;
   selectedStationCoords: { lat: number; lng: number } | null;
   selectedSpot: ParkingSpot | null;
@@ -206,7 +341,6 @@ function MapViewController({ target }: { target: MapTarget | null }) {
         });
       }
     } else {
-      // Gentle, calm pan to target keeping existing zoom level
       map.panTo([target.lat, target.lng], {
         animate: true,
         duration: 0.35,
@@ -217,17 +351,29 @@ function MapViewController({ target }: { target: MapTarget | null }) {
   return null;
 }
 
+// ---- Map Zoom Listener for Clustering ----
+function MapZoomListener({ onZoom }: { onZoom: (zoom: number) => void }) {
+  const map = useMap();
+
+  useEffect(() => {
+    onZoom(map.getZoom());
+    const handleZoomEnd = () => onZoom(map.getZoom());
+    map.on('zoomend', handleZoomEnd);
+    return () => {
+      map.off('zoomend', handleZoomEnd);
+    };
+  }, [map, onZoom]);
+
+  return null;
+}
+
 // ---- Custom Panes ----
 function RailPane() {
   const map = useMap();
   useEffect(() => {
     if (!map.getPane('railPane')) {
-      map.createPane('railPane');
-      const pane = map.getPane('railPane');
-      if (pane) {
-        pane.style.zIndex = '625';
-        pane.style.pointerEvents = 'none';
-      }
+      const pane = map.createPane('railPane');
+      pane.style.zIndex = '350';
     }
   }, [map]);
   return null;
@@ -237,9 +383,8 @@ function StationPane() {
   const map = useMap();
   useEffect(() => {
     if (!map.getPane('stationPane')) {
-      map.createPane('stationPane');
-      const pane = map.getPane('stationPane');
-      if (pane) pane.style.zIndex = '650';
+      const pane = map.createPane('stationPane');
+      pane.style.zIndex = '450';
     }
   }, [map]);
   return null;
@@ -249,73 +394,72 @@ function UserLocationPane() {
   const map = useMap();
   useEffect(() => {
     if (!map.getPane('userLocationPane')) {
-      map.createPane('userLocationPane');
-      const pane = map.getPane('userLocationPane');
-      if (pane) pane.style.zIndex = '660';
+      const pane = map.createPane('userLocationPane');
+      pane.style.zIndex = '500';
     }
   }, [map]);
   return null;
 }
 
-// ---- Route name mapping: route_id code → display name ----
-const ROUTE_NAME_MAP: Record<string, string> = {
-  AGL: 'Ampang Line',
-  KJL: 'Kelana Jaya Line',
-  SPL: 'Sri Petaling Line',
-  KGL: 'Kajang Line',
-  PYL: 'Putrajaya Line',
-  MRL: 'KL Monorail',
-  BRT: 'BRT Sunway Line',
-  SAL: 'Shah Alam Line',
-};
+// ---- Line Control Panel (GTFS Rail Lines Toggle) ----
+interface LineControlPanelProps {
+  visibleLines: Record<string, boolean>;
+  onToggle: (routeName: string) => void;
+  showHeader?: boolean;
+}
 
-const getStationKeys = (feature: any) => {
-  const coordinates = feature.geometry?.coordinates;
-  const rawName = String(feature.properties?.name || feature.properties?.['name:en'] || '');
-  const rawRef = String(feature.properties?.ref || '');
-  const keys = new Set<string>();
-
-  [rawRef, rawName].forEach((value) => {
-    const normalized = normalizeStationKey(value);
-    if (normalized) keys.add(normalized);
-  });
-
-  if (Array.isArray(coordinates) && coordinates.length >= 2) {
-    keys.add(`${coordinates[1]?.toFixed?.(5) ?? coordinates[1]}:${coordinates[0]?.toFixed?.(5) ?? coordinates[0]}`);
-  }
-
-  return [...keys];
-};
-
-// ---- LineControlPanel: rail line visibility control panel ----
 function LineControlPanel({
   visibleLines,
   onToggle,
   showHeader = true,
-}: {
-  visibleLines: Record<string, boolean>;
-  onToggle: (routeName: string) => void;
-  showHeader?: boolean;
-}) {
+}: LineControlPanelProps) {
+  const lineDisplayNames: Record<string, string> = {
+    AGL: 'Ampang Line (LRT)',
+    SPL: 'Sri Petaling Line (LRT)',
+    KJL: 'Kelana Jaya Line (LRT)',
+    MRL: 'KL Monorail',
+    KGL: 'Kajang Line (MRT)',
+    PYL: 'Putrajaya Line (MRT)',
+    BRT: 'BRT Sunway Line',
+    SAL: 'Shah Alam Line (LRT3)',
+  };
+
+  const lineColors: Record<string, string> = {
+    AGL: '#F59E0B',
+    SPL: '#8E2A4E',
+    KJL: '#D9248A',
+    MRL: '#84BD00',
+    KGL: '#059669',
+    PYL: '#FFCD00',
+    BRT: '#115740',
+    SAL: '#0284C7',
+  };
+
+  const routes = Object.keys(visibleLines);
+
   return (
-    <div
-      className={`${showHeader ? 'absolute top-[68px] left-4 z-[1000]' : ''} line-control-panel bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 text-xs min-w-[180px] w-auto`}
-    >
+    <div className="line-control-panel bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 text-xs min-w-[200px]">
       {showHeader && (
-        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-100">
-          <Layers className="w-3.5 h-3.5 text-blue-600" />
-          <span className="font-bold text-slate-700">Rail Lines</span>
+        <div className="flex items-center gap-2 font-bold text-slate-700 mb-2 border-b border-slate-100 pb-2">
+          <Layers size={14} className="text-blue-600" />
+          <span>Rail Lines</span>
         </div>
       )}
-      <div className="space-y-1.5 max-h-[260px] md:max-h-[300px] overflow-y-auto">
-        {Object.keys(visibleLines).map((routeName) => {
-          const displayName = ROUTE_NAME_MAP[routeName] || routeName;
-          const isChecked = visibleLines[routeName];
+      <div className="space-y-1.5">
+        {routes.map((routeName) => {
+          const isChecked = visibleLines[routeName] !== false;
+          const displayName = lineDisplayNames[routeName] || routeName;
+          const color = lineColors[routeName] || '#3388ff';
+
           return (
             <label
               key={routeName}
-              className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors select-none"
+              className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-1 rounded-lg transition-colors"
             >
+              <span
+                className="w-3 h-3 rounded-full shrink-0 shadow-xs"
+                style={{ backgroundColor: color }}
+              />
               <input
                 type="checkbox"
                 checked={isChecked}
@@ -337,35 +481,151 @@ function LineControlPanel({
   );
 }
 
-// ---- Legend Overlay ----
-function MapLegend() {
+// ---- Station Marker System Legend Modal ----
+interface MapLegendModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+function MapLegendModal({ isOpen, onClose }: MapLegendModalProps) {
+  if (!isOpen) return null;
+
   return (
-    <div className="map-legend absolute bottom-[100px] right-6 z-[1000] bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 text-[10px] space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="w-5 h-1 rounded-full bg-[#3388ff]" />
-        <span className="text-slate-600 font-medium">Rail Line</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="w-2.5 h-2.5 rounded-full bg-white border border-slate-700" />
-        <span className="text-slate-600 font-medium">Rail Stop</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="w-4 h-4 rounded-full bg-[#007AFF] border-2 border-white shadow flex items-center justify-center" aria-hidden="true"><Train size={8} className="text-white" /></div>
-        <span className="text-slate-600 font-medium">LRT/MRT Station</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="w-4 h-4 rounded-full bg-[#007AFF] ring-2 ring-[#007AFF]/20 border-2 border-white shadow flex items-center justify-center" aria-hidden="true"><Train size={8} className="text-white" /></div>
-        <span className="text-slate-600 font-medium">Selected Station</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="w-4 h-4 rounded-full bg-[#34C759] border-2 border-white shadow flex items-center justify-center text-[8px] text-white font-black">P</div>
-        <span className="text-slate-600 font-medium">Available Parking</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="w-3.5 h-3.5 rounded-full bg-[#007AFF] ring-2 ring-[#007AFF]/30 border-2 border-white shadow flex items-center justify-center">
-          <span className="w-1.5 h-1.5 rounded-full bg-white" />
+    <div
+      data-map-control
+      className="map-legend-modal absolute top-[68px] right-4 z-[1001] w-[340px] max-w-[calc(100vw-2rem)] bg-white/98 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-2xl p-4 text-xs space-y-4 max-h-[calc(100dvh-12rem)] overflow-y-auto animate-slide-up"
+    >
+      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <div className="flex items-center gap-2">
+          <Train className="w-4 h-4 text-blue-600" />
+          <h3 className="font-bold text-slate-800 text-sm">Station Marker System</h3>
         </div>
-        <span className="text-slate-600 font-medium">Your Location</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors text-sm font-bold"
+          aria-label="Close legend"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Marker Types */}
+      <div className="space-y-2.5">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Station Types</span>
+        
+        <div className="grid grid-cols-2 gap-2">
+          {/* Station */}
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2.5">
+            <div className="w-[18px] h-[18px] rounded-full bg-[#8E2A4E] shadow-[0_0_0_2px_#fff,0_2px_4px_rgba(0,0,0,0.18)] flex items-center justify-center shrink-0">
+              <div className="w-[9px] h-[9px] rounded-full bg-white" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-700 text-[11px]">Station</div>
+              <div className="text-[10px] text-slate-400">18px line colour ring</div>
+            </div>
+          </div>
+
+          {/* Shared Track */}
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2.5">
+            <div
+              className="w-[18px] h-[18px] rounded-full shadow-[0_0_0_2px_#fff,0_2px_4px_rgba(0,0,0,0.18)] flex items-center justify-center shrink-0"
+              style={{ background: 'conic-gradient(#F59E0B 0deg 180deg, #8E2A4E 180deg 360deg)' }}
+            >
+              <div className="w-[9px] h-[9px] rounded-full bg-white" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-700 text-[11px]">Shared track</div>
+              <div className="text-[10px] text-slate-400">Equal line segments</div>
+            </div>
+          </div>
+
+          {/* Interchange */}
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2.5">
+            <div
+              className="w-[24px] h-[24px] rounded-full shadow-[0_0_0_2px_#fff,0_2px_6px_rgba(0,0,0,0.22)] flex items-center justify-center shrink-0"
+              style={{ background: 'conic-gradient(#F59E0B 0deg 120deg, #8E2A4E 120deg 240deg, #D9248A 240deg 360deg)' }}
+            >
+              <div className="w-[12px] h-[12px] rounded-full bg-white" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-700 text-[11px]">Interchange</div>
+              <div className="text-[10px] text-slate-400">28px multi-line hub</div>
+            </div>
+          </div>
+
+          {/* Selected */}
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2.5">
+            <div className="w-[26px] h-[26px] rounded-full bg-[#D9248A] shadow-[0_0_0_2px_#fff,0_2px_6px_rgba(0,0,0,0.25)] flex items-center justify-center shrink-0">
+              <div className="w-[18px] h-[18px] rounded-full bg-[#0F172A] flex items-center justify-center">
+                <Train size={9} className="text-white" />
+              </div>
+            </div>
+            <div>
+              <div className="font-bold text-slate-700 text-[11px]">Selected</div>
+              <div className="text-[10px] text-slate-400">36px navy + train glyph</div>
+            </div>
+          </div>
+
+          {/* Search Origin */}
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2.5">
+            <div className="w-[20px] h-[20px] rounded-full bg-[#8E2A4E] shadow-[0_0_0_2px_#fff,0_0_0_4px_rgba(20,184,166,0.5),0_0_8px_rgba(20,184,166,0.6)] flex items-center justify-center shrink-0">
+              <div className="w-[9px] h-[9px] rounded-full bg-white" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-700 text-[11px]">Search origin</div>
+              <div className="text-[10px] text-teal-600 font-semibold">Teal radius halo</div>
+            </div>
+          </div>
+
+          {/* Cluster */}
+          <div className="p-2 rounded-xl bg-slate-50 border border-slate-100 flex items-center gap-2.5">
+            <div className="w-[22px] h-[22px] rounded-full bg-[#0F172A] border-2 border-teal-500 shadow-sm flex items-center justify-center text-[10px] font-black text-white shrink-0">
+              12
+            </div>
+            <div>
+              <div className="font-bold text-slate-700 text-[11px]">Cluster</div>
+              <div className="text-[10px] text-slate-400">Zoomed-out count</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Line Colours */}
+      <div className="space-y-2 border-t border-slate-100 pt-3">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Line Colours</span>
+        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+          <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50">
+            <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ background: '#D9248A' }} />
+            <span className="font-medium text-slate-700 truncate">Kelana Jaya</span>
+            <span className="text-[10px] text-slate-400 font-mono ml-auto">#D9248A</span>
+          </div>
+          <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50">
+            <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ background: '#F59E0B' }} />
+            <span className="font-medium text-slate-700 truncate">Ampang</span>
+            <span className="text-[10px] text-slate-400 font-mono ml-auto">#F59E0B</span>
+          </div>
+          <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50">
+            <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ background: '#8E2A4E' }} />
+            <span className="font-medium text-slate-700 truncate">Sri Petaling</span>
+            <span className="text-[10px] text-slate-400 font-mono ml-auto">#8E2A4E</span>
+          </div>
+          <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50">
+            <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ background: '#059669' }} />
+            <span className="font-medium text-slate-700 truncate">Kajang Line</span>
+            <span className="text-[10px] text-slate-400 font-mono ml-auto">#059669</span>
+          </div>
+          <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50">
+            <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ background: '#FFCD00' }} />
+            <span className="font-medium text-slate-700 truncate">Putrajaya Line</span>
+            <span className="text-[10px] text-slate-400 font-mono ml-auto">#FFCD00</span>
+          </div>
+          <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50">
+            <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ background: '#84BD00' }} />
+            <span className="font-medium text-slate-700 truncate">KL Monorail</span>
+            <span className="text-[10px] text-slate-400 font-mono ml-auto">#84BD00</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -377,6 +637,7 @@ export default function CommuterMap({
   onStationSelect,
   selectedStation,
   selectedStationCoords,
+  selectedStationId,
   selectedSpot,
   onSpotClick,
   distanceRadius,
@@ -388,7 +649,8 @@ export default function CommuterMap({
 }: CommuterMapProps) {
   const klCenter: [number, number] = [3.1390, 101.6869];
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
-  const [openPanel, setOpenPanel] = useState<'stations' | 'lines' | null>(null);
+  const [currentZoom, setCurrentZoom] = useState(12);
+  const [openPanel, setOpenPanel] = useState<'stations' | 'lines' | 'legend' | null>(null);
   const [stationFilter, setStationFilter] = useState('');
 
   // Active Station Details popup state (guaranteed to render independently of marker re-renders)
@@ -457,10 +719,7 @@ export default function CommuterMap({
 
   // ---- GTFS Rail Lines: full source data (read-only) ----
   const [allLines, setAllLines] = useState<GeoJsonCollection<RailLineFeature> | null>(null);
-
-  // ---- Line visibility map: route_name → boolean, all visible by default ----
   const [visibleLines, setVisibleLines] = useState<Record<string, boolean>>({});
-
   const [gtfsLoading, setGtfsLoading] = useState(true);
   const [gtfsError, setGtfsError] = useState<string | null>(null);
 
@@ -498,9 +757,7 @@ export default function CommuterMap({
     return { type: 'FeatureCollection', features: filtered };
   }, [allLines, visibleLines]);
 
-  const stationIcons = useMemo(createStationIconSet, []);
-
-  // Filter stations: only LRT, MRT, Monorail (exclude KTM Komuter, ERL, etc.)
+  // Filter stations: only LRT, MRT, Monorail
   const transitStations = useMemo(() => (stationData as any).features.filter((f: any) => {
     const name = f.properties?.name || '';
     const network = f.properties?.network || '';
@@ -512,7 +769,7 @@ export default function CommuterMap({
       network?.toLowerCase().includes('mrt') ||
       network?.toLowerCase().includes('lrt') ||
       name?.includes('MRT') ||
-      name?.match(/^(AG|SP|KJ|KG|PY|MR)\d/)
+      name?.match(/^(AG|SP|KJ|KG|PY|MR|SA)\d/)
     );
   }), []);
 
@@ -552,39 +809,6 @@ export default function CommuterMap({
     }
   }, [selectedStation, selectedStationCoords, selectedStationKey, stationFeatures]);
 
-  const stationParkingConditions = useMemo(() => {
-    const conditionByStation = new Map<string, StationParkingCondition>();
-    const groupedByStation = new Map<string, ParkingSpot[]>();
-
-    spots.forEach((spot) => {
-      const stationKeys = [spot.stationName, spot.station].flatMap((value) => {
-        const normalized = normalizeStationKey(value || '');
-        return normalized ? [normalized] : [];
-      });
-
-      stationKeys.forEach((key) => {
-        const current = groupedByStation.get(key) ?? [];
-        current.push(spot);
-        groupedByStation.set(key, current);
-      });
-    });
-
-    groupedByStation.forEach((stationSpots, key) => {
-      const hasAvailable = stationSpots.some((spot) => spot.available);
-      conditionByStation.set(key, hasAvailable ? 'available' : 'full');
-    });
-
-    stationFeatures.forEach((feature: any) => {
-      getStationKeys(feature).forEach((key) => {
-        if (!conditionByStation.has(key)) {
-          conditionByStation.set(key, 'unknown');
-        }
-      });
-    });
-
-    return conditionByStation;
-  }, [spots, stationFeatures]);
-
   // Distribute spots with identical coordinates slightly (~18m) so every bay is visible and clickable
   const displaySpots = useMemo(() => {
     const coordCounts = new Map<string, number>();
@@ -619,11 +843,13 @@ export default function CommuterMap({
     });
   }, [spots]);
 
-  // Get unique station names for the list
-  const allNames: string[] = transitStations
-    .map((f: any) => String(f.properties?.name || ''))
-    .filter((n: string) => n.length > 0);
-  const stationNames: string[] = [...new Set<string>(allNames)].sort();
+  // Unique clean station names for the search list
+  const stationNames: string[] = useMemo(() => {
+    const names = stationFeatures
+      .map((f: any) => cleanStationName(String(f.properties?.name || f.properties?.['name:en'] || '')))
+      .filter((n: string) => n.length > 0);
+    return [...new Set<string>(names)].sort();
+  }, [stationFeatures]);
 
   // Distances from effective user location to stations
   const stationDistances = useMemo(() => {
@@ -632,11 +858,13 @@ export default function CommuterMap({
     const distances = new Map<string, number>();
     stationFeatures.forEach((feature: any) => {
       const coords = feature.geometry?.coordinates;
-      const name = feature.properties?.name || feature.properties?.['name:en'] || '';
-      if (coords && coords.length >= 2 && name) {
+      const rawName = feature.properties?.name || feature.properties?.['name:en'] || '';
+      const clean = cleanStationName(rawName);
+      if (coords && coords.length >= 2 && rawName) {
         const dist = distanceBetweenKm(effectiveUserLocation, { lat: coords[1], lng: coords[0] });
-        distances.set(name, dist);
-        const norm = normalizeStationKey(name);
+        distances.set(rawName, dist);
+        distances.set(clean, dist);
+        const norm = normalizeStationKey(rawName);
         if (norm) distances.set(norm, dist);
       }
     });
@@ -661,26 +889,55 @@ export default function CommuterMap({
     n.toLowerCase().includes(stationFilter.toLowerCase())
   );
 
+  // Zoomed-out station clusters (for zoom <= 11)
+  const stationClusters = useMemo(() => {
+    if (currentZoom >= 12) return null;
+    const gridSize = currentZoom === 11 ? 0.038 : 0.075;
+    const grid = new Map<string, { count: number; latSum: number; lngSum: number }>();
+
+    stationFeatures.forEach((feat: any) => {
+      const coords = feat.geometry?.coordinates;
+      if (!coords || coords.length < 2) return;
+      const lat = coords[1];
+      const lng = coords[0];
+      const key = `${Math.floor(lat / gridSize)}:${Math.floor(lng / gridSize)}`;
+      if (!grid.has(key)) {
+        grid.set(key, { count: 0, latSum: 0, lngSum: 0 });
+      }
+      const cell = grid.get(key)!;
+      cell.count += 1;
+      cell.latSum += lat;
+      cell.lngSum += lng;
+    });
+
+    return Array.from(grid.values()).map((cell, idx) => ({
+      id: `cluster-${idx}`,
+      count: cell.count,
+      lat: cell.latSum / cell.count,
+      lng: cell.lngSum / cell.count,
+    }));
+  }, [stationFeatures, currentZoom]);
+
   // Station marker click: Smooth gentle pan to center, opens details popup 100% reliably
   const handleStationMarkerClick = (feature: any, e?: any) => {
     if (e?.originalEvent) {
       e.originalEvent.stopPropagation();
     }
     const coords = feature.geometry.coordinates;
-    const name = feature.properties?.name || feature.properties?.['name:en'] || 'Unknown Station';
+    const rawName = feature.properties?.name || feature.properties?.['name:en'] || 'Unknown Station';
+    const cleanName = cleanStationName(rawName);
     const network = feature.properties?.network || '';
     if (!coords || coords.length < 2) return;
 
-    onStationSelect(name, coords[1], coords[0]);
+    onStationSelect(cleanName, coords[1], coords[0]);
     setActiveStationPopup({
-      name,
+      name: cleanName,
       network,
       lat: coords[1],
       lng: coords[0],
     });
     setOpenPanel(null);
 
-    // Smooth, gentle pan to center the clicked station without violent zooms or double-bounces
     setMapTarget({
       lat: coords[1],
       lng: coords[0],
@@ -756,10 +1013,11 @@ export default function CommuterMap({
 
     if (closestFeature) {
       const coords = closestFeature.geometry.coordinates;
-      const name = closestFeature.properties?.name || closestFeature.properties?.['name:en'] || 'Station';
+      const rawName = closestFeature.properties?.name || closestFeature.properties?.['name:en'] || 'Station';
+      const cleanName = cleanStationName(rawName);
       const net = closestFeature.properties?.network || '';
       setActiveStationPopup({
-        name,
+        name: cleanName,
         network: net,
         lat: coords[1],
         lng: coords[0],
@@ -771,11 +1029,10 @@ export default function CommuterMap({
         animate: true,
         timestamp: Date.now(),
       });
-      onStationSelect(name, coords[1], coords[0]);
+      onStationSelect(cleanName, coords[1], coords[0]);
     }
   };
 
-  // ---- Toggle visibility of a line ----
   const handleLineToggle = (routeName: string) => {
     setVisibleLines((prev) => ({
       ...prev,
@@ -833,24 +1090,26 @@ export default function CommuterMap({
         {/* Map View Controller for smooth animated centering */}
         <MapViewController target={mapTarget} />
 
+        {/* Zoom listener for clustering */}
+        <MapZoomListener onZoom={setCurrentZoom} />
+
         {/* Station Search Radius Circle on the Map */}
         {selectedStationCoords && (
           <Circle
             center={[selectedStationCoords.lat, selectedStationCoords.lng]}
             radius={distanceRadius}
             pathOptions={{
-              color: '#007AFF',
-              fillColor: '#007AFF',
-              fillOpacity: 0.05,
-              weight: 1.5,
+              color: '#14B8A6',
+              fillColor: '#14B8A6',
+              fillOpacity: 0.06,
+              weight: 1.8,
               dashArray: '6 6',
               interactive: false,
             }}
           />
         )}
 
-        {/* ---- GTFS Rail Lines (GeoJSON LineStrings) ----
-            interactive: false inside style prevents rail line paths from blocking clicks on stations on PC view */}
+        {/* ---- GTFS Rail Lines (GeoJSON LineStrings) ---- */}
         {filteredLines && (
           <GeoJSON
             key={JSON.stringify(visibleLines)}
@@ -858,8 +1117,8 @@ export default function CommuterMap({
             pane="railPane"
             style={(feature) => ({
               color: feature?.properties?.route_color || '#3388ff',
-              weight: 5,
-              opacity: 0.85,
+              weight: 4.5,
+              opacity: 0.9,
               interactive: false,
             })}
           />
@@ -934,32 +1193,64 @@ export default function CommuterMap({
           </>
         )}
 
-        {/* Render Transit Station Markers */}
+        {/* ---- Render Zoomed-Out Cluster Markers (at zoom <= 11) ---- */}
+        {stationClusters &&
+          stationClusters.map((cluster) => (
+            <Marker
+              key={cluster.id}
+              position={[cluster.lat, cluster.lng]}
+              pane="stationPane"
+              icon={createClusterIcon(cluster.count)}
+              eventHandlers={{
+                click: (e) => {
+                  e.originalEvent?.stopPropagation();
+                  setMapTarget({
+                    lat: cluster.lat,
+                    lng: cluster.lng,
+                    zoom: 13,
+                    animate: true,
+                    timestamp: Date.now(),
+                  });
+                },
+              }}
+            />
+          ))}
+
+        {/* ---- Render Transit Station Markers (at zoom >= 12, or always for selected station) ---- */}
         {stationFeatures.map((feature: any, idx: number) => {
           const coords = feature.geometry.coordinates;
-          const name = feature.properties?.name || feature.properties?.['name:en'] || '';
+          const rawName = feature.properties?.name || feature.properties?.['name:en'] || '';
+          const cleanName = cleanStationName(rawName);
           const stationKeys = getStationKeys(feature);
           const isSelected = stationKeys.includes(selectedStationKey);
-          const stationCondition = stationKeys
-            .map((key) => stationParkingConditions.get(key))
-            .find((value): value is StationParkingCondition => Boolean(value)) ?? 'unknown';
+          const isSearchOrigin = isSelected && Boolean(selectedStationCoords);
 
+          // If zoomed out, only show the selected / active origin station individually
+          if (currentZoom < 12 && !isSelected) return null;
           if (!coords || coords.length < 2) return null;
+
+          const lines = getStationLines(feature);
+          const isInterchange = lines.length >= 3 || ['Masjid Jamek', 'Pasar Seni', 'KL Sentral', 'Titiwangsa', 'Chan Sow Lin', 'Tun Razak Exchange', 'Maluri', 'Hang Tuah'].some((h) => cleanName.includes(h));
+
+          const icon = createStationMarkerIcon({
+            rawName,
+            lines,
+            isInterchange,
+            isSelected,
+            isSearchOrigin,
+          });
 
           return (
             <Marker
               key={`station-${idx}`}
               position={[coords[1], coords[0]]}
               pane="stationPane"
-              icon={isSelected ? stationIcons.selected : stationIcons[stationCondition]}
+              icon={icon}
+              zIndexOffset={isSelected ? 1000 : isInterchange ? 600 : 400}
               eventHandlers={{
                 click: (e) => handleStationMarkerClick(feature, e),
               }}
-            >
-              <Tooltip direction="top" offset={[0, -18]} className="station-tooltip">
-                <span>{name}</span>
-              </Tooltip>
-            </Marker>
+            />
           );
         })}
 
@@ -1029,7 +1320,7 @@ export default function CommuterMap({
                   </div>
                   {spot.siblingCount > 1 && (
                     <div className="mt-1 text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                      1 of ${spot.siblingCount} available bays at this property
+                      1 of {spot.siblingCount} available bays at this property
                     </div>
                   )}
                   <p className="mt-1 text-[10px] text-slate-400 leading-tight">{spot.address}</p>
@@ -1066,8 +1357,11 @@ export default function CommuterMap({
         })}
       </MapContainer>
 
-      {/* Map Legend */}
-      <MapLegend />
+      {/* Station Marker System Legend Modal */}
+      <MapLegendModal
+        isOpen={openPanel === 'legend'}
+        onClose={() => setOpenPanel(null)}
+      />
 
       {/* GTFS Data Loading Overlay */}
       {gtfsLoading && (
@@ -1086,7 +1380,7 @@ export default function CommuterMap({
         </div>
       )}
 
-      {/* Top Bar: Station Search & Filter (Strictly clean 3 controls, no extra wrapped buttons) */}
+      {/* Top Bar: Station Search, Radius, Lines & Legend */}
       <div className="map-toolbar absolute top-4 left-4 right-4 z-[1000] flex items-center gap-2">
         {/* Station Selector Button */}
         <button
@@ -1119,6 +1413,7 @@ export default function CommuterMap({
           <option value={5000}>Within 5km</option>
         </select>
 
+        {/* Rail Lines Toggle */}
         <div className="map-lines-control relative flex flex-col items-start" data-map-control>
           <button
             type="button"
@@ -1142,9 +1437,22 @@ export default function CommuterMap({
             </div>
           )}
         </div>
+
+        {/* Legend Button */}
+        <button
+          type="button"
+          data-map-control
+          onClick={() => setOpenPanel((panel) => panel === 'legend' ? null : 'legend')}
+          aria-expanded={openPanel === 'legend'}
+          aria-controls="map-legend-modal"
+          className="workspace-map-control flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur hover:bg-slate-50"
+        >
+          <Info className="h-4 w-4 text-blue-600" />
+          Legend
+        </button>
       </div>
 
-      {/* Floating My Location Button (Neatly placed directly above bottom-right zoom controls) */}
+      {/* Floating My Location Button */}
       <button
         type="button"
         onClick={handleLocateUser}
