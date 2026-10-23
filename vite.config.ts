@@ -7,7 +7,7 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiProxyTarget = env.VITE_API_PROXY_TARGET ||
-    'http://localhost:5276';
+    'http://127.0.0.1:5276';
 
   return {
     plugins: [react(), tailwindcss(), ...(command === 'serve' && mode !== 'production' ? [mkcert()] : [])],
@@ -22,7 +22,7 @@ export default defineConfig(({ command, mode }) => {
         '/api': {
           target: apiProxyTarget,
           changeOrigin: true,
-          secure: !apiProxyTarget.includes('localhost'),
+          secure: !apiProxyTarget.includes('localhost') && !apiProxyTarget.includes('127.0.0.1'),
         },
       },
     },
