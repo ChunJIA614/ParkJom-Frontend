@@ -6,16 +6,67 @@ import { ArrowRight, ChevronDown } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
-/** Frames extracted from parkjom-hero.mp4 via ffmpeg (30fps, WebP q80) into /public/frames. */
-export const HERO_TOTAL_FRAMES = 300;
+/**
+ * Hero frame sets, all cut from `landing video.mp4` (4K master: 3840×2160 @ 120fps, 10.1s).
+ * - `hd`: 1920×1080 AVIF q66 4:4:4, sampled at 24fps (~21 MB) — desktop.
+ * - `sd`: 1280×720 WebP q82, sampled at 24fps (~14 MB) — fallback when AVIF can't decode.
+ * - `sm`: 960×540 WebP q78, sampled at 24fps (~8 MB) — phones and other narrow viewports.
+ * The set is picked once on mount from the viewport width; a failed AVIF decode drops to `sd`.
+ *
+ * The master opens with ~2 frames of a focus pull — genuinely defocused, edge variance ~170
+ * against ~2300 once it locks — which left the hero's very first paint looking blurry. The
+ * build therefore runs with `--trim-start 2`, so frame 1 here is the first sharp frame and
+ * the count is 240, not the 242 the 10.1s master yields. Rebuild without that flag and the
+ * blurry opening comes straight back.
+ *
+ * Rebuild all three with `python scripts/build-hero-frames.py` whenever the master changes.
+ * The master is 4K, so every set here is a true downsample with detail to spare. Raising `hd`
+ * to 2560×1440 is tempting but measured expensive: ~28 MB of payload (vs ~21 MB) and 3.3 GB of
+ * decoded bitmaps for 242 frames (vs 1.9 GB), which is close to what a browser tab tolerates.
+ * 1920 is the sane ceiling until the loader learns to release far-away frames.
+ */
+const FRAME_SETS = {
+  hd: { dir: '/frames-hd', ext: 'avif', count: 240, width: 1920 },
+  sd: { dir: '/frames', ext: 'webp', count: 240, width: 1280 },
+  sm: { dir: '/frames-sm', ext: 'webp', count: 240, width: 960 },
+};
+
+export const HERO_TOTAL_FRAMES = FRAME_SETS.hd.count;
 
 /** Pin length expressed in viewport heights. Keep in sync with `end: "+=400%"`. */
 export const HERO_PIN_VIEWPORTS = 4;
 
-/** Cap DPR so 3x phones don't allocate huge canvases for a 720p source. */
-const MAX_DPR = 2;
+/** Below this width the 960px set is plenty: a phone canvas is ~780 device px wide. */
+const MOBILE_BREAKPOINT = 768;
 
-const framePath = (index) => `/frames/frame_${String(index + 1).padStart(4, '0')}.webp`;
+/**
+ * Sanity cap on the canvas backing store. The real limiter is the frame's own pixel
+ * width (see `capBySource` in the resize effect), so on wide viewports this never
+ * binds. On a dpr-3 phone it used to clip the canvas to 2x (780 px from a 960 px
+ * source) and let the compositor upscale the rest — 3 lets the canvas reach the
+ * source's native width instead.
+ */
+const MAX_DPR = 3;
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Scroll distance the hero pins for. Zero under reduced motion: the hero then renders as a
+ * single static frame instead of scrubbing, so there is nothing to scroll through.
+ */
+export const getHeroPinViewports = () => (prefersReducedMotion() ? 0 : HERO_PIN_VIEWPORTS);
+
+const pickFrameSet = () => {
+  if (typeof window === 'undefined') return FRAME_SETS.hd;
+  if (prefersReducedMotion()) return FRAME_SETS.sd; // only frame 1 is ever fetched
+  return window.innerWidth < MOBILE_BREAKPOINT ? FRAME_SETS.sm : FRAME_SETS.hd;
+};
+
+const framePath = (index, set) =>
+  `${set.dir}/frame_${String(index + 1).padStart(4, '0')}.${set.ext}`;
 
 const isReady = (img) => Boolean(img && img.complete && img.naturalWidth > 0);
 
@@ -26,10 +77,24 @@ const btnSecondary =
 const stepCard =
   'rounded-[24px] bg-slate-950/45 backdrop-blur-xl border border-white/15 p-6 text-[#f5f5f7] shadow-2xl md:p-7';
 
-export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
+/**
+ * `totalFrames` is optional — it defaults to the active set's own count, which is what every
+ * caller wants. Leaving it required made `<HeroScrollCanvas />` a type error in LandingPage.
+ */
+export default function HeroScrollCanvas({ totalFrames = undefined }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
+
+  // Picked once on mount: `sm` on phones, `hd` on desktop; drops to `sd` if AVIF can't decode.
+  const [frameSet, setFrameSet] = useState(pickFrameSet);
+  const [reducedMotion] = useState(prefersReducedMotion);
+  const frameCount = totalFrames ?? frameSet.count;
+
+  // Native pixel width of the frames actually in use — drives the canvas DPR cap.
+  // 0 means "not known yet": fall back to the plain DPR cap until the first frame loads.
+  const sourceWidthRef = useRef(0);
+  const resizeRef = useRef(null);
 
   // Heavy data lives in refs so loading/scrubbing never triggers React re-renders.
   const imagesRef = useRef([]);
@@ -91,7 +156,7 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
   // ── Preload: frame 1 first (instant first paint), then everything else concurrently ──
   useEffect(() => {
     let cancelled = false;
-    const images = new Array(totalFrames);
+    const images = new Array(frameCount);
     imagesRef.current = images;
     drawnFrameRef.current = -1;
 
@@ -105,7 +170,7 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
         const done = (ok) => {
           if (cancelled) return;
           settled += 1;
-          const pct = Math.round((settled / totalFrames) * 100);
+          const pct = Math.round((settled / frameCount) * 100);
           if (pct !== lastPct) {
             lastPct = pct;
             setLoadProgress(pct);
@@ -114,18 +179,35 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
           if (ok && drawnFrameRef.current !== targetFrameRef.current) {
             renderFrame(targetFrameRef.current);
           }
-          resolve();
+          resolve(ok);
         };
-        img.onload = () => done(true);
+        img.onload = () => {
+          // Learn the real pixel width so the canvas can be capped to it.
+          if (img.naturalWidth > 0 && img.naturalWidth !== sourceWidthRef.current) {
+            sourceWidthRef.current = img.naturalWidth;
+            resizeRef.current?.();
+          }
+          done(true);
+        };
         img.onerror = () => done(false); // still counts so the progress bar can finish
-        img.src = framePath(index);
+        img.src = framePath(index, frameSet);
         images[index] = img;
       });
 
-    loadFrame(0).then(() => {
+    loadFrame(0).then((ok) => {
       if (cancelled) return;
+      // No AVIF decode? Swap to the WebP set and let this effect run again.
+      if (!ok && frameSet === FRAME_SETS.hd) {
+        setFrameSet(FRAME_SETS.sd);
+        return;
+      }
       renderFrame(0, true);
-      for (let i = 1; i < totalFrames; i += 1) loadFrame(i);
+      // Reduced motion: the hero is a still image, so frame 1 is the entire payload.
+      if (reducedMotion) {
+        setLoadProgress(100);
+        return;
+      }
+      for (let i = 1; i < frameCount; i += 1) loadFrame(i);
     });
 
     return () => {
@@ -136,7 +218,7 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
         img.onerror = null;
       });
     };
-  }, [totalFrames, renderFrame]);
+  }, [frameCount, frameSet, renderFrame, reducedMotion]);
 
   // ── HiDPI + responsive canvas sizing ──
   useEffect(() => {
@@ -144,8 +226,13 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
     if (!canvas) return undefined;
 
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-      const width = Math.round(canvas.clientWidth * dpr);
+      const cssWidth = Math.max(1, canvas.clientWidth);
+      // Never allocate a canvas bigger than the frames themselves: rendering 1280px of
+      // source into a 2160px bitmap only burns GPU/memory and looks identical.
+      const sourceWidth = sourceWidthRef.current;
+      const capBySource = sourceWidth > 0 ? sourceWidth / cssWidth : MAX_DPR;
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR, capBySource);
+      const width = Math.round(cssWidth * dpr);
       const height = Math.round(canvas.clientHeight * dpr);
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width; // resizing clears the bitmap…
@@ -154,14 +241,24 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
       renderFrame(targetFrameRef.current, true); // …so always repaint
     };
 
+    resizeRef.current = resize;
     resize();
     window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    return () => {
+      window.removeEventListener('resize', resize);
+      if (resizeRef.current === resize) resizeRef.current = null;
+    };
   }, [renderFrame]);
 
   // ── Single pinned timeline: frames + 4 copy layers, auto-reverted by useGSAP ──
   useGSAP(
     () => {
+      // Reduced motion: no pin, no scrub. Stage 1 stays as a still hero image.
+      if (reducedMotion) {
+        gsap.set(['.hero-stage-2', '.hero-stage-3', '.hero-stage-4'], { autoAlpha: 0 });
+        return;
+      }
+
       const frameObj = frameObjRef.current;
       frameObj.currentFrame = 0;
 
@@ -184,7 +281,7 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
       tl.to(
         frameObj,
         {
-          currentFrame: totalFrames - 1,
+          currentFrame: frameCount - 1,
           snap: 'currentFrame',
           duration: 1,
           onUpdate: () => renderFrame(frameObj.currentFrame),
@@ -206,7 +303,7 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
       // Stage 4 (85% – 100%): closing conversion copy stays until pin releases.
       tl.to('.hero-stage-4', { autoAlpha: 1, y: 0, duration: 0.07, ease: 'power2.out' }, 0.85);
     },
-    { scope: containerRef, dependencies: [totalFrames, renderFrame] },
+    { scope: containerRef, dependencies: [frameCount, renderFrame, reducedMotion] },
   );
 
   const loaded = loadProgress >= 100;
@@ -221,7 +318,17 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
       <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" aria-hidden="true" />
 
       {/* Soft radial darkening mask over <canvas> for crisp text legibility without hiding the 3D scene */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(2,6,23,0.55)_0%,rgba(2,6,23,0.15)_60%,transparent_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(2,6,23,0.42)_0%,rgba(2,6,23,0.12)_60%,transparent_100%)]" />
+
+      {/* Ultra-subtle film grain: breaks up AVIF banding and lifts perceived sharpness */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.045] mix-blend-soft-light"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23g)'/></svg>\")",
+          backgroundSize: '160px 160px',
+        }}
+      />
 
       {/* ── Stage 1 (0% – 20%): Cardless floating hero typography shifted slightly upward ── */}
       <div className="hero-stage-1 absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
@@ -250,10 +357,12 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
           </div>
         </div>
 
-        <span className="absolute bottom-6 inline-flex items-center gap-1.5 rounded-full bg-slate-950/40 backdrop-blur-md border border-white/20 px-4 py-1.5 text-[12px] font-medium tracking-[-0.01em] text-white shadow-lg">
-          Scroll to explore
-          <ChevronDown size={15} className="animate-bounce text-[#64d2ff]" />
-        </span>
+        {!reducedMotion && (
+          <span className="absolute bottom-6 inline-flex items-center gap-1.5 rounded-full bg-slate-950/40 backdrop-blur-md border border-white/20 px-4 py-1.5 text-[12px] font-medium tracking-[-0.01em] text-white shadow-lg">
+            Scroll to explore
+            <ChevronDown size={15} className="animate-bounce text-[#64d2ff]" />
+          </span>
+        )}
       </div>
 
       {/* ── Stage 2 (25% – 50%): Compact translucent glass card (bottom-left) ── */}
@@ -289,7 +398,7 @@ export default function HeroScrollCanvas({ totalFrames = HERO_TOTAL_FRAMES }) {
 
       {/* ── Stage 4 (85% – 100%): Floating closing CTA shifted above the glowing VIP bay ── */}
       <div className="hero-stage-4 invisible absolute inset-0 flex items-center justify-center px-5 text-center">
-        <div className="-translate-y-10 flex max-w-2xl flex-col items-center">
+        <div className="-translate-y-32 flex max-w-2xl flex-col items-center">
           <span className="inline-flex items-center gap-2 rounded-full bg-slate-950/40 backdrop-blur-md border border-white/20 px-4 py-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-[#64d2ff] shadow-lg">
             Now live
           </span>

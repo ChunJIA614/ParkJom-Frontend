@@ -27,9 +27,16 @@ firebase-debug.log
 .agents/
 .codex/
 .impeccable/
+.workbuddy-ai/
 
 # Environment files
 .env
+
+# Hero master video at the repo root (~56 MB). The scroll hero ships the derived
+# frame sets in public/frames*, rebuilt with scripts/build-hero-frames.py — the
+# master itself should not go into git history. Root-anchored so a small video
+# added elsewhere later is still tracked normally.
+/*.mp4
 
 # Node.js
 **/node_modules/

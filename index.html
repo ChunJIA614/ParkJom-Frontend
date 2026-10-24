@@ -19,7 +19,15 @@
     <meta name="twitter:description" content="Trusted parking near your LRT or MRT line." />
     <meta name="twitter:image" content="https://united-perigee-400000.web.app/og.png" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="preload" as="image" href="/images/parkjom-hero-campaign.webp" type="image/webp" fetchpriority="high" />
+    <!-- Hero first frame: the scrubber fetches it from JS, invisible to the preload scanner.
+         Must mirror pickFrameSet() in HeroScrollCanvas.jsx exactly:
+           reduced motion      -> sd webp at any width (only frame 1 is ever used)
+           >= 768px, motion ok -> hd avif
+           <  768px, motion ok -> sm webp
+         Getting this wrong downloads a frame the component never draws. -->
+    <link rel="preload" as="image" href="/frames/frame_0001.webp" type="image/webp" media="(prefers-reduced-motion: reduce)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/frames-hd/frame_0001.avif" type="image/avif" media="(min-width: 768px) and (prefers-reduced-motion: no-preference)" fetchpriority="high" />
+    <link rel="preload" as="image" href="/frames-sm/frame_0001.webp" type="image/webp" media="(max-width: 767px) and (prefers-reduced-motion: no-preference)" fetchpriority="high" />
     <link rel="icon" type="image/png" href="/branding/parkjom-logo.png" />
     <link rel="apple-touch-icon" href="/branding/parkjom-logo.png" />
     <title>ParkJom — Parking Near LRT &amp; MRT</title>
