@@ -414,6 +414,6 @@ export const RAPID_KL_LINE_COLORS: Record<string, { name: string; color: string;
   MR: { name: 'KL Monorail', color: '#84BD00', badge: 'MR', category: 'Monorail' },
   MRL: { name: 'KL Monorail', color: '#84BD00', badge: 'MR', category: 'Monorail' },
   BRT: { name: 'Sunway BRT', color: '#115740', badge: 'BRT', category: 'BRT' },
-  SA: { name: 'Shah Alam Line', color: '#0071CE', badge: 'LRT3', category: 'LRT' },
-  SAL: { name: 'Shah Alam Line', color: '#0071CE', badge: 'LRT3', category: 'LRT' },
+  SA: { name: 'Shah Alam Line', color: '#FF00FF', badge: 'LRT3', category: 'LRT' },
+  SAL: { name: 'Shah Alam Line', color: '#FF00FF', badge: 'LRT3', category: 'LRT' },
 };

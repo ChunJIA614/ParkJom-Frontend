@@ -14,7 +14,7 @@ import {
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import stationData from '../data/mrt_lrt_stations.json';
-import { ParkingSpot } from '../types';
+import { ParkingSpot, Booking } from '../types';
 import { loadRailNetworkData } from '@/services/transitData';
 import { watchDeviceLocation } from '@/services/deviceCapabilities';
 import { showAlert } from '@/contexts/ModalContext';
@@ -28,7 +28,42 @@ import {
   Loader2,
   LocateFixed,
   Info,
+  Bus,
+  Compass,
+  Footprints,
+  Sparkles,
+  Zap,
+  Car,
+  ExternalLink,
+  X,
 } from 'lucide-react';
+import {
+  RealtimeGeoJsonCollection,
+  getRealtimeVehiclesGeoJson,
+} from '@/services/gtfsRealtimeApi';
+import {
+  getAllRapidBusRoutes,
+  getRapidBusRoute,
+  normalizeBusRouteCode,
+  findConnectingBusRoutes,
+  findRoutesServingStation,
+  distanceMetersBetween,
+  RapidBusRoute,
+  ConnectingBusRouteResult,
+} from '@/services/rapidBusService';
+import {
+  planMultimodalJourney,
+  MultimodalPlanResult,
+  MultimodalItinerary,
+  CommuterPreference,
+} from '@/services/multimodalRoutingService';
+import {
+  calculateDrivingRoute,
+  DrivingRouteResult,
+} from '@/services/drivingRouteService';
+import { formatShortSpotName, formatShortAddress } from '../lib/formatUtils';
+import StationFeedersWidget from './StationFeedersWidget';
+import LinearJourneyNavigator from './LinearJourneyNavigator';
 
 // ---- GTFS GeoJSON types ----
 interface RailLineFeature {
@@ -67,16 +102,31 @@ export const TRANSIT_LINE_COLORS: Record<string, { name: string; color: string; 
   KG: { name: 'Kajang Line', color: '#059669', code: 'KG' },
   PY: { name: 'Putrajaya Line', color: '#FFCD00', code: 'PY' },
   MR: { name: 'KL Monorail', color: '#84BD00', code: 'MR' },
-  SA: { name: 'Shah Alam Line', color: '#0284C7', code: 'SA' },
+  SA: { name: 'Shah Alam Line', color: '#FF00FF', code: 'SA' },
   KT: { name: 'KLIA Transit / Ekspres', color: '#7B1FA2', code: 'KT' },
   BRT: { name: 'BRT Sunway', color: '#115740', code: 'BRT' },
 };
 
 export function cleanStationName(rawName: string): string {
+  if (!rawName) return '';
   return rawName
-    .replace(/^(?:(?:AG|SP|KJ|KG|PY|MR|SA|KT|KB|KC|KA|KD)d*\s*)+/i, '')
-    .replace(/\s+(?:LRT|MRT|Station)$/i, '')
+    .replace(/^(?:(?:(?:AG|SP|KJ|KG|PY|MR|SA|KT|KB|KC|KA|KD)\d{1,3}[A-Z]?|ERL|BRT)\s*[\/-]?\s*)+/i, '')
+    .replace(/\s+(?:LRT|MRT|Station|Komuter Station)$/i, '')
+    .replace(/\s*\((?:LRT|MRT|Monorail|Komuter)\)$/i, '')
     .trim() || rawName;
+}
+
+export function getStationCode(feature: any): string {
+  const p = feature?.properties || {};
+  if (p.ref && typeof p.ref === 'string') {
+    const m = p.ref.match(/\b(KJ|AG|SP|KG|PY|MR|SA)\d+\b/i);
+    if (m) return m[0].toUpperCase();
+    return p.ref.split(';')[0].trim().toUpperCase();
+  }
+  const name = String(p.name || '');
+  const m = name.match(/\b(KJ|AG|SP|KG|PY|MR|SA)\d+\b/i);
+  if (m) return m[0].toUpperCase();
+  return '';
 }
 
 export function getStationLines(feature: any): string[] {
@@ -101,6 +151,7 @@ export function getStationLines(feature: any): string[] {
   if (/(kajang|sbk)/i.test(combined) && !matched.includes('KG')) matched.push('KG');
   if (/(putrajaya|ssp)/i.test(combined) && !matched.includes('PY')) matched.push('PY');
   if (/monorail/i.test(combined) && !matched.includes('MR')) matched.push('MR');
+  if (/(shah alam line|lrt\s*3|lrt3|\bsal\b)/i.test(combined) && !matched.includes('SA')) matched.push('SA');
 
   // Key Klang Valley interchanges and shared corridors
   if (/Masjid Jamek/i.test(name)) {
@@ -121,6 +172,20 @@ export function getStationLines(feature: any): string[] {
     ['AG', 'KG'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
   } else if (/Bukit Bintang/i.test(name)) {
     ['MR', 'KG'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Ampang Park/i.test(name)) {
+    ['KJ', 'PY'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Sungai Besi/i.test(name)) {
+    ['SP', 'PY'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Bandar Utama/i.test(name)) {
+    ['KG', 'SA'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Kwasa Damansara/i.test(name)) {
+    ['KG', 'PY'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Bandar Tasik Selatan/i.test(name)) {
+    ['SP', 'KT'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Kampung Batu/i.test(name)) {
+    ['PY', 'KC'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
+  } else if (/Putra Heights/i.test(name)) {
+    ['SP', 'KJ'].forEach((c) => { if (!matched.includes(c)) matched.push(c); });
   }
 
   // Shared track corridor for Ampang & Sri Petaling (Sentul Timur to Chan Sow Lin)
@@ -176,6 +241,25 @@ const selectedParkingIcon = L.divIcon({
   popupAnchor: [0, -19],
 });
 
+// Prominent glowing beacon icon for the user's reserved parking bay
+const activeReservedParkingIcon = L.divIcon({
+  className: 'custom-active-booking-icon',
+  html: `
+    <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+      <div style="position: absolute; top: -6px; width: 44px; height: 44px; border-radius: 9999px; background: rgba(0, 122, 255, 0.35); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+      <div style="width: 36px; height: 36px; border-radius: 12px; background: linear-gradient(135deg, #007AFF, #0051cb); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; box-shadow: 0 4px 14px rgba(0, 122, 255, 0.5); border: 2.5px solid #ffffff; z-index: 2;">
+        🅿️
+      </div>
+      <div style="background: #0f172a; color: white; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 9999px; margin-top: 3px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1.5px solid rgba(255,255,255,0.4); z-index: 2;">
+        Reserved Bay
+      </div>
+    </div>
+  `,
+  iconSize: [44, 58],
+  iconAnchor: [22, 48],
+  popupAnchor: [0, -46],
+});
+
 // Modern user location pulsing dot icon
 const userLocationIcon = L.divIcon({
   className: 'custom-user-location-icon',
@@ -188,6 +272,55 @@ const userLocationIcon = L.divIcon({
   iconSize: [36, 36],
   iconAnchor: [18, 18],
   popupAnchor: [0, -18],
+});
+
+// Linear Journey Multimodal Icons
+const boardStopIcon = L.divIcon({
+  className: 'custom-board-stop-icon',
+  html: `
+    <div style="
+      background: #059669; color: white; padding: 3px 8px; border-radius: 9999px;
+      font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      border: 2px solid white; display: flex; align-items: center; gap: 4px;
+    ">
+      <span>🚌 Board Bus Here</span>
+    </div>
+  `,
+  iconSize: [95, 24],
+  iconAnchor: [48, 12],
+  popupAnchor: [0, -14],
+});
+
+const alightStopIcon = L.divIcon({
+  className: 'custom-alight-stop-icon',
+  html: `
+    <div style="
+      background: #0284c7; color: white; padding: 3px 8px; border-radius: 9999px;
+      font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      border: 2px solid white; display: flex; align-items: center; gap: 4px;
+    ">
+      <span>🛑 Alight Bus Here</span>
+    </div>
+  `,
+  iconSize: [95, 24],
+  iconAnchor: [48, 12],
+  popupAnchor: [0, -14],
+});
+
+const stationEntranceIcon = L.divIcon({
+  className: 'custom-station-entrance-icon',
+  html: `
+    <div style="
+      background: #0f172a; color: white; padding: 3px 8px; border-radius: 9999px;
+      font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      border: 2px solid #14b8a6; display: flex; align-items: center; gap: 4px;
+    ">
+      <span>🚉 Station Entrance</span>
+    </div>
+  `,
+  iconSize: [110, 24],
+  iconAnchor: [55, 12],
+  popupAnchor: [0, -14],
 });
 
 // ---- Station Marker Generator based on Station Marker System Spec ----
@@ -203,47 +336,14 @@ function createStationMarkerIcon(opts: StationMarkerOptions): L.DivIcon {
   const { rawName, lines, isInterchange, isSelected, isSearchOrigin } = opts;
   const cleanName = cleanStationName(rawName);
 
-  let discSize = 18;
-  let centerSize = 9;
-  let hitboxSize = 36;
+  const size = 44;
+  const primaryColor = TRANSIT_LINE_COLORS[lines[0]]?.color || '#007AFF';
+  const background = getRingBackground(lines);
 
-  if (isSelected || isSearchOrigin) {
-    discSize = 36;
-    centerSize = 22;
-    hitboxSize = 48;
-  } else if (isInterchange) {
-    discSize = 28;
-    centerSize = 14;
-    hitboxSize = 42;
-  }
-
-  const gradient = getRingBackground(lines);
-
-  let discClasses = 'station-marker-disc';
-  let discStyle = `width: ${discSize}px; height: ${discSize}px; background: ${gradient};`;
-  let centerHtml = '';
-
-  if (isSelected || isSearchOrigin) {
-    discClasses += isSearchOrigin ? ' is-origin-glow' : ' is-selected-pulse';
-    centerHtml = `
-      <div style="width: ${centerSize}px; height: ${centerSize}px; border-radius: 50%; background: #0F172A; display: flex; align-items: center; justify-content: center;">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="5" y="3" width="14" height="14" rx="3.5"/>
-          <path d="M7 19l2-2.5m8 2.5-2-2.5M8 7h8m-8 4h.01m7.99 0h.01"/>
-        </svg>
-      </div>
-    `;
-    if (!isSearchOrigin) {
-      discStyle += `box-shadow: 0 0 0 2.5px #ffffff, 0 4px 12px rgba(15,23,42,0.35);`;
-    }
-  } else {
-    discStyle += `box-shadow: 0 0 0 2px #ffffff, 0 2px 6px rgba(0,0,0,0.22);`;
-    centerHtml = `<div style="width: ${centerSize}px; height: ${centerSize}px; border-radius: 50%; background: #ffffff;"></div>`;
-  }
-
-  const hitboxClasses = [
+  const markerClasses = [
+    'station-marker',
     'station-marker-hitbox',
-    isSelected ? 'is-selected' : '',
+    isSelected ? 'is-active is-selected' : '',
     isSearchOrigin ? 'is-search-origin' : '',
     isInterchange ? 'is-interchange' : '',
   ].filter(Boolean).join(' ');
@@ -251,12 +351,13 @@ function createStationMarkerIcon(opts: StationMarkerOptions): L.DivIcon {
   const labelText = isSearchOrigin ? `${cleanName} · Origin` : cleanName;
 
   const html = `
-    <div class="${hitboxClasses}" style="width: ${hitboxSize}px; height: ${hitboxSize}px;">
+    <div class="${markerClasses}" style="--station-color: ${primaryColor}; width: ${size}px; height: ${size}px;">
       <div class="station-pill-label">
         <span>${labelText}</span>
       </div>
-      <div class="${discClasses}" style="${discStyle}">
-        ${centerHtml}
+      <span class="station-marker__pulse"></span>
+      <div class="station-marker__dot station-marker-disc" style="background: ${background};">
+        <span class="station-marker__center"></span>
       </div>
     </div>
   `;
@@ -264,9 +365,9 @@ function createStationMarkerIcon(opts: StationMarkerOptions): L.DivIcon {
   return L.divIcon({
     className: 'custom-station-icon',
     html,
-    iconSize: [hitboxSize, hitboxSize],
-    iconAnchor: [hitboxSize / 2, hitboxSize / 2],
-    popupAnchor: [0, -(hitboxSize / 2) - 4],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2) - 4],
   });
 }
 
@@ -285,7 +386,8 @@ function createClusterIcon(count: number): L.DivIcon {
   });
 }
 
-const normalizeStationKey = (value: string) => value.trim().toLowerCase().replace(/\s+(lrt|mrt)$/i, '');
+const normalizeStationKey = (value: string) =>
+  value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
 const getStationKeys = (feature: any): string[] => {
   const p = feature.properties || {};
@@ -295,6 +397,7 @@ const getStationKeys = (feature: any): string[] => {
     p.full_name,
     p.ref,
     cleanStationName(p.name || ''),
+    cleanStationName(p['name:en'] || ''),
   ]
     .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
     .map(normalizeStationKey);
@@ -315,36 +418,59 @@ interface CommuterMapProps {
   locationAccuracy?: number | null;
   locationStatus?: 'locating' | 'ready' | 'denied' | 'unavailable';
   onRequestLocation?: () => void;
+  selectedBusRoute?: string | null;
+  onBusRouteSelect?: (routeId: string | null) => void;
+  activeBookingSpot?: ParkingSpot | null;
+  activeBooking?: Booking | null;
+  workspaceMode?: 'explore' | 'navigation';
+  onNavigate?: () => void;
+  onExitNavigation?: () => void;
+  onRoutesCalculated?: (routes: {
+    drivingRoute: DrivingRouteResult | null;
+    linearPlan: MultimodalPlanResult | null;
+    targetSpot: ParkingSpot | null;
+  }) => void;
 }
 
 interface MapTarget {
-  lat: number;
-  lng: number;
+  lat?: number;
+  lng?: number;
   zoom?: number;
   animate?: boolean;
   timestamp?: number;
+  bounds?: [[number, number], [number, number]];
 }
 
-// ---- Map View Controller: Handles programmatic smooth pans and flies without jarring camera jumps ----
+// ---- Map View Controller: Handles programmatic smooth pans, flies, and bounding box fits ----
 function MapViewController({ target }: { target: MapTarget | null }) {
   const map = useMap();
 
   useEffect(() => {
     if (!target) return;
-    if (target.zoom !== undefined) {
-      if (target.animate === false) {
-        map.setView([target.lat, target.lng], target.zoom);
+    if (target.bounds) {
+      map.fitBounds(target.bounds, {
+        padding: [60, 60],
+        maxZoom: 16,
+        animate: target.animate !== false,
+      });
+      return;
+    }
+    if (target.lat !== undefined && target.lng !== undefined) {
+      if (target.zoom !== undefined) {
+        if (target.animate === false) {
+          map.setView([target.lat, target.lng], target.zoom);
+        } else {
+          map.flyTo([target.lat, target.lng], target.zoom, {
+            duration: 0.6,
+            easeLinearity: 0.3,
+          });
+        }
       } else {
-        map.flyTo([target.lat, target.lng], target.zoom, {
-          duration: 0.6,
-          easeLinearity: 0.3,
+        map.panTo([target.lat, target.lng], {
+          animate: true,
+          duration: 0.35,
         });
       }
-    } else {
-      map.panTo([target.lat, target.lng], {
-        animate: true,
-        duration: 0.35,
-      });
     }
   }, [target, map]);
 
@@ -401,6 +527,47 @@ function UserLocationPane() {
   return null;
 }
 
+function LiveVehiclePane() {
+  const map = useMap();
+  useEffect(() => {
+    if (!map.getPane('liveVehiclePane')) {
+      const pane = map.createPane('liveVehiclePane');
+      pane.style.zIndex = '420';
+    }
+  }, [map]);
+  return null;
+}
+
+function createLiveBusIcon(bearing: number = 0, routeId: string = '') {
+  const safeBearing = Math.round(bearing || 0);
+  const safeRoute = (routeId || 'FEEDER').trim();
+  return L.divIcon({
+    className: 'custom-live-bus-icon',
+    html: `
+      <div class="live-transit-bus-marker">
+        <div class="live-bus-body" style="transform: rotate(${safeBearing}deg);">
+          <div class="live-bus-pointer"></div>
+          <div class="live-bus-glyph">🚌</div>
+        </div>
+        <div class="live-bus-badge-label">${safeRoute}</div>
+      </div>
+    `,
+    iconSize: [40, 48],
+    iconAnchor: [20, 24],
+    popupAnchor: [0, -20],
+  });
+}
+
+function createBusStopIcon(stopName: string, color: string = '#008716'): L.DivIcon {
+  return L.divIcon({
+    className: 'rapid-bus-stop-icon',
+    html: `<div class="bus-stop-dot" style="background-color: ${color};" title="${stopName}"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -7],
+  });
+}
+
 // ---- Line Control Panel (GTFS Rail Lines Toggle) ----
 interface LineControlPanelProps {
   visibleLines: Record<string, boolean>;
@@ -432,7 +599,7 @@ function LineControlPanel({
     KGL: '#059669',
     PYL: '#FFCD00',
     BRT: '#115740',
-    SAL: '#0284C7',
+    SAL: '#FF00FF',
   };
 
   const routes = Object.keys(visibleLines);
@@ -588,6 +755,20 @@ function MapLegendModal({ isOpen, onClose }: MapLegendModalProps) {
               <div className="text-[10px] text-slate-400">Zoomed-out count</div>
             </div>
           </div>
+
+          {/* Live Feeder Bus */}
+          <div className="p-2 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center gap-2.5 col-span-2">
+            <div className="w-[26px] h-[26px] rounded-full bg-[#059669] shadow-[0_0_0_2px_#fff,0_2px_6px_rgba(5,150,105,0.3)] flex items-center justify-center text-xs text-white shrink-0">
+              🚌
+            </div>
+            <div>
+              <div className="font-bold text-slate-800 text-[11px] flex items-center gap-1.5">
+                <span>Live MRT Feeder Bus</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              </div>
+              <div className="text-[10px] text-slate-500">Real-time GPS telemetry from data.gov.my</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -625,6 +806,11 @@ function MapLegendModal({ isOpen, onClose }: MapLegendModalProps) {
             <span className="font-medium text-slate-700 truncate">KL Monorail</span>
             <span className="text-[10px] text-slate-400 font-mono ml-auto">#84BD00</span>
           </div>
+          <div className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50">
+            <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ background: '#FF00FF' }} />
+            <span className="font-medium text-slate-700 truncate">Shah Alam Line (LRT3)</span>
+            <span className="text-[10px] text-slate-400 font-mono ml-auto">#FF00FF</span>
+          </div>
         </div>
       </div>
     </div>
@@ -646,12 +832,30 @@ export default function CommuterMap({
   locationAccuracy,
   locationStatus,
   onRequestLocation,
+  selectedBusRoute,
+  onBusRouteSelect,
+  activeBookingSpot,
+  activeBooking,
+  workspaceMode = 'explore',
+  onNavigate,
+  onExitNavigation,
+  onRoutesCalculated,
 }: CommuterMapProps) {
   const klCenter: [number, number] = [3.1390, 101.6869];
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
   const [currentZoom, setCurrentZoom] = useState(12);
-  const [openPanel, setOpenPanel] = useState<'stations' | 'lines' | 'legend' | null>(null);
+  const [openPanel, setOpenPanel] = useState<'stations' | 'lines' | 'legend' | 'busRoutes' | null>(null);
   const [stationFilter, setStationFilter] = useState('');
+  const [dismissedStation, setDismissedStation] = useState<string | null>(null);
+  const popupTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (popupTimerRef.current) {
+        clearTimeout(popupTimerRef.current);
+      }
+    };
+  }, []);
 
   // Active Station Details popup state (guaranteed to render independently of marker re-renders)
   const [activeStationPopup, setActiveStationPopup] = useState<{
@@ -659,7 +863,289 @@ export default function CommuterMap({
     network: string;
     lat: number;
     lng: number;
+    code?: string;
   } | null>(null);
+
+  // Target parking spot: either currently selected bay or user's active reservation
+  const targetSpot = selectedSpot || activeBookingSpot;
+
+  // ---- Driving Route from Current Location to Parking Bay ----
+  const [drivingRoute, setDrivingRoute] = useState<DrivingRouteResult | null>(null);
+  const [isLoadingDrivingRoute, setIsLoadingDrivingRoute] = useState<boolean>(false);
+  const [journeyTab, setJourneyTab] = useState<'drive' | 'transit'>('drive');
+  const [isNavigatorMinimized, setIsNavigatorMinimized] = useState<boolean>(false);
+
+  // ---- GTFS-Realtime Live Moving Transit Vehicles Layer ----
+  const [showLiveBuses, setShowLiveBuses] = useState<boolean>(true);
+  const [liveBusesData, setLiveBusesData] = useState<RealtimeGeoJsonCollection | null>(null);
+  const [isLoadingLiveBuses, setIsLoadingLiveBuses] = useState<boolean>(false);
+
+  // Selective Bus Route State (controlled or uncontrolled)
+  const [internalBusRoute, setInternalBusRoute] = useState<string | null>(null);
+  const effectiveBusRoute = selectedBusRoute !== undefined ? selectedBusRoute : internalBusRoute;
+  const [busRouteSearch, setBusRouteSearch] = useState('');
+
+  // ── OpenTripPlanner Linear Multimodal Itinerary Engine State ──
+  const [linearPlan, setLinearPlan] = useState<MultimodalPlanResult | null>(null);
+  const [activeItineraryId, setActiveItineraryId] = useState<string>('');
+  const [focusedLegIndex, setFocusedLegIndex] = useState<number | null>(null);
+  const [showLinearNavigator, setShowLinearNavigator] = useState<boolean>(false);
+  const [preference, setPreference] = useState<CommuterPreference>('balanced');
+  const [isLoadingLinearPlan, setIsLoadingLinearPlan] = useState<boolean>(false);
+
+  // Automatically plan multimodal journey when spot or station changes
+  useEffect(() => {
+    if (!targetSpot) {
+      setLinearPlan(null);
+      setShowLinearNavigator(false);
+      return;
+    }
+
+    let isSubscribed = true;
+    setIsLoadingLinearPlan(true);
+
+    const spotLat = targetSpot.lat || targetSpot.latitude;
+    const spotLng = targetSpot.lng || targetSpot.longitude;
+
+    planMultimodalJourney(
+      {
+        name: targetSpot.name || `Bay ${targetSpot.parkingLabel}`,
+        lat: spotLat,
+        lng: spotLng,
+        address: targetSpot.address,
+      },
+      selectedStationCoords && selectedStation
+        ? { name: selectedStation, lat: selectedStationCoords.lat, lng: selectedStationCoords.lng }
+        : null,
+      liveBusesData?.features?.map((f) => ({
+        id: f.properties.vehicleId,
+        vehicleId: f.properties.vehicleId,
+        licensePlate: f.properties.licensePlate,
+        routeId: f.properties.routeId,
+        latitude: f.geometry.coordinates[1],
+        longitude: f.geometry.coordinates[0],
+        bearing: f.properties.bearing,
+        speedKmh: f.properties.speedKmh,
+        distanceMeters: undefined,
+        estimatedArrivalMinutes: 3,
+        timestamp: new Date().toISOString(),
+        agency: 'prasarana',
+        category: 'rapid-bus-mrtfeeder',
+      })),
+      preference,
+    )
+      .then((plan) => {
+        if (!isSubscribed) return;
+        setLinearPlan(plan);
+        setActiveItineraryId(plan.recommendedItinerary.id);
+      })
+      .catch((err) => console.warn('[CommuterMap] Linear plan error:', err))
+      .finally(() => {
+        if (isSubscribed) setIsLoadingLinearPlan(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [
+    targetSpot?.id,
+    targetSpot?.lat,
+    targetSpot?.lng,
+    targetSpot?.latitude,
+    targetSpot?.longitude,
+    selectedStation,
+    selectedStationCoords?.lat,
+    selectedStationCoords?.lng,
+    preference,
+  ]);
+
+  const activeItinerary = useMemo(() => {
+    if (!linearPlan) return null;
+    return (
+      linearPlan.allItineraries.find((it) => it.id === activeItineraryId) ||
+      linearPlan.recommendedItinerary
+    );
+  }, [linearPlan, activeItineraryId]);
+
+  const handleSetBusRoute = (route: string | null) => {
+    setInternalBusRoute(route);
+    onBusRouteSelect?.(route);
+  };
+
+  // Filtered live vehicles: ONLY return vehicles when a specific bus route is selected!
+  // When no route is selected, return [] so ZERO bus markers clutter the map by default!
+  const displayVehicles = useMemo(() => {
+    if (!liveBusesData?.features || !effectiveBusRoute) return [];
+    const target = effectiveBusRoute.trim().toUpperCase();
+    const normTarget = normalizeBusRouteCode(target);
+    return liveBusesData.features.filter((f) => {
+      const r = (f.properties?.routeId || '').trim().toUpperCase();
+      return r === target || (normTarget && normalizeBusRouteCode(r) === normTarget);
+    });
+  }, [liveBusesData, effectiveBusRoute]);
+
+  // Active selected Rapid Bus KL / MRT Feeder route details (road polyline coordinates and bus stops from GTFS, with fallback)
+  const activeRouteDetails = useMemo<RapidBusRoute | null>(() => {
+    if (!effectiveBusRoute) return null;
+    const staticMatch = getRapidBusRoute(effectiveBusRoute);
+    if (staticMatch && staticMatch.coordinates && staticMatch.coordinates.length > 0) {
+      return staticMatch;
+    }
+
+    // Fallback: if a live route is not in static GTFS, construct a connecting route path from station + live buses
+    const pts: [number, number][] = [];
+    if (activeStationPopup) {
+      pts.push([activeStationPopup.lat, activeStationPopup.lng]);
+    } else if (selectedStationCoords) {
+      pts.push([selectedStationCoords.lat, selectedStationCoords.lng]);
+    }
+    displayVehicles.forEach((f) => {
+      const c = f.geometry?.coordinates;
+      if (c && c.length >= 2) {
+        pts.push([c[1], c[0]]);
+      }
+    });
+    if (pts.length >= 2) {
+      return {
+        routeId: effectiveBusRoute,
+        shortName: effectiveBusRoute,
+        longName: selectedStation ? `Feeder Route ${effectiveBusRoute} (${selectedStation})` : `Rapid KL Route ${effectiveBusRoute}`,
+        color: '#008716',
+        shapeId: null,
+        coordinates: pts,
+        stops: [],
+        connectedStations: selectedStation ? [selectedStation.toUpperCase()] : [],
+      };
+    }
+    return staticMatch;
+  }, [effectiveBusRoute, displayVehicles, activeStationPopup, selectedStationCoords, selectedStation]);
+
+  // All Rapid Bus KL + MRT Feeder routes from static GTFS
+  const allStaticRoutes = useMemo(() => {
+    return getAllRapidBusRoutes();
+  }, []);
+
+  // Distinct bus routes currently operating in live telemetry
+  const availableBusRoutes = useMemo(() => {
+    if (!liveBusesData?.features) return [];
+    const counts = new Map<string, number>();
+    liveBusesData.features.forEach((f) => {
+      const r = (f.properties?.routeId || '').trim().toUpperCase();
+      if (r) {
+        counts.set(r, (counts.get(r) || 0) + 1);
+      }
+    });
+    return Array.from(counts.entries())
+      .map(([routeId, count]) => ({ routeId, count }))
+      .sort((a, b) => a.routeId.localeCompare(b.routeId, undefined, { numeric: true }));
+  }, [liveBusesData]);
+
+  const focusBusRouteOnMap = (routeId: string) => {
+    const routeData = getRapidBusRoute(routeId);
+    const normTarget = normalizeBusRouteCode(routeId);
+    const matchedVehicles =
+      liveBusesData?.features?.filter((f) => {
+        const r = (f.properties?.routeId || '').trim().toUpperCase();
+        return r === routeId.trim().toUpperCase() || (normTarget && normalizeBusRouteCode(r) === normTarget);
+      }) || [];
+
+    const allPoints: [number, number][] = [];
+    if (routeData?.coordinates && routeData.coordinates.length > 0) {
+      routeData.coordinates.forEach(([lat, lng]) => allPoints.push([lat, lng]));
+    }
+    matchedVehicles.forEach((f) => {
+      const c = f.geometry?.coordinates;
+      if (c && c.length >= 2) allPoints.push([c[1], c[0]]);
+    });
+
+    if (allPoints.length >= 2) {
+      let minLat = 90;
+      let maxLat = -90;
+      let minLng = 180;
+      let maxLng = -180;
+      allPoints.forEach(([lat, lng]) => {
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+      });
+
+      setMapTarget({
+        lat: (minLat + maxLat) / 2,
+        lng: (minLng + maxLng) / 2,
+        bounds: [
+          [minLat, minLng],
+          [maxLat, maxLng],
+        ],
+        animate: true,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    if (allPoints.length === 1) {
+      setMapTarget({
+        lat: allPoints[0][0],
+        lng: allPoints[0][1],
+        zoom: 15,
+        animate: true,
+        timestamp: Date.now(),
+      });
+    }
+  };
+
+  const lastFocusedBusRouteRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!effectiveBusRoute) {
+      lastFocusedBusRouteRef.current = null;
+      return;
+    }
+    if (lastFocusedBusRouteRef.current !== effectiveBusRoute) {
+      lastFocusedBusRouteRef.current = effectiveBusRoute;
+      focusBusRouteOnMap(effectiveBusRoute);
+    }
+  }, [effectiveBusRoute]);
+
+  const handleSelectRoute = (routeId: string | null) => {
+    handleSetBusRoute(routeId);
+    setOpenPanel(null);
+
+    if (!routeId) return;
+    lastFocusedBusRouteRef.current = routeId;
+    focusBusRouteOnMap(routeId);
+  };
+
+  useEffect(() => {
+    if (!showLiveBuses) return;
+
+    let isSubscribed = true;
+    const fetchLiveBuses = async () => {
+      try {
+        setIsLoadingLiveBuses(true);
+        const data = await getRealtimeVehiclesGeoJson('prasarana', 'rapid-bus-mrtfeeder');
+        if (isSubscribed) {
+          setLiveBusesData(data);
+        }
+      } catch (err: any) {
+        if (isSubscribed) {
+          console.warn('[CommuterMap] Failed to load live GTFS-R vehicles:', err);
+        }
+      } finally {
+        if (isSubscribed) {
+          setIsLoadingLiveBuses(false);
+        }
+      }
+    };
+
+    fetchLiveBuses();
+    // Refresh every 30 seconds to sync with data.gov.my 30s broadcast cycle
+    const interval = setInterval(fetchLiveBuses, 30000);
+
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [showLiveBuses]);
 
   // Local fallback location watcher if parent does not provide userLocation
   const [localLocation, setLocalLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -702,7 +1188,7 @@ export default function CommuterMap({
   // Auto-center on user location when first acquired, if no station is pre-selected
   const hasAutoCenteredOnUserRef = useRef(false);
   useEffect(() => {
-    if (effectiveUserLocation && !selectedStationCoords && !hasAutoCenteredOnUserRef.current) {
+    if (effectiveUserLocation && !selectedStationCoords && !activeBookingSpot && !hasAutoCenteredOnUserRef.current) {
       hasAutoCenteredOnUserRef.current = true;
       setMapTarget({
         lat: effectiveUserLocation.lat,
@@ -712,7 +1198,94 @@ export default function CommuterMap({
         timestamp: Date.now(),
       });
     }
-  }, [effectiveUserLocation, selectedStationCoords]);
+  }, [effectiveUserLocation, selectedStationCoords, activeBookingSpot]);
+
+  // Automatically calculate road driving route from current location to target parking spot
+  useEffect(() => {
+    if (!effectiveUserLocation || !targetSpot) {
+      setDrivingRoute(null);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingDrivingRoute(true);
+
+    const destLat = targetSpot.lat || targetSpot.latitude;
+    const destLng = targetSpot.lng || targetSpot.longitude;
+
+    calculateDrivingRoute(
+      {
+        lat: effectiveUserLocation.lat,
+        lng: effectiveUserLocation.lng,
+        name: 'Current Location',
+      },
+      {
+        lat: destLat,
+        lng: destLng,
+        name: targetSpot.name || `Bay ${targetSpot.parkingLabel}`,
+        address: targetSpot.address,
+      }
+    )
+      .then((res) => {
+        if (!isMounted) return;
+        setDrivingRoute(res);
+      })
+      .catch((err) => console.warn('[CommuterMap] Driving route error:', err))
+      .finally(() => {
+        if (isMounted) setIsLoadingDrivingRoute(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    effectiveUserLocation?.lat,
+    effectiveUserLocation?.lng,
+    targetSpot?.id,
+    targetSpot?.lat,
+    targetSpot?.lng,
+    targetSpot?.latitude,
+    targetSpot?.longitude,
+  ]);
+
+  // Notify parent of calculated routes for linear process integration
+  useEffect(() => {
+    onRoutesCalculated?.({
+      drivingRoute,
+      linearPlan,
+      targetSpot,
+    });
+  }, [drivingRoute, linearPlan, targetSpot, onRoutesCalculated]);
+
+  // When workspaceMode is navigation, ensure bounds frame the drive
+  useEffect(() => {
+    if (workspaceMode === 'navigation') {
+      setShowLinearNavigator(true);
+      setJourneyTab('drive');
+      if (drivingRoute) {
+        setMapTarget({
+          bounds: drivingRoute.bounds,
+          animate: true,
+          timestamp: Date.now(),
+        });
+      } else if (activeBookingSpot && effectiveUserLocation) {
+        const pLat = activeBookingSpot.lat || activeBookingSpot.latitude;
+        const pLng = activeBookingSpot.lng || activeBookingSpot.longitude;
+        const minLat = Math.min(effectiveUserLocation.lat, pLat);
+        const maxLat = Math.max(effectiveUserLocation.lat, pLat);
+        const minLng = Math.min(effectiveUserLocation.lng, pLng);
+        const maxLng = Math.max(effectiveUserLocation.lng, pLng);
+        setMapTarget({
+          bounds: [
+            [minLat, minLng],
+            [maxLat, maxLng],
+          ],
+          animate: true,
+          timestamp: Date.now(),
+        });
+      }
+    }
+  }, [workspaceMode, drivingRoute, activeBookingSpot?.id, effectiveUserLocation?.lat, effectiveUserLocation?.lng]);
 
   // react-router navigation
   const navigate = useNavigate();
@@ -777,14 +1350,32 @@ export default function CommuterMap({
     const deduped = new Map<string, any>();
 
     transitStations.forEach((feature: any) => {
-      const coordinates = feature.geometry?.coordinates;
-      const rawName = String(feature.properties?.name || feature.properties?.['name:en'] || '');
-      const rawRef = String(feature.properties?.ref || '');
-      const key = normalizeStationKey(rawRef || rawName)
-        || (Array.isArray(coordinates) ? `${coordinates[1]?.toFixed?.(5) ?? coordinates[1]}:${coordinates[0]?.toFixed?.(5) ?? coordinates[0]}` : rawName);
+      const rawName = String(feature.properties?.['name:en'] || feature.properties?.name || '');
+      const cleanName = cleanStationName(rawName);
+      const key = normalizeStationKey(cleanName);
+      if (!key) return;
 
       if (!deduped.has(key)) {
-        deduped.set(key, feature);
+        deduped.set(key, {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            name: cleanName,
+            'name:en': cleanName,
+            allRefs: feature.properties?.ref ? [feature.properties.ref] : [],
+            allNetworks: feature.properties?.network ? [feature.properties.network] : [],
+          },
+        });
+      } else {
+        const existing = deduped.get(key);
+        if (feature.properties?.ref && !existing.properties.allRefs.includes(feature.properties.ref)) {
+          existing.properties.allRefs.push(feature.properties.ref);
+        }
+        if (feature.properties?.network && !existing.properties.allNetworks.includes(feature.properties.network)) {
+          existing.properties.allNetworks.push(feature.properties.network);
+        }
+        existing.properties.ref = existing.properties.allRefs.join(';');
+        existing.properties.network = existing.properties.allNetworks.join('; ');
       }
     });
 
@@ -793,21 +1384,50 @@ export default function CommuterMap({
 
   const selectedStationKey = normalizeStationKey(selectedStation || '');
 
-  // Keep activeStationPopup in sync when selectedStation or selectedStationCoords changes
-  useEffect(() => {
-    if (selectedStation && selectedStationCoords) {
-      const feat = stationFeatures.find((f: any) =>
-        getStationKeys(f).includes(selectedStationKey)
-      );
-      const network = feat?.properties?.network || '';
-      setActiveStationPopup({
-        name: selectedStation,
-        network,
-        lat: selectedStationCoords.lat,
-        lng: selectedStationCoords.lng,
-      });
+  // Memoized popup LatLng to prevent Leaflet autoPan thrashing and flashing
+  const popupPosition = useMemo<[number, number] | null>(() => {
+    return activeStationPopup ? [activeStationPopup.lat, activeStationPopup.lng] : null;
+  }, [activeStationPopup?.lat, activeStationPopup?.lng]);
+
+  const popupCoords = useMemo(() => {
+    return activeStationPopup ? { lat: activeStationPopup.lat, lng: activeStationPopup.lng } : null;
+  }, [activeStationPopup?.lat, activeStationPopup?.lng]);
+
+  const selectedStationFeature = useMemo(() => {
+    if (!selectedStationKey) return null;
+    return stationFeatures.find((f: any) => getStationKeys(f).includes(selectedStationKey)) || null;
+  }, [stationFeatures, selectedStationKey]);
+
+  const resolvedStationCoords = useMemo(() => {
+    const coords = selectedStationFeature?.geometry?.coordinates;
+    if (coords && coords.length >= 2) {
+      return { lat: coords[1], lng: coords[0] };
     }
-  }, [selectedStation, selectedStationCoords, selectedStationKey, stationFeatures]);
+    return selectedStationCoords;
+  }, [selectedStationFeature, selectedStationCoords]);
+
+  // Keep activeStationPopup in sync when selectedStation or selectedStationCoords changes (smooth delay for ripple animation)
+  useEffect(() => {
+    if (selectedStation && resolvedStationCoords) {
+      if (dismissedStation === selectedStation) return;
+      const feat = selectedStationFeature;
+      const network = feat?.properties?.network || '';
+      const code = feat ? getStationCode(feat) : (selectedStationId || '');
+
+      if (activeStationPopup?.name === selectedStation) return;
+
+      if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+      popupTimerRef.current = setTimeout(() => {
+        setActiveStationPopup({
+          name: selectedStation,
+          network,
+          lat: resolvedStationCoords.lat,
+          lng: resolvedStationCoords.lng,
+          code,
+        });
+      }, 550);
+    }
+  }, [selectedStation, resolvedStationCoords, selectedStationId, selectedStationFeature, dismissedStation]);
 
   // Distribute spots with identical coordinates slightly (~18m) so every bay is visible and clickable
   const displaySpots = useMemo(() => {
@@ -842,6 +1462,52 @@ export default function CommuterMap({
       };
     });
   }, [spots]);
+
+  // Map of parking spot ID -> connecting Rapid Bus routes that pass near the bay and serve the selected station
+  const spotConnectingRoutesMap = useMemo(() => {
+    const map = new Map<string, ConnectingBusRouteResult[]>();
+    spots.forEach((s) => {
+      const results = findConnectingBusRoutes(
+        { lat: s.lat, lng: s.lng },
+        selectedStationCoords,
+        selectedStation,
+        800,
+        800,
+      );
+      if (results.length > 0) {
+        map.set(String(s.id), results);
+      }
+    });
+    return map;
+  }, [spots, selectedStationCoords, selectedStation]);
+
+  // Connecting routes specifically for the currently selected spot
+  const selectedSpotConnectingRoutes = useMemo(() => {
+    if (!selectedSpot) return [];
+    return spotConnectingRoutesMap.get(String(selectedSpot.id)) || [];
+  }, [selectedSpot, spotConnectingRoutesMap]);
+
+  // Rapid Bus KL routes directly serving the currently selected station
+  const stationServingRoutes = useMemo(() => {
+    if (!selectedStationCoords) return [];
+    return findRoutesServingStation(selectedStationCoords, selectedStation);
+  }, [selectedStationCoords, selectedStation]);
+
+  // Nearest bus stop on the active bus route to the currently selected parking spot
+  const nearestStopToActiveSpot = useMemo(() => {
+    if (!selectedSpot || !activeRouteDetails?.stops || activeRouteDetails.stops.length === 0) return null;
+    let minDistance = Infinity;
+    let closestStop: typeof activeRouteDetails.stops[0] | null = null;
+    for (const stop of activeRouteDetails.stops) {
+      const d = distanceMetersBetween(selectedSpot.lat, selectedSpot.lng, stop.lat, stop.lon);
+      if (d < minDistance) {
+        minDistance = d;
+        closestStop = stop;
+      }
+    }
+    if (!closestStop || minDistance > 1200) return null;
+    return { stop: closestStop, distanceMeters: Math.round(minDistance) };
+  }, [selectedSpot, activeRouteDetails]);
 
   // Unique clean station names for the search list
   const stationNames: string[] = useMemo(() => {
@@ -918,7 +1584,7 @@ export default function CommuterMap({
     }));
   }, [stationFeatures, currentZoom]);
 
-  // Station marker click: Smooth gentle pan to center, opens details popup 100% reliably
+  // Station marker click: Keep station 100% stationary in place, trigger ripple pulse, and open details popup
   const handleStationMarkerClick = (feature: any, e?: any) => {
     if (e?.originalEvent) {
       e.originalEvent.stopPropagation();
@@ -927,24 +1593,25 @@ export default function CommuterMap({
     const rawName = feature.properties?.name || feature.properties?.['name:en'] || 'Unknown Station';
     const cleanName = cleanStationName(rawName);
     const network = feature.properties?.network || '';
+    const code = getStationCode(feature);
     if (!coords || coords.length < 2) return;
 
-    onStationSelect(cleanName, coords[1], coords[0]);
-    setActiveStationPopup({
-      name: cleanName,
-      network,
-      lat: coords[1],
-      lng: coords[0],
-    });
+    // 1. Immediately select station and trigger line-color ripple animation in place (no map pan/shift)
+    onStationSelect(cleanName, coords[1], coords[0], code);
+    setDismissedStation(null);
     setOpenPanel(null);
 
-    setMapTarget({
-      lat: coords[1],
-      lng: coords[0],
-      zoom: undefined,
-      animate: true,
-      timestamp: Date.now(),
-    });
+    // 2. Reveal Station Info Card smoothly once the 500-600ms ripple pulse completes
+    if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+    popupTimerRef.current = setTimeout(() => {
+      setActiveStationPopup({
+        name: cleanName,
+        network,
+        lat: coords[1],
+        lng: coords[0],
+        code,
+      });
+    }, 550);
   };
 
   // Selecting station from dropdown search list: Pan/fly to station with zoom 15
@@ -954,6 +1621,7 @@ export default function CommuterMap({
     if (feature) {
       const coords = feature.geometry.coordinates;
       const net = feature.properties?.network || '';
+      const code = getStationCode(feature);
       if (!coords || coords.length < 2) return;
       onStationSelect(name, coords[1], coords[0]);
       setActiveStationPopup({
@@ -961,6 +1629,7 @@ export default function CommuterMap({
         network: net,
         lat: coords[1],
         lng: coords[0],
+        code,
       });
       setOpenPanel(null);
       setMapTarget({
@@ -1016,11 +1685,13 @@ export default function CommuterMap({
       const rawName = closestFeature.properties?.name || closestFeature.properties?.['name:en'] || 'Station';
       const cleanName = cleanStationName(rawName);
       const net = closestFeature.properties?.network || '';
+      const code = getStationCode(closestFeature);
       setActiveStationPopup({
         name: cleanName,
         network: net,
         lat: coords[1],
         lng: coords[0],
+        code,
       });
       setMapTarget({
         lat: coords[1],
@@ -1086,6 +1757,7 @@ export default function CommuterMap({
         <RailPane />
         <StationPane />
         <UserLocationPane />
+        <LiveVehiclePane />
 
         {/* Map View Controller for smooth animated centering */}
         <MapViewController target={mapTarget} />
@@ -1094,9 +1766,9 @@ export default function CommuterMap({
         <MapZoomListener onZoom={setCurrentZoom} />
 
         {/* Station Search Radius Circle on the Map */}
-        {selectedStationCoords && (
+        {resolvedStationCoords && (
           <Circle
-            center={[selectedStationCoords.lat, selectedStationCoords.lng]}
+            center={[resolvedStationCoords.lat, resolvedStationCoords.lng]}
             radius={distanceRadius}
             pathOptions={{
               color: '#14B8A6',
@@ -1126,15 +1798,200 @@ export default function CommuterMap({
 
         <ZoomControl position="bottomright" />
 
-        {/* Polyline connecting selected station to selected parking spot */}
-        {selectedStationCoords && selectedSpot && (
+        {/* ---- Driving Road Route from Current Location to Parking Bay ---- */}
+        {drivingRoute && (showLinearNavigator || journeyTab === 'drive') && (
+          <>
+            <Polyline
+              positions={drivingRoute.geometry}
+              pathOptions={{
+                color: '#ffffff',
+                weight: 8,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round',
+                interactive: false,
+              }}
+            />
+            <Polyline
+              positions={drivingRoute.geometry}
+              pathOptions={{
+                color: '#2563EB',
+                weight: 5.5,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            >
+              <Popup autoPan={false}>
+                <div className="text-xs p-1">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-700 text-sm">
+                    <Car size={15} />
+                    <span>Drive to {drivingRoute.destination.name}</span>
+                  </div>
+                  <div className="text-[12px] text-slate-800 font-bold mt-1">
+                    {drivingRoute.durationText} · {drivingRoute.distanceText}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    Road driving route from current location
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 pt-1 border-t border-slate-100">
+                    <a
+                      href={drivingRoute.wazeUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-cyan-700 font-bold hover:underline"
+                    >
+                      Open in Waze ➔
+                    </a>
+                    <span>·</span>
+                    <a
+                      href={drivingRoute.googleMapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-blue-700 font-bold hover:underline"
+                    >
+                      Google Maps ➔
+                    </a>
+                  </div>
+                </div>
+              </Popup>
+            </Polyline>
+          </>
+        )}
+
+        {/* Polyline connecting selected station to selected parking spot (default view) */}
+        {selectedStationCoords && selectedSpot && !showLinearNavigator && (
           <Polyline
             positions={[
               [selectedStationCoords.lat, selectedStationCoords.lng],
               [selectedSpot.lat, selectedSpot.lng],
             ]}
-            pathOptions={{ color: '#007AFF', weight: 4, opacity: 0.9, dashArray: '8 10', interactive: false }}
+            pathOptions={{ color: '#007AFF', weight: 3, opacity: 0.6, dashArray: '6 8', interactive: false }}
           />
+        )}
+
+        {/* ---- Render Linear Multimodal Continuous Journey (OpenTripPlanner Model) ---- */}
+        {showLinearNavigator && activeItinerary && (
+          <>
+            {/* Draw each leg of the journey */}
+            {activeItinerary.legs.map((leg, lIdx) => {
+              const isThisLegFocused = focusedLegIndex === lIdx;
+              if (leg.mode === 'WALK') {
+                return (
+                  <Polyline
+                    key={`linear-leg-walk-${lIdx}`}
+                    positions={leg.geometry}
+                    pathOptions={{
+                      color: isThisLegFocused ? '#007AFF' : '#2563EB',
+                      weight: isThisLegFocused ? 6 : 4.5,
+                      opacity: 0.95,
+                      dashArray: '6 8',
+                      lineCap: 'round',
+                    }}
+                  >
+                    <Popup autoPan={false}>
+                      <div className="text-xs p-1">
+                        <div className="flex items-center gap-1.5 font-bold text-blue-700">
+                          <Footprints size={14} />
+                          <span>{leg.title}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-1">{leg.summary}</p>
+                      </div>
+                    </Popup>
+                  </Polyline>
+                );
+              } else if (leg.mode === 'BUS') {
+                return (
+                  <React.Fragment key={`linear-leg-bus-${lIdx}`}>
+                    {/* Casing */}
+                    <Polyline
+                      positions={leg.geometry}
+                      pathOptions={{
+                        color: '#ffffff',
+                        weight: 8,
+                        opacity: 0.95,
+                        lineCap: 'round',
+                        lineJoin: 'round',
+                        interactive: false,
+                      }}
+                    />
+                    {/* Route line */}
+                    <Polyline
+                      positions={leg.geometry}
+                      pathOptions={{
+                        color: leg.transitDetails?.routeColor || '#008716',
+                        weight: isThisLegFocused ? 6.5 : 5,
+                        opacity: 0.95,
+                        lineCap: 'round',
+                        lineJoin: 'round',
+                      }}
+                    >
+                      <Popup autoPan={false}>
+                        <div className="text-xs p-1">
+                          <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+                            <Bus size={14} />
+                            <span>{leg.title}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 mt-1">{leg.summary}</p>
+                        </div>
+                      </Popup>
+                    </Polyline>
+
+                    {/* Boarding Stop Badge */}
+                    <Marker
+                      position={[leg.fromCoords.lat, leg.fromCoords.lng]}
+                      icon={boardStopIcon}
+                      zIndexOffset={600}
+                    />
+
+                    {/* Alighting Stop Badge */}
+                    <Marker
+                      position={[leg.toCoords.lat, leg.toCoords.lng]}
+                      icon={alightStopIcon}
+                      zIndexOffset={600}
+                    />
+                  </React.Fragment>
+                );
+              }
+              return null;
+            })}
+
+            {/* Real Origin (Passable Street Exit) Marker */}
+            {linearPlan && (
+              <Marker
+                position={[linearPlan.origin.exitCoords.lat, linearPlan.origin.exitCoords.lng]}
+                icon={L.divIcon({
+                  className: 'custom-exit-marker',
+                  html: `
+                    <div style="background: #2563eb; color: white; border: 2px solid white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
+                      🚪
+                    </div>
+                  `,
+                  iconSize: [22, 22],
+                  iconAnchor: [11, 11],
+                })}
+              >
+                <Popup autoPan={false}>
+                  <div className="text-xs p-1">
+                    <strong>Passable Exit</strong>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{linearPlan.origin.exitName}</div>
+                  </div>
+                </Popup>
+              </Marker>
+            )}
+
+            {/* Target Station Entrance Marker */}
+            {activeItinerary.legs.length > 0 && (
+              <Marker
+                position={[
+                  activeItinerary.legs[activeItinerary.legs.length - 1].toCoords.lat,
+                  activeItinerary.legs[activeItinerary.legs.length - 1].toCoords.lng,
+                ]}
+                icon={stationEntranceIcon}
+                zIndexOffset={650}
+              />
+            )}
+          </>
         )}
 
         {/* ---- Render User Current Location Marker & Accuracy Circle ---- */}
@@ -1160,7 +2017,7 @@ export default function CommuterMap({
               pane="userLocationPane"
               zIndexOffset={1000}
             >
-              <Popup autoPan={true}>
+              <Popup autoPan={false}>
                 <div className="text-xs min-w-[160px] py-1">
                   <div className="flex items-center gap-1.5 font-bold text-slate-800">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#007AFF] shadow-xs" />
@@ -1230,7 +2087,7 @@ export default function CommuterMap({
           if (!coords || coords.length < 2) return null;
 
           const lines = getStationLines(feature);
-          const isInterchange = lines.length >= 3 || ['Masjid Jamek', 'Pasar Seni', 'KL Sentral', 'Titiwangsa', 'Chan Sow Lin', 'Tun Razak Exchange', 'Maluri', 'Hang Tuah'].some((h) => cleanName.includes(h));
+          const isInterchange = lines.length >= 2 || ['Masjid Jamek', 'Pasar Seni', 'KL Sentral', 'Titiwangsa', 'Chan Sow Lin', 'Tun Razak Exchange', 'Maluri', 'Hang Tuah', 'Ampang Park', 'Sungai Besi', 'Bandar Utama', 'Kwasa Damansara', 'Bukit Bintang'].some((h) => cleanName.includes(h));
 
           const icon = createStationMarkerIcon({
             rawName,
@@ -1242,114 +2099,501 @@ export default function CommuterMap({
 
           return (
             <Marker
-              key={`station-${idx}`}
+              key={`station-${cleanName}`}
               position={[coords[1], coords[0]]}
               pane="stationPane"
               icon={icon}
               zIndexOffset={isSelected ? 1000 : isInterchange ? 600 : 400}
               eventHandlers={{
-                click: (e) => handleStationMarkerClick(feature, e),
+                click: (e) => {
+                  e.originalEvent?.stopPropagation();
+                  handleStationMarkerClick(feature, e);
+                },
               }}
             />
           );
         })}
 
-        {/* Active Station Details Popup: Guaranteed to show independently of marker DOM node lifecycles */}
-        {activeStationPopup && (
+        {/* ---- Render Selected Rapid Bus KL Route Geometry & Bus Stops (From static GTFS) ---- */}
+        {activeRouteDetails && activeRouteDetails.coordinates && activeRouteDetails.coordinates.length > 0 && (
+          <>
+            {/* White casing outline for high contrast on map */}
+            <Polyline
+              key={`bus-route-casing-${activeRouteDetails.routeId}`}
+              positions={activeRouteDetails.coordinates}
+              pathOptions={{
+                color: '#ffffff',
+                weight: 7,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round',
+                interactive: false,
+              }}
+            />
+            {/* Main colored bus route road line */}
+            <Polyline
+              key={`bus-route-line-${activeRouteDetails.routeId}`}
+              positions={activeRouteDetails.coordinates}
+              pathOptions={{
+                color: activeRouteDetails.color || '#008716',
+                weight: 4.5,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            >
+              <Popup autoPan={false}>
+                <div className="text-xs p-1">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: activeRouteDetails.color || '#008716' }}
+                    />
+                    <span>Rapid KL Route {activeRouteDetails.shortName}</span>
+                  </div>
+                  <div className="text-slate-600 text-[11px] mt-0.5">
+                    {activeRouteDetails.longName}
+                  </div>
+                  <div className="text-[10px] text-emerald-700 font-semibold mt-1">
+                    {activeRouteDetails.stops?.length || 0} stops along route
+                  </div>
+                </div>
+              </Popup>
+            </Polyline>
+
+            {/* Bus stops along this selected route */}
+            {activeRouteDetails.stops &&
+              activeRouteDetails.stops.map((stop, sIdx) => (
+                <Marker
+                  key={`bus-stop-${stop.stopId || sIdx}`}
+                  position={[stop.lat, stop.lon]}
+                  icon={createBusStopIcon(stop.stopName, activeRouteDetails.color || '#008716')}
+                  zIndexOffset={410}
+                >
+                  <Popup autoPan={false}>
+                    <div className="text-xs min-w-[170px] py-1">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: activeRouteDetails.color || '#008716' }}
+                        />
+                        <span className="truncate">{stop.stopName}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                        Stop ID: {stop.stopId}
+                      </div>
+                      <div className="text-[10px] text-emerald-700 font-medium mt-1 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 flex items-center justify-between">
+                        <span>Rapid KL Route</span>
+                        <strong className="font-mono">{activeRouteDetails.shortName}</strong>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+
+            {/* Walking connector from selected parking spot to nearest bus stop on this route */}
+            {selectedSpot && nearestStopToActiveSpot && (
+              <Polyline
+                positions={[
+                  [selectedSpot.lat, selectedSpot.lng],
+                  [nearestStopToActiveSpot.stop.lat, nearestStopToActiveSpot.stop.lon],
+                ]}
+                pathOptions={{
+                  color: '#059669',
+                  weight: 3,
+                  opacity: 0.9,
+                  dashArray: '4 6',
+                  interactive: false,
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {/* ---- Render Live Moving Transit Buses (GTFS-Realtime - Filtered by Route) ---- */}
+        {showLiveBuses &&
+          displayVehicles.map((feature, fIdx) => {
+            const coords = feature.geometry?.coordinates;
+            const props = feature.properties;
+            if (!coords || coords.length < 2) return null;
+            const lat = coords[1];
+            const lng = coords[0];
+            const bearing = props.bearing || 0;
+            const routeId = props.routeId || '';
+            const speed = props.speedKmh != null ? Math.round(props.speedKmh) : null;
+            const icon = createLiveBusIcon(bearing, routeId);
+
+            return (
+              <Marker
+                key={`bus-${props.vehicleId || props.id || fIdx}`}
+                position={[lat, lng]}
+                pane="liveVehiclePane"
+                icon={icon}
+                zIndexOffset={effectiveBusRoute ? 450 : 380}
+              >
+                <Popup autoPan={false}>
+                  <div className="text-xs min-w-[180px] py-1">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-800 text-sm">
+                      <Bus className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>MRT Feeder {routeId || props.vehicleId}</span>
+                      {effectiveBusRoute && (
+                        <span className="text-[9px] bg-emerald-100 text-emerald-800 font-mono font-bold px-1.5 py-0.2 rounded ml-auto">
+                          Isolated
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Plate:</span>
+                        <strong className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                          {props.licensePlate || props.vehicleId}
+                        </strong>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Speed:</span>
+                        <strong className="text-slate-800">
+                          {speed != null ? `${speed} km/h` : 'N/A'}{' '}
+                          <span className={`text-[10px] font-medium ml-1 ${speed && speed > 5 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            ({speed && speed > 5 ? 'Moving' : 'Idle'})
+                          </span>
+                        </strong>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Heading:</span>
+                        <span className="font-mono text-slate-700">{Math.round(bearing)}°</span>
+                      </div>
+                      {effectiveUserLocation && (
+                        <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-blue-600 font-medium">
+                          <span>From you:</span>
+                          <strong>{(distanceBetweenKm(effectiveUserLocation, { lat, lng })).toFixed(1)} km</strong>
+                        </div>
+                      )}
+                      {routeId && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectRoute(effectiveBusRoute === routeId ? null : routeId)}
+                          className="w-full mt-2 py-1 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold text-[11px] transition-colors border border-emerald-200 text-center"
+                        >
+                          {effectiveBusRoute === routeId ? '✕ Clear Route Filter' : `Isolate Route ${routeId} on Map`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
+
+        {/* Active Station Details Popup: Compact Apple-HIG Popover */}
+        {activeStationPopup && popupPosition && (
           <Popup
-            position={[activeStationPopup.lat, activeStationPopup.lng]}
-            autoPan={true}
-            closeButton={true}
-            eventHandlers={{ remove: () => setActiveStationPopup(null) }}
+            position={popupPosition}
+            offset={[0, -14]}
+            autoPan={false}
+            closeOnClick={false}
+            autoClose={false}
+            closeButton={false}
           >
-            <div className="text-xs min-w-[170px] py-1">
-              <div className="flex items-center gap-1.5 font-bold text-slate-800 text-sm">
-                <Train className="w-4 h-4 text-blue-600 shrink-0" />
+            <div className="w-[196px] sm:w-[208px] text-[11px] leading-snug select-none">
+              <div className="flex items-center gap-1 font-bold text-slate-900 text-[12px]">
+                <Train className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                 <span className="truncate">{activeStationPopup.name}</span>
+                {activeStationPopup.code && (
+                  <span className="font-mono text-[9.5px] font-bold bg-slate-100 text-slate-700 px-1 py-0.2 rounded border border-slate-200 shrink-0">
+                    {activeStationPopup.code}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDismissedStation(activeStationPopup.name);
+                    setActiveStationPopup(null);
+                  }}
+                  className="ml-auto w-4 h-4 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors shrink-0"
+                  aria-label="Close station popup"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </div>
-              <p className="text-slate-500 text-[11px] mt-0.5 ml-5">
-                {activeStationPopup.network || 'Transit Station'}
-              </p>
-              <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold text-emerald-600">
+              <div className="text-slate-500 text-[10px] mt-0.5 truncate">
+                {(activeStationPopup.network || 'Transit Station').replace(/;/g, ' · ')}
+              </div>
+              <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between gap-1.5 text-[10px]">
+                <span className="font-semibold text-emerald-600">
                   {spots.length} bay{spots.length === 1 ? '' : 's'} in range
                 </span>
-                <span className="text-[10px] text-slate-400">
-                  Within {distanceRadius < 1000 ? `${distanceRadius}m` : `${distanceRadius / 1000}km`}
+                <span className="text-[9.5px] text-slate-400">
+                  ≤ {distanceRadius < 1000 ? `${distanceRadius}m` : `${distanceRadius / 1000}km`}
                 </span>
               </div>
+
+              {/* Connecting MRT Feeder Buses Widget with Selective Route Filter */}
+              <StationFeedersWidget
+                compact={true}
+                stopId={activeStationPopup.code}
+                stationName={activeStationPopup.name}
+                coordinates={popupCoords}
+                selectedRoute={effectiveBusRoute}
+                onSelectRoute={handleSelectRoute}
+              />
+
+              {/* Action Button: Navigate / View Nearby Parking Bays */}
+              {spots.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (spots[0]) onSpotClick(spots[0]);
+                  }}
+                  className="mt-1.5 w-full flex items-center justify-center gap-1 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-semibold py-1 px-2 rounded-md transition-colors shadow-2xs"
+                >
+                  <Car className="w-3 h-3 text-emerald-400 shrink-0" />
+                  <span className="truncate">View Parking Bays ({spots.length})</span>
+                </button>
+              ) : (
+                <div className="mt-1.5 w-full py-1 px-1.5 bg-slate-50 border border-slate-100 rounded-md text-center text-[9.5px] text-slate-500 flex items-center justify-center gap-1">
+                  <Car className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                  <span className="truncate">No private bays in radius</span>
+                </div>
+              )}
             </div>
           </Popup>
+        )}
+
+        {/* Guaranteed Pinpoint for User's Active Reserved Parking Spot */}
+        {activeBookingSpot && (
+          <Marker
+            position={[
+              activeBookingSpot.lat || activeBookingSpot.latitude,
+              activeBookingSpot.lng || activeBookingSpot.longitude,
+            ]}
+            icon={activeReservedParkingIcon}
+            zIndexOffset={1200}
+            eventHandlers={{
+              click: () => {
+                onSpotClick(activeBookingSpot);
+                if (onNavigate) {
+                  onNavigate();
+                } else {
+                  setShowLinearNavigator(true);
+                  setJourneyTab('drive');
+                }
+              },
+            }}
+          >
+            <Popup autoPan={false}>
+              <div className="text-xs min-w-[210px] p-1">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 text-sm">
+                  <span className="w-5 h-5 rounded-md bg-blue-600 text-white flex items-center justify-center text-xs font-mono font-bold">
+                    P
+                  </span>
+                  <span className="truncate">{formatShortSpotName(activeBookingSpot.name)}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  <span>Your Reserved Bay</span>
+                  <span>Bay {activeBookingSpot.parkingLabel}</span>
+                </div>
+                {activeBookingSpot.address && (
+                  <p className="mt-1 text-[11px] text-slate-500 leading-tight line-clamp-2">
+                    {formatShortAddress(activeBookingSpot.address)}
+                  </p>
+                )}
+                {drivingRoute && (
+                  <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500">From your location:</span>
+                    <strong className="text-blue-700 font-bold">
+                      {drivingRoute.durationText} ({drivingRoute.distanceText})
+                    </strong>
+                  </div>
+                )}
+                <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+                  <a
+                    href={
+                      drivingRoute?.wazeUrl ||
+                      `https://waze.com/ul?ll=${activeBookingSpot.lat || activeBookingSpot.latitude},${activeBookingSpot.lng || activeBookingSpot.longitude}&navigate=yes`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="py-1 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-[11px] text-center flex items-center justify-center gap-1 shadow-2xs transition"
+                  >
+                    <Navigation size={11} className="text-cyan-600" />
+                    <span>Waze</span>
+                  </a>
+                  <a
+                    href={
+                      drivingRoute?.googleMapsUrl ||
+                      `https://www.google.com/maps/dir/?api=1&destination=${activeBookingSpot.lat || activeBookingSpot.latitude},${activeBookingSpot.lng || activeBookingSpot.longitude}&travelmode=driving`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="py-1 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-[11px] text-center flex items-center justify-center gap-1 shadow-2xs transition"
+                  >
+                    <Navigation size={11} className="text-blue-600" />
+                    <span>Google Maps</span>
+                  </a>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigate) {
+                      onNavigate();
+                    } else {
+                      setShowLinearNavigator(true);
+                      setJourneyTab('drive');
+                    }
+                    if (drivingRoute) {
+                      setMapTarget({
+                        bounds: drivingRoute.bounds,
+                        animate: true,
+                        timestamp: Date.now(),
+                      });
+                    }
+                  }}
+                  className="w-full mt-2 py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  <Navigation size={12} />
+                  <span>Turn-by-Turn Driving Route</span>
+                </button>
+              </div>
+            </Popup>
+          </Marker>
         )}
 
         {/* Render ALL available parking spots in range of selected station */}
         {shouldShowParking && displaySpots.map((spot) => {
           const isThisSelected = selectedSpot?.id === spot.id;
+          const spotRoutes = spotConnectingRoutesMap.get(String(spot.id)) || [];
           return (
             <Marker
               key={spot.id}
               position={[spot.displayLat, spot.displayLng]}
               icon={isThisSelected ? selectedParkingIcon : parkingIcon}
               zIndexOffset={isThisSelected ? 800 : 500}
-              eventHandlers={{ click: () => onSpotClick(spot) }}
+              eventHandlers={{
+                click: () => {
+                  setActiveStationPopup(null);
+                  onSpotClick(spot);
+                },
+              }}
             >
-              <Popup autoPan={true}>
-                <div className="text-xs min-w-[190px]">
+              <Popup autoPan={false}>
+                <div className="w-[196px] sm:w-[208px] text-[10.5px] leading-snug select-none">
                   <div className="flex items-center justify-between gap-1">
-                    <strong className="text-slate-800 text-sm">{spot.name}</strong>
-                    <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                    <strong className="text-slate-900 text-[12px] truncate">{formatShortSpotName(spot.name)}</strong>
+                    <span className="bg-emerald-50 text-emerald-700 text-[9.5px] font-bold px-1 py-0.2 rounded border border-emerald-200 shrink-0">
                       Bay {spot.parkingLabel}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-slate-600 mt-1 font-semibold">
-                    <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                    <span>
+                  <div className="flex items-center justify-between gap-1 text-slate-600 mt-1 font-semibold text-[10px]">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-blue-600 shrink-0" />
                       {spot.dailyRate !== null
                         ? `RM ${spot.dailyRate.toFixed(2)}/day`
                         : spot.monthlyRate > 0
-                          ? `RM ${spot.monthlyRate.toFixed(2)}/month`
+                          ? `RM ${spot.monthlyRate.toFixed(2)}/mo`
                           : 'Rate not set'}
                     </span>
-                  </div>
-                  <div className="flex items-center gap-1 text-slate-500 mt-0.5">
-                    <Navigation className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                    <span>
-                      {spot.distanceToStation ? spot.distanceToStation.toFixed(2) : (spot.distance / 1000).toFixed(2)} km to {selectedStation || 'station'}
-                      {spot.timeToStationInMinutes ? ` · ${spot.timeToStationInMinutes} min walk` : ''}
+                    <span className="text-slate-400 font-normal text-[9.5px]">
+                      {spot.distanceToStation ? spot.distanceToStation.toFixed(1) : (spot.distance / 1000).toFixed(1)}km
+                      {spot.timeToStationInMinutes ? ` · ${spot.timeToStationInMinutes}m` : ''}
                     </span>
                   </div>
-                  {spot.siblingCount > 1 && (
-                    <div className="mt-1 text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                      1 of {spot.siblingCount} available bays at this property
+                  {spot.address && (
+                    <div className="mt-0.5 text-[9.5px] text-slate-400 truncate">{formatShortAddress(spot.address)}</div>
+                  )}
+
+                  {/* Connecting Rapid KL Bus Route to Station */}
+                  {spotRoutes.length > 0 && (
+                    <div className="mt-1.5 p-1.5 bg-emerald-50/80 rounded-md border border-emerald-200/80 text-[10px]">
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1 font-bold text-emerald-900 text-[10px] truncate">
+                          <Bus className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span className="truncate">Feeder Bus</span>
+                        </div>
+                        <span className="text-[9.5px] bg-emerald-600 text-white font-mono font-bold px-1 py-0.2 rounded shrink-0">
+                          {spotRoutes[0].route.shortName}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectRoute(
+                            effectiveBusRoute === spotRoutes[0].route.shortName ? null : spotRoutes[0].route.shortName
+                          );
+                        }}
+                        className={`mt-1 w-full py-1 px-1.5 rounded font-semibold text-[9.5px] transition-colors flex items-center justify-center gap-1 ${
+                          effectiveBusRoute === spotRoutes[0].route.shortName
+                            ? 'bg-emerald-800 text-white'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
+                        }`}
+                      >
+                        <Bus className="w-2.5 h-2.5" />
+                        <span>
+                          {effectiveBusRoute === spotRoutes[0].route.shortName
+                            ? '✕ Hide Bus Route'
+                            : `Show ${spotRoutes[0].route.shortName} Route`}
+                        </span>
+                      </button>
                     </div>
                   )}
-                  <p className="mt-1 text-[10px] text-slate-400 leading-tight">{spot.address}</p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSpotClick(spot);
-                      navigate(`/commuter/parking/${spot.id}`, {
-                        state: {
-                          spot: {
-                            ...spot,
-                            id: spot.id,
-                            lat: spot.lat,
-                            lon: spot.lng,
-                            address: spot.address,
-                            photoUrl: spot.primaryImageUrl ?? '',
-                            price: spot.pricePerHour,
+
+                  {/* Action Buttons */}
+                  <div className="mt-1.5 grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSpotClick(spot);
+                        if (onNavigate) {
+                          onNavigate();
+                        } else {
+                          setShowLinearNavigator(true);
+                        }
+                        if (linearPlan) {
+                          const it = linearPlan.recommendedItinerary;
+                          setMapTarget({
+                            bounds: it.bounds,
+                            animate: true,
+                            timestamp: Date.now(),
+                          });
+                        }
+                      }}
+                      className="py-1 px-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[9.5px] transition-colors flex items-center justify-center gap-1"
+                    >
+                      <Compass className="w-2.5 h-2.5 shrink-0" />
+                      <span className="truncate">Route</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSpotClick(spot);
+                        navigate(`/commuter/parking/${spot.id}`, {
+                          state: {
+                            spot: {
+                              ...spot,
+                              id: spot.id,
+                              lat: spot.lat,
+                              lon: spot.lng,
+                              address: spot.address,
+                              photoUrl: spot.primaryImageUrl ?? '',
+                              price: spot.pricePerHour,
+                            },
+                            stationCoords: selectedStationCoords
+                              ? { lat: selectedStationCoords.lat, lon: selectedStationCoords.lng }
+                              : null,
+                            stationName: spot.station || selectedStation,
                           },
-                          stationCoords: selectedStationCoords
-                            ? { lat: selectedStationCoords.lat, lon: selectedStationCoords.lng }
-                            : null,
-                          stationName: spot.station || selectedStation,
-                        },
-                      });
-                    }}
-                    className="mt-2.5 w-full bg-[#007AFF] hover:bg-[#0066D6] text-white text-[11px] font-bold py-1.5 px-3 rounded-lg transition-colors shadow-xs"
-                  >
-                    View Details &amp; Book
-                  </button>
+                        });
+                      }}
+                      className="py-1 px-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[9.5px] font-semibold rounded-md transition-colors truncate"
+                    >
+                      Book Bay
+                    </button>
+                  </div>
                 </div>
               </Popup>
             </Marker>
@@ -1380,76 +2624,276 @@ export default function CommuterMap({
         </div>
       )}
 
-      {/* Top Bar: Station Search, Radius, Lines & Legend */}
-      <div className="map-toolbar absolute top-4 left-4 right-4 z-[1000] flex items-center gap-2">
-        {/* Station Selector Button */}
-        <button
-          type="button"
-          data-map-control
-          onClick={() => setOpenPanel((panel) => panel === 'stations' ? null : 'stations')}
-          aria-expanded={openPanel === 'stations'}
-          aria-controls="station-picker"
-          className="map-toolbar__station bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-4 py-2.5 flex items-center gap-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-        >
-          <Train className="w-4 h-4 text-blue-600 shrink-0" />
-          <span className="truncate">{selectedStation || 'Select Station'}</span>
-          <ChevronRight className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${openPanel === 'stations' ? 'rotate-90' : ''}`} />
-        </button>
-
-        {/* Radius Filter — auto-refilters nearby spots on change */}
-        <select
-          value={distanceRadius}
-          onChange={(e) => {
-            onDistanceRadiusChange(Number(e.target.value));
-          }}
-          aria-label="Parking search radius"
-          className="map-toolbar__radius bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg px-3 py-2.5 text-xs font-semibold text-slate-600 focus:outline-none"
-        >
-          <option value={300}>Within 300m</option>
-          <option value={500}>Within 500m</option>
-          <option value={1000}>Within 1km</option>
-          <option value={2000}>Within 2km</option>
-          <option value={3000}>Within 3km</option>
-          <option value={5000}>Within 5km</option>
-        </select>
-
-        {/* Rail Lines Toggle */}
-        <div className="map-lines-control relative flex flex-col items-start" data-map-control>
+      {/* Top Bar: Station Indicator (mobile only), Radius, Lines & Legend */}
+      <div className="map-toolbar absolute top-3 left-3 right-3 z-[800] flex items-center justify-between gap-2 pointer-events-none">
+        {/* Left: Active Station Quick Badge (Mobile only, on desktop left sidebar already handles stations) */}
+        <div className="pointer-events-auto flex items-center gap-1.5 lg:hidden">
           <button
             type="button"
-            onClick={() => setOpenPanel((panel) => panel === 'lines' ? null : 'lines')}
-            aria-expanded={openPanel === 'lines'}
-            aria-controls="rail-lines-panel"
-            className="workspace-map-control flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur hover:bg-slate-50"
+            data-map-control
+            onClick={() => setOpenPanel((panel) => panel === 'stations' ? null : 'stations')}
+            aria-expanded={openPanel === 'stations'}
+            aria-controls="station-picker"
+            className="map-toolbar__station bg-white/95 backdrop-blur rounded-xl border border-slate-200/80 shadow-xs px-2.5 py-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors"
           >
-            <Layers className="h-4 w-4 text-blue-600" />
-            Lines
-            <ChevronRight className={`h-3.5 w-3.5 text-slate-400 transition-transform ${openPanel === 'lines' ? 'rotate-90' : ''}`} />
+            <Train className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span className="truncate max-w-[120px]">{selectedStation || 'Select Station'}</span>
+            <ChevronRight className={`w-3 h-3 text-slate-400 transition-transform shrink-0 ${openPanel === 'stations' ? 'rotate-90' : ''}`} />
           </button>
-
-          {openPanel === 'lines' && (
-            <div id="rail-lines-panel" className="map-lines-control__panel origin-top-left animate-slide-up">
-              <LineControlPanel
-                visibleLines={visibleLines}
-                onToggle={handleLineToggle}
-                showHeader={false}
-              />
-            </div>
-          )}
         </div>
 
-        {/* Legend Button */}
-        <button
-          type="button"
-          data-map-control
-          onClick={() => setOpenPanel((panel) => panel === 'legend' ? null : 'legend')}
-          aria-expanded={openPanel === 'legend'}
-          aria-controls="map-legend-modal"
-          className="workspace-map-control flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg backdrop-blur hover:bg-slate-50"
-        >
-          <Info className="h-4 w-4 text-blue-600" />
-          Legend
-        </button>
+        {/* Right: Radius Filter, Lines Toggle, Legend */}
+        <div className="pointer-events-auto flex items-center gap-1.5 flex-wrap justify-end ml-auto">
+          {/* Radius Filter — auto-refilters nearby spots on change */}
+          <SystemSelect
+            value={distanceRadius}
+            onChange={(e) => {
+              onDistanceRadiusChange(Number(e.target.value));
+            }}
+            aria-label="Parking search radius"
+            className="map-toolbar__radius workspace-map-control bg-white/95 backdrop-blur rounded-xl border border-slate-200/80 shadow-xs px-2.5 py-1.5 text-xs font-medium text-slate-700"
+          >
+            <option value={300}>Within 300m</option>
+            <option value={500}>Within 500m</option>
+            <option value={1000}>Within 1km</option>
+            <option value={2000}>Within 2km</option>
+            <option value={3000}>Within 3km</option>
+            <option value={5000}>Within 5km</option>
+          </SystemSelect>
+
+          {/* Rail Lines Toggle */}
+          <div className="map-lines-control relative flex flex-col items-start" data-map-control>
+            <button
+              type="button"
+              onClick={() => setOpenPanel((panel) => panel === 'lines' ? null : 'lines')}
+              aria-expanded={openPanel === 'lines'}
+              aria-controls="rail-lines-panel"
+              className="workspace-map-control flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-xs backdrop-blur hover:bg-slate-50"
+            >
+              <Layers className="h-3.5 w-3.5 text-blue-600" />
+              Lines
+              <ChevronRight className={`h-3 w-3 text-slate-400 transition-transform ${openPanel === 'lines' ? 'rotate-90' : ''}`} />
+            </button>
+
+            {openPanel === 'lines' && (
+              <div id="rail-lines-panel" className="map-lines-control__panel origin-top-right right-0 absolute top-full mt-1.5 animate-slide-up">
+                <LineControlPanel
+                  visibleLines={visibleLines}
+                  onToggle={handleLineToggle}
+                  showHeader={false}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Selective Rapid KL Bus Route Dropdown Filter */}
+          <div className="map-bus-routes-control relative flex flex-col items-start" data-map-control>
+            <button
+              type="button"
+              onClick={() => setOpenPanel((panel) => panel === 'busRoutes' ? null : 'busRoutes')}
+              aria-expanded={openPanel === 'busRoutes'}
+              aria-controls="bus-routes-panel"
+              className={`workspace-map-control flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold shadow-xs backdrop-blur transition-all ${
+                effectiveBusRoute
+                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-200'
+                  : 'bg-white/95 text-slate-700 border-slate-200/80 hover:bg-slate-50'
+              }`}
+            >
+              <Bus className={`h-3.5 w-3.5 ${effectiveBusRoute ? 'text-white' : 'text-emerald-600'}`} />
+              <span>{effectiveBusRoute ? `Route ${effectiveBusRoute}` : 'Bus Routes'}</span>
+              {effectiveBusRoute ? (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSelectRoute(null);
+                  }}
+                  className="ml-0.5 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center text-[10px] cursor-pointer"
+                  title="Clear bus route"
+                >
+                  ✕
+                </span>
+              ) : (
+                <ChevronRight className={`h-3 w-3 text-slate-400 transition-transform ${openPanel === 'busRoutes' ? 'rotate-90' : ''}`} />
+              )}
+            </button>
+
+            {openPanel === 'busRoutes' && (
+              <div
+                id="bus-routes-panel"
+                className="origin-top-right right-0 absolute top-full mt-1.5 z-[1001] w-72 sm:w-80 bg-white/98 backdrop-blur-md rounded-xl border border-slate-200 shadow-xl overflow-hidden animate-slide-up"
+              >
+                <div className="p-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Bus className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-[11px] font-bold text-slate-800">Rapid KL Bus Route</span>
+                  </div>
+                  {effectiveBusRoute && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectRoute(null)}
+                      className="text-[10px] text-rose-600 hover:text-rose-700 font-semibold"
+                    >
+                      Hide Route
+                    </button>
+                  )}
+                </div>
+
+                <div className="p-2 border-b border-slate-100">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search routes (e.g. T776, 770, 400)..."
+                      value={busRouteSearch}
+                      onChange={(e) => setBusRouteSearch(e.target.value)}
+                      className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-500"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div className="p-1 max-h-64 overflow-y-auto no-scrollbar space-y-1">
+                  {/* Clear route option */}
+                  {effectiveBusRoute && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectRoute(null)}
+                      className="w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between text-rose-600 hover:bg-rose-50"
+                    >
+                      <span className="font-semibold">✕ Hide Bus Route (Clean View)</span>
+                    </button>
+                  )}
+
+                  {/* Section 1: Connecting routes passing near parking spot to station */}
+                  {selectedSpot && selectedSpotConnectingRoutes.length > 0 && !busRouteSearch && (
+                    <div className="mb-1">
+                      <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider px-2 py-1 flex items-center gap-1">
+                        <span>🌟 Connecting to this Parking Bay</span>
+                      </div>
+                      {selectedSpotConnectingRoutes.map((cr) => {
+                        const isThisSelected = effectiveBusRoute?.toUpperCase() === cr.route.shortName.toUpperCase();
+                        return (
+                          <button
+                            key={`conn-${cr.route.routeId}`}
+                            type="button"
+                            onClick={() => handleSelectRoute(cr.route.shortName)}
+                            className={`w-full text-left px-2.5 py-2 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                              isThisSelected ? 'bg-emerald-600 text-white font-bold' : 'bg-emerald-50/70 hover:bg-emerald-100/70 text-slate-800'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                                  isThisSelected ? 'bg-emerald-800 text-white' : 'bg-emerald-200/90 text-emerald-900'
+                                }`}>
+                                  {cr.route.shortName}
+                                </span>
+                                <span className="truncate font-semibold">{cr.route.longName}</span>
+                              </div>
+                              <div className={`text-[10px] mt-0.5 ${isThisSelected ? 'text-emerald-100' : 'text-emerald-700'}`}>
+                                {cr.nearestStopToSpot
+                                  ? `${cr.distanceToSpotMeters}m walk to ${cr.nearestStopToSpot.stop.stopName}`
+                                  : `Passes within ${cr.distanceToSpotMeters}m`}
+                              </div>
+                            </div>
+                            <span className="text-[10px] shrink-0 font-bold">Select</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Section 2: Routes serving the selected station */}
+                  {selectedStationCoords && stationServingRoutes.length > 0 && !busRouteSearch && (
+                    <div className="mb-1">
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 py-1">
+                        Serving {selectedStation || 'Selected Station'}
+                      </div>
+                      {stationServingRoutes.slice(0, 8).map((r) => {
+                        const isThisSelected = effectiveBusRoute?.toUpperCase() === r.shortName.toUpperCase();
+                        return (
+                          <button
+                            key={`srv-${r.routeId}`}
+                            type="button"
+                            onClick={() => handleSelectRoute(r.shortName)}
+                            className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                              isThisSelected ? 'bg-emerald-600 text-white font-bold' : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                                isThisSelected ? 'bg-emerald-800 text-white' : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {r.shortName}
+                              </span>
+                              <span className="truncate">{r.longName}</span>
+                            </div>
+                            <span className={`text-[10px] font-mono shrink-0 ml-1.5 ${isThisSelected ? 'text-emerald-100' : 'text-slate-400'}`}>
+                              {r.stops?.length || 0} stops
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Section 3: All Rapid Bus KL Routes */}
+                  <div>
+                    {(!selectedStationCoords || busRouteSearch) && (
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
+                        All Rapid Bus Routes ({allStaticRoutes.length})
+                      </div>
+                    )}
+                    {allStaticRoutes
+                      .filter((r) =>
+                        r.shortName.toLowerCase().includes(busRouteSearch.toLowerCase()) ||
+                        r.longName.toLowerCase().includes(busRouteSearch.toLowerCase())
+                      )
+                      .slice(0, 30)
+                      .map((r) => {
+                        const isThisSelected = effectiveBusRoute?.toUpperCase() === r.shortName.toUpperCase();
+                        return (
+                          <button
+                            key={r.routeId}
+                            type="button"
+                            onClick={() => handleSelectRoute(r.shortName)}
+                            className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                              isThisSelected ? 'bg-emerald-600 text-white font-bold' : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                                isThisSelected ? 'bg-emerald-800 text-white' : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {r.shortName}
+                              </span>
+                              <span className="truncate">{r.longName}</span>
+                            </div>
+                            <span className={`text-[10px] font-mono shrink-0 ml-1.5 ${isThisSelected ? 'text-emerald-100' : 'text-slate-400'}`}>
+                              {r.stops?.length || 0} stops
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Legend Button */}
+          <button
+            type="button"
+            data-map-control
+            onClick={() => setOpenPanel((panel) => panel === 'legend' ? null : 'legend')}
+            aria-expanded={openPanel === 'legend'}
+            aria-controls="map-legend-modal"
+            className="workspace-map-control hidden sm:flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-xs backdrop-blur hover:bg-slate-50"
+          >
+            <Info className="h-3.5 w-3.5 text-blue-600" />
+            Legend
+          </button>
+        </div>
       </div>
 
       {/* Floating My Location Button */}
@@ -1541,6 +2985,194 @@ export default function CommuterMap({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Google Maps Style Navigation Drawer / Mobile Bottom Sheet ── */}
+      {showLinearNavigator && (drivingRoute || linearPlan) && (
+        <div
+          data-map-control
+          className={`absolute z-[1001] animate-slide-up flex flex-col justify-end ${
+            isNavigatorMinimized
+              ? 'lg:top-14 lg:left-3.5 lg:bottom-auto lg:right-auto lg:w-[360px] bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-3 left-3 right-3'
+              : 'lg:top-14 lg:left-3.5 lg:bottom-auto lg:right-auto lg:w-[360px] lg:max-h-[calc(100%-4.5rem)] bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:bottom-0 left-0 right-0 w-full max-h-[calc(100%-4.5rem)]'
+          } ${workspaceMode === 'navigation' ? 'hidden' : ''}`}
+        >
+          <LinearJourneyNavigator
+            plan={linearPlan}
+            drivingRoute={drivingRoute}
+            activeItineraryId={activeItineraryId}
+            onSelectItinerary={(id) => {
+              setActiveItineraryId(id);
+              const it = linearPlan?.allItineraries.find((i) => i.id === id);
+              if (it) {
+                setMapTarget({
+                  bounds: it.bounds,
+                  animate: true,
+                  timestamp: Date.now(),
+                });
+              }
+            }}
+            focusedLegIndex={focusedLegIndex}
+            onFocusLeg={(idx) => {
+              setFocusedLegIndex(idx);
+              if (idx === null) {
+                if (activeItinerary) {
+                  setMapTarget({
+                    bounds: activeItinerary.bounds,
+                    animate: true,
+                    timestamp: Date.now(),
+                  });
+                }
+              } else if (activeItinerary && activeItinerary.legs[idx]) {
+                const leg = activeItinerary.legs[idx];
+                let minLat = 90;
+                let maxLat = -90;
+                let minLng = 180;
+                let maxLng = -180;
+                leg.geometry.forEach(([lat, lng]) => {
+                  if (lat < minLat) minLat = lat;
+                  if (lat > maxLat) maxLat = lat;
+                  if (lng < minLng) minLng = lng;
+                  if (lng > maxLng) maxLng = lng;
+                });
+                setMapTarget({
+                  bounds: [
+                    [minLat, minLng],
+                    [maxLat, maxLng],
+                  ],
+                  animate: true,
+                  timestamp: Date.now(),
+                });
+              }
+            }}
+            preference={preference}
+            onChangePreference={(pref) => setPreference(pref)}
+            journeyTab={journeyTab}
+            onChangeJourneyTab={setJourneyTab}
+            isMinimized={isNavigatorMinimized}
+            onToggleMinimize={() => setIsNavigatorMinimized(!isNavigatorMinimized)}
+            onFocusDrivingRoute={() => {
+              if (drivingRoute) {
+                setMapTarget({
+                  bounds: drivingRoute.bounds,
+                  animate: true,
+                  timestamp: Date.now(),
+                });
+              }
+            }}
+            onFocusTransitRoute={() => {
+              if (activeItinerary) {
+                setMapTarget({
+                  bounds: activeItinerary.bounds,
+                  animate: true,
+                  timestamp: Date.now(),
+                });
+              }
+            }}
+            onClose={() => {
+              setShowLinearNavigator(false);
+              setFocusedLegIndex(null);
+              onExitNavigation?.();
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── Unified Bottom Floating Stack: Active Bus Route Pill + Driving Navigation Quick Pill (Zero Overlap) ── */}
+      {!showLinearNavigator && (effectiveBusRoute || (targetSpot && (drivingRoute || linearPlan))) && (
+        <div
+          data-map-control
+          className="map-bottom-stack absolute bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:bottom-4 left-3 right-14 z-[800] flex flex-col items-start gap-2 pointer-events-none"
+        >
+          {/* 1. Floating Active Bus Route Filter Pill */}
+          {effectiveBusRoute && (
+            <div className="pointer-events-auto bg-slate-900/95 text-white backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-xl border border-white/15 flex items-center gap-2.5 text-xs animate-slide-up w-auto max-w-full sm:max-w-md">
+              <div className="px-2 h-6 rounded-md bg-emerald-600 flex items-center justify-center font-bold font-mono text-white text-[10.5px] shrink-0 shadow-xs">
+                {effectiveBusRoute}
+              </div>
+              <div className="min-w-0 pr-1">
+                <div className="font-bold text-white truncate text-[11px] leading-tight">
+                  {activeRouteDetails?.longName || `Rapid KL Route ${effectiveBusRoute}`}
+                </div>
+                <div className="text-[9.5px] flex items-center gap-1.5 mt-0.5 truncate" style={{ color: '#86efac' }}>
+                  <span>{activeRouteDetails?.stops?.length || 0} stops</span>
+                  {displayVehicles.length > 0 && (
+                    <>
+                      <span>·</span>
+                      <span className="text-white/90">{displayVehicles.length} live bus{displayVehicles.length === 1 ? '' : 'es'}</span>
+                    </>
+                  )}
+                  {nearestStopToActiveSpot && (
+                    <>
+                      <span>·</span>
+                      <span className="font-semibold" style={{ color: '#5eead4' }}>
+                        🚶 {nearestStopToActiveSpot.distanceMeters}m walk
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => handleSelectRoute(effectiveBusRoute)}
+                  className="h-6 px-2 rounded-md bg-white/15 hover:bg-white/25 text-white text-[10px] font-semibold transition flex items-center justify-center"
+                >
+                  Focus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectRoute(null)}
+                  className="w-6 h-6 rounded-md bg-white/10 hover:bg-rose-600 hover:text-white text-slate-300 flex items-center justify-center text-[11px] font-bold transition"
+                  title="Clear bus route"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 2. Floating Quick Pill to open Navigation Guide */}
+          {targetSpot && (drivingRoute || linearPlan) && (
+            <button
+              type="button"
+              onClick={() => {
+                if (onNavigate) {
+                  onNavigate();
+                } else {
+                  setShowLinearNavigator(true);
+                  setIsNavigatorMinimized(false);
+                }
+                if (journeyTab === 'drive' && drivingRoute) {
+                  setMapTarget({
+                    bounds: drivingRoute.bounds,
+                    animate: true,
+                    timestamp: Date.now(),
+                  });
+                } else if (activeItinerary) {
+                  setMapTarget({
+                    bounds: activeItinerary.bounds,
+                    animate: true,
+                    timestamp: Date.now(),
+                  });
+                }
+              }}
+              className={`pointer-events-auto bg-white/98 text-slate-800 backdrop-blur-md px-3 py-2 rounded-2xl shadow-xl border border-slate-200/90 flex items-center gap-2 text-xs font-bold hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition animate-slide-up w-auto max-w-full sm:max-w-md ${
+                workspaceMode === 'navigation' ? 'lg:hidden' : ''
+              }`}
+            >
+              <Compass className="w-4 h-4 text-blue-600 animate-spin-slow shrink-0" />
+              <span className="truncate min-w-0 flex-1 text-left text-[11.5px]">
+                {drivingRoute
+                  ? `🚗 ${drivingRoute.durationText} drive to ${formatShortSpotName(targetSpot.name)}`
+                  : `Route to ${formatShortSpotName(activeItinerary?.targetStationName || selectedStation || 'Station')}: ~${activeItinerary?.totalDurationMinutes} mins`}
+              </span>
+              <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold shrink-0 ml-1">
+                {workspaceMode === 'navigation' ? 'View Steps ➔' : 'Navigate ➔'}
+              </span>
+            </button>
+          )}
         </div>
       )}
     </div>

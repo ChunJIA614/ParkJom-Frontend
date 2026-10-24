@@ -16,6 +16,7 @@ import {
   getOwnerBookingHistory,
   type OwnerBookingHistoryItem,
 } from '@/features/bookings/api/bookingHistoryApi';
+import SystemSelect from '@/components/ui/SystemSelect';
 import type { ParkingBay } from '../types';
 
 interface Props {
@@ -152,14 +153,14 @@ export default function OwnerBookingHistory({ token, bays }: Props) {
           </div>
 
           {/* Spot Filter */}
-          <select
+          <SystemSelect
             value={selectedSpotId}
             onChange={(e) => {
               setSelectedSpotId(e.target.value);
               setPage(1);
             }}
             disabled={loading}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-blue-500 focus:bg-white disabled:opacity-50"
+            aria-label="Filter by parking spot"
           >
             <option value="all">All spots ({bays.length})</option>
             {bays.map((bay) => (
@@ -167,24 +168,24 @@ export default function OwnerBookingHistory({ token, bays }: Props) {
                 {bay.parkingLabel || `Spot #${bay.parkingSpotId}`} {bay.propertyName ? `(${bay.propertyName})` : ''}
               </option>
             ))}
-          </select>
+          </SystemSelect>
 
           {/* Status Filter */}
-          <select
+          <SystemSelect
             value={selectedStatus}
             onChange={(e) => {
               setSelectedStatus(e.target.value);
               setPage(1);
             }}
             disabled={loading}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-blue-500 focus:bg-white disabled:opacity-50"
+            aria-label="Filter by booking status"
           >
             <option value="all">All statuses</option>
             <option value="Confirmed">Confirmed</option>
             <option value="Active">Active</option>
             <option value="Completed">Completed</option>
             <option value="Cancelled">Cancelled</option>
-          </select>
+          </SystemSelect>
 
           {(selectedSpotId !== 'all' || selectedStatus !== 'all') && (
             <button

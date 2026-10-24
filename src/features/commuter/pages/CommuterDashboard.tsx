@@ -56,6 +56,10 @@ import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
 import JourneyStrip from '../components/JourneyStrip';
 import TransitHubSheet from '../components/TransitHubSheet';
+import LinearJourneyNavigator from '../components/LinearJourneyNavigator';
+import { formatShortSpotName, formatShortAddress } from '../lib/formatUtils';
+import type { DrivingRouteResult } from '@/services/drivingRouteService';
+import type { MultimodalPlanResult } from '@/services/multimodalRoutingService';
 import type { StationNearbyParkingSpot } from '@/services/gtfsApi';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
@@ -84,8 +88,8 @@ import {
   getWalletTopUpStatus,
 } from '../api/walletApi';
 import { cancelBooking } from '../api/bookingApi';
-import { addVehicle, deleteVehicle, getMyVehicles, modifyVehicle } from '../api/vehicleApi';
-import { getVehicleCatalog, type VehicleCatalogEntry } from '../api/vehicleCatalogApi';
+import type { VehicleCatalogEntry } from '../data/vehicleCatalog';
+import { loadCachedVehicles, saveCachedVehicles } from '../lib/vehicleStorage';
 import { updateReview } from '../api/reviewApi';
 import { getCommuterBookingHistory, type BookingHistoryItem } from '@/features/bookings/api/bookingHistoryApi';
 import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
@@ -244,52 +248,6 @@ const distanceFromUser = (origin: StationCoordinates, spot: ParkingSpot) =>
 const formatUserDistance = (distanceKm: number) =>
   distanceKm < 1 ? `${Math.max(1, Math.round(distanceKm * 1000))} m away` : `${distanceKm.toFixed(1)} km away`;
 
-const VEHICLE_CACHE_KEY = (userId: number) => `parkjom.vehicles.${userId}`;
-
-const loadCachedVehicles = (userId: number): Vehicle[] => {
-  try {
-    const rawVehicles = localStorage.getItem(VEHICLE_CACHE_KEY(userId));
-    if (!rawVehicles) return [];
-
-    const parsed = JSON.parse(rawVehicles) as unknown;
-    if (!Array.isArray(parsed)) return [];
-
-    const vehicles = parsed.filter((value): value is Vehicle => {
-      if (!value || typeof value !== 'object') return false;
-      const vehicle = value as Partial<Vehicle>;
-      return typeof vehicle.vehicleId === 'number'
-        && Number.isFinite(vehicle.vehicleId)
-        && vehicle.vehicleId > 0
-        && typeof vehicle.plate === 'string'
-        && Boolean(vehicle.plate.trim())
-        && typeof vehicle.brand === 'string'
-        && typeof vehicle.model === 'string'
-        && typeof vehicle.color === 'string'
-        && typeof vehicle.active === 'boolean';
-    });
-    const activeIndex = vehicles.findIndex((vehicle) => vehicle.active);
-    const selectedIndex = activeIndex >= 0 ? activeIndex : vehicles.length > 0 ? 0 : -1;
-
-    return vehicles.map((vehicle, index) => ({
-      ...vehicle,
-      plate: vehicle.plate.trim().toUpperCase(),
-      brand: vehicle.brand.trim(),
-      model: vehicle.model.trim(),
-      color: vehicle.color.trim(),
-      active: index === selectedIndex,
-    }));
-  } catch {
-    return [];
-  }
-};
-
-const saveCachedVehicles = (userId: number, vehicles: Vehicle[]) => {
-  try {
-    localStorage.setItem(VEHICLE_CACHE_KEY(userId), JSON.stringify(vehicles));
-  } catch {
-    // Vehicle API actions still work when browser storage is unavailable.
-  }
-};
 
 export default function CommuterDashboard() {
   const navigate = useNavigate();
@@ -304,7 +262,7 @@ export default function CommuterDashboard() {
     token: user.token,
   }) : null, [user]);
   const prefersReducedMotion = useReducedMotion();
-  const [initialJourney] = useState(loadJourneySession);
+  const [initialJourney] = useState(() => loadJourneySession(user?.userId));
   type CommuterTab = 'home' | 'active' | 'wallet' | 'profile' | 'map' | 'favorites' | 'support';
   const locationParams = new URLSearchParams(location.search);
   const queryTab = locationParams.get('tab');
@@ -341,6 +299,15 @@ export default function CommuterDashboard() {
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [selectedStationCoords, setSelectedStationCoords] = useState<StationCoordinates | null>(null);
   const [distanceFilter, setDistanceFilter] = useState<number>(3000); // meters
+  const [mobileTransitTab, setMobileTransitTab] = useState<'map' | 'transit' | 'bays'>('map');
+  const [transitWorkspaceMode, setTransitWorkspaceMode] = useState<'explore' | 'navigation'>('explore');
+  const [navigationRoutes, setNavigationRoutes] = useState<{
+    drivingRoute: DrivingRouteResult | null;
+    linearPlan: MultimodalPlanResult | null;
+    targetSpot: ParkingSpot | null;
+  }>({ drivingRoute: null, linearPlan: null, targetSpot: null });
+  const [navigationJourneyTab, setNavigationJourneyTab] = useState<'drive' | 'transit'>('drive');
+  const [selectedBusRoute, setSelectedBusRoute] = useState<string | null>(null);
   const [spotTypeFilter, setSpotTypeFilter] = useState<string>('all');
   const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
   const [favoriteSpots, setFavoriteSpots] = useState<ParkingSpot[]>(() => user?.userId ? loadFavoriteParking(user.userId) : []);
@@ -409,35 +376,20 @@ export default function CommuterDashboard() {
   const [vehicleDeletingId, setVehicleDeletingId] = useState<number | null>(null);
   const [vehicleFeedback, setVehicleFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
-  const loadMyVehicles = useCallback(async (signal?: AbortSignal) => {
-    if (!user?.token) return;
+  const loadMyVehicles = useCallback((signal?: AbortSignal) => {
+    if (!user?.userId) return;
 
     setIsVehiclesLoading(true);
     setVehiclesLoadError(null);
     try {
-      const result = await getMyVehicles(user.token, signal);
-      if (signal?.aborted) return;
-
-      setVehicles((current) => {
-        const selectedVehicleId = current.find((vehicle) => vehicle.active)?.vehicleId;
-        const selectedVehicleExists = result.data.some((vehicle) => vehicle.vehicleId === selectedVehicleId);
-
-        return result.data.map((vehicle, index) => ({
-          vehicleId: vehicle.vehicleId,
-          plate: vehicle.numberPlate.trim().toUpperCase(),
-          brand: vehicle.vehicleBrand.trim(),
-          model: vehicle.vehicleModel.trim(),
-          color: vehicle.vehicleColor.trim(),
-          active: selectedVehicleExists ? vehicle.vehicleId === selectedVehicleId : index === 0,
-        }));
-      });
+      const cached = loadCachedVehicles(user.userId);
+      setVehicles(cached);
     } catch (error) {
-      if (signal?.aborted) return;
       setVehiclesLoadError(error instanceof Error ? error.message : 'Unable to load your vehicles.');
     } finally {
-      if (!signal?.aborted) setIsVehiclesLoading(false);
+      setIsVehiclesLoading(false);
     }
-  }, [user?.token]);
+  }, [user?.userId]);
 
   // Active Reservation / Session — TODO: fetch from backend
   const [activeBooking, setActiveBooking] = useState<Booking | null>(initialJourney?.booking ?? null);
@@ -461,6 +413,64 @@ export default function CommuterDashboard() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotificationsDrawer, setShowNotificationsDrawer] = useState<boolean>(false);
 
+  // Synchronize active reservation strictly with the current authenticated user
+  useEffect(() => {
+    const resetJourneyState = () => {
+      setActiveBooking(null);
+      setJourneyStage('reserved');
+      setIsBollardUnlocked(false);
+      setBollardAnimationState('raised');
+      setGpsVerified('idle');
+      setSecondsRemaining(0);
+    };
+
+    if (!user?.userId) {
+      resetJourneyState();
+      return;
+    }
+
+    const session = loadJourneySession(user.userId);
+    if (!session) {
+      resetJourneyState();
+      return;
+    }
+
+    setActiveBooking(session.booking);
+    setJourneyStage(session.stage);
+    setIsBollardUnlocked(session.stage === 'unlocked');
+    setBollardAnimationState(session.stage === 'unlocked' ? 'lowered' : 'raised');
+    setGpsVerified(
+      session.stage === 'arrived' || session.stage === 'unlocked' || session.stage === 'parked'
+        ? 'verified'
+        : 'idle',
+    );
+    setSecondsRemaining(Math.max(0, Math.floor((session.booking.endTime.getTime() - Date.now()) / 1000)));
+
+    if (!user.token || !session.booking.bookingId) return;
+
+    const controller = new AbortController();
+    void getCommuterBookingHistory(user.token, 1, 20, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        const matched = result.data.find((item) => item.booking.bookingId === session.booking.bookingId);
+        const status = matched?.booking.bookingStatus.toLowerCase() ?? '';
+        const isInvalidOrForeign = !matched
+          || (matched.booking.renterId > 0 && matched.booking.renterId !== user.userId)
+          || status === 'cancelled'
+          || status === 'completed';
+
+        if (isInvalidOrForeign) {
+          clearJourneySession(user.userId);
+          resetJourneyState();
+        }
+      })
+      .catch(() => {
+        // Keep local user-scoped session when offline or endpoint is unreachable
+      });
+
+    return () => controller.abort();
+  }, [user?.token, user?.userId]);
+
   useEffect(() => {
     if (!user?.userId || !user.token) {
       setVehicles([]);
@@ -481,17 +491,6 @@ export default function CommuterDashboard() {
     saveCachedVehicles(user.userId, vehicles);
   }, [vehicleCacheUserId, user?.userId, vehicles]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void getVehicleCatalog(controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) setVehicleCatalog(result.data);
-      })
-      .catch(() => {
-        // Keep the local catalog available when the optional endpoint is absent.
-      });
-    return () => controller.abort();
-  }, []);
 
   useEffect(() => {
     try {
@@ -1248,7 +1247,7 @@ export default function CommuterDashboard() {
     if (!user?.token || cancelingBookingId !== null) return;
     const confirmed = await showConfirm({
       title: 'Cancel Booking',
-      message: 'Are you sure you want to cancel this booking? This will release your parking spot.',
+      message: 'Are you sure you want to cancel this booking? Cancellations 3+ days before start receive a 100% refund; less than 3 days before start receive a 50% refund.',
       confirmText: 'Yes, Cancel',
       cancelText: 'Keep Booking',
       variant: 'danger',
@@ -1258,15 +1257,22 @@ export default function CommuterDashboard() {
 
     setCancelingBookingId(bookingId);
     try {
-      await cancelBooking(user.token, {
+      const res = await cancelBooking(user.token, {
         bookingId,
         cancellationReason: 'Cancelled by commuter',
       });
       await showAlert({
         title: 'Booking Cancelled',
-        message: 'Your booking has been cancelled successfully.',
+        message: res.message || 'Your booking has been cancelled successfully.',
         variant: 'success',
       });
+      if (activeBooking?.bookingId === bookingId) {
+        clearJourneySession(user?.userId);
+        setActiveBooking(null);
+        setJourneyStage('reserved');
+        setIsBollardUnlocked(false);
+        setBollardAnimationState('raised');
+      }
       setBookingHistoryRefreshKey((prev) => prev + 1);
     } catch (err) {
       await showAlert({
@@ -1473,19 +1479,12 @@ export default function CommuterDashboard() {
 
     setIsVehicleSaving(true);
     try {
-      const result = await addVehicle(user.token, {
-        numberPlate,
-        vehicleBrand,
-        vehicleModel,
-        vehicleColor,
-      });
-      const createdVehicle = result.data;
       const newVehicle: Vehicle = {
-        vehicleId: createdVehicle.vehicleId,
-        plate: createdVehicle.numberPlate,
-        brand: createdVehicle.vehicleBrand,
-        model: createdVehicle.vehicleModel,
-        color: createdVehicle.vehicleColor,
+        vehicleId: Date.now(),
+        plate: numberPlate,
+        brand: vehicleBrand,
+        model: vehicleModel,
+        color: vehicleColor,
         active: true,
       };
       setVehicles((current) => [
@@ -1498,7 +1497,7 @@ export default function CommuterDashboard() {
       setNewModel('');
       setNewColor('');
       setShowAddVehicle(false);
-      setVehicleFeedback({ tone: 'success', message: result.message || 'Vehicle added successfully.' });
+      setVehicleFeedback({ tone: 'success', message: 'Vehicle added successfully.' });
     } catch (error) {
       setVehicleFeedback({
         tone: 'error',
@@ -1531,7 +1530,6 @@ export default function CommuterDashboard() {
 
     setVehicleDeletingId(vehicle.vehicleId);
     try {
-      const result = await deleteVehicle(user.token, vehicle.vehicleId);
       setVehicles((current) => {
         const remaining = current.filter((item) => item.vehicleId !== vehicle.vehicleId);
         if (!vehicle.active || remaining.some((item) => item.active) || remaining.length === 0) return remaining;
@@ -1539,7 +1537,7 @@ export default function CommuterDashboard() {
       });
       setVehiclesLoadError(null);
       if (vehicleEditDraft?.vehicleId === vehicle.vehicleId) setVehicleEditDraft(null);
-      setVehicleFeedback({ tone: 'success', message: result.message || 'Vehicle deleted successfully.' });
+      setVehicleFeedback({ tone: 'success', message: 'Vehicle deleted successfully.' });
     } catch (error) {
       setVehicleFeedback({
         tone: 'error',
@@ -1594,19 +1592,22 @@ export default function CommuterDashboard() {
 
     setIsVehicleUpdating(true);
     try {
-      const result = await modifyVehicle(user.token, request);
-      setVehicles((current) => current.map((vehicle) => vehicle.vehicleId === request.vehicleId
-        ? {
-            ...vehicle,
-            plate: result.data.numberPlate || request.numberPlate,
-            brand: result.data.vehicleBrand || request.vehicleBrand,
-            model: result.data.vehicleModel || request.vehicleModel,
-            color: result.data.vehicleColor || request.vehicleColor,
-          }
-        : vehicle));
+      setVehicles((current) =>
+        current.map((item) =>
+          item.vehicleId === request.vehicleId
+            ? {
+                ...item,
+                plate: request.numberPlate,
+                brand: request.vehicleBrand,
+                model: request.vehicleModel,
+                color: request.vehicleColor,
+              }
+            : item
+        )
+      );
       setVehiclesLoadError(null);
       setVehicleEditDraft(null);
-      setVehicleFeedback({ tone: 'success', message: result.message || 'Vehicle updated successfully.' });
+      setVehicleFeedback({ tone: 'success', message: 'Vehicle updated successfully.' });
     } catch (error) {
       setVehicleFeedback({
         tone: 'error',
@@ -1663,7 +1664,7 @@ export default function CommuterDashboard() {
     };
 
     setActiveBooking(booking);
-    saveJourneySession(booking);
+    saveJourneySession(booking, 'reserved', user?.userId);
     setJourneyStage('reserved');
     setSecondsRemaining(7200); // 2 hours
     setIsBollardUnlocked(false);
@@ -1693,7 +1694,7 @@ export default function CommuterDashboard() {
       };
       setHistory(prev => [completed, ...prev]);
       setActiveBooking(null);
-      clearJourneySession();
+      clearJourneySession(user?.userId);
       setJourneyStage('reserved');
       setIsBollardUnlocked(false);
       setBollardAnimationState('raised');
@@ -1729,7 +1730,7 @@ export default function CommuterDashboard() {
       setBollardAnimationState('lowered');
       setIsBollardUnlocked(true);
       setJourneyStage('unlocked');
-      updateJourneyStage('unlocked');
+      updateJourneyStage('unlocked', user?.userId);
       
       const newNotif: AppNotification = {
         id: 'iot-' + Date.now(),
@@ -1750,7 +1751,7 @@ export default function CommuterDashboard() {
       setBollardAnimationState('raised');
       setIsBollardUnlocked(false);
       setJourneyStage('parked');
-      updateJourneyStage('parked');
+      updateJourneyStage('parked', user?.userId);
     }, 2000);
   };
 
@@ -1760,7 +1761,7 @@ export default function CommuterDashboard() {
     setTimeout(() => {
       setGpsVerified('verified');
       setJourneyStage('arrived');
-      updateJourneyStage('arrived');
+      updateJourneyStage('arrived', user?.userId);
     }, 1500);
   };
 
@@ -1954,7 +1955,7 @@ export default function CommuterDashboard() {
       />
 
       {/* ─── Main Layout ─── */}
-      <div className="commuter-content-grid flex-1 max-w-[1180px] w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6">
+      <div className={`commuter-content-grid flex-1 ${activeTab === 'map' ? 'max-w-[1520px]' : 'max-w-[1180px]'} w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 pb-20 md:pb-8`}>
 
         {/* Main Content */}
         <main className="min-h-0">
@@ -1968,14 +1969,44 @@ export default function CommuterDashboard() {
 
           {/* Active booking banner */}
           {activeBooking && activeTab !== 'active' && (
-            <button onClick={() => setActiveTab('active')}
-              className="w-full bg-[#007AFF] text-white rounded-2xl p-4 flex items-center justify-between text-[13px] font-semibold mb-4 hover:bg-[#0066d6] transition-colors">
-              <div className="flex items-center gap-3">
-                <span className="flex h-2 w-2 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white/60" /><span className="relative inline-flex rounded-full h-2 w-2 bg-white" /></span>
-                <span className="truncate">{activeBooking.spot.name}</span>
+            <div className="w-full bg-white text-slate-800 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] font-semibold mb-4 border border-blue-200/80 shadow-xs bg-gradient-to-r from-blue-50/70 via-white to-white">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="flex h-2.5 w-2.5 relative shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Reserved Parking Bay</span>
+                    <span className="bg-blue-100 text-blue-800 text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">Bay {activeBooking.spot.parkingLabel}</span>
+                  </div>
+                  <div className="truncate text-slate-900 font-bold">{formatShortSpotName(activeBooking.spot.name)}</div>
+                </div>
               </div>
-              <span className="font-mono font-bold bg-white/10 px-3 py-1 rounded-lg">{formatTime(secondsRemaining)}</span>
-            </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200/80 px-3 py-1.5 rounded-xl text-xs">{formatTime(secondsRemaining)}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSpot(activeBooking.spot);
+                    setActiveTab('map');
+                    setMobileTransitTab('transit');
+                    setTransitWorkspaceMode('navigation');
+                  }}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow-xs flex items-center gap-1.5"
+                >
+                  <Navigation size={13} />
+                  <span>Drive to Bay</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('active')}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition"
+                >
+                  Pass
+                </button>
+              </div>
+            </div>
           )}
 
           {favoriteError && (
@@ -2127,7 +2158,7 @@ export default function CommuterDashboard() {
                             </div>
                           </div>
                           <p className="mt-1 text-[11px] text-[#5f6368]">{spot.address}</p>
-                          <p className="mt-1 text-[10px] text-[#9ca3af]">Near {spot.stationName} · {spot.distanceToStation.toFixed(2)} km to station · {spot.timeToStationInMinutes} min</p>
+                          <p className="mt-1 text-[10px] text-[#9ca3af]">Near {spot.stationName} · {(spot.distanceToStation ?? 0).toFixed(2)} km to station · {spot.timeToStationInMinutes ?? 0} min</p>
                           <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold text-[#5f6368]">
                             <span>Daily: {spot.dailyRate === null ? '—' : `RM ${spot.dailyRate.toFixed(2)}`}</span>
                             <span>Monthly: RM {spot.monthlyRate.toFixed(2)}</span>
@@ -2155,96 +2186,170 @@ export default function CommuterDashboard() {
 
           {/* ─── TAB: Map ─── */}
           {activeTab === 'map' && (
-            <div className="map-lens">
-              <div className="map-lens__map relative">
-                <CommuterMap
-                  spots={lensSpots}
-                  onStationSelect={handleMapStationSelect}
-                  selectedStation={selectedStation}
-                  selectedStationCoords={selectedStationCoords}
-                  selectedStationId={selectedStationId}
-                  selectedSpot={selectedSpot}
-                  onSpotClick={(spot) => setSelectedSpot(spot)}
-                  distanceRadius={distanceFilter}
-                  onDistanceRadiusChange={setDistanceFilter}
-                  userLocation={currentLocation}
-                  locationAccuracy={locationAccuracy}
-                  locationStatus={locationStatus}
-                  onRequestLocation={() => setLocationRequestKey((request) => request + 1)}
-                />
-
-                {/* Floating Liquid Glass Apple HIG Transit Hub Sheet */}
-                <TransitHubSheet
-                  userLocation={currentLocation}
-                  selectedStationId={selectedStationId}
-                  selectedStationName={selectedStation}
-                  onSelectStation={(stop) => {
-                    handleMapStationSelect(stop.stopName, stop.latitude, stop.longitude, stop.stopId);
-                  }}
-                  onSelectParkingSpot={handleSheetParkingSpotSelect}
-                  onOpenParkingDetail={(spot) => openParkingDetail(spot)}
-                />
+            <div className="space-y-3">
+              {/* Mobile View Switcher */}
+              <div className="flex lg:hidden bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setMobileTransitTab('transit')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg transition-all ${
+                    mobileTransitTab === 'transit'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {transitWorkspaceMode === 'navigation' ? 'Directions' : 'Transit Hub'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTransitTab('map')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg transition-all ${
+                    mobileTransitTab === 'map'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Transit Map
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTransitTab('bays')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg transition-all ${
+                    mobileTransitTab === 'bays'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Nearby Bays ({lensSpots.length})
+                </button>
               </div>
 
-              <div className="map-lens__rail">
-                <aside className="map-lens__results nearby-sheet" aria-label="Nearby parking bays">
-                  <div className="nearby-sheet__header">
-                    <h2>Nearby bays</h2>
-                    <span>
-                      {selectedStation
-                        ? `${mapNearbySpots.length} available · ${selectedStation.replace(' LRT', '').replace(' MRT', '')}`
-                        : `${locationSuggestedSpots.length} available near you · Select a station`}
-                    </span>
-                  </div>
-                  <div className="nearby-sheet__list">
-                    {isNearbyLoading ? (
-                      <div className="nearby-sheet__state">
-                        <Loader2 size={20} className="animate-spin" />
-                        <p>Finding parking within {distanceFilter}m…</p>
-                      </div>
-                    ) : nearbyError ? (
-                      <div className="nearby-sheet__state" role="alert">
-                        <AlertCircle size={20} />
-                        <p>{nearbyError} Select another station or try again.</p>
-                      </div>
-                    ) : lensSpots.length === 0 ? (
-                      <div className="nearby-sheet__state">
-                        <MapPin size={20} />
-                        <p>{selectedStation ? `No available bays within ${distanceFilter}m.` : 'Choose an LRT or MRT station on the map to see nearby parking.'}</p>
-                      </div>
-                    ) : (
-                      lensSpots.map((spot) => (
-                        <button
-                          key={spot.id}
-                          type="button"
-                          onClick={() => setSelectedSpot(spot)}
-                          className={`nearby-bay ${lensSelectedSpot?.id === spot.id ? 'is-selected' : ''}`}
-                        >
-                          <span className="nearby-bay__mark">P</span>
-                          <div className="nearby-bay__content min-w-0">
-                            <strong>{spot.name}</strong>
-                            <span>Bay {spot.parkingLabel} · {spot.distanceToStation.toFixed(2)} km · {spot.timeToStationInMinutes} min</span>
-                          </div>
-                          <span className="nearby-bay__rate">{formatParkingRate(spot)}</span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </aside>
+              <div className="map-lens">
+                {/* 1. DEDICATED LEFT WORKSPACE PANEL: TRANSIT HUB (Explore) OR JOURNEY NAVIGATOR (Navigation) */}
+                <div className={`map-lens__gtfs ${mobileTransitTab !== 'transit' ? 'hidden lg:block' : ''}`}>
+                  {transitWorkspaceMode === 'navigation' ? (
+                    <div className="h-full overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs bg-white">
+                      <LinearJourneyNavigator
+                        plan={navigationRoutes.linearPlan}
+                        drivingRoute={navigationRoutes.drivingRoute}
+                        journeyTab={navigationJourneyTab}
+                        onChangeJourneyTab={setNavigationJourneyTab}
+                        onClose={() => setTransitWorkspaceMode('explore')}
+                      />
+                    </div>
+                  ) : (
+                    <TransitHubSheet
+                      userLocation={currentLocation}
+                      selectedStationId={selectedStationId}
+                      selectedStationName={selectedStation}
+                      selectedBusRoute={selectedBusRoute}
+                      onSelectBusRoute={setSelectedBusRoute}
+                      onSelectStation={(stop) => {
+                        handleMapStationSelect(stop.stopName, stop.latitude, stop.longitude, stop.stopId);
+                        setMobileTransitTab('map');
+                      }}
+                      onSelectParkingSpot={handleSheetParkingSpotSelect}
+                      onOpenParkingDetail={(spot) => openParkingDetail(spot)}
+                    />
+                  )}
+                </div>
 
-                <div className="map-lens__pass">
-                  <ParkingPass
-                    spot={lensSelectedSpot}
-                    vehiclePlate={vehicles.find((vehicle) => vehicle.active)?.plate}
-                    onReserve={lensSelectedSpot ? () => openParkingDetail(lensSelectedSpot) : undefined}
-                    compact
-                    stationName={selectedStation}
-                    isNearbyLoading={isNearbyLoading}
+                {/* 2. EXPANSIVE FULL-WIDTH MAP CANVAS */}
+                <div className={`map-lens__map relative ${mobileTransitTab !== 'map' ? 'hidden lg:block' : ''}`}>
+                  <CommuterMap
+                    spots={lensSpots}
+                    onStationSelect={handleMapStationSelect}
+                    selectedStation={selectedStation}
+                    selectedStationCoords={selectedStationCoords}
+                    selectedStationId={selectedStationId}
+                    selectedSpot={selectedSpot}
+                    onSpotClick={(spot) => setSelectedSpot(spot)}
+                    distanceRadius={distanceFilter}
+                    onDistanceRadiusChange={setDistanceFilter}
+                    userLocation={currentLocation}
+                    locationAccuracy={locationAccuracy}
+                    locationStatus={locationStatus}
+                    onRequestLocation={() => setLocationRequestKey((request) => request + 1)}
+                    selectedBusRoute={selectedBusRoute}
+                    onBusRouteSelect={setSelectedBusRoute}
+                    activeBookingSpot={activeBooking?.spot}
+                    activeBooking={activeBooking}
+                    workspaceMode={transitWorkspaceMode}
+                    onNavigate={() => {
+                      setTransitWorkspaceMode('navigation');
+                      setMobileTransitTab('transit');
+                    }}
+                    onExitNavigation={() => setTransitWorkspaceMode('explore')}
+                    onRoutesCalculated={setNavigationRoutes}
                   />
                 </div>
-              </div>
 
-              {activeBooking && <JourneyStrip activeStep={journeyStep} />}
+                {/* 3. MOBILE-ONLY NEARBY BAYS TAB */}
+                {mobileTransitTab === 'bays' && (
+                  <div className="map-lens__rail lg:hidden flex">
+                    <aside className="map-lens__results nearby-sheet" aria-label="Nearby parking bays">
+                      <div className="nearby-sheet__header">
+                        <h2>Nearby bays</h2>
+                        <span>
+                          {selectedStation
+                            ? `${mapNearbySpots.length} available · ${selectedStation.replace(' LRT', '').replace(' MRT', '')}`
+                            : `${locationSuggestedSpots.length} available near you · Select a station`}
+                        </span>
+                      </div>
+                      <div className="nearby-sheet__list">
+                        {isNearbyLoading ? (
+                          <div className="nearby-sheet__state">
+                            <Loader2 size={20} className="animate-spin" />
+                            <p>Finding parking within {distanceFilter}m…</p>
+                          </div>
+                        ) : nearbyError ? (
+                          <div className="nearby-sheet__state" role="alert">
+                            <AlertCircle size={20} />
+                            <p>{nearbyError} Select another station or try again.</p>
+                          </div>
+                        ) : lensSpots.length === 0 ? (
+                          <div className="nearby-sheet__state">
+                            <MapPin size={20} />
+                            <p>{selectedStation ? `No available bays within ${distanceFilter}m.` : 'Choose an LRT or MRT station on the map to see nearby parking.'}</p>
+                          </div>
+                        ) : (
+                          lensSpots.map((spot) => (
+                            <button
+                              key={spot.id}
+                              type="button"
+                              onClick={() => setSelectedSpot(spot)}
+                              className={`nearby-bay ${lensSelectedSpot?.id === spot.id ? 'is-selected' : ''}`}
+                            >
+                              <span className="nearby-bay__mark">P</span>
+                              <div className="nearby-bay__content min-w-0">
+                                <strong>{spot.name}</strong>
+                                <span>Bay {spot.parkingLabel} · {(spot.distanceToStation ?? 0).toFixed(2)} km · {spot.timeToStationInMinutes ?? 0} min</span>
+                              </div>
+                              <span className="nearby-bay__rate">{formatParkingRate(spot)}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </aside>
+
+                    <div className="map-lens__pass">
+                      <ParkingPass
+                        spot={lensSelectedSpot}
+                        vehiclePlate={vehicles.find((vehicle) => vehicle.active)?.plate}
+                        onReserve={lensSelectedSpot ? () => openParkingDetail(lensSelectedSpot) : undefined}
+                        compact
+                        stationName={selectedStation}
+                        stationCoords={selectedStationCoords}
+                        selectedBusRoute={selectedBusRoute}
+                        onSelectBusRoute={setSelectedBusRoute}
+                        isNearbyLoading={isNearbyLoading}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {activeBooking && <JourneyStrip activeStep={journeyStep} />}
+              </div>
             </div>
           )}
 
@@ -2278,7 +2383,7 @@ export default function CommuterDashboard() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Wallet size={15} className="text-[#5f6368]" />
-                        <span className="text-[13px] font-semibold text-[#111]">RM {activeBooking.totalPaid.toFixed(2)}</span>
+                        <span className="text-[13px] font-semibold text-[#111]">RM {(activeBooking.totalPaid ?? 0).toFixed(2)}</span>
                       </div>
                     </div>
                     {showGraceAlert && (
@@ -2791,7 +2896,7 @@ export default function CommuterDashboard() {
 
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       {item.canReview && !review && <button type="button" onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })} className="text-[11px] font-semibold text-[#007AFF] hover:underline">Write a review</button>}
-                      {booking.bookingStatus.toLowerCase() === 'confirmed' && (
+                      {booking.bookingStatus.toLowerCase() === 'confirmed' && new Date(booking.startDate).setHours(0, 0, 0, 0) > new Date().setHours(0, 0, 0, 0) && (
                         <button
                           type="button"
                           disabled={cancelingBookingId === booking.bookingId}
@@ -2837,7 +2942,7 @@ export default function CommuterDashboard() {
                   </article>;
                 })}
                 {bookingHistory.length === 0 && history.length === 0 && !isBookingHistoryLoading && !bookingHistoryError && <p className="py-4 text-center text-[11px] text-[#9ca3af]">No booking history yet.</p>}
-                {history.map((b) => <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] last:border-0"><div><p className="text-[13px] font-medium text-[#111]">{b.spot.name}</p><p className="text-[11px] text-[#9ca3af]">{b.spot.station}</p></div><div className="text-right"><span className="text-[13px] font-semibold text-[#111]">RM {b.totalPaid.toFixed(2)}</span><p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p></div></div>)}
+                {history.map((b) => <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] last:border-0"><div><p className="text-[13px] font-medium text-[#111]">{b.spot.name}</p><p className="text-[11px] text-[#9ca3af]">{b.spot.station}</p></div><div className="text-right"><span className="text-[13px] font-semibold text-[#111]">RM {(b.totalPaid ?? 0).toFixed(2)}</span><p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p></div></div>)}
                 {bookingHistoryMeta.totalPages > 1 && <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-[#5f6368]"><button type="button" onClick={() => setBookingHistoryPage((value) => Math.max(1, value - 1))} disabled={bookingHistoryPage === 1}>Previous</button><span>Page {bookingHistoryPage} of {bookingHistoryMeta.totalPages}</span><button type="button" onClick={() => setBookingHistoryPage((value) => Math.min(bookingHistoryMeta.totalPages, value + 1))} disabled={bookingHistoryPage === bookingHistoryMeta.totalPages}>Next</button></div>}
               </div>
             </div>
@@ -2877,7 +2982,7 @@ export default function CommuterDashboard() {
                       <div className="p-4">
                         <div className="min-w-0"><h3 className="truncate text-[15px] font-semibold text-[#111]">{spot.propertyName}</h3><p className="mt-1 text-[11px] text-[#5f6368]">Bay {spot.parkingLabel} · Near {spot.stationName}</p></div>
                         <p className="mt-2 line-clamp-2 text-[11px] text-[#6e6e73]">{spot.address}</p>
-                        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-[#f8f9fa] p-3 text-[11px]"><div><span className="block text-[10px] text-[#9ca3af]">Daily rate</span><strong className="mt-0.5 block text-[#111]">{spot.dailyRate === null ? 'Not set' : `RM ${spot.dailyRate.toFixed(2)}`}</strong></div><div><span className="block text-[10px] text-[#9ca3af]">To station</span><strong className="mt-0.5 block text-[#111]">{spot.distanceToStation.toFixed(2)} km</strong></div></div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-[#f8f9fa] p-3 text-[11px]"><div><span className="block text-[10px] text-[#9ca3af]">Daily rate</span><strong className="mt-0.5 block text-[#111]">{spot.dailyRate === null ? 'Not set' : `RM ${spot.dailyRate.toFixed(2)}`}</strong></div><div><span className="block text-[10px] text-[#9ca3af]">To station</span><strong className="mt-0.5 block text-[#111]">{(spot.distanceToStation ?? 0).toFixed(2)} km</strong></div></div>
                         <button type="button" onClick={() => openParkingDetail(spot, null, spot.stationName)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-[12px] font-semibold text-white hover:bg-[#0066d6]">View parking <ChevronRight size={15} /></button>
                       </div>
                     </article>
@@ -2914,7 +3019,7 @@ export default function CommuterDashboard() {
       {/* ─── Notifications Drawer ─── */}
       <AnimatePresence>
       {showNotificationsDrawer && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-[1250] flex justify-end">
           <motion.div
             initial={{ opacity: prefersReducedMotion ? 1 : 0 }}
             animate={{ opacity: 1 }}
@@ -2958,7 +3063,7 @@ export default function CommuterDashboard() {
 
       {/* ─── Top-Up Modal ─── */}
       {showTopUpModal && (
-        <div className="wallet-topup-modal fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="wallet-topup-modal fixed inset-0 z-[1250] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={() => !isTopUpLoading && setShowTopUpModal(false)} aria-hidden="true" />
           <div ref={topUpDialogRef} role="dialog" aria-modal="true" aria-labelledby="top-up-title" tabIndex={-1} className="wallet-topup-dialog relative bg-white rounded-2xl border border-[#e8eaed] p-6 w-full max-w-md">
             <div className="flex items-start gap-3 mb-5">
@@ -3046,7 +3151,7 @@ export default function CommuterDashboard() {
 
       {/* ─── QR Scanner Modal ─── */}
       {showQRScanner && (
-        <div ref={qrDialogRef} role="dialog" aria-modal="true" aria-labelledby="qr-scanner-title" tabIndex={-1} className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+        <div ref={qrDialogRef} role="dialog" aria-modal="true" aria-labelledby="qr-scanner-title" tabIndex={-1} className="fixed inset-0 z-[1250] bg-black flex flex-col items-center justify-center">
           <button type="button" aria-label="Close QR scanner" onClick={closeQRScanner} className="absolute top-5 right-5 text-white p-2"><X size={24} /></button>
           <div className="w-72 h-72 border-2 border-white/30 rounded-2xl relative overflow-hidden">
             {scannerCameraActive && <video ref={videoRef} autoPlay playsInline className="absolute inset-0 object-cover" />}

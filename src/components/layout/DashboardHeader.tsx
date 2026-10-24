@@ -180,7 +180,7 @@ export default function DashboardHeader({
 
   return (
     <header
-      className="workspace-header sticky top-0 z-40 shrink-0 glass-bar"
+      className="workspace-header sticky top-0 z-[1100] shrink-0 glass-bar"
       data-workspace-role={role}
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >

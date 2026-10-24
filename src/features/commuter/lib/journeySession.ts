@@ -7,9 +7,11 @@ export interface JourneySession {
   stage: JourneyStage;
 }
 
-const STORAGE_KEY = 'parkjom.commuterJourney';
+const LEGACY_STORAGE_KEY = 'parkjom.commuterJourney';
+const storageKey = (userId: number) => `${LEGACY_STORAGE_KEY}.${userId}`;
 
 interface SerializedJourneySession {
+  userId: number;
   booking: Omit<Booking, 'startTime' | 'endTime'> & {
     startTime: string;
     endTime: string;
@@ -17,8 +19,24 @@ interface SerializedJourneySession {
   stage: JourneyStage;
 }
 
-export function saveJourneySession(booking: Booking, stage: JourneyStage = 'reserved') {
+function purgeLegacyUnscopedJourney() {
+  try {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function saveJourneySession(
+  booking: Booking,
+  stage: JourneyStage = 'reserved',
+  userId?: number | null,
+) {
+  purgeLegacyUnscopedJourney();
+  if (!userId || !Number.isFinite(userId)) return;
+
   const payload: SerializedJourneySession = {
+    userId,
     booking: {
       ...booking,
       startTime: booking.startTime.toISOString(),
@@ -27,15 +45,28 @@ export function saveJourneySession(booking: Booking, stage: JourneyStage = 'rese
     stage,
   };
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  try {
+    window.localStorage.setItem(storageKey(userId), JSON.stringify(payload));
+  } catch {
+    // Ignore storage errors
+  }
 }
 
-export function loadJourneySession(): JourneySession | null {
+export function loadJourneySession(userId?: number | null): JourneySession | null {
+  purgeLegacyUnscopedJourney();
+  if (!userId || !Number.isFinite(userId)) return null;
+
+  const key = storageKey(userId);
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return null;
 
-    const payload = JSON.parse(raw) as SerializedJourneySession;
+    const payload = JSON.parse(raw) as Partial<SerializedJourneySession>;
+    if (payload.userId !== userId || !payload.booking || !payload.stage) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+
     return {
       stage: payload.stage,
       booking: {
@@ -45,16 +76,27 @@ export function loadJourneySession(): JourneySession | null {
       },
     };
   } catch {
-    window.localStorage.removeItem(STORAGE_KEY);
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Ignore storage errors
+    }
     return null;
   }
 }
 
-export function updateJourneyStage(stage: JourneyStage) {
-  const session = loadJourneySession();
-  if (session) saveJourneySession(session.booking, stage);
+export function updateJourneyStage(stage: JourneyStage, userId?: number | null) {
+  if (!userId || !Number.isFinite(userId)) return;
+  const session = loadJourneySession(userId);
+  if (session) saveJourneySession(session.booking, stage, userId);
 }
 
-export function clearJourneySession() {
-  window.localStorage.removeItem(STORAGE_KEY);
+export function clearJourneySession(userId?: number | null) {
+  purgeLegacyUnscopedJourney();
+  if (!userId || !Number.isFinite(userId)) return;
+  try {
+    window.localStorage.removeItem(storageKey(userId));
+  } catch {
+    // Ignore storage errors
+  }
 }

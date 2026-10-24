@@ -43,6 +43,7 @@ export default function GoogleLoginButton() {
   const defaultRole = roleParam === 'Owner' ? 2 : 3; // 2=Owner, 3=Commuter
 
   const [pendingUserId, setPendingUserId] = useState<number | null>(null);
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [selectedRole, setSelectedRole] = useState<number>(defaultRole);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
@@ -91,6 +92,7 @@ export default function GoogleLoginButton() {
 
     // Step 1a: Profile incomplete → show phone verification
     if (!data.isProfileComplete) {
+      setPendingToken(data.jwtToken ?? null);
       setPendingUserId(userId);
       return;
     }
@@ -163,6 +165,7 @@ export default function GoogleLoginButton() {
         userId: pendingUserId,
         phoneNumber: trimmed,
         userType: selectedRole, // 2=Owner, 3=Commuter
+        token: pendingToken,
       });
 
       if (!res.ok) {
@@ -212,6 +215,7 @@ export default function GoogleLoginButton() {
   const handleUseDifferentAccount = () => {
     if (!Capacitor.isNativePlatform()) googleLogout();
     finishGoogleLoginRequest();
+    setPendingToken(null);
     setPendingUserId(null);
     setPhoneNumber('');
     setPhoneError('');

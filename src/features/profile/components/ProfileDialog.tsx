@@ -232,7 +232,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
   ] : [];
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-900/40 backdrop-blur-xs sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[1300] flex items-end justify-center bg-slate-900/40 backdrop-blur-xs sm:items-center sm:p-4">
       <button type="button" aria-label="Close profile" className="absolute inset-0 cursor-default" onClick={() => !isBusy && onClose()} />
       <section
         role="dialog"
