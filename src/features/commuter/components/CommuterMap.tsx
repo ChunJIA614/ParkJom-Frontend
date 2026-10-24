@@ -18,6 +18,7 @@ import { ParkingSpot, Booking } from '../types';
 import { loadRailNetworkData } from '@/services/transitData';
 import { watchDeviceLocation } from '@/services/deviceCapabilities';
 import { showAlert } from '@/contexts/ModalContext';
+import SystemSelect from '@/components/ui/SystemSelect';
 import {
   Search,
   Navigation,

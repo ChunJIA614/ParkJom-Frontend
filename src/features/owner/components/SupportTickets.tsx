@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useState } from 'react';
 import { 
   Radio, 
@@ -686,7 +687,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Issue Classification Category</label>
-                <select
+                <SystemSelect
                   value={formCategory}
                   onChange={(e) => setFormCategory(e.target.value as any)}
                   className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
@@ -696,12 +697,12 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                   <option value="PAYMENT">PAYMENT (Refund, Overcharge, Wallet Top-up Issue)</option>
                   <option value="SYSTEM">SYSTEM (Software glitch, mobile connection error)</option>
                   <option value="ACCOUNT">ACCOUNT (KYC verification, login issues)</option>
-                </select>
+                </SystemSelect>
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Linked Hardware Node</label>
-                <select
+                <SystemSelect
                   value={formHardwareNode}
                   onChange={(e) => setFormHardwareNode(e.target.value)}
                   className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
@@ -712,7 +713,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                   <option value="BLD-KLCC-09 (KLCC Bay B2-44)">BLD-KLCC-09 (KLCC Bay B2-44)</option>
                   <option value="BLD-MP-44 (Main Place Bay P4-99)">BLD-MP-44 (Main Place Bay P4-99)</option>
                   <option value="N/A - General Account Issue">N/A - General Account Issue</option>
-                </select>
+                </SystemSelect>
               </div>
             </div>
 

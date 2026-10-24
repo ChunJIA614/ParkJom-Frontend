@@ -2499,9 +2499,12 @@ html {
   outline: none !important;
 }
 
+/* Horizontal table scrollers must NOT reserve a vertical scrollbar gutter:
+   `scrollbar-gutter: stable` leaves an empty strip on the right edge, so the
+   last header cell (e.g. "Actions") never reaches the container edge. */
 .app-workspace main .overflow-x-auto {
   overscroll-behavior-inline: contain;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
 }
 
 .workspace-sidebar {

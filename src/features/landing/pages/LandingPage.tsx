@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useInView, useReducedMotion } from 'motion/react';
 import { CalendarCheck, ChevronDown, ChevronRight, MapPin, TrainFront } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
-import HeroScrollCanvas, { HERO_PIN_VIEWPORTS } from '@/components/HeroScrollCanvas';
+import HeroScrollCanvas, { getHeroPinViewports } from '@/components/HeroScrollCanvas';
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Apple design tokens used on this page
@@ -131,7 +131,7 @@ function LocalNav() {
   useEffect(() => {
     // The hero occupies 1 viewport + the pinned scroll distance; stay dark until it releases.
     const update = () => {
-      const heroEnd = window.innerHeight * (1 + HERO_PIN_VIEWPORTS) - NAV_HEIGHT;
+      const heroEnd = window.innerHeight * (1 + getHeroPinViewports()) - NAV_HEIGHT;
       setOverHero(window.scrollY < heroEnd);
     };
     update();

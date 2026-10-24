@@ -1,4 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
+import SystemSelect from '@/components/ui/SystemSelect';
 import type { VehicleCatalogEntry } from '../api/vehicleCatalogApi';
 
 const CUSTOM_VALUE = '__custom__';
@@ -61,7 +62,7 @@ export default function VehicleBrandModelFields({
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <label className="block space-y-1">
         <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Brand</span>
-        <select
+        <SystemSelect
           value={selectedBrandValue}
           onChange={handleBrandSelect}
           required={!brand && !customBrandMode}
@@ -74,7 +75,7 @@ export default function VehicleBrandModelFields({
             <option key={entry.brand} value={entry.brand}>{entry.brand}</option>
           ))}
           <option value={CUSTOM_VALUE}>Other / enter manually</option>
-        </select>
+        </SystemSelect>
         {selectedBrandValue === CUSTOM_VALUE && (
           <input
             type="text"
@@ -92,7 +93,7 @@ export default function VehicleBrandModelFields({
       <label className="block space-y-1">
         <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Model</span>
         {modelOptions.length > 0 && selectedBrandValue !== CUSTOM_VALUE ? (
-          <select
+          <SystemSelect
             value={selectedModelValue}
             onChange={handleModelSelect}
             required={!model && !customModelMode}
@@ -105,7 +106,7 @@ export default function VehicleBrandModelFields({
               <option key={option} value={option}>{option}</option>
             ))}
             <option value={CUSTOM_VALUE}>Other / enter manually</option>
-          </select>
+          </SystemSelect>
         ) : null}
         {(selectedBrandValue === CUSTOM_VALUE || modelOptions.length === 0 || selectedModelValue === CUSTOM_VALUE) && (
           <input

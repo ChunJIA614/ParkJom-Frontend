@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import SystemSelect from '@/components/ui/SystemSelect';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Navigation, ShieldCheck,
@@ -699,20 +700,42 @@ export default function ParkingDetail() {
       <div className="max-w-3xl mx-auto px-4 md:px-6 mt-5 relative z-10">
         <div className="bg-white rounded-2xl border border-[#e8eaed] p-6 md:p-8 space-y-6">
 
-          {/* Title */}
-          <div className="flex items-start justify-between gap-4">
-            <div>
-            <h1 className="text-xl md:text-2xl font-bold text-[#111] tracking-[-0.01em] leading-tight">{spot.address}</h1>
-            <div className="flex items-center gap-1.5 mt-2 text-[13px] text-[#5f6368]">
-              <MapPin size={14} className="text-[#007AFF] shrink-0" />
-              <span>{stationName ? `${stationName} area` : 'Klang Valley'}</span>
+          {/* Title & Quick Overview */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold text-[#111] tracking-[-0.01em] leading-tight">{spot.address}</h1>
+                <div className="flex items-center gap-1.5 mt-2 text-[13px] text-[#5f6368]">
+                  <MapPin size={14} className="text-[#007AFF] shrink-0" />
+                  <span>{stationName ? `${stationName} area` : 'Klang Valley'}</span>
+                </div>
+              </div>
+              <button type="button" onClick={() => void handleToggleFavorite()} disabled={isFavoriteLoading || isFavoriteUpdating}
+                aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={isFavorite}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition disabled:cursor-wait disabled:opacity-70 ${isFavorite ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#dadce0] text-[#5f6368] hover:text-rose-500'}`}>
+                {isFavoriteLoading || isFavoriteUpdating ? <Loader2 size={18} className="animate-spin text-[#007AFF]" /> : <Heart size={18} fill={isFavorite ? 'currentColor' : 'none'} />}
+              </button>
             </div>
+
+            {/* Key Information Chips (Arranged by commuter necessity) */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 font-bold text-blue-700 border border-blue-100">
+                RM {displayedRate.toFixed(2)} <span className="font-normal text-blue-600">/ day</span>
+              </span>
+              {spot.parkingLabel && (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
+                  <Car size={13} className="text-slate-500" /> Bay {spot.parkingLabel}
+                </span>
+              )}
+              {walkingInfo && (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 font-medium text-emerald-800 border border-emerald-100">
+                  <Footprints size={13} className="text-emerald-600" /> {walkingInfo.durationText} walk ({walkingInfo.distanceText})
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2.5 py-1 text-slate-600 border border-slate-200">
+                <Wifi size={13} className="text-[#007AFF]" /> Smart bollard access
+              </span>
             </div>
-            <button type="button" onClick={() => void handleToggleFavorite()} disabled={isFavoriteLoading || isFavoriteUpdating}
-              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={isFavorite}
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition disabled:cursor-wait disabled:opacity-70 ${isFavorite ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#dadce0] text-[#5f6368] hover:text-rose-500'}`}>
-              {isFavoriteLoading || isFavoriteUpdating ? <Loader2 size={18} className="animate-spin text-[#007AFF]" /> : <Heart size={18} fill={isFavorite ? 'currentColor' : 'none'} />}
-            </button>
           </div>
 
           {favoriteError && (
@@ -722,169 +745,9 @@ export default function ParkingDetail() {
             </div>
           )}
 
-          {/* OpenTripPlanner Multimodal Continuous Journey (OTP Model) */}
-          {multimodalPlan ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Compass className="w-4 h-4 text-blue-600" />
-                  <h3 className="font-bold text-slate-900 text-sm">
-                    Continuous Route: Parking ➔ Station Entrance
-                  </h3>
-                </div>
-                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px] font-semibold">
-                  {(['balanced', 'less_walk', 'fastest'] as CommuterPreference[]).map((pref) => (
-                    <button
-                      key={pref}
-                      type="button"
-                      onClick={() => setPreference(pref)}
-                      className={`px-2 py-0.5 rounded capitalize transition ${
-                        preference === pref
-                          ? 'bg-white text-slate-900 font-bold shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      {pref.replace('_', ' ')}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Itinerary Options (Ranked by Generalized Cost J(r)) */}
-              {multimodalPlan.allItineraries.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {multimodalPlan.allItineraries.map((it) => {
-                    const isSelected = it.id === (activeItineraryId || multimodalPlan.recommendedItinerary.id);
-                    return (
-                      <div
-                        key={it.id}
-                        onClick={() => setActiveItineraryId(it.id)}
-                        className={`p-3 rounded-xl border transition cursor-pointer relative ${
-                          isSelected
-                            ? 'bg-blue-50/80 border-blue-400 text-blue-950 shadow-xs'
-                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {it.isRecommended && (
-                          <span className="absolute -top-2 right-2 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider flex items-center gap-0.5 shadow-xs">
-                            <Sparkles size={8} />
-                            Optimal J(r)
-                          </span>
-                        )}
-                        <div className="flex items-center gap-1.5 font-bold text-xs">
-                          {it.type === 'transit_feeder' ? (
-                            <Bus size={14} className="text-emerald-600" />
-                          ) : (
-                            <Footprints size={14} className="text-blue-600" />
-                          )}
-                          <span>{it.title}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2">
-                          <strong className="text-slate-900 font-semibold">~{it.totalDurationMinutes} mins</strong>
-                          <span>·</span>
-                          <span>{it.totalWalkDistanceMeters}m walk</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          Cost Score J(r): <strong className="text-slate-700">{it.costBreakdown.totalCost}</strong>
-                        </div>
-                        {it.savingsSummary && (
-                          <div className="text-[10px] text-emerald-700 font-bold mt-1">
-                            ✓ {it.savingsSummary}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Step-by-Step Linear Guidance */}
-              {(() => {
-                const activeIt =
-                  multimodalPlan.allItineraries.find((i) => i.id === activeItineraryId) ||
-                  multimodalPlan.recommendedItinerary;
-                return (
-                  <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      Turn-by-turn Linear Journey
-                    </div>
-                    {activeIt.legs.map((leg, lIdx) => (
-                      <div key={lIdx} className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-100">
-                        <div className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
-                          {lIdx + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-slate-800 text-[11px]">{leg.title}</div>
-                          <p className="text-[10px] text-slate-500 mt-0.5">{leg.summary}</p>
-                          {leg.transitDetails && (
-                            <div className="mt-1 text-[10px] bg-emerald-50 text-emerald-800 px-2 py-1 rounded font-medium border border-emerald-200">
-                              Ride {leg.transitDetails.routeShortName} ({leg.transitDetails.numStops} stops) ➔ {leg.transitDetails.alightingStopName}
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-[10px] font-mono text-slate-400 shrink-0 font-medium">
-                          ~{leg.durationMinutes} min
-                        </span>
-                      </div>
-                    ))}
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 font-semibold text-xs">
-                      <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-                      <span>Arrive at {activeIt.targetStationEntranceName}</span>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          ) : isLoadingRoute ? (
-            <div className="bg-[#f8f9fa] border border-[#e8eaed] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368]">
-              <Loader2 size={16} className="animate-spin text-[#007AFF] shrink-0" />
-              Calculating multimodal route via OTP engine...
-            </div>
-          ) : walkingInfo ? (
-            <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-[#dcfce7] flex items-center justify-center shrink-0">
-                <Navigation size={20} className="text-[#16a34a]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[13px] font-semibold text-[#15803d]">
-                  {walkingInfo.distanceText} &middot; {walkingInfo.durationText}
-                </p>
-                <p className="text-[12px] text-[#16a34a]">
-                  Walking distance to {stationName || 'station'}
-                </p>
-              </div>
-              <span className="text-[10px] font-semibold bg-[#bbf7d0] text-[#15803d] px-2 py-0.5 rounded-full">
-                OSRM Verified
-              </span>
-            </div>
-          ) : (
-            <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#a16207]">
-              <MapPin size={16} className="shrink-0" />
-              Select a station on the map to calculate multimodal route.
-            </div>
-          )}
-
           <div className="h-px bg-[#e8eaed]" />
 
-          {/* Amenities */}
-          <div>
-            <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-3">Parking Space Details</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {[
-                { icon: Car, label: 'Private parking bay' },
-                { icon: Wifi, label: 'Smart bollard access' },
-                { icon: Navigation, label: 'Transit-adjacent' },
-              ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex items-center gap-2 text-[13px] text-[#5f6368] bg-[#f8f9fa] rounded-xl p-3">
-                  <Icon size={15} className="text-[#007AFF] shrink-0" /> {label}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="h-px bg-[#e8eaed]" />
-
-          {/* Booking dates */}
+{/* Booking dates */}
           <div>
             <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-4 flex items-center gap-1.5">
               <Calendar size={14} className="text-[#007AFF]" /> Select Booking Dates
@@ -992,14 +855,14 @@ export default function ParkingDetail() {
 
             <div className="mt-4 space-y-1">
               <label className="text-[11px] font-medium text-[#5f6368]">Vehicle</label>
-              <select value={selectedVehicleId ?? ''} onChange={(event) => setSelectedVehicleId(Number(event.target.value) || null)}
+              <SystemSelect value={selectedVehicleId ?? ''} onChange={(event) => setSelectedVehicleId(Number(event.target.value) || null)}
                 disabled={isVehiclesLoading || vehicles.length === 0}
                 className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF]">
                 {vehicles.length === 0 && <option value="">{isVehiclesLoading ? 'Loading vehicles…' : 'No vehicles available'}</option>}
                 {vehicles.map((vehicle) => (
                   <option key={vehicle.vehicleId} value={vehicle.vehicleId}>{vehicle.numberPlate} · {vehicle.vehicleBrand} {vehicle.vehicleModel}</option>
                 ))}
-              </select>
+              </SystemSelect>
             </div>
 
             {bookingError && (
@@ -1008,6 +871,204 @@ export default function ParkingDetail() {
                 <span>{bookingError}</span>
               </div>
             )}
+          </div>
+
+          {/* Price breakdown */}
+          {quote && (
+            <div className="space-y-2 text-[13px]">
+              <div className="flex justify-between">
+                <span className="text-[#5f6368]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} day{quote.bookedDays === 1 ? '' : 's'}</span>
+                <span className="font-semibold text-[#111]">RM {quote.rentalSubtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#5f6368]">10% platform fee (included)</span>
+                <span className="font-semibold text-[#111]">RM {quote.platformFee.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-[15px]">
+                <span>Total</span>
+                <span>RM {quote.renterTotal.toFixed(2)}</span>
+              </div>
+              <p className="text-[11px] text-[#9ca3af]">Quote expires {new Date(quote.expiresAt).toLocaleString('en-MY')}.</p>
+            </div>
+          )}
+
+          <div className="h-px bg-[#e8eaed]" />
+
+          {/* Amenities */}
+          <div>
+            <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-3">Parking Space Details</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {[
+                { icon: Car, label: 'Private parking bay' },
+                { icon: Wifi, label: 'Smart bollard access' },
+                { icon: Navigation, label: 'Transit-adjacent' },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="flex items-center gap-2 text-[13px] text-[#5f6368] bg-[#f8f9fa] rounded-xl p-3">
+                  <Icon size={15} className="text-[#007AFF] shrink-0" /> {label}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* About */}
+          <div>
+            <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-2">About This Space</h3>
+            <p className="text-[13px] text-[#5f6368] leading-relaxed">
+              A private parking bay offered near {stationName || 'an LRT/MRT station'}. ParkJom coordinates the reservation and smart-bollard access flow for the parking session.
+            </p>
+          </div>
+
+          <div className="h-px bg-[#e8eaed]" />
+
+                    {/* 3. Station Connection & Distance (Continuous Route, moved lower based on user perspective) */}
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider flex items-center gap-1.5">
+                <Compass size={14} className="text-[#007AFF]" /> Station Connection & Distance
+              </h3>
+              <p className="text-[12px] text-[#5f6368] mt-0.5">
+                Walking and transit options from parking bay to {stationName ? `${stationName} Station` : 'the station entrance'}
+              </p>
+            </div>
+
+{/* OpenTripPlanner Multimodal Continuous Journey (OTP Model) */}
+          {multimodalPlan ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Compass className="w-4 h-4 text-blue-600" />
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Continuous Route: Parking ➔ Station Entrance
+                  </h3>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px] font-semibold">
+                  {(['balanced', 'less_walk', 'fastest'] as CommuterPreference[]).map((pref) => (
+                    <button
+                      key={pref}
+                      type="button"
+                      onClick={() => setPreference(pref)}
+                      className={`px-2 py-0.5 rounded capitalize transition ${
+                        preference === pref
+                          ? 'bg-white text-slate-900 font-bold shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {pref.replace('_', ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Itinerary Options (Ranked by Generalized Cost J(r)) */}
+              {multimodalPlan.allItineraries.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {multimodalPlan.allItineraries.map((it) => {
+                    const isSelected = it.id === (activeItineraryId || multimodalPlan.recommendedItinerary.id);
+                    return (
+                      <div
+                        key={it.id}
+                        onClick={() => setActiveItineraryId(it.id)}
+                        className={`p-3 rounded-xl border transition cursor-pointer relative ${
+                          isSelected
+                            ? 'bg-blue-50/80 border-blue-400 text-blue-950 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {it.isRecommended && (
+                          <span className="absolute -top-2 right-2 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider flex items-center gap-0.5 shadow-xs">
+                            <Sparkles size={8} />
+                            Optimal J(r)
+                          </span>
+                        )}
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          {it.type === 'transit_feeder' ? (
+                            <Bus size={14} className="text-emerald-600" />
+                          ) : (
+                            <Footprints size={14} className="text-blue-600" />
+                          )}
+                          <span>{it.title}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2">
+                          <strong className="text-slate-900 font-semibold">~{it.totalDurationMinutes} mins</strong>
+                          <span>·</span>
+                          <span>{(it.totalWalkDistanceMeters >= 1000 ? (it.totalWalkDistanceMeters / 1000).toFixed(1) + " km" : it.totalWalkDistanceMeters + "m")} walk</span>
+                        </div>
+                                                {it.savingsSummary && (
+                          <div className="text-[10px] text-emerald-700 font-bold mt-1">
+                            ✓ {it.savingsSummary}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Step-by-Step Linear Guidance */}
+              {(() => {
+                const activeIt =
+                  multimodalPlan.allItineraries.find((i) => i.id === activeItineraryId) ||
+                  multimodalPlan.recommendedItinerary;
+                return (
+                  <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Turn-by-turn Linear Journey
+                    </div>
+                    {activeIt.legs.map((leg, lIdx) => (
+                      <div key={lIdx} className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-100">
+                        <div className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                          {lIdx + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-slate-800 text-[11px]">{leg.title}</div>
+                          <p className="text-[10px] text-slate-500 mt-0.5">{leg.summary}</p>
+                          {leg.transitDetails && (
+                            <div className="mt-1 text-[10px] bg-emerald-50 text-emerald-800 px-2 py-1 rounded font-medium border border-emerald-200">
+                              Ride {leg.transitDetails.routeShortName} ({leg.transitDetails.numStops} stops) ➔ {leg.transitDetails.alightingStopName}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400 shrink-0 font-medium">
+                          ~{leg.durationMinutes} min
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 font-semibold text-xs">
+                      <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                      <span>Arrive at {activeIt.targetStationEntranceName}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : isLoadingRoute ? (
+            <div className="bg-[#f8f9fa] border border-[#e8eaed] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368]">
+              <Loader2 size={16} className="animate-spin text-[#007AFF] shrink-0" />
+              Calculating multimodal route via OTP engine...
+            </div>
+          ) : walkingInfo ? (
+            <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-[#dcfce7] flex items-center justify-center shrink-0">
+                <Navigation size={20} className="text-[#16a34a]" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[13px] font-semibold text-[#15803d]">
+                  {walkingInfo.distanceText} &middot; {walkingInfo.durationText}
+                </p>
+                <p className="text-[12px] text-[#16a34a]">
+                  Walking distance to {stationName || 'station'}
+                </p>
+              </div>
+              <span className="text-[10px] font-semibold bg-[#bbf7d0] text-[#15803d] px-2 py-0.5 rounded-full">
+                OSRM Verified
+              </span>
+            </div>
+          ) : (
+            <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#a16207]">
+              <MapPin size={16} className="shrink-0" />
+              Select a station on the map to calculate multimodal route.
+            </div>
+          )}
           </div>
 
           <div className="h-px bg-[#e8eaed]" />
@@ -1104,37 +1165,6 @@ export default function ParkingDetail() {
             )}
             <p className="mt-3 flex items-center gap-1.5 text-[10px] text-[#8e8e93]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
           </section>
-
-          <div className="h-px bg-[#e8eaed]" />
-
-          {/* About */}
-          <div>
-            <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-2">About This Space</h3>
-            <p className="text-[13px] text-[#5f6368] leading-relaxed">
-              A private parking bay offered near {stationName || 'an LRT/MRT station'}. ParkJom coordinates the reservation and smart-bollard access flow for the parking session.
-            </p>
-          </div>
-
-          <div className="h-px bg-[#e8eaed]" />
-
-          {/* Price breakdown */}
-          {quote && (
-            <div className="space-y-2 text-[13px]">
-              <div className="flex justify-between">
-                <span className="text-[#5f6368]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} day{quote.bookedDays === 1 ? '' : 's'}</span>
-                <span className="font-semibold text-[#111]">RM {quote.rentalSubtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#5f6368]">10% platform fee (included)</span>
-                <span className="font-semibold text-[#111]">RM {quote.platformFee.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-[15px]">
-                <span>Total</span>
-                <span>RM {quote.renterTotal.toFixed(2)}</span>
-              </div>
-              <p className="text-[11px] text-[#9ca3af]">Quote expires {new Date(quote.expiresAt).toLocaleString('en-MY')}.</p>
-            </div>
-          )}
         </div>
       </div>
 

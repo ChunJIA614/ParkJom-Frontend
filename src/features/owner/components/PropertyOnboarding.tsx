@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import SystemSelect from '@/components/ui/SystemSelect';
 import { UploadCloud, CheckCircle, FileText, Landmark, ShieldCheck, HelpCircle, FileCheck, Loader2, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { showAlert } from '@/contexts/ModalContext';
@@ -404,7 +405,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                 {/* Property Type */}
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5">Property Type *</label>
-                  <select
+                  <SystemSelect
                     value={propertyType}
                     onChange={(e) => setPropertyType(Number(e.target.value))}
                     className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 bg-white"
@@ -412,7 +413,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                   >
                     <option value={1}>Condominium</option>
                     <option value={2}>Apartment</option>
-                  </select>
+                  </SystemSelect>
                 </div>
               </div>
 
@@ -523,7 +524,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
               <div>
                 <div className="mb-3">
                   <label className="block text-xs font-bold text-slate-600 mb-1.5">Supporting Document Type *</label>
-                  <select
+                  <SystemSelect
                     value={documentType}
                     onChange={(event) => setDocumentType(Number(event.target.value))}
                     className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 bg-white sm:max-w-xs"
@@ -534,7 +535,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                     <option value={3}>Parking Photo</option>
                     <option value={4}>Identity Card</option>
                     <option value={5}>Other Supporting Document</option>
-                  </select>
+                  </SystemSelect>
                 </div>
 
                 <label className="block text-xs font-bold text-slate-600 mb-1.5">Ownership Document File *</label>

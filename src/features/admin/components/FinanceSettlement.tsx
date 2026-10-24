@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -131,7 +132,7 @@ export default function FinanceSettlement({
                   <th className="py-2.5 px-1">Host/Owner</th>
                   <th className="py-2.5 px-1">Remittance Bank details</th>
                   <th className="py-2.5 px-1">Amount</th>
-                  <th className="py-2.5 px-1 text-right">Settlement Action</th>
+                  <th className="py-2.5 px-1">Settlement Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
@@ -151,7 +152,7 @@ export default function FinanceSettlement({
                         <div className="text-[10px] font-mono text-slate-400">Acc: {payout.accountNumber}</div>
                       </td>
                       <td className="py-3 px-1 font-bold text-slate-800">RM {payout.amount.toFixed(2)}</td>
-                      <td className="py-3 px-1 text-right">
+                      <td className="py-3 px-1">
                         {isProcessing ? (
                           <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#2563EB] bg-[#2563EB]/5 border border-[#2563EB]/10 px-2.5 py-1 rounded-lg">
                             <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Clearing...
@@ -244,7 +245,7 @@ export default function FinanceSettlement({
             </div>
 
             {/* Filter Toggle */}
-            <select 
+            <SystemSelect 
               value={txFilter}
               onChange={(e: any) => setTxFilter(e.target.value)}
               className="px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden"
@@ -252,7 +253,7 @@ export default function FinanceSettlement({
               <option value="all">All Transacts</option>
               <option value="completed">Completed</option>
               <option value="refunded">Refunded</option>
-            </select>
+            </SystemSelect>
           </div>
         </div>
 

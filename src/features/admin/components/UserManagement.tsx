@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -194,21 +195,21 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
             placeholder="Search name, email, or phone" aria-label="Search users"
             className="min-h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
         </label>
-        <select aria-label="Filter by role" value={userType} onChange={(event) => resetPageAnd(setUserType)(event.target.value ? Number(event.target.value) as BackendUserType : '')} className={fieldClass}>
+        <SystemSelect aria-label="Filter by role" value={userType} onChange={(event) => resetPageAnd(setUserType)(event.target.value ? Number(event.target.value) as BackendUserType : '')} className={fieldClass}>
           <option value="">All roles</option>
           <option value={1}>Admin</option>
           <option value={2}>Property Owner</option>
           <option value={3}>Commuter</option>
-        </select>
-        <select aria-label="Filter by account status" value={accountStatus} onChange={(event) => resetPageAnd(setAccountStatus)(event.target.value as AccountStatus | '')} className={fieldClass}>
+        </SystemSelect>
+        <SystemSelect aria-label="Filter by account status" value={accountStatus} onChange={(event) => resetPageAnd(setAccountStatus)(event.target.value as AccountStatus | '')} className={fieldClass}>
           <option value="">All statuses</option>
           {ACCOUNT_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-        </select>
-        <select aria-label="Filter by profile completion" value={profileFilter} onChange={(event) => resetPageAnd(setProfileFilter)(event.target.value as '' | 'true' | 'false')} className={fieldClass}>
+        </SystemSelect>
+        <SystemSelect aria-label="Filter by profile completion" value={profileFilter} onChange={(event) => resetPageAnd(setProfileFilter)(event.target.value as '' | 'true' | 'false')} className={fieldClass}>
           <option value="">Any profile</option>
           <option value="true">Complete</option>
           <option value="false">Incomplete</option>
-        </select>
+        </SystemSelect>
       </div>
 
       {isLoading && users.length === 0 ? (
@@ -224,7 +225,7 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
                 <th className="border-b-2 border-r border-slate-200 px-4 py-3">Role &amp; status</th>
                 <th className="border-b-2 border-r border-slate-200 px-4 py-3">Activity</th>
                 <th className="border-b-2 border-r border-slate-200 px-4 py-3">Joined</th>
-                <th className="rounded-tr-[11px] border-b-2 border-slate-200 px-4 py-3 text-right">Actions</th>
+                <th className="rounded-tr-[11px] border-b-2 border-slate-200 px-4 py-3">Actions</th>
               </tr></thead>
               <tbody>{users.map((entry) => (
                 <tr key={entry.userId} className="align-top hover:bg-slate-50/70">
@@ -251,7 +252,7 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
                     <p className="mt-0.5">{entry.userType === 2 ? `${entry.summary.ownedParkingSpotsCount} spots` : `${entry.summary.vehicleCount} vehicles`} · {entry.summary.openSupportTicketsCount} open tickets</p>
                   </td>
                   <td className="border-b border-r border-slate-200 px-4 py-3 text-[10px] text-slate-500 whitespace-nowrap">{formatDate(entry.createdAt)}</td>
-                  <td className="border-b border-slate-200 px-4 py-3 text-right">
+                  <td className="border-b border-slate-200 px-4 py-3">
                     <button type="button" onClick={() => setSelectedUserId(entry.userId)}
                       className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-700 hover:bg-slate-50">
                       <Eye className="h-3.5 w-3.5" /> Manage
@@ -268,9 +269,9 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
         <p className="text-[11px] text-slate-500">Showing <span className="font-semibold text-slate-700">{firstResult}-{lastResult}</span> of <span className="font-semibold text-slate-700">{totalCount}</span> users</p>
         <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
           <label className="flex items-center gap-2 text-xs font-medium text-slate-500">Rows per page
-            <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} className="min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500" aria-label="Users rows per page">
+            <SystemSelect value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} className="min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500" aria-label="Users rows per page">
               {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
+            </SystemSelect>
           </label>
           <nav className="flex items-center gap-1" aria-label="User pagination">
             <button type="button" onClick={() => setPage(1)} disabled={isLoading || page <= 1} aria-label="First page" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"><ChevronsLeft className="h-4 w-4" /></button>
@@ -367,7 +368,7 @@ function UserDetailPanel({ token, userId, isSelf, onClose, onUpdated }: UserDeta
     if (form.firstName.trim() !== detail.firstName) changes.firstName = form.firstName.trim();
     if (form.lastName.trim() !== detail.lastName) changes.lastName = form.lastName.trim();
     if (form.phoneNumber.trim() !== detail.phoneNumber) changes.phoneNumber = form.phoneNumber.trim();
-    if (form.userType !== detail.userType) changes.userType = form.userType;
+    // User roles are strictly permanent and cannot be changed by anyone
     if (form.isProfileComplete !== detail.isProfileComplete) changes.isProfileComplete = form.isProfileComplete;
     if (form.accountStatus !== toAccountStatus(detail.accountStatus)) changes.accountStatus = form.accountStatus;
     return changes;
@@ -380,20 +381,17 @@ function UserDetailPanel({ token, userId, isSelf, onClose, onUpdated }: UserDeta
     event.preventDefault();
     if (!detail || !hasChanges) return;
 
-    if (changes.accountStatus || changes.userType) {
-      const parts: string[] = [];
-      if (changes.userType) parts.push(`change role to ${USER_TYPE_LABELS[changes.userType]}`);
-      if (changes.accountStatus) parts.push(`set account status to ${changes.accountStatus}`);
+    if (changes.accountStatus) {
       const ownerNote = detail.userType === 2 && changes.accountStatus
         ? changes.accountStatus === 'Active'
           ? '\n\nTheir suspended parking spots will be restored to Available.'
           : '\n\nAll of their parking spots will be suspended.'
         : '';
       const confirmed = await showConfirm({
-        title: 'Confirm account change',
-        message: `You are about to ${parts.join(' and ')} for ${detail.fullName || detail.email}.${ownerNote}`,
-        confirmText: 'Apply changes',
-        variant: changes.accountStatus && changes.accountStatus !== 'Active' ? 'danger' : 'warning',
+        title: 'Confirm account status change',
+        message: `You are about to set account status to ${changes.accountStatus} for ${detail.fullName || detail.email}.${ownerNote}`,
+        confirmText: 'Apply status change',
+        variant: changes.accountStatus !== 'Active' ? 'danger' : 'warning',
         icon: 'warning',
       });
       if (!confirmed) return;
@@ -456,7 +454,7 @@ function UserDetailPanel({ token, userId, isSelf, onClose, onUpdated }: UserDeta
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-slate-800">{detail.fullName || 'Unnamed user'}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${roleTone[detail.userType]}`}>{detail.roleName || USER_TYPE_LABELS[detail.userType]}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${roleTone[detail.userType]}`}>{USER_TYPE_LABELS[detail.userType] || (detail.roleName === 'Renter' ? 'Commuter' : detail.roleName) || 'Commuter'}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusTone(detail.accountStatus)}`}>{detail.accountStatus}</span>
                     </div>
                   </div>
@@ -485,7 +483,7 @@ function UserDetailPanel({ token, userId, isSelf, onClose, onUpdated }: UserDeta
               <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                 <h4 className="text-xs font-bold uppercase text-slate-500">Edit profile</h4>
                 {isSelf && (
-                  <p className="rounded-lg bg-blue-50 px-3 py-2 text-[11px] text-blue-700">This is your own account. Role and account status are locked to prevent self-lockout.</p>
+                  <p className="rounded-lg bg-blue-50 px-3 py-2 text-[11px] text-blue-700">This is your own account. Account status is locked to prevent self-lockout.</p>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1"><span className="text-[11px] font-semibold text-slate-600">First name</span>
@@ -498,16 +496,18 @@ function UserDetailPanel({ token, userId, isSelf, onClose, onUpdated }: UserDeta
                     <input className={fieldClass} type="tel" value={form.phoneNumber} maxLength={20} disabled={isSaving} onChange={(event) => setForm({ ...form, phoneNumber: event.target.value })} />
                   </label>
                   <label className="space-y-1"><span className="text-[11px] font-semibold text-slate-600">Role</span>
-                    <select className={fieldClass} value={form.userType} disabled={isSaving || isSelf} onChange={(event) => setForm({ ...form, userType: Number(event.target.value) as BackendUserType })}>
-                      <option value={1}>Admin</option>
-                      <option value={2}>Property Owner</option>
-                      <option value={3}>Commuter</option>
-                    </select>
+                    <input
+                      className={`${fieldClass} cursor-not-allowed bg-slate-50 font-medium text-slate-700`}
+                      value={USER_TYPE_LABELS[detail.userType] || (detail.roleName === 'Renter' ? 'Commuter' : detail.roleName) || 'Commuter'}
+                      disabled
+                      readOnly
+                      title="Role cannot be changed"
+                    />
                   </label>
                   <label className="space-y-1"><span className="text-[11px] font-semibold text-slate-600">Account status</span>
-                    <select className={fieldClass} value={form.accountStatus} disabled={isSaving || isSelf} onChange={(event) => setForm({ ...form, accountStatus: event.target.value as AccountStatus })}>
+                    <SystemSelect className={fieldClass} value={form.accountStatus} disabled={isSaving || isSelf} onChange={(event) => setForm({ ...form, accountStatus: event.target.value as AccountStatus })}>
                       {ACCOUNT_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-                    </select>
+                    </SystemSelect>
                   </label>
                   <label className="flex items-center gap-2 self-end pb-2 text-[11px] font-semibold text-slate-600">
                     <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-blue-600" checked={form.isProfileComplete} disabled={isSaving}

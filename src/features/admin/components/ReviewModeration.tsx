@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
@@ -280,7 +281,7 @@ export default function ReviewModeration({ token, parkingSpots, onModerated }: R
           </label>
           <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             Rating
-            <select
+            <SystemSelect
               value={ratingFilter}
               onChange={(event) => {
                 setRatingFilter(event.target.value);
@@ -290,7 +291,7 @@ export default function ReviewModeration({ token, parkingSpots, onModerated }: R
             >
               <option value="all">All ratings</option>
               {[5, 4, 3, 2, 1].map((value) => <option key={value} value={value}>{value} stars</option>)}
-            </select>
+            </SystemSelect>
           </label>
           <button
             type="submit"
@@ -495,14 +496,14 @@ export default function ReviewModeration({ token, parkingSpots, onModerated }: R
           </AlertDialogHeader>
           <label className="text-xs font-semibold text-slate-700">
             Removal reason
-            <select
+            <SystemSelect
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               disabled={deleting}
               className="mt-2 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               {moderationReasons.map((item) => <option key={item}>{item}</option>)}
-            </select>
+            </SystemSelect>
           </label>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Keep review</AlertDialogCancel>

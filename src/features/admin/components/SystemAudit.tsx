@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, RefreshCw, Search, ShieldAlert, User, XCircle } from 'lucide-react';
 import type { AccessLogDto, AccessLogPaginationState } from '../types';
@@ -227,7 +228,7 @@ export default function SystemAudit({
         <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
           <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
             Rows per page
-            <select
+            <SystemSelect
               value={pagination.pageSize}
               onChange={(event) => onPageSizeChange(Number(event.target.value))}
               disabled={isLoading}
@@ -237,7 +238,7 @@ export default function SystemAudit({
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
-            </select>
+            </SystemSelect>
           </label>
           <nav className="flex items-center gap-1" aria-label="Audit log pagination">
             <button

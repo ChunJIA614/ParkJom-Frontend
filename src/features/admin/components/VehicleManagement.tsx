@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useMemo, useState } from 'react';
 import { AlertCircle, Car, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, RefreshCw, Search, UserRound } from 'lucide-react';
 import type { AdminVehicleDto } from '../types';
@@ -126,9 +127,9 @@ export default function VehicleManagement({
         <p className="text-[11px] text-slate-500">Showing <span className="font-semibold text-slate-700">{firstResult}-{lastResult}</span> of <span className="font-semibold text-slate-700">{filteredVehicles.length}</span> vehicles</p>
         <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
           <label className="flex items-center gap-2 text-xs font-medium text-slate-500">Rows per page
-            <select value={pageSize} onChange={(event) => changePageSize(Number(event.target.value))} className="min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500" aria-label="Vehicles rows per page">
+            <SystemSelect value={pageSize} onChange={(event) => changePageSize(Number(event.target.value))} className="min-h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700 outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500" aria-label="Vehicles rows per page">
               <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option>
-            </select>
+            </SystemSelect>
           </label>
           <nav className="flex items-center gap-1" aria-label="Vehicle pagination">
             <button type="button" onClick={() => setPage(1)} disabled={isLoading || currentPage <= 1} title="First page" aria-label="First page" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"><ChevronsLeft className="h-4 w-4" /></button>

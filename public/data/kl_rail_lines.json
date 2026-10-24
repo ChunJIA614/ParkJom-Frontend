@@ -24916,7 +24916,7 @@
       "properties": {
         "route_id": "SA",
         "route_name": "SAL",
-        "route_color": "#0284C7"
+        "route_color": "#FF00FF"
       },
       "geometry": {
         "type": "LineString",
@@ -27125,7 +27125,7 @@
       "properties": {
         "route_id": "SA",
         "route_name": "SAL",
-        "route_color": "#0284C7"
+        "route_color": "#FF00FF"
       },
       "geometry": {
         "type": "LineString",

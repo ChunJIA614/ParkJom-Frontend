@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -1433,9 +1434,9 @@ export default function AvailabilityScheduler({
             <label className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-slate-200/90 bg-white/75 px-3 sm:h-11 sm:min-w-[260px]">
               <MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
               <span className="sr-only">Parking spot</span>
-              <select value={selectedBayId} onChange={(event) => setSelectedBayId(event.target.value)} disabled={pendingPhotoCount > 0 || setupBusy} style={{ minHeight: 0 }} className="h-auto min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-800 outline-none disabled:opacity-60">
+              <SystemSelect value={selectedBayId} onChange={(event) => setSelectedBayId(event.target.value)} disabled={pendingPhotoCount > 0 || setupBusy} style={{ minHeight: 0 }} className="h-auto min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-800 outline-none disabled:opacity-60">
                 {bays.map((bay) => <option key={bay.id || bay.parkingSpotId} value={String(bay.parkingSpotId)}>{bayLabel(bay)}</option>)}
-              </select>
+              </SystemSelect>
             </label>
             <div role="tablist" aria-label="Configure parking sections" className="grid h-10 grid-cols-2 gap-1 rounded-xl bg-slate-200/65 p-1 sm:h-11 sm:min-w-[250px]">
               <button id="parking-setup-tab" type="button" role="tab" aria-selected={section === 'setup'} aria-controls="parking-setup-panel" onClick={() => setSection('setup')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'setup' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" aria-hidden="true" /> Setup</span></button>

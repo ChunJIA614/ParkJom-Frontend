@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -466,7 +467,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {recentBookings.length > 0 && (
-            <select
+            <SystemSelect
               aria-label="Filter context by booking"
               value={contextBookingFilter ?? ''}
               onChange={(e) =>
@@ -482,11 +483,11 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                   {b.status ? `(${b.status})` : ''}
                 </option>
               ))}
-            </select>
+            </SystemSelect>
           )}
 
           {recentVehicles.length > 0 && (
-            <select
+            <SystemSelect
               aria-label="Filter context by vehicle"
               value={contextVehicleFilter ?? ''}
               onChange={(e) =>
@@ -500,7 +501,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                   {v.licensePlate || v.plateNumber || `Vehicle #${v.vehicleId}`}
                 </option>
               ))}
-            </select>
+            </SystemSelect>
           )}
 
           <button
@@ -779,7 +780,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 {isOwner && ownedSpots.length > 0 ? 'Related Spot / Booking' : 'Related Booking (Optional)'}
               </label>
               {isOwner && ownedSpots.length > 0 ? (
-                <select
+                <SystemSelect
                   value={selectedSpotId}
                   onChange={(e) => setSelectedSpotId(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 text-xs text-[#1D1D1F] focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
@@ -791,9 +792,9 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                       {s.locationName ? `• ${s.locationName}` : ''}
                     </option>
                   ))}
-                </select>
+                </SystemSelect>
               ) : (
-                <select
+                <SystemSelect
                   value={selectedBookingId}
                   onChange={(e) => setSelectedBookingId(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 text-xs text-[#1D1D1F] focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
@@ -812,7 +813,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                       {b.totalPrice !== undefined ? `(RM ${Number(b.totalPrice).toFixed(2)})` : ''}
                     </option>
                   ))}
-                </select>
+                </SystemSelect>
               )}
             </div>
 
@@ -838,7 +839,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                   <label className="block text-[11px] font-semibold text-[#1D1D1F] mb-1">
                     Vehicle (Optional)
                   </label>
-                  <select
+                  <SystemSelect
                     value={selectedVehicleId}
                     onChange={(e) => setSelectedVehicleId(e.target.value)}
                     className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 text-xs text-[#1D1D1F] focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
@@ -849,7 +850,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                         {v.licensePlate || v.plateNumber || `Vehicle #${v.vehicleId}`}
                       </option>
                     ))}
-                  </select>
+                  </SystemSelect>
                 </>
               )}
             </div>

@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity,
@@ -1258,7 +1259,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             <div className="flex items-center gap-2">
               <label htmlFor="incident-status-filter" className="text-[11px] font-medium text-[#6E6E73] shrink-0">Status:</label>
               <div className="relative flex-1">
-                <select
+                <SystemSelect
                   id="incident-status-filter"
                   value={incidentFilter}
                   onChange={(e) => setIncidentFilter(e.target.value)}
@@ -1269,8 +1270,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="Acknowledged">Acknowledged</option>
                   <option value="Escalated">Escalated</option>
                   <option value="Resolved">Resolved</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
+                </SystemSelect>
               </div>
             </div>
           </div>
@@ -1717,7 +1717,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               <div className="grid grid-cols-2 gap-2.5">
                 <label className="space-y-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Priority</span>
-                  <select
+                  <SystemSelect
                     value={incPriority}
                     onChange={(e) => setIncPriority(e.target.value)}
                     className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
@@ -1725,12 +1725,12 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     <option value="P0">P0 - Critical Emergency</option>
                     <option value="P1">P1 - High Disruption</option>
                     <option value="P2">P2 - Moderate Latency</option>
-                  </select>
+                  </SystemSelect>
                 </label>
 
                 <label className="space-y-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Incident Type</span>
-                  <select
+                  <SystemSelect
                     value={incType}
                     onChange={(e) => setIncType(e.target.value)}
                     className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
@@ -1740,7 +1740,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     <option value="PowerOutage">Power Outage</option>
                     <option value="HardwareFailure">Hardware Failure</option>
                     <option value="BarrierDamaged">Barrier Damaged</option>
-                  </select>
+                  </SystemSelect>
                 </label>
               </div>
 
@@ -1758,7 +1758,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
                 <label className="space-y-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Assigned Team</span>
-                  <select
+                  <SystemSelect
                     value={incAssignedTeam}
                     onChange={(e) => setIncAssignedTeam(e.target.value)}
                     className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
@@ -1766,7 +1766,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     <option value="ParkingOperations">Parking Operations</option>
                     <option value="CustomerSupport">Customer Support</option>
                     <option value="Engineering">Engineering & IoT</option>
-                  </select>
+                  </SystemSelect>
                 </label>
               </div>
 
@@ -1842,7 +1842,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             <form onSubmit={handleAssignResponder} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Operational Team *</label>
-                <select
+                <SystemSelect
                   value={assignTeam}
                   onChange={(e) => setAssignTeam(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
@@ -1851,7 +1851,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="CustomerSupport">Customer Support</option>
                   <option value="Engineering">Engineering</option>
                   <option value="TrustSafety">Trust & Safety</option>
-                </select>
+                </SystemSelect>
               </div>
 
               <div>
@@ -1945,7 +1945,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
                 <div>
                   <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Override Action</label>
-                  <select
+                  <SystemSelect
                     value={overrideAction}
                     onChange={(e) => setOverrideAction(e.target.value)}
                     className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
@@ -1953,7 +1953,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     <option value="RemoteOpenGate">Remote Open Barrier Gate</option>
                     <option value="ForceBarrierOpen">Force Barrier Hold Open</option>
                     <option value="RebootController">Reboot ESP32 Controller</option>
-                  </select>
+                  </SystemSelect>
                 </div>
 
                 <div>
@@ -2014,7 +2014,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             <form onSubmit={handleTransitionIncident} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Target Status *</label>
-                <select
+                <SystemSelect
                   value={incToStatus}
                   onChange={(e) => setIncToStatus(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
@@ -2022,7 +2022,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="Resolved">Resolved (Disruption Rectified)</option>
                   <option value="Monitoring">Monitoring (Telemetry Under Observation)</option>
                   <option value="Closed">Closed (Archived)</option>
-                </select>
+                </SystemSelect>
               </div>
 
               <div>
@@ -2177,7 +2177,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             <div className="flex items-center gap-2">
               <label htmlFor="dispute-status-filter" className="text-[11px] font-medium text-[#6E6E73] shrink-0">Status:</label>
               <div className="relative flex-1">
-                <select
+                <SystemSelect
                   id="dispute-status-filter"
                   value={disputeFilter}
                   onChange={(e) => setDisputeFilter(e.target.value)}
@@ -2189,8 +2189,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="MoreInfo">More Info</option>
                   <option value="Approved">Approved</option>
                   <option value="Declined">Declined</option>
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
+                </SystemSelect>
               </div>
             </div>
           </div>
@@ -2639,7 +2638,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             <form onSubmit={handleAssignDispute} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Operational Team *</label>
-                <select
+                <SystemSelect
                   value={dspAssignTeam}
                   onChange={(e) => setDspAssignTeam(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
@@ -2647,7 +2646,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="Finance">Finance & Settlements</option>
                   <option value="Payments">Payments Support</option>
                   <option value="TrustSafety">Trust & Safety</option>
-                </select>
+                </SystemSelect>
               </div>
 
               <div>
@@ -2664,7 +2663,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
 
               <div>
                 <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Case Status</label>
-                <select
+                <SystemSelect
                   value={dspAssignStatus}
                   onChange={(e) => setDspAssignStatus(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
@@ -2672,7 +2671,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="EvidenceReview">Evidence Review</option>
                   <option value="MoreInfo">Waiting for More Info</option>
                   <option value="Opened">Opened</option>
-                </select>
+                </SystemSelect>
               </div>
 
               {dspAssignError && (
@@ -2799,7 +2798,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             <form onSubmit={handleUploadDisputeEvidence} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Evidence Type *</label>
-                <select
+                <SystemSelect
                   value={dspEvType}
                   onChange={(e) => setDspEvType(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
@@ -2808,7 +2807,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="BankReceipt">Bank Receipt / Statement</option>
                   <option value="LedgerAudit">Internal Ledger Audit</option>
                   <option value="Other">Other Document</option>
-                </select>
+                </SystemSelect>
               </div>
 
               <div>
@@ -2877,7 +2876,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             <form onSubmit={handleFinalizeDecision} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Decision Action *</label>
-                <select
+                <SystemSelect
                   value={dspDecision}
                   onChange={(e) => setDspDecision(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
@@ -2885,7 +2884,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                   <option value="ApproveReversal">Approve Financial Reversal (Refund)</option>
                   <option value="Decline">Decline Dispute (Valid Charge)</option>
                   <option value="NeedMoreInfo">Need More Info (Request Evidence)</option>
-                </select>
+                </SystemSelect>
               </div>
 
               {dspDecision === 'ApproveReversal' && (
@@ -3330,7 +3329,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               <form onSubmit={handleTestAlert} className="space-y-3 text-xs">
                 <div>
                   <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Dispatch Channel *</label>
-                  <select
+                  <SystemSelect
                     value={testAlertChannel}
                     onChange={(e) => setTestAlertChannel(e.target.value)}
                     className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-medium"
@@ -3339,7 +3338,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     <option value="SMS">SMS Text Alert</option>
                     <option value="Phone">Automated Phone Call</option>
                     <option value="Email">Emergency Email Broadcast</option>
-                  </select>
+                  </SystemSelect>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
@@ -3629,7 +3628,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
           <div className="flex items-center gap-2">
             <label htmlFor="audit-filter-select" className="text-xs font-medium text-[#6E6E73] shrink-0">Entity Type:</label>
             <div className="relative min-w-[170px]">
-              <select
+              <SystemSelect
                 id="audit-filter-select"
                 value={auditFilter}
                 onChange={(e) => setAuditFilter(e.target.value)}
@@ -3640,8 +3639,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 <option value="Incident">Incident Events</option>
                 <option value="Dispute">Dispute Events</option>
                 <option value="OnCall">On-Call Alerts</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
+              </SystemSelect>
             </div>
           </div>
 

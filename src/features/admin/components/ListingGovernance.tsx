@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -491,7 +492,7 @@ export default function ListingGovernance({
                         <th className="py-3 px-2 w-[24%]">Submitted By</th>
                         <th className="py-3 px-2 w-[24%]">Property & Bay</th>
                         <th className="py-3 px-2 w-[18%]">Status</th>
-                        <th className="py-3 px-2 w-[12%] text-right">Actions</th>
+                        <th className="py-3 px-2 w-[12%]">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
@@ -544,8 +545,8 @@ export default function ListingGovernance({
                               </div>
                             )}
                           </td>
-                          <td className="py-3.5 px-2 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
+                          <td className="py-3.5 px-2">
+                            <div className="flex items-center justify-start gap-1.5">
                               <button 
                                 onClick={() => openSelectedListing(listing)}
                                 className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-[#2563EB] transition-colors"
@@ -606,7 +607,7 @@ export default function ListingGovernance({
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
                 Rows per page
-                <select
+                <SystemSelect
                   value={pagination.pageSize}
                   onChange={(event) => onPageSizeChange(Number(event.target.value))}
                   disabled={isLoading}
@@ -616,7 +617,7 @@ export default function ListingGovernance({
                   <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
-                </select>
+                </SystemSelect>
               </label>
 
               <nav className="flex items-center gap-2" aria-label="Verification request pagination">
@@ -947,7 +948,7 @@ export default function ListingGovernance({
               <div className="space-y-3 text-xs">
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Select Rejection Reason</label>
-                  <select 
+                  <SystemSelect 
                     value={selectedRejectionReason}
                     onChange={(e) => setSelectedRejectionReason(e.target.value)}
                     className="w-full mt-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-rose-500"
@@ -956,7 +957,7 @@ export default function ListingGovernance({
                       <option key={i} value={opt}>{opt}</option>
                     ))}
                     <option value="custom">-- Custom Reason --</option>
-                  </select>
+                  </SystemSelect>
                 </div>
 
                 {selectedRejectionReason === 'custom' && (

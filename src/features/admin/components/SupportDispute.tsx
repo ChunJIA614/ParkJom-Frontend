@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -328,7 +329,7 @@ export default function SupportDispute({
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-semibold text-slate-500">Dispute Category *</label>
-                          <select 
+                          <SystemSelect 
                             value={newCategory}
                             onChange={(e) => setNewCategory(e.target.value as any)}
                             className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
@@ -337,7 +338,7 @@ export default function SupportDispute({
                             <option value="payment">Billing / Refund / Double Charging</option>
                             <option value="overstay">Occupant Encroachment / Overstay Penalty</option>
                             <option value="other">General Operational Conflict</option>
-                          </select>
+                          </SystemSelect>
                         </div>
                       </div>
                     </div>

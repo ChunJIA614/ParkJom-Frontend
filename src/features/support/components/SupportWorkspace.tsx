@@ -1,3 +1,4 @@
+import SystemSelect from '@/components/ui/SystemSelect';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import {
   AlertCircle,
@@ -868,7 +869,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
             <div className="flex items-center gap-2">
               <label htmlFor="ticket-status-filter" className="text-[11px] font-semibold text-[#6E6E73] shrink-0">Status:</label>
               <div className="relative flex-1">
-                <select
+                <SystemSelect
                   id="ticket-status-filter"
                   value={statusFilter}
                   onChange={(e) => {
@@ -896,15 +897,14 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       <option value="Closed">Closed</option>
                     </>
                   )}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#86868B]" />
+                </SystemSelect>
               </div>
             </div>
 
             {mode === 'admin' && (
               <div className="grid grid-cols-2 gap-2">
                 <div className="relative">
-                  <select
+                  <SystemSelect
                     aria-label="Filter by priority"
                     value={priorityFilter}
                     onChange={(e) => setPriorityFilter(e.target.value)}
@@ -915,11 +915,10 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     <option value="P1">P1 High</option>
                     <option value="P2">P2 Standard</option>
                     <option value="P3">P3 Low</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3 w-3 text-[#86868B]" />
+                  </SystemSelect>
                 </div>
                 <div className="relative">
-                  <select
+                  <SystemSelect
                     aria-label="Filter by team"
                     value={teamFilter}
                     onChange={(e) => setTeamFilter(e.target.value)}
@@ -930,8 +929,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     <option value="ParkingOperations">Parking Ops</option>
                     <option value="Payments">Payments</option>
                     <option value="OwnerSupport">Owner Support</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3 w-3 text-[#86868B]" />
+                  </SystemSelect>
                 </div>
               </div>
             )}
@@ -1701,7 +1699,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
 
                   <label className="space-y-1">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Assigned Team</span>
-                    <select
+                    <SystemSelect
                       value={assignedTeamInput}
                       onChange={(e) => setAssignedTeamInput(e.target.value)}
                       className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
@@ -1711,7 +1709,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       <option value="CustomerSupport">Customer Support</option>
                       <option value="OwnerSupport">Owner Support</option>
                       <option value="TrustSafety">Trust & Safety</option>
-                    </select>
+                    </SystemSelect>
                   </label>
                 </div>
               )}
@@ -1719,7 +1717,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
               {mode === 'user' && (
                 <label className="block space-y-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Issue Code *</span>
-                  <select
+                  <SystemSelect
                     value={issueCode}
                     onChange={(e) => setIssueCode(e.target.value)}
                     className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs font-medium text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
@@ -1740,7 +1738,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                         <option value="OTHER">OTHER — Other Inquiry</option>
                       </>
                     )}
-                  </select>
+                  </SystemSelect>
                 </label>
               )}
 
@@ -1762,7 +1760,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                 <div className="grid grid-cols-2 gap-3">
                   <label className="space-y-1">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Category</span>
-                    <select
+                    <SystemSelect
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
                       className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
@@ -1772,12 +1770,12 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       <option value="Booking">Booking</option>
                       <option value="General">General</option>
                       <option value="Account">Account</option>
-                    </select>
+                    </SystemSelect>
                   </label>
 
                   <label className="space-y-1">
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Priority</span>
-                    <select
+                    <SystemSelect
                       value={priority}
                       onChange={(e) => setPriority(e.target.value)}
                       className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
@@ -1786,7 +1784,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       <option value="P1">P1 - High</option>
                       <option value="P2">P2 - Standard</option>
                       <option value="P3">P3 - Low</option>
-                    </select>
+                    </SystemSelect>
                   </label>
                 </div>
               )}
@@ -1999,7 +1997,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
             <form onSubmit={handleReassign} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Target Department / Team *</label>
-                <select
+                <SystemSelect
                   value={reassignTeam}
                   onChange={(e) => setReassignTeam(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
@@ -2009,7 +2007,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   <option value="CustomerSupport">Customer Support</option>
                   <option value="OwnerSupport">Owner Support</option>
                   <option value="TrustSafety">Trust & Safety</option>
-                </select>
+                </SystemSelect>
               </div>
 
               <div>
@@ -2063,7 +2061,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
             <form onSubmit={handleTransition} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">New Status *</label>
-                <select
+                <SystemSelect
                   value={transitionStatus}
                   onChange={(e) => setTransitionStatus(e.target.value)}
                   className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white text-xs font-medium"
@@ -2072,7 +2070,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   <option value="WaitingForCustomer">Waiting for Customer (Action Required)</option>
                   <option value="Assigned">Assigned</option>
                   <option value="Resolved">Resolved</option>
-                </select>
+                </SystemSelect>
               </div>
 
               <div>

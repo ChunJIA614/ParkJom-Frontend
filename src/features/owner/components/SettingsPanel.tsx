@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SystemSelect from '@/components/ui/SystemSelect';
 import { Building, Sliders, Save, CheckCircle, Wifi, Battery, Radio, ShieldAlert, UserRound } from 'lucide-react';
 import { showAlert } from '@/contexts/ModalContext';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -100,7 +101,7 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
               <form onSubmit={handleBankSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5">Recipient Financial Institution</label>
-                  <select
+                  <SystemSelect
                     value={bankName}
                     onChange={(e) => setBankName(e.target.value)}
                     className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
@@ -110,7 +111,7 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
                     <option value="Public Bank Berhad">Public Bank Berhad</option>
                     <option value="RHB Bank Berhad">RHB Bank Berhad</option>
                     <option value="Hong Leong Bank Berhad">Hong Leong Bank Berhad</option>
-                  </select>
+                  </SystemSelect>
                 </div>
 
                 <div>
