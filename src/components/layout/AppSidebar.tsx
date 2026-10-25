@@ -73,7 +73,7 @@ function SidebarNavigation({
   return (
     <Sidebar collapsible="icon" className="border-sidebar-border/80">
       <div id={id} className="flex h-full min-h-0 flex-col">
-        <SidebarHeader className="h-14 min-h-14 justify-center border-b border-sidebar-border/80 bg-[rgba(250,250,252,0.82)] p-2 backdrop-blur-[24px] backdrop-saturate-[180%]">
+        <SidebarHeader className="h-14 min-h-14 justify-center border-b border-sidebar-border/80 bg-[rgba(250,250,252,0.82)] dark:bg-[rgba(22,22,26,0.82)] p-2 backdrop-blur-[24px] backdrop-saturate-[180%]">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton

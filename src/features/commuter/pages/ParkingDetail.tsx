@@ -31,8 +31,14 @@ import {
 } from '../api/bookingApi';
 import { getFavoriteParking, updateFavoriteParking } from '../api/favoriteApi';
 import { deleteReview, getParkingReviews, updateReview } from '../api/reviewApi';
-import type { VehicleApiData } from '../api/vehicleApi';
-import { loadCachedVehicles } from '../lib/vehicleStorage';
+import { getMyVehicles } from '../api/vehicleApi';
+import {
+  applyActiveVehicle,
+  loadCachedVehicles,
+  mapApiVehicleToVehicle,
+  saveCachedVehicles,
+  type Vehicle,
+} from '../lib/vehicleStorage';
 import { isParkingFavorite, setParkingFavorite } from '../lib/favoriteParking';
 import {
   deleteParkingReview,
@@ -51,6 +57,11 @@ interface MockParkingSpot extends ParkingSpot {
   lon: number;
   photoUrl: string;
   price: number;
+  /**
+   * False when the backend did not return bay coordinates. `lat`/`lon` are then
+   * 0 placeholders and every distance/route affordance must stay hidden.
+   */
+  hasCoordinates?: boolean;
 }
 interface WalkingInfo {
   distanceText: string;
@@ -138,6 +149,9 @@ export default function ParkingDetail() {
           d.images?.[0]?.secureUrl ||
           (d.images?.[0]?.mediaFileId ? `/api/media/view/image/${d.images[0].mediaFileId}` : '') ||
           'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80';
+        const latitude = d.latitude ?? 0;
+        const longitude = d.longitude ?? 0;
+        const hasCoordinates = latitude !== 0 || longitude !== 0;
         const mockSpot: MockParkingSpot = {
           id: String(d.parkingSpotId),
           parkingSpotId: d.parkingSpotId,
@@ -145,21 +159,22 @@ export default function ParkingDetail() {
           propertyId: d.propertyId,
           propertyName: d.propertyName,
           address: d.address,
-          latitude: 0,
-          longitude: 0,
-          lat: 0,
-          lng: 0,
-          lon: 0,
-          stationName: '',
-          distanceToStation: 0,
-          timeToStationInMinutes: 0,
+          latitude,
+          longitude,
+          lat: latitude,
+          lng: longitude,
+          lon: longitude,
+          hasCoordinates,
+          stationName: d.stationName ?? '',
+          distanceToStation: d.distanceToStationMeters ?? 0,
+          timeToStationInMinutes: d.timeToStationInMinutes ?? 0,
           availabilityStatus: String(d.availabilityStatus),
           monthlyRate: d.monthlyRate,
           dailyRate: d.dailyRate,
           primaryImageUrl: primaryImg,
           photoUrl: primaryImg,
           price: d.dailyRate ?? (d.monthlyRate ? Number((d.monthlyRate / 30).toFixed(2)) : 0),
-          station: 'Transit Area',
+          station: d.stationName ?? '',
           name: d.propertyName || d.address,
           pricePerHour: d.dailyRate ?? 0,
           distance: 0,
@@ -192,7 +207,7 @@ export default function ParkingDetail() {
   const [dateSelectionError, setDateSelectionError] = useState<string | null>(null);
   const [quote, setQuote] = useState<BookingQuote | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<ConfirmedBooking | null>(null);
-  const [vehicles, setVehicles] = useState<VehicleApiData[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [isVehiclesLoading, setIsVehiclesLoading] = useState(false);
   const [isBookingLoading, setIsBookingLoading] = useState(false);
@@ -218,24 +233,37 @@ export default function ParkingDetail() {
     ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length
     : 0);
 
-  useEffect(() => {
-    if (!spot || !stationCoords) return;
-    setIsLoadingRoute(true);
-    getWalkingRoute(spot.lat, spot.lon, stationCoords.lat, stationCoords.lon)
-      .then(setWalkingInfo).finally(() => setIsLoadingRoute(false));
-  }, [spot, stationCoords]);
+  // `0,0` is the placeholder used when the API omits coordinates, so treat it
+  // as "unknown" rather than as a real bay in the Gulf of Guinea.
+  const bayCoordinates = (() => {
+    if (!spot || spot.hasCoordinates === false) return null;
+    const lat = spot.lat || spot.latitude || 0;
+    const lng = spot.lon || spot.lng || spot.longitude || 0;
+    return lat && lng ? { lat, lng } : null;
+  })();
 
   useEffect(() => {
-    if (!spot) return;
-    const sLat = spot.lat || spot.latitude || 0;
-    const sLng = spot.lon || spot.lng || spot.longitude || 0;
-    if (!sLat || !sLng) return;
+    if (!bayCoordinates || !stationCoords) {
+      setWalkingInfo(null);
+      setIsLoadingRoute(false);
+      return;
+    }
+    setIsLoadingRoute(true);
+    getWalkingRoute(bayCoordinates.lat, bayCoordinates.lng, stationCoords.lat, stationCoords.lon)
+      .then(setWalkingInfo).finally(() => setIsLoadingRoute(false));
+  }, [bayCoordinates?.lat, bayCoordinates?.lng, stationCoords?.lat, stationCoords?.lon]);
+
+  useEffect(() => {
+    if (!spot || !bayCoordinates) {
+      setMultimodalPlan(null);
+      return;
+    }
 
     planMultimodalJourney(
       {
         name: spot.propertyName || spot.name || 'Parking Bay',
-        lat: sLat,
-        lng: sLng,
+        lat: bayCoordinates.lat,
+        lng: bayCoordinates.lng,
         address: spot.address,
       },
       stationCoords
@@ -247,28 +275,54 @@ export default function ParkingDetail() {
       setMultimodalPlan(plan);
       setActiveItineraryId(plan.recommendedItinerary.id);
     });
-  }, [spot?.parkingSpotId, stationCoords?.lat, stationCoords?.lon, stationName, preference]);
+  }, [spot?.parkingSpotId, bayCoordinates?.lat, bayCoordinates?.lng, stationCoords?.lat, stationCoords?.lon, stationName, preference]);
 
   useEffect(() => {
     if (!user?.userId) return;
-    setIsVehiclesLoading(true);
-    try {
-      const cached = loadCachedVehicles(user.userId);
-      const converted: VehicleApiData[] = cached.map((v) => ({
-        vehicleId: v.vehicleId ?? 1,
-        numberPlate: v.plate,
-        vehicleBrand: v.brand,
-        vehicleModel: v.model,
-        vehicleColor: v.color,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }));
-      setVehicles(converted);
-      setSelectedVehicleId((current) => current ?? converted[0]?.vehicleId ?? null);
-    } finally {
-      setIsVehiclesLoading(false);
+
+    // Paint the cached list first so the selector is usable immediately.
+    const cached = loadCachedVehicles(user.userId);
+    if (cached.length > 0) {
+      setVehicles(cached);
+      setSelectedVehicleId((current) => current ?? cached.find((v) => v.active)?.vehicleId ?? cached[0]?.vehicleId ?? null);
     }
-  }, [user?.userId]);
+
+    if (!user.token) {
+      setIsVehiclesLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsVehiclesLoading(true);
+    void getMyVehicles(user.token, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        const mapped = applyActiveVehicle(
+          result.data.map((vehicle) => mapApiVehicleToVehicle(vehicle)),
+          cached.find((vehicle) => vehicle.active)?.vehicleId ?? null,
+        );
+        setVehicles(mapped);
+        saveCachedVehicles(user.userId, mapped);
+        setSelectedVehicleId((current) => (
+          current != null && mapped.some((vehicle) => vehicle.vehicleId === current)
+            ? current
+            : mapped.find((vehicle) => vehicle.active)?.vehicleId ?? mapped[0]?.vehicleId ?? null
+        ));
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        // A vehicle-list failure must not block the detail page when a cached
+        // list is already on screen.
+        if (cached.length === 0) {
+          setBookingError(error instanceof Error ? error.message : 'Unable to load your vehicles.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsVehiclesLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [user?.userId, user?.token]);
 
   useEffect(() => {
     if (!spot || !user?.token) return;
@@ -626,7 +680,7 @@ export default function ParkingDetail() {
         spot: parkingSpot,
         startTime: new Date(`${quote.startDate}T00:00:00`),
         endTime: new Date(`${quote.endDate}T00:00:00`),
-        vehiclePlate: vehicle?.numberPlate ?? '',
+        vehiclePlate: vehicle?.plate ?? '',
         status: 'Upcoming',
         totalPaid: quote.renterTotal,
       };
@@ -860,7 +914,7 @@ export default function ParkingDetail() {
                 className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF]">
                 {vehicles.length === 0 && <option value="">{isVehiclesLoading ? 'Loading vehicles…' : 'No vehicles available'}</option>}
                 {vehicles.map((vehicle) => (
-                  <option key={vehicle.vehicleId} value={vehicle.vehicleId}>{vehicle.numberPlate} · {vehicle.vehicleBrand} {vehicle.vehicleModel}</option>
+                  <option key={vehicle.vehicleId} value={vehicle.vehicleId}>{vehicle.plate} · {vehicle.brand} {vehicle.model}</option>
                 ))}
               </SystemSelect>
             </div>
@@ -1063,10 +1117,15 @@ export default function ParkingDetail() {
                 OSRM Verified
               </span>
             </div>
-          ) : (
+          ) : bayCoordinates ? (
             <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#a16207]">
               <MapPin size={16} className="shrink-0" />
               Select a station on the map to calculate multimodal route.
+            </div>
+          ) : (
+            <div className="bg-[#f8f9fa] border border-[#e8eaed] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368]">
+              <MapPin size={16} className="shrink-0" />
+              Route preview unavailable — this bay has no location data yet.
             </div>
           )}
           </div>

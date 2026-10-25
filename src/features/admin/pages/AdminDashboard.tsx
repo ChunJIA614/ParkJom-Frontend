@@ -18,11 +18,13 @@ import {
 import { getAccessLogs } from '../api/accessLogApi';
 import { getAllVehicles } from '../api/vehicleApi';
 import { getSuspendedAccounts, reintegrateAccount, suspendAccount } from '../api/accountSuspensionApi';
+import { getAdminDashboard } from '../api/dashboardApi';
+import { getSystemConfig } from '../api/systemConfigApi';
 
 import { 
   initialStats
 } from '../data/mockData';
-import { AccessLogDto, AccessLogPaginationState, AdminVehicleDto, IoTBollard, ListingRequest, OwnerPayout, Transaction, OverstayRecord, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse, VerificationRequestListStatus, VerificationRequestPaginationState } from '../types';
+import { AccessLogDto, AccessLogPaginationState, AdminDashboardData, AdminVehicleDto, IoTBollard, ListingRequest, OwnerPayout, SystemConfig, Transaction, OverstayRecord, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse, VerificationRequestListStatus, VerificationRequestPaginationState } from '../types';
 
 import DashboardHome from '../components/DashboardHome';
 import ListingGovernance from '../components/ListingGovernance';
@@ -107,13 +109,46 @@ export default function AdminDashboard() {
   const [adminVehiclesLoading, setAdminVehiclesLoading] = useState(false);
   const [adminVehiclesError, setAdminVehiclesError] = useState<string | null>(null);
 
-  // Global system configs (live-wired into widgets)
-  const [systemConfig, setSystemConfig] = useState({
-    commissionRate: 15,
-    gracePeriodMinutes: 15
-  });
+  // ---- Live dashboard aggregate (GET /api/admin/dashboard) ----
+  const [dashboard, setDashboard] = useState<AdminDashboardData | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
-  // Action logging helper
+  // ---- Stored platform configuration (GET /api/admin/system-config) ----
+  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
+  const [systemConfigError, setSystemConfigError] = useState<string | null>(null);
+
+  const refreshDashboard = React.useCallback(async () => {
+    if (!token) return;
+    setDashboardLoading(true);
+    try {
+      const result = await getAdminDashboard(token);
+      setDashboard(result);
+      setStats(result.stats);
+      setDashboardError(null);
+    } catch (error) {
+      setDashboardError(error instanceof Error
+        ? error.message
+        : 'Unable to load the platform dashboard.');
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [token]);
+
+  const loadSystemConfig = React.useCallback(async () => {
+    if (!token) return;
+    try {
+      setSystemConfig(await getSystemConfig(token));
+      setSystemConfigError(null);
+    } catch (error) {
+      setSystemConfigError(error instanceof Error
+        ? error.message
+        : 'Unable to load the system configuration.');
+    }
+  }, [token]);
+
+  // Action logging helper. Counters are re-read from the server rather than
+  // recalculated locally — a local recompute can only ever be a guess.
   const addActivityLog = (type: string, message: string, user: string) => {
     const newLog = {
       id: `LOG-${Date.now()}`,
@@ -123,14 +158,7 @@ export default function AdminDashboard() {
       user
     };
     setActivityLogs(prev => [newLog, ...prev]);
-
-    // Recalculate metrics on state changes
-    setStats(prev => ({
-      ...prev,
-      onlineBollardsRate: Math.round((bollards.filter(b => b.status === 'online').length / bollards.length) * 1000) / 10,
-      pendingListingsCount: listings.filter(l => l.status === 'pending').length,
-      activeOverstaysCount: overstays.filter(o => o.status !== 'resolved').length
-    }));
+    void refreshDashboard();
   };
 
   const loadSuspendedAccounts = React.useCallback(async () => {
@@ -266,9 +294,6 @@ export default function AdminDashboard() {
         totalPages,
         hasNextPage,
       });
-      if (listingsStatus === 'pending') {
-        setStats(prev => ({ ...prev, pendingListingsCount: totalCount ?? displayedListings.length }));
-      }
     } catch (error) {
       setListingsError(error instanceof Error ? error.message : 'Unable to load verification requests.');
     } finally {
@@ -407,6 +432,24 @@ export default function AdminDashboard() {
     if (token) fetchListings();
   }, [fetchListings]);
 
+  // Live metrics and the stored configuration both feed several screens, so
+  // they load once for the workspace rather than per-view.
+  useEffect(() => {
+    if (!token) return;
+    void refreshDashboard();
+    void loadSystemConfig();
+  }, [loadSystemConfig, refreshDashboard, token]);
+
+  // Re-read counters when the operator navigates back to the landing screen,
+  // so the numbers are not stale from whenever the workspace was opened.
+  const previousViewRef = React.useRef<ActiveView | null>(null);
+  useEffect(() => {
+    const previous = previousViewRef.current;
+    previousViewRef.current = activeView;
+    if (!token || activeView !== 'home' || previous === null || previous === 'home') return;
+    void refreshDashboard();
+  }, [activeView, refreshDashboard, token]);
+
   useEffect(() => {
     if (!token || activeView !== 'audit') return;
     const timer = window.setTimeout(() => {
@@ -501,11 +544,12 @@ export default function AdminDashboard() {
       case 'home':
         return (
           <DashboardHome 
-            stats={stats} 
-            setStats={setStats}
+            dashboard={dashboard}
+            isLoading={dashboardLoading}
+            error={dashboardError}
+            onRefresh={() => void refreshDashboard()}
             activityLogs={activityLogs} 
             systemConfig={systemConfig}
-            setSystemConfig={setSystemConfig}
           />
         );
       case 'governance':
@@ -549,7 +593,7 @@ export default function AdminDashboard() {
             transactions={transactions}
             setTransactions={setTransactions}
             addActivityLog={addActivityLog}
-            commissionRate={systemConfig.commissionRate}
+            commissionRate={systemConfig?.commissionRate ?? null}
           />
         );
       case 'enforcement':
@@ -558,7 +602,7 @@ export default function AdminDashboard() {
             overstays={overstays} 
             setOverstays={setOverstays}
             addActivityLog={addActivityLog}
-            gracePeriodMinutes={systemConfig.gracePeriodMinutes}
+            gracePeriodMinutes={systemConfig?.gracePeriodMinutes ?? null}
           />
         );
       case 'support':
@@ -592,11 +636,10 @@ export default function AdminDashboard() {
       case 'system':
         return (
           <SystemConfiguration 
-            systemConfig={systemConfig}
-            setSystemConfig={setSystemConfig}
+            token={token}
             stats={stats}
-            setStats={setStats}
             onNavigateHome={() => setActiveView('home')}
+            onSaved={() => { void loadSystemConfig(); void refreshDashboard(); }}
           />
         );
     }
@@ -653,10 +696,10 @@ export default function AdminDashboard() {
       {showAdminNotifications && (
         <>
           <button type="button" aria-label="Close notifications" className="fixed inset-0 z-40 cursor-default" onClick={() => setShowAdminNotifications(false)} />
-          <div id="admin-notifications" role="dialog" aria-label="Admin notifications" className="workspace-popover absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-black/[0.08] bg-white py-2 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
-            <div className="border-b border-[#f1f3f4] px-4 py-2.5 text-[13px] font-semibold text-[#111]">Notifications</div>
+          <div id="admin-notifications" role="dialog" aria-label="Admin notifications" className="workspace-popover absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-[#1c1c1e] py-2 shadow-2xl">
+            <div className="border-b border-[#f1f3f4] dark:border-white/[0.08] px-4 py-2.5 text-[13px] font-semibold text-[#111] dark:text-[#f5f5f7]">Notifications</div>
             {adminNotifications.length > 0 ? adminNotifications.map((message) => (
-              <p key={message} className="border-b border-[#f8f9fa] px-4 py-3 text-[11px] leading-relaxed text-[#5f6368] last:border-0">{message}</p>
+              <p key={message} className="border-b border-[#f8f9fa] dark:border-white/[0.04] px-4 py-3 text-[11px] leading-relaxed text-[#5f6368] dark:text-[#a1a1a6] last:border-0">{message}</p>
             )) : (
               <p className="px-4 py-5 text-center text-[11px] text-[#8e8e93]">No new operational alerts.</p>
             )}

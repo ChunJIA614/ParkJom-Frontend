@@ -42,3 +42,7 @@ firebase-debug.log
 **/node_modules/
 **/package-lock.json
 !/package-lock.json
+
+# Dark-mode audit output
+.tmp-shots/
+.tmp-dev.log

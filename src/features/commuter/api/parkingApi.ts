@@ -1,5 +1,5 @@
 import { apiRequest, readApiError } from '@/services/apiClient';
-import type { PublicParkingSpotResponse } from '../types';
+import type { PublicParkingSpotDetail, PublicParkingSpotResponse } from '../types';
 
 export function getNearbyParking(
   latitude: number,
@@ -40,6 +40,62 @@ export function searchParking(query: string): Promise<Response> {
   });
 }
 
+type WireRecord = Record<string, unknown>;
+
+function readWireNumber(source: WireRecord, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
+function readWireString(source: WireRecord, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim() !== '') return value.trim();
+  }
+  return null;
+}
+
+/**
+ * The public parking detail contract does not guarantee coordinates. Accept
+ * several common wire shapes, and treat `0,0` / out-of-range values as
+ * "unknown" — a bay rendered in the Gulf of Guinea is worse than no pin.
+ */
+function resolveCoordinates(source: WireRecord): { latitude: number | null; longitude: number | null } {
+  const latitude = readWireNumber(source, ['latitude', 'Latitude', 'lat', 'Lat']);
+  const longitude = readWireNumber(source, ['longitude', 'Longitude', 'lng', 'Lng', 'lon', 'Lon']);
+  if (latitude === null || longitude === null) return { latitude: null, longitude: null };
+  if (latitude === 0 && longitude === 0) return { latitude: null, longitude: null };
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return { latitude: null, longitude: null };
+  return { latitude, longitude };
+}
+
+function normalizeParkingDetail(
+  detail: PublicParkingSpotDetail,
+): PublicParkingSpotDetail {
+  const source = detail as unknown as WireRecord;
+  const { latitude, longitude } = resolveCoordinates(source);
+
+  return {
+    ...detail,
+    latitude,
+    longitude,
+    stationName: readWireString(source, ['stationName', 'StationName']),
+    distanceToStationMeters: readWireNumber(source, [
+      'distanceToStationMeters', 'DistanceToStationMeters', 'distanceToStation', 'DistanceToStation',
+    ]),
+    timeToStationInMinutes: readWireNumber(source, [
+      'timeToStationInMinutes', 'TimeToStationInMinutes', 'timeToStation', 'TimeToStation',
+    ]),
+  };
+}
+
 export async function getPublicParkingSpot(
   id: number | string,
   signal?: AbortSignal,
@@ -59,5 +115,8 @@ export async function getPublicParkingSpot(
     throw new Error(payload?.message || 'Unable to load parking spot details.');
   }
 
-  return payload;
+  return {
+    ...payload,
+    data: normalizeParkingDetail(payload.data),
+  };
 }

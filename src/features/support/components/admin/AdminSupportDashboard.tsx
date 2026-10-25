@@ -125,20 +125,20 @@ function MetricCard({
   badge?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5">
+    <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 dark:border-white/10 dark:bg-[#141417]">
       <div className="flex items-start justify-between gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#1D1D1F]">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#1D1D1F] dark:bg-white/10 dark:text-white">
           <Icon className="h-4.5 w-4.5" />
         </span>
         {badge && (
-          <span className="rounded-full border border-black/[0.06] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#6E6E73]">
+          <span className="rounded-full border border-black/[0.06] bg-[#F5F5F7] px-2.5 py-0.5 text-[10px] font-medium text-[#6E6E73] dark:border-white/10 dark:bg-white/10 dark:text-[#A1A1AA]">
             {badge}
           </span>
         )}
       </div>
-      <p className="mt-3 text-2xl font-semibold tracking-tight text-[#1D1D1F]">{value}</p>
-      <p className="mt-0.5 text-xs font-medium text-[#1D1D1F]">{label}</p>
-      <p className="mt-0.5 text-[11px] text-[#86868B]">{detail}</p>
+      <p className="mt-3 text-2xl font-semibold tracking-tight text-[#1D1D1F] dark:text-white">{value}</p>
+      <p className="mt-0.5 text-xs font-medium text-[#1D1D1F] dark:text-white">{label}</p>
+      <p className="mt-0.5 text-[11px] text-[#86868B] dark:text-[#A1A1AA]">{detail}</p>
     </div>
   );
 }
@@ -951,10 +951,10 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       <div className="space-y-5" data-component="admin-command-center">
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight text-[#1D1D1F]">
+            <h2 className="text-lg font-semibold tracking-tight text-[#1D1D1F] dark:text-white">
               Support & Operations Command Center
             </h2>
-            <p className="text-xs text-[#6E6E73]">
+            <p className="text-xs text-[#6E6E73] dark:text-[#A1A1AA]">
               Live ticket backlog, action-required cases, hardware disruptions, and financial settlements
             </p>
           </div>
@@ -968,12 +968,12 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 void fetchDisputes();
               }}
               disabled={loadingMetrics}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7]"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] dark:border-white/10 dark:bg-[#242429] dark:text-white dark:hover:bg-[#2C2C32]"
             >
-              <RefreshCw className={cn('h-3.5 w-3.5 text-[#6E6E73]', loadingMetrics && 'animate-spin text-[#007AFF]')} />
+              <RefreshCw className={cn('h-3.5 w-3.5 text-[#6E6E73] dark:text-[#A1A1AA]', loadingMetrics && 'animate-spin text-[#007AFF]')} />
               <span>Refresh Metrics</span>
             </button>
-            <div className="inline-flex items-center gap-2 rounded-xl border border-black/[0.06] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F]">
+            <div className="inline-flex items-center gap-2 rounded-xl border border-black/[0.06] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F] dark:border-white/10 dark:bg-[#18181C] dark:text-white">
               <span className="h-2 w-2 rounded-full bg-[#34C759]" />
               <span>Live API Synced</span>
             </div>
@@ -1020,55 +1020,55 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         </div>
 
         {/* Operational Priority Shortcuts */}
-        <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 space-y-3">
+        <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 space-y-3 dark:border-white/10 dark:bg-[#141417]">
           <div className="flex items-center justify-between">
-            <h3 className="text-[11px] font-semibold text-[#86868B] uppercase tracking-wider">Quick Action Shortcuts</h3>
-            <span className="text-[10px] text-[#86868B]">Unified Operations Hub</span>
+            <h3 className="text-[11px] font-semibold text-[#86868B] uppercase tracking-wider dark:text-[#A1A1AA]">Quick Action Shortcuts</h3>
+            <span className="text-[10px] text-[#86868B] dark:text-[#71717A]">Unified Operations Hub</span>
           </div>
           <div className="grid gap-2.5 sm:grid-cols-4">
             <button
               type="button"
               onClick={() => setActiveView('tickets')}
-              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer"
+              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
             >
               <div>
-                <p className="font-medium text-xs text-[#1D1D1F]">Manage Support Tickets</p>
-                <p className="text-[11px] text-[#6E6E73] mt-0.5">{dashboardMetrics?.openTicketsCount ?? 0} open customer cases</p>
+                <p className="font-medium text-xs text-[#1D1D1F] dark:text-white">Manage Support Tickets</p>
+                <p className="text-[11px] text-[#6E6E73] mt-0.5 dark:text-[#A1A1AA]">{dashboardMetrics?.openTicketsCount ?? 0} open customer cases</p>
               </div>
-              <ArrowRight className="h-4 w-4 text-[#86868B]" />
+              <ArrowRight className="h-4 w-4 text-[#86868B] dark:text-[#A1A1AA]" />
             </button>
             <button
               type="button"
               onClick={() => setActiveView('incidents')}
-              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer"
+              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
             >
               <div>
-                <p className="font-medium text-xs text-[#1D1D1F]">Operational Incidents</p>
-                <p className="text-[11px] text-[#6E6E73] mt-0.5">{dashboardMetrics?.activeIncidentsCount ?? incidents.length} active site disruptions</p>
+                <p className="font-medium text-xs text-[#1D1D1F] dark:text-white">Operational Incidents</p>
+                <p className="text-[11px] text-[#6E6E73] mt-0.5 dark:text-[#A1A1AA]">{dashboardMetrics?.activeIncidentsCount ?? incidents.length} active site disruptions</p>
               </div>
-              <ArrowRight className="h-4 w-4 text-[#86868B]" />
+              <ArrowRight className="h-4 w-4 text-[#86868B] dark:text-[#A1A1AA]" />
             </button>
             <button
               type="button"
               onClick={() => setActiveView('disputes')}
-              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer"
+              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
             >
               <div>
-                <p className="font-medium text-xs text-[#1D1D1F]">Financial Disputes</p>
-                <p className="text-[11px] text-[#6E6E73] mt-0.5">{dashboardMetrics?.openDisputesCount ?? disputes.length} cases under review</p>
+                <p className="font-medium text-xs text-[#1D1D1F] dark:text-white">Financial Disputes</p>
+                <p className="text-[11px] text-[#6E6E73] mt-0.5 dark:text-[#A1A1AA]">{dashboardMetrics?.openDisputesCount ?? disputes.length} cases under review</p>
               </div>
-              <ArrowRight className="h-4 w-4 text-[#86868B]" />
+              <ArrowRight className="h-4 w-4 text-[#86868B] dark:text-[#A1A1AA]" />
             </button>
             <button
               type="button"
               onClick={() => setActiveView('on-call')}
-              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer"
+              className="flex items-center justify-between p-3.5 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] transition text-left cursor-pointer dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
             >
               <div>
-                <p className="font-medium text-xs text-[#1D1D1F]">24/7 On-Call Matrix</p>
-                <p className="text-[11px] text-[#6E6E73] mt-0.5">{onCallStatus?.primaryResponder?.name || 'Active duty roster'}</p>
+                <p className="font-medium text-xs text-[#1D1D1F] dark:text-white">24/7 On-Call Matrix</p>
+                <p className="text-[11px] text-[#6E6E73] mt-0.5 dark:text-[#A1A1AA]">{onCallStatus?.primaryResponder?.name || 'Active duty roster'}</p>
               </div>
-              <ArrowRight className="h-4 w-4 text-[#86868B]" />
+              <ArrowRight className="h-4 w-4 text-[#86868B] dark:text-[#A1A1AA]" />
             </button>
           </div>
         </div>
@@ -1076,12 +1076,12 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         {/* Two-Column Section: Recent Incidents & Recent Tickets */}
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Recent Operational Incidents */}
-          <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 flex flex-col justify-between">
+          <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 flex flex-col justify-between dark:border-white/10 dark:bg-[#141417]">
             <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+              <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/10">
                 <div className="flex items-center gap-2">
-                  <Siren className="h-4 w-4 text-[#1D1D1F]" />
-                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Recent Operational Incidents</h3>
+                  <Siren className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F] dark:text-white">Recent Operational Incidents</h3>
                 </div>
                 <button
                   type="button"
@@ -1093,18 +1093,18 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </div>
 
               {recentIncidents.length === 0 ? (
-                <p className="text-xs text-[#86868B] py-4 text-center">No active incidents reported.</p>
+                <p className="text-xs text-[#86868B] py-4 text-center dark:text-[#71717A]">No active incidents reported.</p>
               ) : (
                 <div className="space-y-2">
                   {recentIncidents.map((inc) => (
                     <div
                       key={inc.incidentId}
-                      className="flex items-center justify-between p-3 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/50 hover:bg-[#F5F5F7] transition"
+                      className="flex items-center justify-between p-3 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/50 hover:bg-[#F5F5F7] transition dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
                     >
                       <div className="min-w-0 flex-1 pr-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] font-semibold text-[#6E6E73]">{inc.incidentReference}</span>
-                          <span className="inline-flex items-center gap-1 rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F]">
+                          <span className="font-mono text-[10px] font-semibold text-[#6E6E73] dark:text-[#A1A1AA]">{inc.incidentReference}</span>
+                          <span className="inline-flex items-center gap-1 rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F] dark:border-white/10 dark:bg-white/10 dark:text-white">
                             <span
                               className={cn(
                                 'h-1.5 w-1.5 rounded-full',
@@ -1113,12 +1113,12 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                             />
                             {inc.priority}
                           </span>
-                          <span className="rounded-full border border-black/[0.06] bg-white px-2 py-0.5 text-[9px] font-medium text-[#6E6E73]">
+                          <span className="rounded-full border border-black/[0.06] bg-white px-2 py-0.5 text-[9px] font-medium text-[#6E6E73] dark:border-white/10 dark:bg-white/10 dark:text-[#A1A1AA]">
                             {inc.status}
                           </span>
                         </div>
-                        <p className="text-xs font-semibold text-[#1D1D1F] truncate mt-1">{cleanSupportText(inc.title)}</p>
-                        <p className="text-[10px] text-[#86868B] mt-0.5">
+                        <p className="text-xs font-semibold text-[#1D1D1F] truncate mt-1 dark:text-white">{cleanSupportText(inc.title)}</p>
+                        <p className="text-[10px] text-[#86868B] mt-0.5 dark:text-[#A1A1AA]">
                           Team: {inc.assignedTeam || 'ParkingOperations'} · {inc.affectedCustomerCount} affected
                         </p>
                       </div>
@@ -1129,7 +1129,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                           setSelectedIncidentId(inc.incidentId);
                           setActiveView('incidents');
                         }}
-                        className="rounded-xl bg-white border border-black/[0.08] px-3 py-1.5 text-[11px] font-medium text-[#1D1D1F] hover:bg-[#E8E8ED] transition shrink-0 cursor-pointer"
+                        className="rounded-xl bg-white border border-black/[0.08] px-3 py-1.5 text-[11px] font-medium text-[#1D1D1F] hover:bg-[#E8E8ED] transition shrink-0 cursor-pointer dark:border-white/14 dark:bg-[#242429] dark:text-white dark:hover:bg-[#2C2C32]"
                       >
                         Inspect
                       </button>
@@ -1141,12 +1141,12 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
           </div>
 
           {/* Recent Support Tickets */}
-          <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 flex flex-col justify-between">
+          <div className="rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:p-5 flex flex-col justify-between dark:border-white/10 dark:bg-[#141417]">
             <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+              <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/10">
                 <div className="flex items-center gap-2">
-                  <TicketCheck className="h-4 w-4 text-[#1D1D1F]" />
-                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Recent Support Tickets</h3>
+                  <TicketCheck className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
+                  <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F] dark:text-white">Recent Support Tickets</h3>
                 </div>
                 <button
                   type="button"
@@ -1158,26 +1158,26 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
               </div>
 
               {recentTickets.length === 0 ? (
-                <p className="text-xs text-[#86868B] py-4 text-center">No recent tickets logged.</p>
+                <p className="text-xs text-[#86868B] py-4 text-center dark:text-[#71717A]">No recent tickets logged.</p>
               ) : (
                 <div className="space-y-2">
                   {recentTickets.slice(0, 5).map((tkt) => (
                     <div
                       key={tkt.ticketId}
-                      className="flex items-center justify-between p-3 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/50 hover:bg-[#F5F5F7] transition"
+                      className="flex items-center justify-between p-3 rounded-xl border border-black/[0.06] bg-[#F5F5F7]/50 hover:bg-[#F5F5F7] transition dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]"
                     >
                       <div className="min-w-0 flex-1 pr-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] font-semibold text-[#6E6E73]">{tkt.ticketReference}</span>
-                          <span className="rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F]">
+                          <span className="font-mono text-[10px] font-semibold text-[#6E6E73] dark:text-[#A1A1AA]">{tkt.ticketReference}</span>
+                          <span className="rounded-full border border-black/[0.08] bg-white px-2 py-0.5 text-[9px] font-medium text-[#1D1D1F] dark:border-white/10 dark:bg-white/10 dark:text-white">
                             {tkt.priority}
                           </span>
-                          <span className="rounded-full border border-black/[0.06] bg-white px-2 py-0.5 text-[9px] font-medium text-[#6E6E73]">
+                          <span className="rounded-full border border-black/[0.06] bg-white px-2 py-0.5 text-[9px] font-medium text-[#6E6E73] dark:border-white/10 dark:bg-white/10 dark:text-[#A1A1AA]">
                             {tkt.status}
                           </span>
                         </div>
-                        <p className="text-xs font-semibold text-[#1D1D1F] truncate mt-1">{tkt.subject}</p>
-                        <p className="text-[10px] text-[#86868B] mt-0.5">
+                        <p className="text-xs font-semibold text-[#1D1D1F] truncate mt-1 dark:text-white">{tkt.subject}</p>
+                        <p className="text-[10px] text-[#86868B] mt-0.5 dark:text-[#A1A1AA]">
                           {tkt.customerName} · Category: {tkt.category}
                         </p>
                       </div>
@@ -1185,7 +1185,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                       <button
                         type="button"
                         onClick={() => setActiveView('tickets')}
-                        className="rounded-xl bg-white border border-black/[0.08] px-3 py-1.5 text-[11px] font-medium text-[#1D1D1F] hover:bg-[#E8E8ED] transition shrink-0 cursor-pointer"
+                        className="rounded-xl bg-white border border-black/[0.08] px-3 py-1.5 text-[11px] font-medium text-[#1D1D1F] hover:bg-[#E8E8ED] transition shrink-0 cursor-pointer dark:border-white/14 dark:bg-[#242429] dark:text-white dark:hover:bg-[#2C2C32]"
                       >
                         Open
                       </button>
@@ -3718,7 +3718,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
   return (
     <div className="space-y-4" data-component="admin-support-dashboard">
       {/* Persistent Top Segmented Navigation Bar for the 6 SUPPORT_API.ADMIN Modules */}
-      <section className="rounded-2xl border border-black/[0.06] bg-[#F5F5F7] p-1.5">
+      <section className="rounded-2xl border border-black/[0.06] bg-[#F5F5F7] p-1.5 dark:border-white/10 dark:bg-[#141417]">
         <div className="flex flex-wrap items-center gap-1">
           {adminNavigation.map((item) => {
             const Icon = item.icon;
@@ -3731,8 +3731,8 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                 className={cn(
                   'inline-flex cursor-pointer items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium transition-all',
                   isActive
-                    ? 'bg-white text-[#1D1D1F] shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
-                    : 'text-[#6E6E73] hover:text-[#1D1D1F]'
+                    ? 'bg-white text-[#1D1D1F] shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:bg-[#242429] dark:text-white dark:shadow-none'
+                    : 'text-[#6E6E73] hover:text-[#1D1D1F] dark:text-[#A1A1AA] dark:hover:text-white dark:hover:bg-white/[0.06]'
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -3742,8 +3742,8 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     className={cn(
                       'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
                       isActive
-                        ? 'bg-[#F5F5F7] text-[#1D1D1F]'
-                        : 'bg-white/80 text-[#6E6E73]'
+                        ? 'bg-[#F5F5F7] text-[#1D1D1F] dark:bg-white/10 dark:text-white'
+                        : 'bg-white/80 text-[#6E6E73] dark:bg-white/[0.08] dark:text-[#A1A1AA]'
                     )}
                   >
                     {item.count}
@@ -3759,7 +3759,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {notice && (
         <div
           role="status"
-          className="flex items-center gap-2 rounded-2xl border border-black/[0.06] bg-white px-4 py-2.5 text-xs font-medium text-[#1D1D1F] shadow-[0_1px_3px_rgba(0,0,0,0.03)]"
+          className="flex items-center gap-2 rounded-2xl border border-black/[0.06] bg-white px-4 py-2.5 text-xs font-medium text-[#1D1D1F] shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:border-white/10 dark:bg-[#18181C] dark:text-white"
         >
           <CheckCircle2 className="h-4 w-4 text-[#34C759]" />
           <span>{notice}</span>

@@ -497,7 +497,7 @@ export default function ListingGovernance({
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
                       {visibleListings.map((listing) => (
-                        <tr key={listing.id} className="hover:bg-slate-50/50 transition-colors">
+                        <tr key={listing.id} className="hover:bg-slate-50/60 dark:hover:bg-white/[0.04] transition-colors">
                           <td className="py-3.5 px-2">
                             <div className="font-mono font-bold text-[#2563EB]">VR-{listing.verificationRequestId}</div>
                             <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
@@ -740,120 +740,120 @@ export default function ListingGovernance({
       {/* Verification request details */}
       <AnimatePresence>
         {selectedListing && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-[1300]">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-xl border border-slate-200 p-6 shadow-xl max-w-4xl w-full space-y-5 max-h-[90vh] overflow-y-auto"
+              className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200 dark:border-white/[0.12] p-4 sm:p-6 shadow-2xl max-w-2xl w-full space-y-4 max-h-[85vh] overflow-y-auto"
             >
-              <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-start justify-between border-b border-slate-100 dark:border-white/[0.08] pb-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-[#2563EB] font-bold bg-[#2563EB]/5 px-2 py-0.5 rounded">VR-{selectedListing.verificationRequestId}</span>
+                    <span className="text-xs font-mono text-[#2563EB] font-bold bg-[#2563EB]/5 dark:bg-[#2563EB]/20 px-2 py-0.5 rounded">VR-{selectedListing.verificationRequestId}</span>
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
                       selectedListing.status === 'pending'
-                        ? 'border-amber-100 bg-amber-50 text-amber-700'
+                        ? 'border-amber-100 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400'
                         : selectedListing.status === 'approved'
-                          ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                          ? 'border-emerald-100 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
                           : selectedListing.status === 'rejected'
-                            ? 'border-rose-100 bg-rose-50 text-rose-700'
-                            : 'border-slate-200 bg-slate-100 text-slate-700'
+                            ? 'border-rose-100 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400'
+                            : 'border-slate-200 dark:border-white/[0.12] bg-slate-100 dark:bg-white/[0.08] text-slate-700 dark:text-slate-300'
                     }`}>{selectedListing.verificationStatusLabel} · Code {selectedListing.verificationStatus}</span>
                   </div>
-                  <h3 className="text-md font-bold text-slate-800 mt-1">Verification request details</h3>
+                  <h3 className="text-md font-bold text-slate-800 dark:text-[#f5f5f7] mt-1">Verification request details</h3>
                 </div>
                 <button 
                   onClick={closeSelectedListing}
-                  className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600"
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-white/[0.08] rounded-full text-slate-400 dark:text-[#8e8e93] hover:text-slate-600 dark:hover:text-[#f5f5f7] transition-colors"
                 >
                   <XCircle className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-100 text-xs sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4 bg-slate-50 dark:bg-white/[0.04] p-3.5 sm:p-4 rounded-xl border border-slate-100 dark:border-white/[0.08] text-xs sm:grid-cols-2">
                 <div>
-                  <span className="text-slate-400 font-medium">Verification ID:</span>
-                  <p className="text-slate-700 font-mono font-semibold">#{selectedListing.verificationRequestId}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Verification ID:</span>
+                  <p className="text-slate-700 dark:text-[#f5f5f7] font-mono font-semibold">#{selectedListing.verificationRequestId}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Parking Spot ID:</span>
-                  <p className="text-[#2563EB] font-bold font-mono">#{selectedListing.parkingSpotId}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Parking Spot ID:</span>
+                  <p className="text-[#2563EB] dark:text-[#0a84ff] font-bold font-mono">#{selectedListing.parkingSpotId}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Parking Label:</span>
-                  <p className="text-[#2563EB] font-bold font-mono">{selectedListing.parkingLabel}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Parking Label:</span>
+                  <p className="text-[#2563EB] dark:text-[#0a84ff] font-bold font-mono">{selectedListing.parkingLabel}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Property ID:</span>
-                  <p className="text-slate-700 font-mono font-semibold">#{selectedListing.propertyId}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Property ID:</span>
+                  <p className="text-slate-700 dark:text-[#f5f5f7] font-mono font-semibold">#{selectedListing.propertyId}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Property Name:</span>
-                  <p className="text-slate-700 font-semibold">{selectedListing.propertyName}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Property Name:</span>
+                  <p className="text-slate-700 dark:text-[#f5f5f7] font-semibold">{selectedListing.propertyName}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Verification Status:</span>
-                  <p className="text-slate-700 font-semibold">{selectedListing.verificationStatusLabel}</p>
-                  <p className="mt-0.5 font-mono text-[10px] text-slate-400">API value: {selectedListing.verificationStatus}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Verification Status:</span>
+                  <p className="text-slate-700 dark:text-[#f5f5f7] font-semibold">{selectedListing.verificationStatusLabel}</p>
+                  <p className="mt-0.5 font-mono text-[10px] text-slate-400 dark:text-[#8e8e93]">API value: {selectedListing.verificationStatus}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Submitted By User ID:</span>
-                  <p className="text-slate-700 font-mono font-semibold">#{selectedListing.submittedByUserId}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Submitted By User ID:</span>
+                  <p className="text-slate-700 dark:text-[#f5f5f7] font-mono font-semibold">#{selectedListing.submittedByUserId}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Submitted By Name:</span>
-                  <p className="text-slate-700 font-semibold">{selectedListing.submittedByName}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Submitted By Name:</span>
+                  <p className="text-slate-700 dark:text-[#f5f5f7] font-semibold">{selectedListing.submittedByName}</p>
                 </div>
                 <div className="sm:col-span-2">
-                  <span className="text-slate-400 font-medium">Submitted By Email:</span>
-                  <p className="break-all text-slate-700 font-semibold">{selectedListing.submittedByEmail}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Submitted By Email:</span>
+                  <p className="break-all text-slate-700 dark:text-[#f5f5f7] font-semibold">{selectedListing.submittedByEmail}</p>
                 </div>
                 <div className="sm:col-span-2">
-                  <span className="text-slate-400 font-medium">Submitted At:</span>
-                  <p className="text-slate-700 font-semibold">{formatSubmittedAt(selectedListing.submittedAt)}</p>
-                  <p className="mt-0.5 break-all font-mono text-[10px] text-slate-400">{selectedListing.submittedAt}</p>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Submitted At:</span>
+                  <p className="text-slate-700 dark:text-[#f5f5f7] font-semibold">{formatSubmittedAt(selectedListing.submittedAt)}</p>
+                  <p className="mt-0.5 break-all font-mono text-[10px] text-slate-400 dark:text-[#8e8e93]">{selectedListing.submittedAt}</p>
                 </div>
               </div>
 
-              <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="private-document-title">
+              <section className="space-y-3 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-3.5 sm:p-4" aria-labelledby="private-document-title">
                 <div className="flex items-start gap-3">
-                  <div className="rounded-lg bg-blue-50 p-2 text-[#2563EB]">
+                  <div className="rounded-lg bg-blue-50 dark:bg-blue-500/15 p-2 text-[#2563EB] dark:text-[#0a84ff]">
                     <FileText className="h-5 w-5" />
                   </div>
                   <div>
-                    <h4 id="private-document-title" className="text-sm font-bold text-slate-800">
+                    <h4 id="private-document-title" className="text-sm font-bold text-slate-800 dark:text-[#f5f5f7]">
                       Private verification documents ({selectedListing.documents.length})
                     </h4>
-                    <p className="text-[11px] text-slate-500">Files are loaded securely using the media IDs returned with this verification request.</p>
+                    <p className="text-[11px] text-slate-500 dark:text-[#a1a1a6]">Files are loaded securely using the media IDs returned with this verification request.</p>
                   </div>
                 </div>
 
                 {selectedListing.documents.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500">
+                  <div className="rounded-lg border border-dashed border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.04] p-4 text-center text-xs text-slate-500 dark:text-[#a1a1a6]">
                     No supporting documents were returned for this request.
                   </div>
                 ) : (
                   <div className="grid gap-2 sm:grid-cols-2">
                     {selectedListing.documents.map((document) => (
-                      <article key={document.verificationDocumentId} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+                      <article key={document.verificationDocumentId} className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.04] p-3 text-xs">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="truncate font-semibold text-slate-800">{getDocumentFileName(document)}</p>
-                            <p className="mt-0.5 text-[10px] text-slate-500">
+                            <p className="truncate font-semibold text-slate-800 dark:text-[#f5f5f7]">{getDocumentFileName(document)}</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-[#a1a1a6]">
                               {documentTypeLabels[document.documentType] || `Document type ${document.documentType}`}
                             </p>
                           </div>
-                          <span className="rounded-full bg-white px-2 py-0.5 font-mono text-[9px] font-semibold uppercase text-slate-600 ring-1 ring-slate-200">
+                          <span className="rounded-full bg-white dark:bg-white/[0.08] px-2 py-0.5 font-mono text-[9px] font-semibold uppercase text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-white/[0.08]">
                             {document.format}
                           </span>
                         </div>
                         <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[10px]">
-                          <div><dt className="text-slate-400">Verification document ID</dt><dd className="font-mono font-semibold text-slate-700">#{document.verificationDocumentId}</dd></div>
-                          <div><dt className="text-slate-400">Media file ID</dt><dd className="font-mono font-semibold text-slate-700">#{document.mediaFileId}</dd></div>
-                          <div><dt className="text-slate-400">Resource type</dt><dd className="font-semibold text-slate-700">{document.resourceType}</dd></div>
-                          <div><dt className="text-slate-400">Document type code</dt><dd className="font-mono font-semibold text-slate-700">{document.documentType}</dd></div>
-                          <div className="col-span-2"><dt className="text-slate-400">Uploaded at</dt><dd className="font-semibold text-slate-700">{formatSubmittedAt(document.uploadedAt)}</dd><dd className="mt-0.5 break-all font-mono text-[9px] text-slate-400">{document.uploadedAt}</dd></div>
+                          <div><dt className="text-slate-400 dark:text-[#a1a1a6]">Verification document ID</dt><dd className="font-mono font-semibold text-slate-700 dark:text-[#f5f5f7]">#{document.verificationDocumentId}</dd></div>
+                          <div><dt className="text-slate-400 dark:text-[#a1a1a6]">Media file ID</dt><dd className="font-mono font-semibold text-slate-700 dark:text-[#f5f5f7]">#{document.mediaFileId}</dd></div>
+                          <div><dt className="text-slate-400 dark:text-[#a1a1a6]">Resource type</dt><dd className="font-semibold text-slate-700 dark:text-[#f5f5f7]">{document.resourceType}</dd></div>
+                          <div><dt className="text-slate-400 dark:text-[#a1a1a6]">Document type code</dt><dd className="font-mono font-semibold text-slate-700 dark:text-[#f5f5f7]">{document.documentType}</dd></div>
+                          <div className="col-span-2"><dt className="text-slate-400 dark:text-[#a1a1a6]">Uploaded at</dt><dd className="font-semibold text-slate-700 dark:text-[#f5f5f7]">{formatSubmittedAt(document.uploadedAt)}</dd><dd className="mt-0.5 break-all font-mono text-[9px] text-slate-400 dark:text-[#8e8e93]">{document.uploadedAt}</dd></div>
                         </dl>
                         <button
                           type="button"
@@ -926,12 +926,12 @@ export default function ListingGovernance({
       {/* Reject Overlay for selecting/specifying reasons */}
       <AnimatePresence>
         {rejectingListingId && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-55">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1350]">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-xl border border-slate-200 p-5 shadow-xl max-w-md w-full space-y-4"
+              className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200 dark:border-white/[0.12] p-5 shadow-2xl max-w-md w-full space-y-4"
             >
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 text-rose-600">

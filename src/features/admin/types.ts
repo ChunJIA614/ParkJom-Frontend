@@ -196,13 +196,88 @@ export interface SupportTicket {
   }[];
 }
 
+/**
+ * Live counters for the admin landing screen.
+ * Every field is served by GET /api/admin/dashboard — see dashboardApi.ts.
+ */
+export type AdminDashboardStats = PlatformStats;
 export interface PlatformStats {
   totalRevenue: number;
   platformCommission: number;
+  grossBookingValue: number;
+  ownerPayoutTotal: number;
   activeBookings: number;
   totalUsers: number;
+  totalOwners: number;
+  totalCommuters: number;
   onlineBollardsRate: number;
+  totalBollards: number;
+  onlineBollards: number;
   pendingListingsCount: number;
   openDisputesCount: number;
   activeOverstaysCount: number;
+  openTicketsCount: number;
+}
+
+export interface AdminDashboardBookingCounts {
+  pending: number;
+  confirmed: number;
+  active: number;
+  completed: number;
+  cancelled: number;
+  expired: number;
+  total: number;
+}
+
+export interface DashboardDailyPoint {
+  day: string;
+  date: string;
+  bookings: number;
+  revenue: number;
+  commission: number;
+}
+
+export interface DashboardStationPoint {
+  name: string;
+  bookings: number;
+  revenue: number;
+}
+
+export interface DashboardHourlyPoint {
+  hour: string;
+  bookings: number;
+}
+
+export interface DashboardUserGrowthPoint {
+  month: string;
+  drivers: number;
+  owners: number;
+}
+
+export interface DashboardRevenueTypePoint {
+  type: string;
+  revenue: number;
+  bookings: number;
+}
+
+/** Full payload of GET /api/admin/dashboard. */
+export interface AdminDashboardData {
+  stats: PlatformStats;
+  bookingCounts: AdminDashboardBookingCounts;
+  weekly: DashboardDailyPoint[];
+  stations: DashboardStationPoint[];
+  hourly: DashboardHourlyPoint[];
+  userGrowth: DashboardUserGrowthPoint[];
+  revenueByType: DashboardRevenueTypePoint[];
+  generatedAt: string;
+  timeZone: string;
+}
+
+/** GET/PUT /api/admin/system-config */
+export interface SystemConfig {
+  commissionRate: number;
+  gracePeriodMinutes: number;
+  updatedAt: string;
+  updatedByUserId: number | null;
+  updatedByName: string | null;
 }

@@ -155,6 +155,17 @@ export interface PublicParkingSpotDetail {
   createdAt: string;
   updatedAt: string;
   images: PublicParkingSpotImage[];
+  /**
+   * Bay coordinates. Optional because older backend builds omit them; when
+   * absent the detail page must hide map/distance affordances instead of
+   * plotting the bay at 0,0.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
+  /** Nearest transit station, when the backend resolves one. */
+  stationName?: string | null;
+  distanceToStationMeters?: number | null;
+  timeToStationInMinutes?: number | null;
 }
 
 export interface PublicParkingSpotResponse {

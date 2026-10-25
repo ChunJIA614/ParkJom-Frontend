@@ -442,23 +442,23 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
   return (
     <div className="space-y-4">
       {/* ── Top Header & Context Status Bar ── */}
-      <div className="bg-white rounded-2xl border border-black/[0.06] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="bg-white dark:bg-[#141417] rounded-2xl border border-black/[0.06] dark:border-white/10 p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#F5F5F7] text-[#1D1D1F] border border-black/[0.06]">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#F5F5F7] dark:bg-[#242429] text-[#1D1D1F] dark:text-white border border-black/[0.06] dark:border-white/14">
               <span className="h-1.5 w-1.5 rounded-full bg-[#007AFF]" />
               {isOwner ? 'Property Owner Support' : 'Commuter Support'}
             </span>
             {contextData?.userRole && (
-              <span className="text-[11px] text-[#86868B] font-medium">
+              <span className="text-[11px] text-[#86868B] dark:text-[#A1A1AA] font-medium">
                 {contextData.userRole}
               </span>
             )}
           </div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1D1D1F]">
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1D1D1F] dark:text-white">
             Support & Assistance
           </h1>
-          <p className="text-xs text-[#6E6E73]">
+          <p className="text-xs text-[#6E6E73] dark:text-[#A1A1AA]">
             {isOwner
               ? 'Manage renter overstays, IoT lock status, payout inquiries, and support tickets.'
               : 'Instant barrier gate self-unlock, 1-click issue reporting, and live ticket updates.'}
@@ -473,7 +473,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
               onChange={(e) =>
                 setContextBookingFilter(e.target.value ? Number(e.target.value) : null)
               }
-              className="text-xs rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-3 py-2 text-[#1D1D1F] font-medium focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
+              className="text-xs rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-3 py-2 text-[#1D1D1F] dark:text-white font-medium focus:outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] transition"
             >
               <option value="">All Active Context</option>
               {recentBookings.map((b) => (
@@ -493,7 +493,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
               onChange={(e) =>
                 setContextVehicleFilter(e.target.value ? Number(e.target.value) : null)
               }
-              className="text-xs rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-3 py-2 text-[#1D1D1F] font-medium focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
+              className="text-xs rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-3 py-2 text-[#1D1D1F] dark:text-white font-medium focus:outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] transition"
             >
               <option value="">All Vehicles</option>
               {recentVehicles.map((v) => (
@@ -508,17 +508,17 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
             type="button"
             onClick={() => void loadContextAndTemplates(contextBookingFilter, contextVehicleFilter)}
             disabled={contextLoading}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-black/[0.08] bg-white text-[#1D1D1F] hover:bg-[#F5F5F7] disabled:opacity-50 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-black/[0.08] dark:border-white/14 bg-white dark:bg-[#18181C] text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] disabled:opacity-50 transition cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-[#6E6E73] ${contextLoading ? 'animate-spin text-[#007AFF]' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-[#6E6E73] dark:text-[#A1A1AA] ${contextLoading ? 'animate-spin text-[#007AFF]' : ''}`} />
             Refresh
           </button>
         </div>
       </div>
 
       {contextError && (
-        <div className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-4 py-3 text-xs text-[#1D1D1F] flex items-center justify-between">
-          <span className="text-[#6E6E73]">{contextError}</span>
+        <div className="rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-4 py-3 text-xs text-[#1D1D1F] dark:text-white flex items-center justify-between">
+          <span className="text-[#6E6E73] dark:text-[#A1A1AA]">{contextError}</span>
           <button
             type="button"
             onClick={() => void loadContextAndTemplates(contextBookingFilter, contextVehicleFilter)}
@@ -531,31 +531,31 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
 
       {/* ── Section 1: Active Booking & Emergency Self-Unlock Gate (APIs #1 & #3) ── */}
       {(activeBooking || contextData?.canSelfUnlockGate) && (
-        <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+        <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#F5F5F7] text-[#1D1D1F] border border-black/[0.06]">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#F5F5F7] dark:bg-[#242429] text-[#1D1D1F] dark:text-white border border-black/[0.06] dark:border-white/14">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#34C759]" />
                   Active Session
                 </span>
                 {activeBooking?.bookingId && (
-                  <span className="text-xs font-semibold text-[#1D1D1F]">
+                  <span className="text-xs font-semibold text-[#1D1D1F] dark:text-white">
                     Booking #{activeBooking.bookingId}
                     {activeBooking.bookingReference ? ` (${activeBooking.bookingReference})` : ''}
                   </span>
                 )}
                 {activeBooking?.status && (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-[#F5F5F7] text-[#6E6E73] border border-black/[0.04]">
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-[#F5F5F7] dark:bg-[#242429] text-[#6E6E73] dark:text-white border border-black/[0.04] dark:border-white/14">
                     {activeBooking.status}
                   </span>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-[#1D1D1F]">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-[#1D1D1F] dark:text-white">
                 {(activeBooking?.spotNumber || activeBooking?.spotCode) && (
-                  <span className="inline-flex items-center gap-1.5 font-semibold text-[#1D1D1F]">
-                    <MapPin className="w-4 h-4 text-[#6E6E73]" />
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-[#1D1D1F] dark:text-white">
+                    <MapPin className="w-4 h-4 text-[#6E6E73] dark:text-[#A1A1AA]" />
                     Spot {activeBooking.spotNumber || activeBooking.spotCode}
                     {activeBooking.locationName || activeBooking.address
                       ? ` • ${activeBooking.locationName || activeBooking.address}`
@@ -563,13 +563,13 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                   </span>
                 )}
                 {(activeBooking?.vehiclePlate || activeBooking?.licensePlate) && (
-                  <span className="inline-flex items-center gap-1.5 text-[#6E6E73]">
-                    <Car className="w-4 h-4 text-[#86868B]" />
+                  <span className="inline-flex items-center gap-1.5 text-[#6E6E73] dark:text-[#A1A1AA]">
+                    <Car className="w-4 h-4 text-[#86868B] dark:text-[#A1A1AA]" />
                     {activeBooking.vehiclePlate || activeBooking.licensePlate}
                   </span>
                 )}
                 {(activeBooking?.totalPrice ?? activeBooking?.totalAmount) !== undefined && (
-                  <span className="inline-flex items-center gap-1 text-[#6E6E73] font-medium">
+                  <span className="inline-flex items-center gap-1 text-[#6E6E73] dark:text-[#A1A1AA] font-medium">
                     RM{' '}
                     {Number(activeBooking?.totalPrice ?? activeBooking?.totalAmount ?? 0).toFixed(
                       2,
@@ -578,7 +578,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 )}
               </div>
 
-              <p className="text-xs text-[#6E6E73]">
+              <p className="text-xs text-[#6E6E73] dark:text-[#A1A1AA]">
                 Stuck at the barrier? Use Emergency Self-Unlock to open the gate immediately without waiting for an agent.
               </p>
             </div>
@@ -603,7 +603,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 type="button"
                 disabled={unlockingGate}
                 onClick={() => void handleSelfUnlockGate('Exit')}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F] hover:bg-[#E8E8ED] disabled:opacity-50 transition cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border border-black/[0.08] dark:border-white/14 bg-[#F5F5F7] dark:bg-[#242429] text-[#1D1D1F] dark:text-white hover:bg-[#E8E8ED] dark:hover:bg-[#2C2C32] disabled:opacity-50 transition cursor-pointer"
               >
                 {unlockingGate && gateAction === 'Exit' ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -617,7 +617,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
 
           {/* Gate Unlock Result / Urgent Ticket Escalation */}
           {(gateResult || gateError) && (
-            <div className="mt-4 rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[#1D1D1F]">
+            <div className="mt-4 rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[#1D1D1F] dark:text-white">
               <div className="flex items-start gap-2.5 text-xs">
                 {gateResult?.success ? (
                   <CheckCircle2 className="w-4 h-4 text-[#34C759] shrink-0 mt-0.5" />
@@ -625,11 +625,11 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                   <AlertTriangle className="w-4 h-4 text-[#FF3B30] shrink-0 mt-0.5" />
                 )}
                 <div>
-                  <p className="font-semibold text-[#1D1D1F]">
+                  <p className="font-semibold text-[#1D1D1F] dark:text-white">
                     {gateResult?.message || gateError}
                   </p>
                   {gateResult?.commandId && (
-                    <p className="text-[11px] text-[#6E6E73] mt-0.5">
+                    <p className="text-[11px] text-[#6E6E73] dark:text-[#A1A1AA] mt-0.5">
                       Command Reference: {gateResult.commandId} • Action: {gateResult.action || gateAction}
                     </p>
                   )}
@@ -641,7 +641,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                   type="button"
                   disabled={submittingUrgentGateTicket}
                   onClick={() => void handleOneClickUrgentGateTicket()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#1D1D1F] text-white hover:bg-black disabled:opacity-50 shrink-0 transition cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#1D1D1F] dark:bg-[#242429] text-white hover:bg-black dark:hover:bg-[#2C2C32] dark:border dark:border-white/14 disabled:opacity-50 shrink-0 transition cursor-pointer"
                 >
                   {submittingUrgentGateTicket ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -657,14 +657,14 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
       )}
 
       {/* ── Section 2: Role-Specific Quick Issue Cards & 1-Click Ticket Form (APIs #2 & #6) ── */}
-      <div className="bg-white rounded-2xl border border-black/[0.06] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-5">
+      <div className="bg-white dark:bg-[#141417] rounded-2xl border border-black/[0.06] dark:border-white/10 p-5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
-            <h2 className="text-sm sm:text-base font-bold text-[#1D1D1F] flex items-center gap-2">
-              <Ticket className="w-4 h-4 text-[#1D1D1F]" />
+            <h2 className="text-sm sm:text-base font-bold text-[#1D1D1F] dark:text-white flex items-center gap-2">
+              <Ticket className="w-4 h-4 text-[#1D1D1F] dark:text-white" />
               Quick Issue Reporting
             </h2>
-            <p className="text-xs text-[#6E6E73] mt-0.5">
+            <p className="text-xs text-[#6E6E73] dark:text-[#A1A1AA] mt-0.5">
               Select an issue template below to pre-fill your request and submit in one click.
             </p>
           </div>
@@ -674,7 +674,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 type="button"
                 disabled={unlockingGate}
                 onClick={() => void handleSelfUnlockGate('Enter')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F] hover:bg-[#E8E8ED] disabled:opacity-50 transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-black/[0.08] dark:border-white/14 bg-[#F5F5F7] dark:bg-[#242429] text-[#1D1D1F] dark:text-white hover:bg-[#E8E8ED] dark:hover:bg-[#2C2C32] disabled:opacity-50 transition cursor-pointer"
               >
                 {unlockingGate ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -689,7 +689,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
 
         {/* Emergency Gate Unlock feedback when no activeBooking banner is visible */}
         {!activeBooking && !contextData?.canSelfUnlockGate && (gateResult || gateError) && (
-          <div className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[#1D1D1F]">
+          <div className="rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-[#1D1D1F] dark:text-white">
             <div className="flex items-center gap-2 text-xs font-medium">
               {gateResult?.success ? (
                 <CheckCircle2 className="w-4 h-4 text-[#34C759] shrink-0" />
@@ -703,7 +703,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 type="button"
                 disabled={submittingUrgentGateTicket}
                 onClick={() => void handleOneClickUrgentGateTicket()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#1D1D1F] text-white hover:bg-black disabled:opacity-50 shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#1D1D1F] dark:bg-[#242429] text-white hover:bg-black dark:hover:bg-[#2C2C32] dark:border dark:border-white/14 disabled:opacity-50 shrink-0 cursor-pointer"
               >
                 <ShieldAlert className="w-3.5 h-3.5" />
                 Submit Urgent Gate Ticket
@@ -723,30 +723,30 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 onClick={() => handleSelectTemplate(tpl)}
                 className={`text-left rounded-xl border p-3.5 transition flex flex-col justify-between gap-2.5 cursor-pointer ${
                   isSelected
-                    ? 'border-[#007AFF] bg-white ring-1 ring-[#007AFF]/20 shadow-[0_2px_8px_rgba(0,122,255,0.06)]'
-                    : 'border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12]'
+                    ? 'border-[#007AFF] bg-white ring-1 ring-[#007AFF]/20 shadow-[0_2px_8px_rgba(0,122,255,0.06)] dark:bg-[#1E2430] dark:border-[#0071E3] dark:ring-[#0071E3]/30'
+                    : 'border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] dark:bg-[#18181C] dark:border-white/[0.08] dark:hover:bg-[#202025] dark:hover:border-white/15'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <div
                     className={`p-2 rounded-lg border transition-colors ${
                       isSelected
-                        ? 'bg-[#007AFF] text-white border-[#007AFF]'
-                        : 'bg-white text-[#1D1D1F] border-black/[0.06]'
+                        ? 'bg-[#007AFF] text-white border-[#007AFF] dark:bg-[#0071E3] dark:border-[#0071E3]'
+                        : 'bg-white text-[#1D1D1F] border-black/[0.06] dark:bg-white/[0.08] dark:text-white dark:border-white/[0.08]'
                     }`}
                   >
                     {getIssueIcon(tpl.issueCode)}
                   </div>
-                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-white border border-black/[0.06] text-[#6E6E73]">
+                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-white border border-black/[0.06] text-[#6E6E73] dark:bg-white/[0.08] dark:border-white/[0.08] dark:text-[#D4D4D8]">
                     {tpl.issueCode}
                   </span>
                 </div>
                 <div>
-                  <div className="text-xs font-semibold text-[#1D1D1F] line-clamp-1">
+                  <div className="text-xs font-semibold text-[#1D1D1F] dark:text-white line-clamp-1">
                     {tpl.title}
                   </div>
                   {tpl.description && (
-                    <p className="text-[11px] text-[#6E6E73] mt-0.5 line-clamp-2 leading-relaxed">
+                    <p className="text-[11px] text-[#6E6E73] dark:text-[#A1A1AA] mt-0.5 line-clamp-2 leading-relaxed">
                       {tpl.description}
                     </p>
                   )}
@@ -757,12 +757,12 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
         </div>
 
         {/* Minimal 1-Click Ticket Form */}
-        <form onSubmit={handleCreateQuickTicket} className="pt-3 border-t border-black/[0.06] space-y-4">
+        <form onSubmit={handleCreateQuickTicket} className="pt-3 border-t border-black/[0.06] dark:border-white/10 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* Message Input */}
             <div className="md:col-span-6">
-              <label className="block text-[11px] font-semibold text-[#1D1D1F] mb-1">
-                Issue Description <span className="text-[#86868B]">*</span>
+              <label className="block text-[11px] font-semibold text-[#1D1D1F] dark:text-white mb-1">
+                Issue Description <span className="text-[#86868B] dark:text-[#A1A1AA]">*</span>
               </label>
               <input
                 type="text"
@@ -770,20 +770,20 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 value={ticketMessage}
                 onChange={(e) => setTicketMessage(e.target.value)}
                 placeholder="Describe what happened in one sentence..."
-                className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3.5 py-2 text-xs text-[#1D1D1F] placeholder:text-[#86868B] focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
+                className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3.5 py-2 text-xs text-[#1D1D1F] dark:text-white placeholder:text-[#86868B] dark:placeholder:text-[#71717A] focus:outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] transition"
               />
             </div>
 
             {/* Optional Booking / Spot / Vehicle selector */}
             <div className="md:col-span-3">
-              <label className="block text-[11px] font-semibold text-[#1D1D1F] mb-1">
+              <label className="block text-[11px] font-semibold text-[#1D1D1F] dark:text-white mb-1">
                 {isOwner && ownedSpots.length > 0 ? 'Related Spot / Booking' : 'Related Booking (Optional)'}
               </label>
               {isOwner && ownedSpots.length > 0 ? (
                 <SystemSelect
                   value={selectedSpotId}
                   onChange={(e) => setSelectedSpotId(e.target.value)}
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 text-xs text-[#1D1D1F] focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-xs text-[#1D1D1F] dark:text-white focus:outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] transition"
                 >
                   <option value="">Auto-detect Spot / Booking</option>
                   {ownedSpots.map((s) => (
@@ -797,7 +797,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 <SystemSelect
                   value={selectedBookingId}
                   onChange={(e) => setSelectedBookingId(e.target.value)}
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 text-xs text-[#1D1D1F] focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-xs text-[#1D1D1F] dark:text-white focus:outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] transition"
                 >
                   <option value="">
                     {activeBooking?.bookingId
@@ -821,7 +821,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
             <div className="md:col-span-3">
               {isRefundOrClaimIssue ? (
                 <>
-                  <label className="block text-[11px] font-semibold text-[#1D1D1F] mb-1">
+                  <label className="block text-[11px] font-semibold text-[#1D1D1F] dark:text-white mb-1">
                     Claim Amount (RM, Optional)
                   </label>
                   <input
@@ -831,18 +831,18 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                     value={claimAmount}
                     onChange={(e) => setClaimAmount(e.target.value)}
                     placeholder="Auto from booking amount"
-                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 text-xs text-[#1D1D1F] placeholder:text-[#86868B] focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
+                    className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-xs text-[#1D1D1F] dark:text-white placeholder:text-[#86868B] dark:placeholder:text-[#71717A] focus:outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] transition"
                   />
                 </>
               ) : (
                 <>
-                  <label className="block text-[11px] font-semibold text-[#1D1D1F] mb-1">
+                  <label className="block text-[11px] font-semibold text-[#1D1D1F] dark:text-white mb-1">
                     Vehicle (Optional)
                   </label>
                   <SystemSelect
                     value={selectedVehicleId}
                     onChange={(e) => setSelectedVehicleId(e.target.value)}
-                    className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 text-xs text-[#1D1D1F] focus:outline-none focus:border-[#007AFF] focus:bg-white transition"
+                    className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-xs text-[#1D1D1F] dark:text-white focus:outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] transition"
                   >
                     <option value="">Auto-detect vehicle</option>
                     {recentVehicles.map((v) => (
@@ -875,25 +875,25 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F] hover:bg-[#E8E8ED] transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-black/[0.08] dark:border-white/14 bg-[#F5F5F7] dark:bg-[#242429] text-[#1D1D1F] dark:text-white hover:bg-[#E8E8ED] dark:hover:bg-[#2C2C32] transition cursor-pointer"
               >
-                <Paperclip className="w-3.5 h-3.5 text-[#6E6E73]" />
+                <Paperclip className="w-3.5 h-3.5 text-[#6E6E73] dark:text-[#A1A1AA]" />
                 Attach Photos / Receipts
               </button>
 
               {attachments.map((file, idx) => (
                 <span
                   key={`${file.name}-${idx}`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-[#F5F5F7] text-[#1D1D1F] border border-black/[0.08]"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-[#F5F5F7] dark:bg-[#18181C] text-[#1D1D1F] dark:text-white border border-black/[0.08] dark:border-white/10"
                 >
-                  <FileText className="w-3 h-3 text-[#6E6E73]" />
+                  <FileText className="w-3 h-3 text-[#6E6E73] dark:text-[#A1A1AA]" />
                   <span className="max-w-[140px] truncate">{file.name}</span>
                   <button
                     type="button"
                     onClick={() =>
                       setAttachments((prev) => prev.filter((_, i) => i !== idx))
                     }
-                    className="text-[#86868B] hover:text-[#1D1D1F] cursor-pointer"
+                    className="text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -916,7 +916,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
           </div>
 
           {createSuccessMsg && (
-            <div className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-4 py-2.5 text-xs font-medium text-[#1D1D1F] flex items-center justify-between">
+            <div className="rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-4 py-2.5 text-xs font-medium text-[#1D1D1F] dark:text-white flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#34C759] shrink-0" />
                 {createSuccessMsg}
@@ -924,7 +924,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setCreateSuccessMsg(null)}
-                className="text-[#6E6E73] hover:text-[#1D1D1F] cursor-pointer"
+                className="text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -932,7 +932,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
           )}
 
           {createErrorMsg && (
-            <div className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-4 py-2.5 text-xs font-medium text-[#1D1D1F] flex items-center justify-between">
+            <div className="rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-4 py-2.5 text-xs font-medium text-[#1D1D1F] dark:text-white flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-[#FF3B30] shrink-0" />
                 {createErrorMsg}
@@ -940,7 +940,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setCreateErrorMsg(null)}
-                className="text-[#6E6E73] hover:text-[#1D1D1F] cursor-pointer"
+                className="text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>

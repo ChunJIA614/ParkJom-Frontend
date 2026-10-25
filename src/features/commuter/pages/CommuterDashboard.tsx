@@ -89,7 +89,21 @@ import {
 } from '../api/walletApi';
 import { cancelBooking } from '../api/bookingApi';
 import type { VehicleCatalogEntry } from '../data/vehicleCatalog';
-import { loadCachedVehicles, saveCachedVehicles } from '../lib/vehicleStorage';
+import {
+  addVehicle as createVehicleRequest,
+  deleteVehicle as deleteVehicleRequest,
+  getMyVehicles,
+  modifyVehicle as modifyVehicleRequest,
+} from '../api/vehicleApi';
+import {
+  applyActiveVehicle,
+  loadCachedVehicles,
+  mapApiVehicleToVehicle,
+  saveCachedVehicles,
+} from '../lib/vehicleStorage';
+import { getDeviceLocation, DeviceLocationError } from '@/services/deviceCapabilities';
+import { isWithinArrivalRadius, resolveSpotCoordinates } from '../lib/geofence';
+import { selfUnlockGate } from '@/features/support/api/supportWorkflowService';
 import { updateReview } from '../api/reviewApi';
 import { getCommuterBookingHistory, type BookingHistoryItem } from '@/features/bookings/api/bookingHistoryApi';
 import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
@@ -376,20 +390,36 @@ export default function CommuterDashboard() {
   const [vehicleDeletingId, setVehicleDeletingId] = useState<number | null>(null);
   const [vehicleFeedback, setVehicleFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
-  const loadMyVehicles = useCallback((signal?: AbortSignal) => {
+  const loadMyVehicles = useCallback(async (signal?: AbortSignal) => {
     if (!user?.userId) return;
 
     setIsVehiclesLoading(true);
     setVehiclesLoadError(null);
+    // Capture the commuter's current selection before the request resolves, so
+    // the active vehicle survives a refresh.
+    const previousActiveId = loadCachedVehicles(user.userId).find((vehicle) => vehicle.active)?.vehicleId ?? null;
     try {
-      const cached = loadCachedVehicles(user.userId);
-      setVehicles(cached);
+      if (!user.token) {
+        // No session to authenticate with: fall back to whatever was cached.
+        setVehicles(loadCachedVehicles(user.userId));
+        return;
+      }
+
+      const result = await getMyVehicles(user.token, signal);
+      if (signal?.aborted) return;
+
+      const mapped = applyActiveVehicle(
+        result.data.map((vehicle) => mapApiVehicleToVehicle(vehicle)),
+        previousActiveId,
+      );
+      setVehicles(mapped);
     } catch (error) {
+      if (signal?.aborted) return;
       setVehiclesLoadError(error instanceof Error ? error.message : 'Unable to load your vehicles.');
     } finally {
-      setIsVehiclesLoading(false);
+      if (!signal?.aborted) setIsVehiclesLoading(false);
     }
-  }, [user?.userId]);
+  }, [user?.token, user?.userId]);
 
   // Active Reservation / Session — TODO: fetch from backend
   const [activeBooking, setActiveBooking] = useState<Booking | null>(initialJourney?.booking ?? null);
@@ -1479,14 +1509,17 @@ export default function CommuterDashboard() {
 
     setIsVehicleSaving(true);
     try {
-      const newVehicle: Vehicle = {
-        vehicleId: Date.now(),
-        plate: numberPlate,
-        brand: vehicleBrand,
-        model: vehicleModel,
-        color: vehicleColor,
-        active: true,
-      };
+      const created = await createVehicleRequest(user.token, {
+        numberPlate,
+        vehicleBrand,
+        vehicleModel,
+        vehicleColor,
+      });
+      if (!created.data) {
+        throw new Error('The vehicle service did not return the new vehicle.');
+      }
+
+      const newVehicle = mapApiVehicleToVehicle(created.data, true);
       setVehicles((current) => [
         ...current.map((vehicle) => ({ ...vehicle, active: false })),
         newVehicle,
@@ -1497,7 +1530,7 @@ export default function CommuterDashboard() {
       setNewModel('');
       setNewColor('');
       setShowAddVehicle(false);
-      setVehicleFeedback({ tone: 'success', message: 'Vehicle added successfully.' });
+      setVehicleFeedback({ tone: 'success', message: created.message || 'Vehicle added successfully.' });
     } catch (error) {
       setVehicleFeedback({
         tone: 'error',
@@ -1530,6 +1563,7 @@ export default function CommuterDashboard() {
 
     setVehicleDeletingId(vehicle.vehicleId);
     try {
+      const removed = await deleteVehicleRequest(user.token, vehicle.vehicleId);
       setVehicles((current) => {
         const remaining = current.filter((item) => item.vehicleId !== vehicle.vehicleId);
         if (!vehicle.active || remaining.some((item) => item.active) || remaining.length === 0) return remaining;
@@ -1537,7 +1571,7 @@ export default function CommuterDashboard() {
       });
       setVehiclesLoadError(null);
       if (vehicleEditDraft?.vehicleId === vehicle.vehicleId) setVehicleEditDraft(null);
-      setVehicleFeedback({ tone: 'success', message: 'Vehicle deleted successfully.' });
+      setVehicleFeedback({ tone: 'success', message: removed.message || 'Vehicle deleted successfully.' });
     } catch (error) {
       setVehicleFeedback({
         tone: 'error',
@@ -1592,22 +1626,18 @@ export default function CommuterDashboard() {
 
     setIsVehicleUpdating(true);
     try {
+      const updated = await modifyVehicleRequest(user.token, request);
+      const patch = mapApiVehicleToVehicle(updated.data);
       setVehicles((current) =>
         current.map((item) =>
           item.vehicleId === request.vehicleId
-            ? {
-                ...item,
-                plate: request.numberPlate,
-                brand: request.vehicleBrand,
-                model: request.vehicleModel,
-                color: request.vehicleColor,
-              }
+            ? { ...item, plate: patch.plate, brand: patch.brand, model: patch.model, color: patch.color }
             : item
         )
       );
       setVehiclesLoadError(null);
       setVehicleEditDraft(null);
-      setVehicleFeedback({ tone: 'success', message: 'Vehicle updated successfully.' });
+      setVehicleFeedback({ tone: 'success', message: updated.message || 'Vehicle updated successfully.' });
     } catch (error) {
       setVehicleFeedback({
         tone: 'error',
@@ -1628,7 +1658,7 @@ export default function CommuterDashboard() {
 
   // Booking action
   const handleBookSpot = (spot: ParkingSpot) => {
-    const activeVeh = vehicles.find(v => v.active)?.plate || 'VGV 8899';
+    const activeVeh = vehicles.find(v => v.active)?.plate ?? '';
     if (walletBalance === null) {
       void showAlert({
         title: 'Wallet Unavailable',
@@ -1712,8 +1742,8 @@ export default function CommuterDashboard() {
     }
   };
 
-  // IoT Bollard unlock flow
-  const handleUnlockBollard = () => {
+  // IoT Bollard unlock flow — command is dispatched by the backend, not simulated.
+  const handleUnlockBollard = async () => {
     if (gpsVerified !== 'verified') {
       void showAlert({
         title: 'GPS Verification Required',
@@ -1723,25 +1753,72 @@ export default function CommuterDashboard() {
       return;
     }
 
+    const token = user?.token ?? '';
+    if (!token) {
+      void showAlert({
+        title: 'Session expired',
+        message: 'Your session is no longer valid. Sign in again to unlock the barrier.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    if (!activeBooking) return;
+
+    if (!activeBooking.bookingId) {
+      void showAlert({
+        title: 'Booking not linked',
+        message: 'This parking pass is not linked to a server booking yet, so the barrier cannot be released. Open your booking history, refresh, and try again.',
+        variant: 'warning',
+      });
+      return;
+    }
+
     setBollardAnimationState('lowering');
-    
-    // Simulate smart bollard motor lowering
-    setTimeout(() => {
+
+    try {
+      const result = await selfUnlockGate(token, {
+        bookingId: activeBooking.bookingId,
+        action: 'Enter',
+      });
+
+      if (!result.success) {
+        setBollardAnimationState('raised');
+        void showAlert({
+          title: 'Barrier did not release',
+          message: result.message
+            || 'The barrier could not be released. Please raise a support request for assistance.',
+          variant: 'warning',
+        });
+        return;
+      }
+
       setBollardAnimationState('lowered');
       setIsBollardUnlocked(true);
       setJourneyStage('unlocked');
       updateJourneyStage('unlocked', user?.userId);
-      
+
       const newNotif: AppNotification = {
         id: 'iot-' + Date.now(),
-        title: 'IoT Bollard Lowered',
-        message: `Actuator command executed successfully for ${activeBooking?.spot.id}. You may now park.`,
+        title: 'Barrier released',
+        message: result.commandId
+          ? `Command ${result.commandId} accepted for ${activeBooking.spot.name}. You may now park.`
+          : `The barrier at ${activeBooking.spot.name} has been released. You may now park.`,
         time: 'Just now',
         read: false,
         type: 'alert'
       };
       setNotifications(prev => [newNotif, ...prev]);
-    }, 2000);
+    } catch (error) {
+      setBollardAnimationState('raised');
+      void showAlert({
+        title: 'Barrier did not release',
+        message: error instanceof Error
+          ? error.message
+          : 'The gate unlock request failed. Please raise a support request for assistance.',
+        variant: 'danger',
+      });
+    }
   };
 
   // Smart lock bollard flow
@@ -1755,14 +1832,58 @@ export default function CommuterDashboard() {
     }, 2000);
   };
 
-  // Simulated GPS Verification toggle
-  const triggerGPSCheck = () => {
+  /**
+   * Real arrival check: read the device position and compare it with the bay.
+   * When the bay has no coordinates on file we still require a genuine GPS fix
+   * but say so plainly, rather than reporting "verified" unconditionally.
+   */
+  const triggerGPSCheck = async () => {
     setGpsVerified('checking');
-    setTimeout(() => {
+
+    let position;
+    try {
+      position = await getDeviceLocation();
+    } catch (error) {
+      setGpsVerified('unverified');
+      void showAlert({
+        title: 'Location check failed',
+        message: error instanceof DeviceLocationError
+          ? error.message
+          : 'We could not read your device location. Check that location services are enabled and try again.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    const bay = resolveSpotCoordinates(activeBooking?.spot);
+
+    if (!bay) {
       setGpsVerified('verified');
       setJourneyStage('arrived');
       updateJourneyStage('arrived', user?.userId);
-    }, 1500);
+      void showAlert({
+        title: 'Location confirmed',
+        message: 'We confirmed your device location, but this bay has no map coordinates on file, so your distance from it could not be measured. Your booking window is still validated when the barrier is released.',
+        variant: 'info',
+      });
+      return;
+    }
+
+    const check = isWithinArrivalRadius(position, bay);
+
+    if (!check.arrived) {
+      setGpsVerified('unverified');
+      void showAlert({
+        title: 'Not at the parking spot yet',
+        message: `You are about ${Math.round(check.distance)} m from this bay. Move closer than ${Math.round(check.tolerance)} m and verify again.`,
+        variant: 'warning',
+      });
+      return;
+    }
+
+    setGpsVerified('verified');
+    setJourneyStage('arrived');
+    updateJourneyStage('arrived', user?.userId);
   };
 
   // QR Code Camera/Scan simulation
@@ -2157,7 +2278,7 @@ export default function CommuterDashboard() {
                               <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-700">{spot.availabilityStatus}</span>
                             </div>
                           </div>
-                          <p className="mt-1 text-[11px] text-[#5f6368]">{spot.address}</p>
+                          <p className="mt-1 text-[11px] text-[#5f6368] dark:text-[#a1a1a6]">{spot.address}</p>
                           <p className="mt-1 text-[10px] text-[#9ca3af]">Near {spot.stationName} · {(spot.distanceToStation ?? 0).toFixed(2)} km to station · {spot.timeToStationInMinutes ?? 0} min</p>
                           <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold text-[#5f6368]">
                             <span>Daily: {spot.dailyRate === null ? '—' : `RM ${spot.dailyRate.toFixed(2)}`}</span>
@@ -2358,81 +2479,86 @@ export default function CommuterDashboard() {
             <div className="space-y-4">
               <JourneyStrip activeStep={journeyStep} />
               {!activeBooking ? (
-                <div className="bg-white rounded-2xl border border-[#e8eaed] p-8 text-center">
-                  <Clock size={32} className="mx-auto text-[#dadce0] mb-2" />
-                  <p className="text-[15px] font-semibold text-[#111]">No active booking</p>
-                  <p className="text-[13px] text-[#5f6368] mt-1">Find and book a parking spot to get started.</p>
-                  <button onClick={() => setActiveTab('map')} className="mt-4 px-5 py-2.5 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold hover:bg-[#0066d6] transition-colors">Find a bay</button>
+                <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-8 text-center">
+                  <Clock size={32} className="mx-auto text-[#dadce0] dark:text-[#71717A] mb-2" />
+                  <p className="text-[15px] font-semibold text-[#111] dark:text-white">No active booking</p>
+                  <p className="text-[13px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">Find and book a parking spot to get started.</p>
+                  <button onClick={() => setActiveTab('map')} className="mt-4 px-5 py-2.5 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold hover:bg-[#0066d6] transition-colors cursor-pointer">Find a bay</button>
                 </div>
               ) : (
                 <>
                   {/* Session Info */}
-                  <div className="bg-white rounded-2xl border border-[#e8eaed] p-5 space-y-4">
+                  <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5 space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Active Session</h3>
-                      <span className="text-[10px] font-mono font-bold bg-[#f0fdf4] text-[#16a34a] px-2 py-0.5 rounded-full">{activeBooking.status}</span>
+                      <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">Active Session</h3>
+                      <span className="text-[10px] font-mono font-bold bg-[#f0fdf4] dark:bg-emerald-950/60 text-[#16a34a] dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50 px-2 py-0.5 rounded-full">{activeBooking.status}</span>
                     </div>
                     <div>
-                      <p className="text-[15px] font-bold text-[#111]">{activeBooking.spot.name}</p>
-                      <p className="text-[12px] text-[#5f6368] mt-0.5">{activeBooking.spot.station} &middot; Plate: {activeBooking.vehiclePlate}</p>
+                      <p className="text-[15px] font-bold text-[#111] dark:text-white">{activeBooking.spot.name}</p>
+                      <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">{activeBooking.spot.station} &middot; Plate: {activeBooking.vehiclePlate}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 sm:gap-6">
                       <div className="flex items-center gap-2">
-                        <Clock size={15} className="text-[#5f6368]" />
-                        <span className="text-[13px] font-semibold text-[#111]">{formatTime(secondsRemaining)}</span>
+                        <Clock size={15} className="text-[#5f6368] dark:text-[#A1A1AA]" />
+                        <span className="text-[13px] font-semibold text-[#111] dark:text-white">{formatTime(secondsRemaining)}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Wallet size={15} className="text-[#5f6368]" />
-                        <span className="text-[13px] font-semibold text-[#111]">RM {(activeBooking.totalPaid ?? 0).toFixed(2)}</span>
+                        <Wallet size={15} className="text-[#5f6368] dark:text-[#A1A1AA]" />
+                        <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {(activeBooking.totalPaid ?? 0).toFixed(2)}</span>
                       </div>
                     </div>
                     {showGraceAlert && (
-                      <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl p-3 text-[12px] text-[#a16207] flex items-center gap-2">
+                      <div className="bg-[#fefce8] dark:bg-amber-950/40 border border-[#fde68a] dark:border-amber-800/50 rounded-xl p-3 text-[12px] text-[#a16207] dark:text-amber-300 flex items-center gap-2">
                         <AlertCircle size={15} className="shrink-0" /> Session ending in under 5 minutes.
                       </div>
                     )}
                   </div>
 
                   {/* IoT Bollard Control */}
-                  <div className="bg-white rounded-2xl border border-[#e8eaed] p-5 space-y-4">
-                    <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Smart Bollard Control</h3>
+                  <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5 space-y-4">
+                    <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">Smart Bollard Control</h3>
                     <div className="flex items-center gap-4">
                       <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${
-                        bollardAnimationState === 'lowered' ? 'bg-[#f0fdf4]' : bollardAnimationState === 'lowering' ? 'bg-[#fefce8]' : 'bg-[#f8f9fa]'
+                        bollardAnimationState === 'lowered' ? 'bg-[#f0fdf4] dark:bg-emerald-950/60' : bollardAnimationState === 'lowering' ? 'bg-[#fefce8] dark:bg-amber-950/60' : 'bg-[#f8f9fa] dark:bg-[#1C1C1E]'
                       }`}>
-                        {bollardAnimationState === 'lowered' ? <Unlock size={28} className="text-[#16a34a]" /> :
-                         bollardAnimationState === 'lowering' ? <Loader2 size={28} className="text-[#d97706] animate-spin" /> :
-                         <Lock size={28} className="text-[#9ca3af]" />}
+                        {bollardAnimationState === 'lowered' ? <Unlock size={28} className="text-[#16a34a] dark:text-emerald-400" /> :
+                         bollardAnimationState === 'lowering' ? <Loader2 size={28} className="text-[#d97706] dark:text-amber-400 animate-spin" /> :
+                         <Lock size={28} className="text-[#9ca3af] dark:text-[#71717A]" />}
                       </div>
                       <div>
-                        <p className="text-[13px] font-semibold text-[#111]">
+                        <p className="text-[13px] font-semibold text-[#111] dark:text-white">
                           {bollardAnimationState === 'lowered' ? 'Bollard Lowered' : bollardAnimationState === 'lowering' ? 'Lowering...' : 'Bollard Raised'}
                         </p>
-                        <p className="text-[11px] text-[#5f6368] mt-0.5">
-                          {gpsVerified === 'verified' ? 'GPS verified — ready to unlock' : 'Arrive at spot to unlock'}
+                        <p className="text-[11px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
+                          {gpsVerified === 'verified' ? 'GPS verified — ready to unlock'
+                            : gpsVerified === 'checking' ? 'Checking your location...'
+                            : gpsVerified === 'unverified' ? 'Not at this bay — verify again'
+                            : 'Arrive at spot to unlock'}
                         </p>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {!isBollardUnlocked ? (
                         <>
-                          <button onClick={triggerGPSCheck}
-                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#f0fdf4] text-[#16a34a]' : 'bg-[#f8f9fa] text-[#5f6368] hover:bg-[#f1f3f4]'}`}>
+                          <button onClick={() => void triggerGPSCheck()}
+                            disabled={gpsVerified === 'checking'}
+                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#f0fdf4] dark:bg-emerald-950/60 text-[#16a34a] dark:text-emerald-400' : 'bg-[#f8f9fa] dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#2C2C32] dark:border dark:border-white/10'} disabled:cursor-wait disabled:opacity-60`}>
                             {gpsVerified === 'verified' ? 'GPS Verified' : gpsVerified === 'checking' ? 'Checking...' : 'Verify GPS'}
                           </button>
                           <button onClick={startQRScanner}
-                            className="w-full px-4 py-2.5 rounded-xl bg-[#f8f9fa] text-[#5f6368] text-[12px] font-semibold hover:bg-[#f1f3f4] transition-colors flex items-center justify-center gap-1.5">
+                            className="w-full px-4 py-2.5 rounded-xl bg-[#f8f9fa] dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] dark:border dark:border-white/10 text-[12px] font-semibold hover:bg-[#f1f3f4] dark:hover:bg-[#2C2C32] transition-colors flex items-center justify-center gap-1.5 cursor-pointer">
                             <Camera size={14} /> Scan QR
                           </button>
-                          <button onClick={handleUnlockBollard}
-                            disabled={gpsVerified !== 'verified'}
-                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#007AFF] text-white hover:bg-[#0066d6]' : 'bg-[#e8eaed] text-[#9ca3af] cursor-not-allowed'}`}>
-                            Unlock Bollard
+                          <button onClick={() => void handleUnlockBollard()}
+                            disabled={gpsVerified !== 'verified' || bollardAnimationState === 'lowering'}
+                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 ${gpsVerified === 'verified' && bollardAnimationState !== 'lowering' ? 'bg-[#007AFF] text-white hover:bg-[#0066d6] cursor-pointer' : 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed'}`}>
+                            {bollardAnimationState === 'lowering' && <Loader2 size={14} className="animate-spin" />}
+                            {bollardAnimationState === 'lowering' ? 'Releasing...' : 'Unlock Bollard'}
                           </button>
                         </>
                       ) : (
                         <button onClick={handleLockBollard}
-                          className="w-full sm:col-span-3 px-4 py-2.5 rounded-xl bg-[#fef2f2] text-[#dc2626] text-[12px] font-semibold hover:bg-[#fee2e2] transition-colors flex items-center justify-center gap-1.5">
+                          className="w-full sm:col-span-3 px-4 py-2.5 rounded-xl bg-[#fef2f2] dark:bg-red-950/60 text-[#dc2626] dark:text-red-400 border border-red-200/50 dark:border-red-900/50 text-[12px] font-semibold hover:bg-[#fee2e2] dark:hover:bg-red-900/60 transition-colors flex items-center justify-center gap-1.5 cursor-pointer">
                           <Lock size={14} /> Lock Bollard
                         </button>
                       )}
@@ -2549,12 +2675,12 @@ export default function CommuterDashboard() {
                   </div>
                 </section>
               )}
-              <div className="wallet-balance-card bg-white rounded-2xl border border-[#e8eaed] p-6 text-center">
-                <p className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider">Current Balance</p>
-                <p className="text-[40px] font-bold text-[#111] tracking-[-0.02em] mt-1">
+              <div className="wallet-balance-card bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-6 text-center">
+                <p className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider">Current Balance</p>
+                <p className="text-[40px] font-bold text-[#111] dark:text-white tracking-[-0.02em] mt-1">
                   {walletBalance === null ? 'RM —' : `RM ${walletBalance.toFixed(2)}`}
                 </p>
-                <p className="mx-auto mt-1 max-w-sm text-[11px] text-[#6e6e73]">
+                <p className="mx-auto mt-1 max-w-sm text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
                   {walletBalance === null
                     ? walletLoadError || 'Loading your confirmed wallet balance…'
                     : 'Only server-confirmed funds are included in this balance.'}
@@ -2563,7 +2689,7 @@ export default function CommuterDashboard() {
                   type="button"
                   onClick={openTopUpModal}
                   disabled={isWalletRefreshing}
-                  className="mt-4 px-6 py-2.5 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold hover:bg-[#0066d6] transition-colors disabled:cursor-wait disabled:opacity-60"
+                  className="mt-4 px-6 py-2.5 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold hover:bg-[#0066d6] transition-colors disabled:cursor-wait disabled:opacity-60 cursor-pointer"
                 >
                   {isWalletRefreshing
                     ? 'Checking payment…'
@@ -2584,7 +2710,7 @@ export default function CommuterDashboard() {
                 )}
                 {pendingTopUp && (
                   <div className="mx-auto mt-3 max-w-sm text-center">
-                    <p className="text-[10px] leading-relaxed text-[#6e6e73]">
+                    <p className="text-[10px] leading-relaxed text-[#6e6e73] dark:text-[#A1A1AA]">
                       {pendingTopUp.stage === 'checkout'
                         ? `RM ${pendingTopUp.amount.toFixed(2)} is saved. ParkJom will verify it is still open before returning to Stripe.`
                         : `RM ${pendingTopUp.amount.toFixed(2)} has returned from Stripe and is awaiting server confirmation.`}
@@ -2599,9 +2725,9 @@ export default function CommuterDashboard() {
                   </div>
                 )}
               </div>
-              <div className="bg-white rounded-2xl border border-[#e8eaed] p-5">
+              <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Top-up Activity</h3>
+                  <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">Top-up Activity</h3>
                   <button
                     type="button"
                     onClick={() => void refreshTopUpHistory()}
@@ -2615,24 +2741,24 @@ export default function CommuterDashboard() {
                 {topUpHistory.length > 0 ? (
                   <div className="space-y-2">
                     {topUpHistory.map((item) => (
-                      <div key={item.paymentId} className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] p-3.5">
+                      <div key={item.paymentId} className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-3.5">
                         <div>
-                          <p className="text-[13px] font-semibold text-[#111]">Wallet top-up</p>
-                          <p className="text-[11px] text-[#9ca3af]">
+                          <p className="text-[13px] font-semibold text-[#111] dark:text-white">Wallet top-up</p>
+                          <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">
                             Payment #{item.paymentId} · {item.status} · {new Date(item.createdAt).toLocaleDateString('en-MY')}
                           </p>
                         </div>
-                        <span className={`text-[13px] font-semibold ${item.status === 'Completed' ? 'text-[#007AFF]' : 'text-[#5f6368]'}`}>
+                        <span className={`text-[13px] font-semibold ${item.status === 'Completed' ? 'text-[#007AFF]' : 'text-[#5f6368] dark:text-[#A1A1AA]'}`}>
                           +{item.currency} {item.amount.toFixed(2)}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (walletTopUpFeedback?.payment || pendingTopUp) ? (
-                  <div className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] p-3.5">
+                  <div className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-3.5">
                     <div>
-                      <p className="text-[13px] font-semibold text-[#111]">Wallet top-up</p>
-                      <p className="text-[11px] text-[#9ca3af]">
+                      <p className="text-[13px] font-semibold text-[#111] dark:text-white">Wallet top-up</p>
+                      <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">
                         Payment #{(walletTopUpFeedback?.payment || pendingTopUp)?.paymentId}
                         {' · '}
                         {walletTopUpFeedback?.tone === 'success'
@@ -2651,10 +2777,10 @@ export default function CommuterDashboard() {
                     </span>
                   </div>
                 ) : (
-                  <div className="flex min-h-24 flex-col items-center justify-center rounded-xl bg-[#f8f9fa] px-4 text-center">
-                    <Coins size={20} className="mb-2 text-[#9ca3af]" />
-                    <p className="text-[12px] font-medium text-[#5f6368]">No recent top-ups</p>
-                    <p className="mt-1 text-[11px] text-[#9ca3af]">Your next wallet top-up will appear here.</p>
+                  <div className="flex min-h-24 flex-col items-center justify-center rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 px-4 text-center">
+                    <Coins size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
+                    <p className="text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">No recent top-ups</p>
+                    <p className="mt-1 text-[11px] text-[#9ca3af] dark:text-[#71717A]">Your next wallet top-up will appear here.</p>
                   </div>
                 )}
               </div>
@@ -2664,32 +2790,32 @@ export default function CommuterDashboard() {
           {/* ─── TAB: Profile / Vehicles ─── */}
           {activeTab === 'profile' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-[#e8eaed] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3.5">
                   {user?.picture ? (
                     <img src={user.picture} alt="" className="h-12 w-12 rounded-full object-cover ring-1 ring-black/[0.08]" />
                   ) : (
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e8f0fe] text-[16px] font-bold text-[#007AFF] ring-1 ring-black/[0.08]">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e8f0fe] dark:bg-blue-950/60 text-[16px] font-bold text-[#007AFF] ring-1 ring-black/[0.08] dark:ring-white/10">
                       {(user?.firstName?.charAt(0) || user?.email?.charAt(0) || '?').toUpperCase()}
                     </span>
                   )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="truncate text-[15px] font-bold text-[#1d1d1f]">
+                      <p className="truncate text-[15px] font-bold text-[#1d1d1f] dark:text-white">
                         {`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email}
                       </p>
-                      <span className="rounded-full bg-[#e8f0fe] px-2 py-0.5 text-[10px] font-semibold text-[#007AFF]">
+                      <span className="rounded-full bg-[#e8f0fe] dark:bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-[#007AFF] dark:text-white">
                         Commuter
                       </span>
                     </div>
-                    <p className="truncate text-[12px] text-[#6e6e73]">{user?.email}</p>
-                    {user?.phoneNumber && <p className="text-[11px] text-[#8e8e93] mt-0.5">{user.phoneNumber}</p>}
+                    <p className="truncate text-[12px] text-[#6e6e73] dark:text-[#A1A1AA]">{user?.email}</p>
+                    {user?.phoneNumber && <p className="text-[11px] text-[#8e8e93] dark:text-[#71717A] mt-0.5">{user.phoneNumber}</p>}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowProfileDialog(true)}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors self-start sm:self-auto cursor-pointer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/14 bg-white dark:bg-[#242429] px-4 py-2 text-[12px] font-semibold text-[#1d1d1f] dark:text-white hover:bg-[#f5f5f7] dark:hover:bg-[#2C2C32] transition-colors self-start sm:self-auto cursor-pointer"
                 >
                   <User size={14} className="text-[#007AFF]" />
                   Manage Profile &amp; Role
@@ -2698,15 +2824,15 @@ export default function CommuterDashboard() {
 
               <ProfileDialog open={showProfileDialog} onClose={() => setShowProfileDialog(false)} />
 
-              <div className="bg-white rounded-2xl border border-[#e8eaed] p-5">
+              <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Your Vehicles</h3>
+                  <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">Your Vehicles</h3>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => void loadMyVehicles()}
                       disabled={isVehiclesLoading}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#5f6368] transition-colors hover:bg-[#f1f3f4] hover:text-[#111] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#5f6368] dark:text-[#A1A1AA] transition-colors hover:bg-[#f1f3f4] dark:hover:bg-[#202025] hover:text-[#111] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label="Refresh vehicles"
                       title="Refresh vehicles"
                     >
@@ -2719,7 +2845,7 @@ export default function CommuterDashboard() {
                         setVehicleEditDraft(null);
                         setVehicleFeedback(null);
                       }}
-                      className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-semibold text-[#007AFF] hover:bg-[#eff6ff]">
+                      className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-semibold text-[#007AFF] hover:bg-[#eff6ff] dark:hover:bg-white/10 cursor-pointer">
                       <Plus size={14} /> Add
                     </button>
                   </div>
@@ -2757,21 +2883,21 @@ export default function CommuterDashboard() {
                   </div>
                 )}
                 {!isVehiclesLoading && !vehiclesLoadError && vehicles.length === 0 && (
-                  <div className="flex min-h-24 flex-col items-center justify-center rounded-xl border border-dashed border-[#dadce0] px-4 text-center">
-                    <Car size={20} className="mb-2 text-[#9ca3af]" />
-                    <p className="text-[12px] font-medium text-[#5f6368]">No vehicles added yet</p>
-                    <p className="mt-1 text-[11px] text-[#9ca3af]">Add a vehicle to use it for your next parking session.</p>
+                  <div className="flex min-h-24 flex-col items-center justify-center rounded-xl border border-dashed border-[#dadce0] dark:border-white/15 px-4 text-center">
+                    <Car size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
+                    <p className="text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">No vehicles added yet</p>
+                    <p className="mt-1 text-[11px] text-[#9ca3af] dark:text-[#71717A]">Add a vehicle to use it for your next parking session.</p>
                   </div>
                 )}
                 {vehicles.map((v) => (
                   <div key={v.vehicleId ?? v.plate}
-                    className={`mb-1 flex items-center rounded-xl border transition-colors ${v.active ? 'border-[#bfdbfe] bg-[#eff6ff]' : 'border-transparent hover:bg-[#f8f9fa]'}`}>
+                    className={`mb-1 flex items-center rounded-xl border transition-colors ${v.active ? 'border-[#bfdbfe] dark:border-[#0071E3]/50 bg-[#eff6ff] dark:bg-[#1E2430]' : 'border-transparent hover:bg-[#f8f9fa] dark:hover:bg-[#18181C]'}`}>
                     <button type="button" onClick={() => setActiveVehicle(v.plate)} aria-pressed={v.active}
-                      className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left">
-                      <Car size={18} className={v.active ? 'text-[#007AFF]' : 'text-[#9ca3af]'} />
+                      className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left cursor-pointer">
+                      <Car size={18} className={v.active ? 'text-[#007AFF]' : 'text-[#9ca3af] dark:text-[#71717A]'} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-semibold text-[#111]">{v.plate}</p>
-                        <p className="truncate text-[11px] text-[#5f6368]">{v.brand} {v.model} &middot; {v.color}</p>
+                        <p className="truncate text-[13px] font-semibold text-[#111] dark:text-white">{v.plate}</p>
+                        <p className="truncate text-[11px] text-[#5f6368] dark:text-[#A1A1AA]">{v.brand} {v.model} &middot; {v.color}</p>
                       </div>
                       {v.active && <span className="text-[10px] font-semibold bg-[#007AFF] text-white px-2 py-0.5 rounded-full">Active</span>}
                     </button>
@@ -2779,7 +2905,7 @@ export default function CommuterDashboard() {
                       type="button"
                       onClick={() => beginVehicleEdit(v)}
                       disabled={isVehicleUpdating || vehicleDeletingId !== null}
-                      className="rounded-lg p-2 text-[#5f6368] transition-colors hover:bg-white hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-lg p-2 text-[#5f6368] dark:text-[#A1A1AA] transition-colors hover:bg-white dark:hover:bg-[#202025] hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                       aria-label={`Edit vehicle ${v.plate}`}
                       title="Edit vehicle"
                     >
@@ -2789,7 +2915,7 @@ export default function CommuterDashboard() {
                       type="button"
                       onClick={() => handleDeleteVehicle(v)}
                       disabled={isVehicleUpdating || vehicleDeletingId !== null}
-                      className="mr-2 rounded-lg p-2 text-[#5f6368] transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="mr-2 rounded-lg p-2 text-[#5f6368] dark:text-[#A1A1AA] transition-colors hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                       aria-label={`Delete vehicle ${v.plate}`}
                       title="Delete vehicle"
                     >
@@ -2800,20 +2926,20 @@ export default function CommuterDashboard() {
                   </div>
                 ))}
                 {vehicleEditDraft && (
-                  <form onSubmit={handleModifyVehicle} className="mt-3 space-y-2 rounded-xl bg-[#f8f9fa] p-4">
+                  <form onSubmit={handleModifyVehicle} className="mt-3 space-y-2 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5f6368]">Edit vehicle</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Edit vehicle</p>
                       <button type="button" onClick={() => setVehicleEditDraft(null)} disabled={isVehicleUpdating}
-                        className="rounded-lg p-1 text-[#5f6368] hover:bg-white hover:text-[#111] disabled:opacity-50" aria-label="Cancel vehicle edit">
+                        className="rounded-lg p-1 text-[#5f6368] dark:text-[#A1A1AA] hover:bg-white dark:hover:bg-[#202025] hover:text-[#111] dark:hover:text-white disabled:opacity-50 cursor-pointer" aria-label="Cancel vehicle edit">
                         <X size={15} />
                       </button>
                     </div>
                     <label className="block space-y-1">
-                      <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Number plate</span>
+                      <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Number plate</span>
                       <input type="text" value={vehicleEditDraft.numberPlate}
                         onChange={(event) => setVehicleEditDraft((current) => current ? { ...current, numberPlate: event.target.value } : current)}
                         maxLength={20} required disabled={isVehicleUpdating}
-                        className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] uppercase focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
+                        className="w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-[12px] uppercase text-[#111] dark:text-white focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
                     </label>
                     <VehicleBrandModelFields
                       brand={vehicleEditDraft.vehicleBrand}
@@ -2824,26 +2950,26 @@ export default function CommuterDashboard() {
                       onModelChange={(value) => setVehicleEditDraft((current) => current ? { ...current, vehicleModel: value } : current)}
                     />
                     <label className="block space-y-1">
-                      <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Color</span>
+                      <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Color</span>
                       <input type="text" value={vehicleEditDraft.vehicleColor}
                         onChange={(event) => setVehicleEditDraft((current) => current ? { ...current, vehicleColor: event.target.value } : current)}
                         maxLength={30} required disabled={isVehicleUpdating}
-                        className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
+                        className="w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-[12px] text-[#111] dark:text-white focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
                     </label>
                     <button type="submit" disabled={isVehicleUpdating}
-                      className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60">
+                      className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">
                       {isVehicleUpdating && <Loader2 size={14} className="animate-spin" />}
                       {isVehicleUpdating ? 'Updating Vehicle' : 'Update Vehicle'}
                     </button>
                   </form>
                 )}
                 {showAddVehicle && (
-                  <form onSubmit={handleAddVehicle} className="mt-3 p-4 bg-[#f8f9fa] rounded-xl space-y-2">
+                  <form onSubmit={handleAddVehicle} className="mt-3 p-4 bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 rounded-xl space-y-2">
                     <label className="block space-y-1">
-                      <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Number plate</span>
+                      <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Number plate</span>
                       <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="WXY1234"
                         maxLength={20} required disabled={isVehicleSaving}
-                        className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] uppercase focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
+                        className="w-full px-3 py-2 rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#141417] text-[12px] uppercase text-[#111] dark:text-white placeholder:text-[#9ca3af] dark:placeholder:text-[#71717A] focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
                     </label>
                     <VehicleBrandModelFields
                       brand={newBrand}
@@ -2854,13 +2980,13 @@ export default function CommuterDashboard() {
                       onModelChange={setNewModel}
                     />
                     <label className="block space-y-1">
-                      <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Color</span>
+                      <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Color</span>
                       <input type="text" value={newColor} onChange={(e) => setNewColor(e.target.value)} placeholder="Black"
                         maxLength={30} required disabled={isVehicleSaving}
-                        className="w-full px-3 py-2 rounded-xl border border-[#dadce0] text-[12px] focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
+                        className="w-full px-3 py-2 rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#141417] text-[12px] text-[#111] dark:text-white placeholder:text-[#9ca3af] dark:placeholder:text-[#71717A] focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
                     </label>
                     <button type="submit" disabled={isVehicleSaving}
-                      className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60">
+                      className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">
                       {isVehicleSaving && <Loader2 size={14} className="animate-spin" />}
                       {isVehicleSaving ? 'Saving Vehicle' : 'Save Vehicle'}
                     </button>
@@ -2868,82 +2994,82 @@ export default function CommuterDashboard() {
                 )}
               </div>
               {/* History */}
-              <div className="bg-white rounded-2xl border border-[#e8eaed] p-5">
+              <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[#5f6368]">Booking History</h3>
-                  <button type="button" onClick={() => setBookingHistoryRefreshKey((value) => value + 1)} disabled={isBookingHistoryLoading} className="rounded-lg p-1.5 text-[#5f6368] hover:bg-[#f1f3f4]" aria-label="Refresh booking history"><RefreshCw size={14} className={isBookingHistoryLoading ? 'animate-spin' : ''} /></button>
+                  <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[#5f6368] dark:text-[#A1A1AA]">Booking History</h3>
+                  <button type="button" onClick={() => setBookingHistoryRefreshKey((value) => value + 1)} disabled={isBookingHistoryLoading} className="rounded-lg p-1.5 text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#202025] cursor-pointer" aria-label="Refresh booking history"><RefreshCw size={14} className={isBookingHistoryLoading ? 'animate-spin' : ''} /></button>
                 </div>
-                {bookingHistoryError && <div role="alert" className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-[11px] text-red-700"><AlertCircle size={14} />{bookingHistoryError}</div>}
-                {isBookingHistoryLoading && bookingHistory.length === 0 ? <div className="py-5 text-center text-[11px] text-[#5f6368]"><Loader2 size={18} className="mx-auto animate-spin text-[#007AFF]" />Loading history...</div> : null}
+                {bookingHistoryError && <div role="alert" className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200/50 dark:border-red-900/50 px-3 py-2 text-[11px] text-red-700 dark:text-red-300"><AlertCircle size={14} />{bookingHistoryError}</div>}
+                {isBookingHistoryLoading && bookingHistory.length === 0 ? <div className="py-5 text-center text-[11px] text-[#5f6368] dark:text-[#A1A1AA]"><Loader2 size={18} className="mx-auto animate-spin text-[#007AFF]" />Loading history...</div> : null}
                 {bookingHistory.map((item) => {
                   const { booking, review } = item;
                   const isEditingReview = review?.reviewId === editingReviewId;
-                  return <article key={booking.bookingId} className="border-b border-[#f1f3f4] py-4 last:border-0">
+                  return <article key={booking.bookingId} className="border-b border-[#f1f3f4] dark:border-white/10 py-4 last:border-0">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-[13px] font-semibold text-[#111]">{booking.parkingLabel || 'Parking lot #' + booking.parkingSpotId}</p>
-                          <span className="rounded-full bg-[#eef5ff] px-2 py-0.5 font-mono text-[10px] font-semibold text-[#007AFF]">Parking ID #{booking.parkingSpotId}</span>
+                          <p className="text-[13px] font-semibold text-[#111] dark:text-white">{booking.parkingLabel || 'Parking lot #' + booking.parkingSpotId}</p>
+                          <span className="rounded-full bg-[#eef5ff] dark:bg-white/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#007AFF] dark:text-white">Parking ID #{booking.parkingSpotId}</span>
                         </div>
-                        <p className="mt-1 text-[11px] text-[#6e6e73]">{new Date(booking.startDate).toLocaleDateString('en-MY')} – {new Date(booking.endDate).toLocaleDateString('en-MY')}</p>
-                        <p className="mt-1 text-[10px] text-[#9ca3af]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
+                        <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{new Date(booking.startDate).toLocaleDateString('en-MY')} – {new Date(booking.endDate).toLocaleDateString('en-MY')}</p>
+                        <p className="mt-1 text-[10px] text-[#9ca3af] dark:text-[#71717A]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
                       </div>
                       <div className="text-left sm:text-right">
-                        <span className="text-[13px] font-semibold text-[#111]">RM {booking.totalAmount.toFixed(2)}</span>
+                        <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {booking.totalAmount.toFixed(2)}</span>
                         <p className={`text-[10px] font-medium ${booking.bookingStatus.toLowerCase() === 'cancelled' ? 'text-[#dc2626]' : 'text-[#16a34a]'}`}>{booking.bookingStatus}</p>
                       </div>
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                      {item.canReview && !review && <button type="button" onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })} className="text-[11px] font-semibold text-[#007AFF] hover:underline">Write a review</button>}
+                      {item.canReview && !review && <button type="button" onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })} className="text-[11px] font-semibold text-[#007AFF] hover:underline cursor-pointer">Write a review</button>}
                       {booking.bookingStatus.toLowerCase() === 'confirmed' && new Date(booking.startDate).setHours(0, 0, 0, 0) > new Date().setHours(0, 0, 0, 0) && (
                         <button
                           type="button"
                           disabled={cancelingBookingId === booking.bookingId}
                           onClick={() => void handleCancelBooking(booking.bookingId)}
-                          className="text-[11px] font-semibold text-[#dc2626] hover:underline disabled:opacity-50"
+                          className="text-[11px] font-semibold text-[#dc2626] hover:underline disabled:opacity-50 cursor-pointer"
                         >
                           {cancelingBookingId === booking.bookingId ? 'Cancelling…' : 'Cancel booking'}
                         </button>
                       )}
                     </div>
 
-                    {review && !isEditingReview && <div className="mt-3 rounded-xl border border-[#e8eaed] bg-[#f8f9fa] p-3">
+                    {review && !isEditingReview && <div className="mt-3 rounded-xl border border-[#e8eaed] dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[11px] font-semibold text-[#111]">Your commuter review</p>
-                            {review.isVerifiedBooking && <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf3] px-2 py-0.5 text-[9px] font-semibold text-[#15803d]"><ShieldCheck size={11} /> Verified stay</span>}
+                            <p className="text-[11px] font-semibold text-[#111] dark:text-white">Your commuter review</p>
+                            {review.isVerifiedBooking && <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf3] dark:bg-emerald-950/60 px-2 py-0.5 text-[9px] font-semibold text-[#15803d] dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50"><ShieldCheck size={11} /> Verified stay</span>}
                           </div>
                           <div className="mt-1 flex items-center gap-1" aria-label={`${review.rating} out of 5 stars`}>
-                            {[1, 2, 3, 4, 5].map((value) => <Star key={value} size={13} className={value <= review.rating ? 'text-[#f59e0b]' : 'text-[#d1d5db]'} fill={value <= review.rating ? 'currentColor' : 'none'} />)}
-                            <span className="ml-1 text-[10px] font-semibold text-[#6e6e73]">{review.rating}/5</span>
+                            {[1, 2, 3, 4, 5].map((value) => <Star key={value} size={13} className={value <= review.rating ? 'text-[#f59e0b]' : 'text-[#d1d5db] dark:text-[#71717A]'} fill={value <= review.rating ? 'currentColor' : 'none'} />)}
+                            <span className="ml-1 text-[10px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA]">{review.rating}/5</span>
                           </div>
                         </div>
-                        <button type="button" onClick={() => startReviewEdit(item)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[#dbeafe] bg-white px-2.5 text-[10px] font-semibold text-[#007AFF] hover:bg-[#eff6ff]"><Pencil size={12} /> Edit</button>
+                        <button type="button" onClick={() => startReviewEdit(item)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[#dbeafe] dark:border-white/14 bg-white dark:bg-[#242429] px-2.5 text-[10px] font-semibold text-[#007AFF] dark:text-white hover:bg-[#eff6ff] dark:hover:bg-[#2C2C32] cursor-pointer"><Pencil size={12} /> Edit</button>
                       </div>
-                      <p className="mt-3 whitespace-pre-line text-[11px] leading-5 text-[#3c4043]">{review.comment || 'You submitted a rating without a written comment.'}</p>
-                      <div className="mt-3 rounded-lg border border-[#dbeafe] bg-white px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-2"><p className="text-[9px] font-semibold uppercase tracking-wide text-[#007AFF]">Owner reply</p>{review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="text-[9px] text-[#6e6e73]">{new Date(review.ownerReplyAt).toLocaleDateString('en-MY')}</time>}</div>
-                        <p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'text-[#5f6368]' : 'text-[#9ca3af]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p>
+                      <p className="mt-3 whitespace-pre-line text-[11px] leading-5 text-[#3c4043] dark:text-[#D4D4D8]">{review.comment || 'You submitted a rating without a written comment.'}</p>
+                      <div className="mt-3 rounded-lg border border-[#dbeafe] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2"><p className="text-[9px] font-semibold uppercase tracking-wide text-[#007AFF]">Owner reply</p>{review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="text-[9px] text-[#6e6e73] dark:text-[#A1A1AA]">{new Date(review.ownerReplyAt).toLocaleDateString('en-MY')}</time>}</div>
+                        <p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'text-[#5f6368] dark:text-[#D4D4D8]' : 'text-[#9ca3af] dark:text-[#71717A]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p>
                       </div>
                     </div>}
 
-                    {review && isEditingReview && <div className="mt-3 rounded-xl border border-[#bfdbfe] bg-[#eff6ff] p-3">
-                      <div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold text-[#111]">Edit your review</p><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="text-[10px] font-semibold text-[#5f6368] hover:text-[#111] disabled:opacity-50">Cancel</button></div>
-                      <div className="mt-3"><span className="block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368]">Rating</span><div className="mt-1 flex items-center gap-1" role="radiogroup" aria-label="Review rating">
-                        {[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" role="radio" aria-checked={editingReviewRating === value} aria-label={`${value} star${value === 1 ? '' : 's'}`} onClick={() => setEditingReviewRating(value)} disabled={isReviewSaving} className="rounded p-0.5 hover:bg-white disabled:opacity-50"><Star size={19} className={value <= editingReviewRating ? 'text-[#f59e0b]' : 'text-[#cbd5e1]'} fill={value <= editingReviewRating ? 'currentColor' : 'none'} /></button>)}
+                    {review && isEditingReview && <div className="mt-3 rounded-xl border border-[#bfdbfe] dark:border-white/10 bg-[#eff6ff] dark:bg-[#18181C] p-3">
+                      <div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold text-[#111] dark:text-white">Edit your review</p><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="text-[10px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white disabled:opacity-50 cursor-pointer">Cancel</button></div>
+                      <div className="mt-3"><span className="block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Rating</span><div className="mt-1 flex items-center gap-1" role="radiogroup" aria-label="Review rating">
+                        {[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" role="radio" aria-checked={editingReviewRating === value} aria-label={`${value} star${value === 1 ? '' : 's'}`} onClick={() => setEditingReviewRating(value)} disabled={isReviewSaving} className="rounded p-0.5 hover:bg-white dark:hover:bg-[#202025] disabled:opacity-50 cursor-pointer"><Star size={19} className={value <= editingReviewRating ? 'text-[#f59e0b]' : 'text-[#cbd5e1] dark:text-[#71717A]'} fill={value <= editingReviewRating ? 'currentColor' : 'none'} /></button>)}
                       </div></div>
-                      <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368]">Comment<textarea value={editingReviewComment} onChange={(event) => setEditingReviewComment(event.target.value)} maxLength={1000} rows={4} disabled={isReviewSaving} placeholder="Share what you thought about this parking lot." className="mt-1 w-full resize-y rounded-lg border border-[#dbeafe] bg-white px-3 py-2 text-[11px] font-normal leading-5 text-[#111] outline-none focus:border-[#007AFF] disabled:opacity-60" /></label>
-                      <div className="mt-3 rounded-lg border border-[#dbeafe] bg-white px-3 py-2.5"><p className="text-[9px] font-semibold uppercase tracking-wide text-[#007AFF]">Owner reply</p><p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'text-[#5f6368]' : 'text-[#9ca3af]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p></div>
-                      <div className="mt-1 flex items-center justify-between gap-3"><span className="text-[10px] text-[#6e6e73]">{editingReviewComment.length}/1000</span>{editingReviewError && <span role="alert" className="text-right text-[10px] text-[#dc2626]">{editingReviewError}</span>}</div>
-                      <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="rounded-lg border border-[#d1d5db] bg-white px-3 py-2 text-[10px] font-semibold text-[#5f6368] hover:bg-[#f8f9fa] disabled:opacity-50">Cancel</button><button type="button" onClick={() => void saveReviewEdit()} disabled={isReviewSaving || !editingReviewRating} className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-[10px] font-semibold text-white hover:bg-[#0066d6] disabled:cursor-wait disabled:opacity-60">{isReviewSaving && <Loader2 size={12} className="animate-spin" />}{isReviewSaving ? 'Saving…' : 'Save changes'}</button></div>
+                      <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Comment<textarea value={editingReviewComment} onChange={(event) => setEditingReviewComment(event.target.value)} maxLength={1000} rows={4} disabled={isReviewSaving} placeholder="Share what you thought about this parking lot." className="mt-1 w-full resize-y rounded-lg border border-[#dbeafe] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-[11px] font-normal leading-5 text-[#111] dark:text-white outline-none focus:border-[#007AFF] disabled:opacity-60" /></label>
+                      <div className="mt-3 rounded-lg border border-[#dbeafe] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2.5"><p className="text-[9px] font-semibold uppercase tracking-wide text-[#007AFF]">Owner reply</p><p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'text-[#5f6368] dark:text-[#D4D4D8]' : 'text-[#9ca3af] dark:text-[#71717A]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p></div>
+                      <div className="mt-1 flex items-center justify-between gap-3"><span className="text-[10px] text-[#6e6e73] dark:text-[#A1A1AA]">{editingReviewComment.length}/1000</span>{editingReviewError && <span role="alert" className="text-right text-[10px] text-[#dc2626] dark:text-red-400">{editingReviewError}</span>}</div>
+                      <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="rounded-lg border border-[#d1d5db] dark:border-white/14 bg-white dark:bg-[#242429] px-3 py-2 text-[10px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#2C2C32] disabled:opacity-50 cursor-pointer">Cancel</button><button type="button" onClick={() => void saveReviewEdit()} disabled={isReviewSaving || !editingReviewRating} className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-[10px] font-semibold text-white hover:bg-[#0066d6] disabled:cursor-wait disabled:opacity-60 cursor-pointer">{isReviewSaving && <Loader2 size={12} className="animate-spin" />}{isReviewSaving ? 'Saving…' : 'Save changes'}</button></div>
                     </div>}
                   </article>;
                 })}
-                {bookingHistory.length === 0 && history.length === 0 && !isBookingHistoryLoading && !bookingHistoryError && <p className="py-4 text-center text-[11px] text-[#9ca3af]">No booking history yet.</p>}
-                {history.map((b) => <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] last:border-0"><div><p className="text-[13px] font-medium text-[#111]">{b.spot.name}</p><p className="text-[11px] text-[#9ca3af]">{b.spot.station}</p></div><div className="text-right"><span className="text-[13px] font-semibold text-[#111]">RM {(b.totalPaid ?? 0).toFixed(2)}</span><p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p></div></div>)}
-                {bookingHistoryMeta.totalPages > 1 && <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-[#5f6368]"><button type="button" onClick={() => setBookingHistoryPage((value) => Math.max(1, value - 1))} disabled={bookingHistoryPage === 1}>Previous</button><span>Page {bookingHistoryPage} of {bookingHistoryMeta.totalPages}</span><button type="button" onClick={() => setBookingHistoryPage((value) => Math.min(bookingHistoryMeta.totalPages, value + 1))} disabled={bookingHistoryPage === bookingHistoryMeta.totalPages}>Next</button></div>}
+                {bookingHistory.length === 0 && history.length === 0 && !isBookingHistoryLoading && !bookingHistoryError && <p className="py-4 text-center text-[11px] text-[#9ca3af] dark:text-[#71717A]">No booking history yet.</p>}
+                {history.map((b) => <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] dark:border-white/10 last:border-0"><div><p className="text-[13px] font-medium text-[#111] dark:text-white">{b.spot.name}</p><p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">{b.spot.station}</p></div><div className="text-right"><span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {(b.totalPaid ?? 0).toFixed(2)}</span><p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p></div></div>)}
+                {bookingHistoryMeta.totalPages > 1 && <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]"><button type="button" onClick={() => setBookingHistoryPage((value) => Math.max(1, value - 1))} disabled={bookingHistoryPage === 1} className="cursor-pointer">Previous</button><span>Page {bookingHistoryPage} of {bookingHistoryMeta.totalPages}</span><button type="button" onClick={() => setBookingHistoryPage((value) => Math.min(bookingHistoryMeta.totalPages, value + 1))} disabled={bookingHistoryPage === bookingHistoryMeta.totalPages} className="cursor-pointer">Next</button></div>}
               </div>
             </div>
           )}
@@ -2954,35 +3080,35 @@ export default function CommuterDashboard() {
 
           {activeTab === 'favorites' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e8eaed] bg-white px-4 py-3 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
-                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-500">{isFavoritesLoading ? <Loader2 size={17} className="animate-spin" /> : <Heart size={17} fill="currentColor" />}</span><div><p className="text-[13px] font-semibold text-[#111]">Saved parking</p><p className="text-[11px] text-[#5f6368]">{isFavoritesLoading ? 'Refreshing favorites…' : `${favoriteSpots.length} space${favoriteSpots.length === 1 ? '' : 's'} ready to revisit`}</p></div></div>
-                {favoriteSpots.length > 0 && <button type="button" onClick={() => void handleClearFavorites()} disabled={isFavoritesLoading || isClearingFavorites} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-rose-600 hover:bg-rose-50 disabled:cursor-wait disabled:opacity-70">{isClearingFavorites && <Loader2 size={13} className="animate-spin" />}{isClearingFavorites ? 'Clearing…' : 'Clear all'}</button>}
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e8eaed] dark:border-white/10 bg-white dark:bg-[#141417] px-4 py-3 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
+                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-500 dark:text-rose-400">{isFavoritesLoading ? <Loader2 size={17} className="animate-spin" /> : <Heart size={17} fill="currentColor" />}</span><div><p className="text-[13px] font-semibold text-[#111] dark:text-white">Saved parking</p><p className="text-[11px] text-[#5f6368] dark:text-[#A1A1AA]">{isFavoritesLoading ? 'Refreshing favorites…' : `${favoriteSpots.length} space${favoriteSpots.length === 1 ? '' : 's'} ready to revisit`}</p></div></div>
+                {favoriteSpots.length > 0 && <button type="button" onClick={() => void handleClearFavorites()} disabled={isFavoritesLoading || isClearingFavorites} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:cursor-wait disabled:opacity-70 cursor-pointer">{isClearingFavorites && <Loader2 size={13} className="animate-spin" />}{isClearingFavorites ? 'Clearing…' : 'Clear all'}</button>}
               </div>
               {isFavoritesLoading && favoriteSpots.length === 0 ? (
-                <div className="rounded-2xl border border-[#e8eaed] bg-white p-10 text-center" role="status">
+                <div className="rounded-2xl border border-[#e8eaed] dark:border-white/10 bg-white dark:bg-[#141417] p-10 text-center" role="status">
                   <Loader2 size={28} className="mx-auto animate-spin text-[#007AFF]" />
-                  <p className="mt-3 text-[13px] font-semibold text-[#111]">Loading your favorites…</p>
+                  <p className="mt-3 text-[13px] font-semibold text-[#111] dark:text-white">Loading your favorites…</p>
                 </div>
               ) : favoriteSpots.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-[#dadce0] bg-white p-10 text-center">
-                  <Heart size={32} className="mx-auto text-[#dadce0]" />
-                  <p className="mt-3 text-[14px] font-semibold text-[#111]">No favorite parking yet</p>
-                  <p className="mt-1 text-[12px] text-[#5f6368]">Tap the heart on a parking space to save it here.</p>
-                  <button type="button" onClick={() => setActiveTab('home')} className="mt-4 rounded-xl bg-[#007AFF] px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-[#0066d6]">Browse parking</button>
+                <div className="rounded-2xl border border-dashed border-[#dadce0] dark:border-white/15 bg-white dark:bg-[#141417] p-10 text-center">
+                  <Heart size={32} className="mx-auto text-[#dadce0] dark:text-[#71717A]" />
+                  <p className="mt-3 text-[14px] font-semibold text-[#111] dark:text-white">No favorite parking yet</p>
+                  <p className="mt-1 text-[12px] text-[#5f6368] dark:text-[#A1A1AA]">Tap the heart on a parking space to save it here.</p>
+                  <button type="button" onClick={() => setActiveTab('home')} className="mt-4 rounded-xl bg-[#007AFF] px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-[#0066d6] cursor-pointer">Browse parking</button>
                 </div>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2">
                   {favoriteSpots.map((spot) => (
-                    <article key={spot.parkingSpotId} className="overflow-hidden rounded-2xl border border-[#e8eaed] bg-white shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
+                    <article key={spot.parkingSpotId} className="overflow-hidden rounded-2xl border border-[#e8eaed] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
                       <div className="relative">
                         {spot.primaryImageUrl ? <img src={spot.primaryImageUrl} alt="" className="aspect-[16/9] w-full object-cover" /> : <div className="flex aspect-[16/9] items-center justify-center bg-[#eff6ff]"><Home size={28} className="text-[#007AFF]" /></div>}
                         <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 shadow-sm backdrop-blur">{spot.availabilityStatus}</span>
                         <button type="button" onClick={() => void handleToggleFavorite(spot)} disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)} aria-label={`Remove ${spot.propertyName} from favorites`} className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.06] bg-white/95 text-rose-500 shadow-md backdrop-blur active:scale-95 disabled:cursor-wait disabled:opacity-70">{favoriteUpdatingIds.includes(spot.parkingSpotId) ? <Loader2 size={18} className="animate-spin text-[#007AFF]" /> : <Heart size={18} fill="currentColor" />}</button>
                       </div>
                       <div className="p-4">
-                        <div className="min-w-0"><h3 className="truncate text-[15px] font-semibold text-[#111]">{spot.propertyName}</h3><p className="mt-1 text-[11px] text-[#5f6368]">Bay {spot.parkingLabel} · Near {spot.stationName}</p></div>
-                        <p className="mt-2 line-clamp-2 text-[11px] text-[#6e6e73]">{spot.address}</p>
-                        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-[#f8f9fa] p-3 text-[11px]"><div><span className="block text-[10px] text-[#9ca3af]">Daily rate</span><strong className="mt-0.5 block text-[#111]">{spot.dailyRate === null ? 'Not set' : `RM ${spot.dailyRate.toFixed(2)}`}</strong></div><div><span className="block text-[10px] text-[#9ca3af]">To station</span><strong className="mt-0.5 block text-[#111]">{(spot.distanceToStation ?? 0).toFixed(2)} km</strong></div></div>
+                        <div className="min-w-0"><h3 className="truncate text-[15px] font-semibold text-[#111] dark:text-[#f5f5f7]">{spot.propertyName}</h3><p className="mt-1 text-[11px] text-[#5f6368]">Bay {spot.parkingLabel} · Near {spot.stationName}</p></div>
+                        <p className="mt-2 line-clamp-2 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">{spot.address}</p>
+                        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-[#f8f9fa] dark:bg-white/[0.06] p-3 text-[11px]"><div><span className="block text-[10px] text-[#9ca3af] dark:text-[#a1a1a6]">Daily rate</span><strong className="mt-0.5 block text-[#111] dark:text-[#f5f5f7]">{spot.dailyRate === null ? 'Not set' : `RM ${spot.dailyRate.toFixed(2)}`}</strong></div><div><span className="block text-[10px] text-[#9ca3af] dark:text-[#a1a1a6]">To station</span><strong className="mt-0.5 block text-[#111] dark:text-[#f5f5f7]">{(spot.distanceToStation ?? 0).toFixed(2)} km</strong></div></div>
                         <button type="button" onClick={() => openParkingDetail(spot, null, spot.stationName)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-[12px] font-semibold text-white hover:bg-[#0066d6]">View parking <ChevronRight size={15} /></button>
                       </div>
                     </article>
@@ -3038,21 +3164,21 @@ export default function CommuterDashboard() {
             animate={{ x: 0 }}
             exit={{ x: prefersReducedMotion ? 0 : '100%' }}
             transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', damping: 28, stiffness: 320 }}
-            className="relative w-full max-w-sm bg-white h-full border-l border-black/[0.06] p-5 overflow-y-auto shadow-2xl"
+            className="relative w-full max-w-sm bg-white dark:bg-[#141417] h-full border-l border-black/[0.06] dark:border-white/10 p-5 overflow-y-auto shadow-2xl"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 id="notifications-title" className="text-[15px] font-bold text-[#111]">Notifications</h3>
-              <button type="button" aria-label="Close notifications" onClick={() => setShowNotificationsDrawer(false)} className="p-1.5 rounded-lg hover:bg-[#f1f3f4]"><X size={18} /></button>
+              <h3 id="notifications-title" className="text-[15px] font-bold text-[#111] dark:text-white">Notifications</h3>
+              <button type="button" aria-label="Close notifications" onClick={() => setShowNotificationsDrawer(false)} className="p-1.5 rounded-lg hover:bg-[#f1f3f4] dark:hover:bg-[#202025] text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white cursor-pointer"><X size={18} /></button>
             </div>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="text-[11px] text-[#007AFF] font-semibold mb-3 hover:underline">Mark all as read</button>
+              <button onClick={markAllRead} className="text-[11px] text-[#007AFF] font-semibold mb-3 hover:underline cursor-pointer">Mark all as read</button>
             )}
             <div className="space-y-1">
               {notifications.map((n) => (
-                <div key={n.id} className={`p-3 rounded-xl ${n.read ? '' : 'bg-[#eff6ff]'}`}>
-                  <p className="text-[13px] font-semibold text-[#111]">{n.title}</p>
-                  <p className="text-[12px] text-[#5f6368] mt-0.5">{n.message}</p>
-                  <p className="text-[10px] text-[#9ca3af] mt-1">{n.time}</p>
+                <div key={n.id} className={`p-3 rounded-xl ${n.read ? 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]' : 'bg-[#eff6ff] dark:bg-[#1E2430]'}`}>
+                  <p className="text-[13px] font-semibold text-[#111] dark:text-white">{n.title}</p>
+                  <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">{n.message}</p>
+                  <p className="text-[10px] text-[#9ca3af] dark:text-[#71717A] mt-1">{n.time}</p>
                 </div>
               ))}
             </div>
@@ -3064,15 +3190,15 @@ export default function CommuterDashboard() {
       {/* ─── Top-Up Modal ─── */}
       {showTopUpModal && (
         <div className="wallet-topup-modal fixed inset-0 z-[1250] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px]" onClick={() => !isTopUpLoading && setShowTopUpModal(false)} aria-hidden="true" />
-          <div ref={topUpDialogRef} role="dialog" aria-modal="true" aria-labelledby="top-up-title" tabIndex={-1} className="wallet-topup-dialog relative bg-white rounded-2xl border border-[#e8eaed] p-6 w-full max-w-md">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-xs" onClick={() => !isTopUpLoading && setShowTopUpModal(false)} aria-hidden="true" />
+          <div ref={topUpDialogRef} role="dialog" aria-modal="true" aria-labelledby="top-up-title" tabIndex={-1} className="wallet-topup-dialog relative bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-6 w-full max-w-md shadow-2xl">
             <div className="flex items-start gap-3 mb-5">
               <span className="wallet-topup-dialog__mark" aria-hidden="true"><Wallet size={20} /></span>
               <div className="min-w-0 flex-1">
-                <h3 id="top-up-title" className="text-[15px] font-bold text-[#111]">Top up wallet</h3>
-                <p className="mt-1 text-[11px] leading-relaxed text-[#6e6e73]">Choose an amount, then complete payment on Stripe's secure checkout.</p>
+                <h3 id="top-up-title" className="text-[15px] font-bold text-[#111] dark:text-white">Top up wallet</h3>
+                <p className="mt-1 text-[11px] leading-relaxed text-[#6e6e73] dark:text-[#A1A1AA]">Choose an amount, then complete payment on Stripe's secure checkout.</p>
               </div>
-              <button type="button" aria-label="Close wallet top up" disabled={isTopUpLoading} onClick={() => setShowTopUpModal(false)} className="p-1.5 rounded-lg hover:bg-[#f1f3f4] disabled:cursor-not-allowed disabled:opacity-40"><X size={18} /></button>
+              <button type="button" aria-label="Close wallet top up" disabled={isTopUpLoading} onClick={() => setShowTopUpModal(false)} className="p-1.5 rounded-lg hover:bg-[#f1f3f4] dark:hover:bg-[#202025] text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><X size={18} /></button>
             </div>
             <form onSubmit={handleTopUp} className="space-y-4">
               <div className="wallet-topup-presets grid grid-cols-4 gap-2" aria-label="Suggested top-up amounts">
@@ -3085,7 +3211,7 @@ export default function CommuterDashboard() {
                       setTopUpAmount(amount);
                       setTopUpError(null);
                     }}
-                    className={`py-2 rounded-xl text-[12px] font-semibold border transition disabled:cursor-not-allowed disabled:opacity-60 ${topUpAmount === amount ? 'bg-[#007AFF] text-white border-[#007AFF]' : 'bg-white text-[#5f6368] border-[#dadce0] hover:border-[#007AFF]'}`}
+                    className={`py-2 rounded-xl text-[12px] font-semibold border transition disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer ${topUpAmount === amount ? 'bg-[#007AFF] text-white border-[#007AFF]' : 'bg-white dark:bg-[#18181C] text-[#5f6368] dark:text-[#A1A1AA] border-[#dadce0] dark:border-white/10 hover:border-[#007AFF]'}`}
                   >
                     RM {amount}
                   </button>
@@ -3093,7 +3219,7 @@ export default function CommuterDashboard() {
               </div>
 
               <div>
-                <label htmlFor="top-up-amount" className="block text-[11px] font-medium text-[#6e6e73] mb-1.5">Top-up amount (RM)</label>
+                <label htmlFor="top-up-amount" className="block text-[11px] font-medium text-[#6e6e73] dark:text-[#A1A1AA] mb-1.5">Top-up amount (RM)</label>
                 <input
                   id="top-up-amount"
                   type="number"
@@ -3108,13 +3234,13 @@ export default function CommuterDashboard() {
                     setTopUpAmount(event.target.value);
                     setTopUpError(null);
                   }}
-                  className="w-full px-3 py-2.5 rounded-xl border border-[#dadce0] text-[13px] focus:outline-none focus:border-[#007AFF] disabled:bg-[#f5f5f7]"
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#18181C] text-[13px] text-[#111] dark:text-white focus:outline-none focus:border-[#007AFF] disabled:bg-[#f5f5f7] dark:disabled:bg-[#202025]"
                   placeholder="50.00"
                 />
               </div>
 
               <div>
-                <label htmlFor="top-up-description" className="block text-[11px] font-medium text-[#6e6e73] mb-1.5">Description</label>
+                <label htmlFor="top-up-description" className="block text-[11px] font-medium text-[#6e6e73] dark:text-[#A1A1AA] mb-1.5">Description</label>
                 <input
                   id="top-up-description"
                   type="text"
@@ -3122,16 +3248,16 @@ export default function CommuterDashboard() {
                   disabled={isTopUpLoading}
                   value={topUpDescription}
                   onChange={(event) => setTopUpDescription(event.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-[#dadce0] text-[13px] focus:outline-none focus:border-[#007AFF] disabled:bg-[#f5f5f7]"
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#18181C] text-[13px] text-[#111] dark:text-white focus:outline-none focus:border-[#007AFF] disabled:bg-[#f5f5f7] dark:disabled:bg-[#202025]"
                   placeholder="Optional"
                 />
               </div>
 
-              <p className="text-[10px] text-[#6e6e73]">Enter an amount above RM 10.00 and below RM 5,000.00.</p>
+              <p className="text-[10px] text-[#6e6e73] dark:text-[#A1A1AA]">Enter an amount above RM 10.00 and below RM 5,000.00.</p>
 
-              {topUpError && <p role="alert" className="text-[11px] font-medium text-rose-600">{topUpError}</p>}
+              {topUpError && <p role="alert" className="text-[11px] font-medium text-rose-600 dark:text-rose-400">{topUpError}</p>}
 
-              <div className="flex items-start gap-2 rounded-xl bg-[#f5f5f7] p-3 text-[10px] leading-relaxed text-[#6e6e73]">
+              <div className="flex items-start gap-2 rounded-xl bg-[#f5f5f7] dark:bg-[#18181C] dark:border dark:border-white/10 p-3 text-[10px] leading-relaxed text-[#6e6e73] dark:text-[#A1A1AA]">
                 <ShieldCheck size={14} className="mt-0.5 shrink-0 text-[#007AFF]" />
                 <p>You will continue to Stripe Checkout. Your balance changes only after payment confirmation.</p>
               </div>
@@ -3139,7 +3265,7 @@ export default function CommuterDashboard() {
               <button
                 type="submit"
                 disabled={isTopUpLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
               >
                 {isTopUpLoading ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />}
                 {isTopUpLoading ? 'Creating checkout…' : 'Continue to checkout'}

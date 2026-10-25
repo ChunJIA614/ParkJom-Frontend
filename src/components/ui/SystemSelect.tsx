@@ -180,14 +180,14 @@ export default function SystemSelect({
           if (!open) updatePosition();
           setOpen((prev) => !prev);
         }}
-        className={`system-select-trigger inline-flex items-center justify-between gap-2 rounded-xl border border-black/[0.09] bg-white/95 px-3 py-1.5 text-left text-xs font-semibold text-[#1d1d1f] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all hover:border-black/[0.18] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 ${
-          open ? 'is-open border-[#007aff] bg-white ring-3 ring-[#007aff]/14' : ''
+        className={`system-select-trigger inline-flex items-center justify-between gap-2 rounded-xl border border-black/[0.09] dark:border-white/10 bg-white/95 dark:bg-[#18181C] px-3 py-1.5 text-left text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all hover:border-black/[0.18] dark:hover:border-white/20 hover:bg-white dark:hover:bg-[#202025] disabled:cursor-not-allowed disabled:opacity-50 ${
+          open ? 'is-open border-[#007aff] dark:border-[#0071E3] bg-white dark:bg-[#18181C] ring-3 ring-[#007aff]/14 dark:ring-[#0071E3]/20' : ''
         } ${isFullWidth ? 'w-full' : ''} ${className}`}
       >
         <span className="truncate">{selectedOption?.label ?? ''}</span>
         <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-[#8e8e93] transition-transform duration-150 ${
-            open ? 'rotate-180 text-[#007aff]' : ''
+          className={`h-3.5 w-3.5 shrink-0 text-[#8e8e93] dark:text-[#A1A1AA] transition-transform duration-150 ${
+            open ? 'rotate-180 text-[#007aff] dark:text-[#3894FF]' : ''
           }`}
           aria-hidden="true"
         />
@@ -202,7 +202,7 @@ export default function SystemSelect({
             role="listbox"
             aria-labelledby={ariaLabelledBy || selectId}
             style={menuStyle}
-            className="system-select-popover workspace-popover max-h-64 overflow-y-auto no-scrollbar rounded-[14px] border border-black/[0.08] bg-white/98 p-1 shadow-[0_12px_34px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] backdrop-blur-xl"
+            className="system-select-popover workspace-popover max-h-64 overflow-y-auto no-scrollbar rounded-[14px] border border-black/[0.08] dark:border-white/10 bg-white/98 dark:bg-[#18181C] p-1 shadow-[0_12px_34px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] dark:shadow-[0_16px_36px_rgba(0,0,0,0.6)] backdrop-blur-xl"
           >
             {options.map((opt) => {
               const isSelected = opt.value === normalizedValue;
@@ -216,15 +216,15 @@ export default function SystemSelect({
                   onClick={() => handleSelect(opt)}
                   className={`system-select-option flex w-full items-center justify-between gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-xs transition-colors ${
                     opt.disabled
-                      ? 'cursor-not-allowed opacity-40 text-[#8e8e93]'
+                      ? 'cursor-not-allowed opacity-40 text-[#8e8e93] dark:text-[#71717A]'
                       : isSelected
-                      ? 'bg-[#e8f2ff] font-semibold text-[#007aff]'
-                      : 'font-medium text-[#1d1d1f] hover:bg-black/[0.045]'
+                      ? 'bg-[#e8f2ff] dark:bg-[#1E2430] font-semibold text-[#007aff] dark:text-[#3894FF]'
+                      : 'font-medium text-[#1d1d1f] dark:text-white hover:bg-black/[0.045] dark:hover:bg-white/[0.06]'
                   }`}
                 >
                   <span className="truncate">{opt.label}</span>
                   {isSelected && (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-[#007aff]" aria-hidden="true" />
+                    <Check className="h-3.5 w-3.5 shrink-0 text-[#007aff] dark:text-[#3894FF]" aria-hidden="true" />
                   )}
                 </button>
               );

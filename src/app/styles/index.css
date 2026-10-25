@@ -862,6 +862,14 @@ html {
 }
 
 :root {
+  /* Apple HIG & Interactive Dot Wave Surface Tokens (Light) */
+  --bg-surface: #f5f5f7;
+  --dot-base: rgba(0, 0, 0, 0.14);
+  --system-primary: #0071e3;
+  --system-primary-rgb: 0, 113, 227;
+  --system-secondary: #5e5ce6;
+  --system-secondary-rgb: 94, 92, 230;
+
   --accent-blue: #007aff;
   --accent-blue-hover: #0066d6;
   --text-primary: #1d1d1f;
@@ -910,6 +918,83 @@ html {
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
+
+.dark .glass-bar {
+  background: rgba(22, 22, 26, 0.82) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Apple Human Interface Guidelines Frosted Glass Card */
+.apple-glass-card {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 24px;
+  box-shadow:
+    0 24px 60px -12px rgba(0, 0, 0, 0.08),
+    0 8px 24px -4px rgba(0, 0, 0, 0.04),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.dark .apple-glass-card {
+  background: rgba(22, 22, 26, 0.72);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 32px 72px -16px rgba(0, 0, 0, 0.65),
+    0 12px 32px -4px rgba(0, 0, 0, 0.45),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.apple-floating-pill {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 9999px;
+  box-shadow: 0 10px 30px -6px rgba(0, 0, 0, 0.1), 0 2px 8px -2px rgba(0, 0, 0, 0.05);
+}
+
+.dark .apple-floating-pill {
+  background: rgba(28, 28, 32, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 36px -6px rgba(0, 0, 0, 0.6), 0 4px 12px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* Google Sign-in shell (responsive, no clipped icon) */
+.google-signin-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 380px;
+  min-height: 40px;
+  border-radius: 9999px !important;
+  overflow: hidden !important;
+}
+
+.google-signin-shell iframe {
+  border-radius: 9999px !important;
+  overflow: hidden !important;
+}
+
+.dark .google-signin-shell {
+  background: #141417 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.dark .google-signin-shell:hover {
+  background: #1F1F24 !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+
 
 .glass-dark {
   background: rgba(15, 17, 21, 0.85);
@@ -1001,6 +1086,12 @@ html {
   background: var(--color-bg-secondary);
 }
 
+.dark body,
+.dark .page-shell {
+  background-color: #000000 !important;
+  color: #f5f5f7 !important;
+}
+
 /* ── Authenticated product: Apple-minimal operating system ── */
 .app-workspace {
   --workspace-accent: #007aff;
@@ -1018,6 +1109,19 @@ html {
   font-size: 0.875rem;
   line-height: 1.45;
   letter-spacing: -0.01em;
+}
+
+.dark .app-workspace {
+  --workspace-accent: #0a84ff;
+  --workspace-accent-soft: rgba(10, 132, 255, 0.15);
+  --workspace-text: #f5f5f7;
+  --workspace-text-secondary: #a1a1a6;
+  --workspace-text-tertiary: #636366;
+  --workspace-surface: #1c1c1e;
+  --workspace-surface-muted: #000000;
+  --workspace-border: rgba(255, 255, 255, 0.12);
+  background: var(--workspace-surface-muted) !important;
+  color: var(--workspace-text) !important;
 }
 
 /* One dashboard type system. Monospace utilities retain tabular alignment without
@@ -1063,15 +1167,168 @@ html {
    palette without flattening semantic success, warning, or danger states. */
 .app-workspace :where(.text-slate-950, .text-slate-900, .text-slate-800),
 .app-workspace [class~="text-[#111]"],
+.app-workspace [class~="text-[#1d1d1f]"],
 .app-workspace [class~="text-[#1E293B]"],
 .app-workspace [class~="text-[#1e293b]"] { color: var(--workspace-text) !important; }
 
 .app-workspace :where(.text-slate-700, .text-slate-600, .text-slate-500),
 .app-workspace [class~="text-[#333]"],
-.app-workspace [class~="text-[#5f6368]"] { color: var(--workspace-text-secondary) !important; }
+.app-workspace [class~="text-[#5f6368]"],
+.app-workspace [class~="text-[#6e6e73]"],
+.app-workspace [class~="text-[#64748B]"] { color: var(--workspace-text-secondary) !important; }
 
 .app-workspace :where(.text-slate-400, .text-slate-300),
-.app-workspace [class~="text-[#9ca3af]"] { color: var(--workspace-text-tertiary) !important; }
+.app-workspace [class~="text-[#9ca3af]"],
+.app-workspace [class~="text-[#8e8e93]"] { color: var(--workspace-text-tertiary) !important; }
+
+/* ── Dark workspace surface, card, badge, and input cascading ── */
+.dark .app-workspace :where(.bg-white, [class~="bg-white"], [class*="bg-white/"]) {
+  background-color: var(--workspace-surface) !important;
+}
+
+.dark .app-workspace :where(
+  .bg-slate-50, .bg-slate-100,
+  [class~="bg-slate-50"], [class~="bg-slate-100"],
+  [class*="bg-slate-50/"], [class*="bg-slate-100/"],
+  [class~="bg-[#f2f2f7]"], [class~="bg-[#f5f5f7]"], [class~="bg-[#f1f3f4]"],
+  [class~="bg-[#f8f9fa]"], [class*="bg-[#f8f9fa]"],
+  [class~="bg-[#eff6ff]"], [class*="bg-[#eff6ff]"],
+  [class~="bg-[#f9fafb]"], [class*="bg-[#f9fafb]"]
+) {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Table row hover fix for dark mode */
+.dark .app-workspace tr,
+.dark .app-workspace tbody tr {
+  transition: background-color 150ms ease;
+}
+
+.dark .app-workspace :where(tr[class*="hover:bg-"], tbody tr):hover,
+.dark .app-workspace tr:hover,
+.dark .app-workspace tr[class*="hover:bg-slate-50"]:hover,
+.dark .app-workspace [class*="hover:bg-slate-50/50"]:hover,
+.dark .app-workspace [class*="hover:bg-slate-50/70"]:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.dark .app-workspace tr:hover td {
+  background-color: transparent !important;
+}
+
+.dark .app-workspace :where(.border-slate-100, .border-slate-200, .border-slate-300, [class*="border-slate-"], [class*="border-black/"]) {
+  border-color: var(--workspace-border) !important;
+}
+
+.dark .app-workspace :where(input, select, textarea):not(.leaflet-popup-content *) {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  color: #f5f5f7 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .app-workspace :where(input, select, textarea)::placeholder {
+  color: #8e8e93 !important;
+}
+
+.dark .app-workspace :where(input, select, textarea):focus {
+  background-color: rgba(255, 255, 255, 0.09) !important;
+  border-color: #0a84ff !important;
+}
+
+.dark .app-workspace :where(button.bg-white, button[class~="bg-white"]) {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f5f5f7 !important;
+}
+
+.dark .app-workspace :where(button.bg-white:hover, button[class~="bg-white"]:hover) {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.dark .app-workspace :where(button.bg-slate-100, button[class~="bg-slate-100"]) {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #f5f5f7 !important;
+}
+
+.dark .app-workspace :where(button.bg-slate-100:hover, button[class~="bg-slate-100"]:hover) {
+  background-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .app-workspace :where(.bg-emerald-50, .bg-green-50, [class~="bg-emerald-50"], [class~="bg-green-50"]) {
+  background-color: rgba(52, 199, 89, 0.15) !important;
+  color: #30d158 !important;
+  border-color: rgba(52, 199, 89, 0.25) !important;
+}
+
+.dark .app-workspace :where(.bg-amber-50, [class~="bg-amber-50"]) {
+  background-color: rgba(255, 159, 10, 0.15) !important;
+  color: #ff9f0a !important;
+  border-color: rgba(255, 159, 10, 0.25) !important;
+}
+
+.dark .app-workspace :where(.bg-rose-50, .bg-red-50, [class~="bg-rose-50"], [class~="bg-red-50"]) {
+  background-color: rgba(255, 69, 58, 0.15) !important;
+  color: #ff453a !important;
+  border-color: rgba(255, 69, 58, 0.25) !important;
+}
+
+.dark .app-workspace :where(.bg-blue-50, [class~="bg-blue-50"], [class~="bg-indigo-50"]) {
+  background-color: rgba(10, 132, 255, 0.15) !important;
+  color: #0a84ff !important;
+  border-color: rgba(10, 132, 255, 0.25) !important;
+}
+
+.dark .app-workspace table {
+  color: #f5f5f7 !important;
+}
+
+.dark .app-workspace th {
+  color: #8e8e93 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .app-workspace td {
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .app-workspace tr,
+.dark .app-workspace tbody tr {
+  transition: background-color 150ms ease;
+}
+
+.dark .app-workspace :where(tr[class*="hover:bg-"], tbody tr):hover,
+.dark .app-workspace tr:hover,
+.dark .app-workspace tr[class*="hover:bg-slate-50"]:hover,
+.dark .app-workspace [class*="hover:bg-slate-50/50"]:hover,
+.dark .app-workspace [class*="hover:bg-slate-50/70"]:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.dark .app-workspace tr:hover td {
+  background-color: transparent !important;
+}
+
+.dark .recharts-default-tooltip {
+  background-color: #1c1c1e !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f5f5f7 !important;
+}
+
+.dark .recharts-tooltip-label {
+  color: #f5f5f7 !important;
+}
+
+.dark .recharts-tooltip-item {
+  color: #a1a1a6 !important;
+}
+
+.dark .recharts-cartesian-grid line {
+  stroke: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .recharts-text {
+  fill: #8e8e93 !important;
+}
 
 .app-workspace :where(.text-blue-800, .text-blue-700, .text-blue-600, .text-blue-500, .text-blue-400, .text-indigo-700, .text-indigo-600, .text-indigo-500),
 .app-workspace [class~="text-[#2563EB]"],
@@ -1198,6 +1455,29 @@ html {
   height: 11px !important;
   background: rgba(255, 255, 255, 0.97) !important;
   box-shadow: 0 3px 8px rgba(15, 23, 42, 0.1) !important;
+}
+
+.dark .leaflet-container .leaflet-popup-content-wrapper {
+  background: rgba(20, 20, 23, 0.92) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  color: #FFFFFF !important;
+}
+
+.dark .leaflet-container .leaflet-popup-tip {
+  background: rgba(20, 20, 23, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark .leaflet-container a.leaflet-popup-close-button {
+  color: #A1A1AA !important;
+}
+
+.dark .leaflet-container a.leaflet-popup-close-button:hover {
+  color: #FFFFFF !important;
 }
 
 .app-workspace main table {
@@ -1911,6 +2191,52 @@ html {
 .journey-strip strong { font-size: 0.78rem; }
 .journey-strip small { margin-top: 0.15rem; color: #8e8e93; font-size: 0.66rem; }
 
+.dark .journey-strip {
+  background: #141417;
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+.dark .journey-strip li {
+  color: #A1A1AA;
+}
+
+.dark .journey-strip li strong {
+  color: #E4E4E7;
+}
+
+.dark .journey-strip li small {
+  color: #A1A1AA;
+}
+
+.dark .journey-strip li:not(:last-child)::after {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.dark .journey-strip__icon {
+  background: #1C1C1E;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #A1A1AA;
+}
+
+.dark .journey-strip li.is-active {
+  color: #FFFFFF;
+}
+
+.dark .journey-strip li.is-active strong {
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+.dark .journey-strip li.is-active small {
+  color: #D4D4D8;
+}
+
+.dark .journey-strip li.is-active .journey-strip__icon {
+  border-color: #0071E3;
+  background: #0071E3;
+  color: #FFFFFF;
+}
+
 .commuter-map {
   position: relative;
   isolation: isolate;
@@ -2131,6 +2457,41 @@ html {
   -webkit-backdrop-filter: blur(24px) saturate(180%);
 }
 
+.dark .workspace-header {
+  background: rgba(22, 22, 26, 0.82) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 28px rgba(0, 0, 0, 0.35) !important;
+}
+
+.dark .workspace-header [class~="text-[#111]"] {
+  color: #f5f5f7 !important;
+}
+
+.dark .workspace-header [class~="text-[#333]"] {
+  color: #f5f5f7 !important;
+}
+
+.dark .workspace-header [class~="text-[#6e6e73]"] {
+  color: #a1a1a6 !important;
+}
+
+.dark .workspace-header [class~="text-[#5f6368]"] {
+  color: #a1a1a6 !important;
+}
+
+.dark .workspace-icon-button {
+  color: #a1a1a6 !important;
+}
+
+.dark .workspace-icon-button:hover {
+  color: #f5f5f7 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .workspace-header__account-button:hover,
+.dark .workspace-header__account-button[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
 .workspace-header__inner {
   display: grid !important;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2266,6 +2627,15 @@ html {
   text-align: left;
 }
 
+.dark .workspace-header__account-menu-item {
+  color: #f5f5f7;
+}
+
+.dark .workspace-header__account-menu-item:hover,
+.dark .workspace-header__account-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .workspace-header__search-result {
   min-height: 2.5rem;
   padding: 0.55rem 0.7rem;
@@ -2275,6 +2645,45 @@ html {
 
 .workspace-header__search-result svg {
   color: #8e8e93;
+}
+
+.dark .workspace-header__search-results,
+.dark .workspace-header__mobile-search {
+  background: #1c1c1e !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+.dark .workspace-header__search-result {
+  color: #f5f5f7 !important;
+}
+
+.dark .workspace-header__search-result svg {
+  color: #8e8e93 !important;
+}
+
+.dark .workspace-header__search-result:hover,
+.dark .workspace-header__search-result:focus-visible {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #0a84ff !important;
+}
+
+.dark .workspace-header__search-result:hover svg,
+.dark .workspace-header__search-result:focus-visible svg {
+  color: #0a84ff !important;
+}
+
+.dark .workspace-header__search-empty {
+  color: #8e8e93 !important;
+}
+
+.dark .workspace-header__mobile-search-field {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #8e8e93 !important;
+}
+
+.dark .workspace-header__mobile-search-field input {
+  color: #f5f5f7 !important;
 }
 
 .workspace-header__search-result:hover,
@@ -2850,6 +3259,23 @@ html {
   box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.07), 0 -14px 32px rgba(28, 28, 30, 0.045);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+.dark .dashboard-bottom-nav {
+  background: rgba(22, 22, 26, 0.88) !important;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.08), 0 -14px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark .dashboard-bottom-nav__item {
+  color: #8e8e93 !important;
+}
+
+.dark .dashboard-bottom-nav__item.is-active {
+  color: #0a84ff !important;
+}
+
+.dark .dashboard-bottom-nav__active-pill {
+  background: rgba(10, 132, 255, 0.16) !important;
 }
 
 .dashboard-bottom-nav__inner {
@@ -3836,6 +4262,14 @@ html {
 }
 
 .dark {
+  /* Apple HIG & Interactive Dot Wave Surface Tokens (Dark) */
+  --bg-surface: #090a0f;
+  --dot-base: rgba(255, 255, 255, 0.16);
+  --system-primary: #0a84ff;
+  --system-primary-rgb: 10, 132, 255;
+  --system-secondary: #5e5ce6;
+  --system-secondary-rgb: 94, 92, 230;
+
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -3898,4 +4332,223 @@ html {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+}
+
+
+/* Theme Switch Segmented Control */
+.theme-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.75rem;
+  background-color: #f1f3f4;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.dark .theme-switch {
+  background-color: #2c2c2e;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.theme-switch__option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  color: #6e6e73;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.dark .theme-switch__option {
+  color: #a1a1a6;
+}
+
+.theme-switch__option.is-active {
+  background-color: #ffffff;
+  color: #1d1d1f;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.dark .theme-switch__option.is-active {
+  background-color: #3a3a3c;
+  color: #f5f5f7;
+}
+
+.dark .workspace-header__account-menu {
+  background: #1c1c1e;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+
+/* ── Apple Floating Map Controls (Consistent pill styling across all controls) ── */
+.workspace-map-control,
+.map-capsule {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 2.5rem !important;
+  min-height: 2.5rem !important;
+  border-radius: 9999px !important;
+  padding-inline: 0.875rem !important;
+  font-size: 0.8125rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  line-height: 1 !important;
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  color: #1d1d1f !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  transition: all 180ms ease !important;
+}
+
+.workspace-map-control:hover,
+.map-capsule:hover {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12) !important;
+}
+
+.dark .workspace-map-control,
+.dark .map-capsule {
+  background-color: rgba(28, 28, 30, 0.88) !important;
+  color: #f5f5f7 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45) !important;
+}
+
+.dark .workspace-map-control:hover,
+.dark .map-capsule:hover {
+  background-color: rgba(44, 44, 46, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+.dark .workspace-map-control.is-active-bus,
+.dark .map-capsule.is-active-bus {
+  background-color: #059669 !important;
+  border-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+/* ── Dark Theme Parking Pass & Wallet Overrides ── */
+.dark .parking-pass {
+  background: #141417 !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark .parking-pass__header {
+  background: #18181C !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .parking-pass h2 {
+  color: #FFFFFF !important;
+}
+
+.dark .parking-pass__header p {
+  color: #A1A1AA !important;
+}
+
+.dark .parking-pass__bay {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .parking-pass__bay strong,
+.dark .parking-pass__vehicle strong,
+.dark .parking-pass__price strong {
+  color: #FFFFFF !important;
+}
+
+.dark .parking-pass__bay div > span,
+.dark .parking-pass__vehicle span,
+.dark .parking-pass__price span {
+  color: #A1A1AA !important;
+}
+
+.dark .parking-pass__icon {
+  background: #1C1C1E !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #A1A1AA !important;
+}
+
+.dark .parking-pass__empty {
+  color: #A1A1AA !important;
+}
+
+.dark .wallet-topup-result {
+  background: #141417 !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+
+.dark .wallet-topup-result h2 {
+  color: #FFFFFF !important;
+}
+
+.dark .wallet-topup-result--warning {
+  border-color: rgba(255, 149, 0, 0.3) !important;
+  background: radial-gradient(circle at 100% 0%, rgba(255, 149, 0, 0.15), transparent 36%), #141417 !important;
+}
+
+.dark .wallet-topup-result--success {
+  border-color: rgba(52, 199, 89, 0.3) !important;
+  background: radial-gradient(circle at 100% 0%, rgba(52, 199, 89, 0.15), transparent 36%), #141417 !important;
+}
+
+.dark .wallet-topup-result__receipt div {
+  background: #18181C !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .wallet-topup-result__receipt dt {
+  color: #A1A1AA !important;
+}
+
+.dark .wallet-topup-result__receipt dd {
+  color: #FFFFFF !important;
+}
+
+.dark .wallet-topup-result__actions button {
+  background: #242429 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #FFFFFF !important;
+}
+
+.dark .wallet-topup-result__actions button.is-primary {
+  background: #0071E3 !important;
+  border-color: #0071E3 !important;
+  color: #FFFFFF !important;
+}
+
+/* ── Dark Theme Admin Support Dashboard & Operations Hub ── */
+.dark [data-component="admin-support-dashboard"] {
+  color: #FFFFFF;
+}
+
+.dark [data-component="admin-support-dashboard"] section.bg-\[\#F5F5F7\],
+.dark [data-component="admin-support-dashboard"] div.bg-\[\#F5F5F7\] {
+  background-color: #141417 !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+.dark [data-component="admin-support-dashboard"] input,
+.dark [data-component="admin-support-dashboard"] select,
+.dark [data-component="admin-support-dashboard"] textarea {
+  background-color: #18181C !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #FFFFFF !important;
+}
+
+.dark [data-component="admin-support-dashboard"] input::placeholder,
+.dark [data-component="admin-support-dashboard"] textarea::placeholder {
+  color: #71717A !important;
 }

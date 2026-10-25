@@ -8,6 +8,7 @@ import { AuthProvider } from '@/features/auth/context/AuthContext';
 import { GOOGLE_WEB_CLIENT_ID } from '@/features/auth/googleAuth';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { ThemeProvider } from '@/app/theme/ThemeContext';
 
 function NativeUrlListener() {
   useEffect(() => {
@@ -52,11 +53,13 @@ function NativeUrlListener() {
 
 export function AppProviders({ children }: PropsWithChildren) {
   const auth = (
-    <TooltipProvider>
-      <ModalProvider>
-        <AuthProvider>{children}</AuthProvider>
-      </ModalProvider>
-    </TooltipProvider>
+    <ThemeProvider>
+      <TooltipProvider>
+        <ModalProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ModalProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   );
 
   return (

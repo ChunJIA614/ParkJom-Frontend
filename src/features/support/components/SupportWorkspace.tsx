@@ -79,57 +79,57 @@ interface SupportWorkspaceProps {
 const statusMeta: Record<string, { label: string; badge: string; dot: string }> = {
   Processing: {
     label: 'Processing',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#007AFF]',
   },
   ActionRequired: {
     label: 'Action Required',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#FF9500]',
   },
   Resolved: {
     label: 'Resolved',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#34C759]',
   },
   New: {
     label: 'New',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#007AFF]',
   },
   Accepted: {
     label: 'Accepted',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#86868B]',
   },
   Assigned: {
     label: 'Assigned',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#86868B]',
   },
   InProgress: {
     label: 'In Progress',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#007AFF]',
   },
   WaitingForCustomer: {
     label: 'Waiting on Customer',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#FF9500]',
   },
   Closed: {
     label: 'Closed',
-    badge: 'border-black/[0.06] bg-[#F5F5F7] text-[#86868B]',
+    badge: 'border-black/[0.06] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#86868B] dark:text-[#A1A1AA]',
     dot: 'bg-[#86868B]',
   },
   Reopened: {
     label: 'Reopened',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#007AFF]',
   },
   Open: {
     label: 'Open',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     dot: 'bg-[#007AFF]',
   },
 };
@@ -137,25 +137,25 @@ const statusMeta: Record<string, { label: string; badge: string; dot: string }> 
 const connectionMeta: Record<SupportConnectionState, { label: string; badge: string; icon: typeof Wifi; dot: string }> = {
   connecting: {
     label: 'Connecting...',
-    badge: 'border-black/[0.06] bg-[#F5F5F7] text-[#6E6E73]',
+    badge: 'border-black/[0.06] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#6E6E73] dark:text-[#A1A1AA]',
     icon: Radio,
     dot: 'bg-[#86868B] animate-pulse',
   },
   live: {
     label: 'Live',
-    badge: 'border-black/[0.06] bg-[#F5F5F7] text-[#1D1D1F]',
+    badge: 'border-black/[0.06] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white',
     icon: Wifi,
     dot: 'bg-[#34C759]',
   },
   fallback: {
     label: 'Auto Sync',
-    badge: 'border-black/[0.06] bg-[#F5F5F7] text-[#6E6E73]',
+    badge: 'border-black/[0.06] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#6E6E73] dark:text-[#A1A1AA]',
     icon: Wifi,
     dot: 'bg-[#007AFF]',
   },
   offline: {
     label: 'Reconnecting',
-    badge: 'border-black/[0.08] bg-[#F5F5F7] text-[#6E6E73]',
+    badge: 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] text-[#6E6E73] dark:text-[#A1A1AA]',
     icon: WifiOff,
     dot: 'bg-[#FF3B30] animate-pulse',
   },
@@ -783,22 +783,22 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
   return (
     <div className="space-y-4" data-component="ticket-workspace">
       {/* ── Top Bar / Header ── */}
-      <section className="rounded-2xl border border-black/[0.06] bg-white px-5 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+      <section className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] px-5 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none">
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F5F5F7] text-[#1D1D1F] border border-black/[0.04]">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white border border-black/[0.04] dark:border-white/10">
               <LifeBuoy className="h-4 w-4" />
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-[#1D1D1F] sm:text-base">
+                <h2 className="text-sm font-bold text-[#1D1D1F] dark:text-white sm:text-base">
                   {mode === 'admin' ? 'Support Ticket Workspace' : 'My Support Tickets'}
                 </h2>
-                <span className="inline-flex items-center rounded-full bg-[#F5F5F7] border border-black/[0.06] px-2 py-0.5 text-[10px] font-semibold text-[#6E6E73]">
+                <span className="inline-flex items-center rounded-full bg-[#F5F5F7] dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-2 py-0.5 text-[10px] font-semibold text-[#6E6E73] dark:text-[#A1A1AA]">
                   {tickets.length} {tickets.length === 1 ? 'ticket' : 'tickets'}
                 </span>
               </div>
-              <p className="text-[11px] text-[#6E6E73]">
+              <p className="text-[11px] text-[#6E6E73] dark:text-[#A1A1AA]">
                 {mode === 'admin'
                   ? 'Manage incoming customer inquiries, assign teams, and transition resolution stages.'
                   : 'Track ongoing support requests, upload proof documents, and chat with specialists.'}
@@ -826,9 +826,9 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       </section>
 
       {error && (
-        <div role="alert" className="flex items-center gap-2.5 rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-4 py-2.5 text-xs text-[#1D1D1F]">
+        <div role="alert" className="flex items-center gap-2.5 rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-4 py-2.5 text-xs text-[#1D1D1F] dark:text-white">
           <AlertCircle className="h-4 w-4 shrink-0 text-[#FF3B30]" />
-          <span className="flex-1 text-[#6E6E73]">{error}</span>
+          <span className="flex-1 text-[#6E6E73] dark:text-[#A1A1AA]">{error}</span>
           <button
             type="button"
             onClick={() => void loadTickets()}
@@ -840,26 +840,26 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       )}
 
       {/* ── Main Split View (Locked to Screen Height) ── */}
-      <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] lg:grid lg:h-[calc(100vh-175px)] lg:min-h-[580px] lg:grid-cols-[330px_minmax(0,1fr)]">
+      <section className="overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none lg:grid lg:h-[calc(100vh-175px)] lg:min-h-[580px] lg:grid-cols-[330px_minmax(0,1fr)]">
         {/* Left Pane: Ticket Queue & Filters */}
-        <div className={cn('h-full flex-col min-h-0 border-r border-black/[0.06] bg-white', mobileConversationOpen ? 'hidden lg:flex' : 'flex')}>
+        <div className={cn('h-full flex-col min-h-0 border-r border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417]', mobileConversationOpen ? 'hidden lg:flex' : 'flex')}>
           {/* Status filter dropdown & Search */}
-          <div className="shrink-0 border-b border-black/[0.06] p-3 space-y-2">
+          <div className="shrink-0 border-b border-black/[0.06] dark:border-white/10 p-3 space-y-2">
             <div className="relative">
-              <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#86868B]" />
+              <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#86868B] dark:text-[#A1A1AA]" />
               <input
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search ticket #, subject, sender..."
-                className="min-h-9 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/80 pl-9 pr-8 text-xs text-[#1D1D1F] placeholder:text-[#86868B] outline-none transition focus:border-[#007AFF] focus:bg-white"
+                className="min-h-9 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/80 dark:bg-[#18181C] pl-9 pr-8 text-xs text-[#1D1D1F] dark:text-white placeholder:text-[#86868B] dark:placeholder:text-[#71717A] outline-none transition focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch('')}
                   aria-label="Clear search"
-                  className="absolute right-2.5 top-2.5 cursor-pointer text-[#86868B] hover:text-[#1D1D1F]"
+                  className="absolute right-2.5 top-2.5 cursor-pointer text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -867,7 +867,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
             </div>
 
             <div className="flex items-center gap-2">
-              <label htmlFor="ticket-status-filter" className="text-[11px] font-semibold text-[#6E6E73] shrink-0">Status:</label>
+              <label htmlFor="ticket-status-filter" className="text-[11px] font-semibold text-[#6E6E73] dark:text-[#A1A1AA] shrink-0">Status:</label>
               <div className="relative flex-1">
                 <SystemSelect
                   id="ticket-status-filter"
@@ -876,7 +876,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     setStatusFilter(e.target.value);
                     setMobileConversationOpen(false);
                   }}
-                  className="min-h-8 w-full cursor-pointer appearance-none rounded-xl border border-black/[0.08] bg-[#F5F5F7] pl-3 pr-8 text-xs font-semibold text-[#1D1D1F] outline-none hover:bg-white focus:border-[#007AFF] focus:bg-white transition"
+                  className="min-h-8 w-full cursor-pointer appearance-none rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] pl-3 pr-8 text-xs font-semibold text-[#1D1D1F] dark:text-white outline-none hover:bg-white dark:hover:bg-[#202025] focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] transition"
                 >
                   <option value="All">All Statuses ({tickets.length})</option>
                   {mode === 'user' ? (
@@ -908,7 +908,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     aria-label="Filter by priority"
                     value={priorityFilter}
                     onChange={(e) => setPriorityFilter(e.target.value)}
-                    className="min-h-7 w-full cursor-pointer appearance-none rounded-lg border border-black/[0.08] bg-[#F5F5F7] pl-2.5 pr-6 text-[11px] font-semibold text-[#1D1D1F] outline-none hover:bg-white focus:border-[#007AFF]"
+                    className="min-h-7 w-full cursor-pointer appearance-none rounded-lg border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] pl-2.5 pr-6 text-[11px] font-semibold text-[#1D1D1F] dark:text-white outline-none hover:bg-white dark:hover:bg-[#202025] focus:border-[#007AFF]"
                   >
                     <option value="">All Priorities</option>
                     <option value="P0">P0 Emergency</option>
@@ -922,7 +922,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     aria-label="Filter by team"
                     value={teamFilter}
                     onChange={(e) => setTeamFilter(e.target.value)}
-                    className="min-h-7 w-full cursor-pointer appearance-none rounded-lg border border-black/[0.08] bg-[#F5F5F7] pl-2.5 pr-6 text-[11px] font-semibold text-[#1D1D1F] outline-none hover:bg-white focus:border-[#007AFF]"
+                    className="min-h-7 w-full cursor-pointer appearance-none rounded-lg border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] pl-2.5 pr-6 text-[11px] font-semibold text-[#1D1D1F] dark:text-white outline-none hover:bg-white dark:hover:bg-[#202025] focus:border-[#007AFF]"
                   >
                     <option value="">All Teams</option>
                     <option value="CustomerSupport">Customer Support</option>
@@ -938,19 +938,19 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
           {/* Ticket List Stream */}
           <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-1.5">
             {loading ? (
-              <div className="flex h-52 flex-col items-center justify-center gap-2 text-xs text-[#6E6E73]">
+              <div className="flex h-52 flex-col items-center justify-center gap-2 text-xs text-[#6E6E73] dark:text-[#A1A1AA]">
                 <Loader2 className="h-5 w-5 animate-spin text-[#007AFF]" />
                 <span>Loading support tickets...</span>
               </div>
             ) : tickets.length === 0 ? (
               <div className="flex h-64 flex-col items-center justify-center px-6 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#86868B]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F5F5F7] dark:bg-white/[0.08] text-[#86868B] dark:text-[#A1A1AA]">
                   <MessageSquare className="h-6 w-6" />
                 </div>
-                <p className="mt-3 text-xs font-bold text-[#1D1D1F]">
+                <p className="mt-3 text-xs font-bold text-[#1D1D1F] dark:text-white">
                   No tickets found
                 </p>
-                <p className="mt-1 text-[11px] text-[#6E6E73] max-w-[220px]">
+                <p className="mt-1 text-[11px] text-[#6E6E73] dark:text-[#A1A1AA] max-w-[220px]">
                   {search
                     ? 'No tickets match your search keyword.'
                     : mode === 'admin'
@@ -977,8 +977,8 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     className={cn(
                       'group relative w-full cursor-pointer rounded-xl border p-3 text-left transition-all',
                       isSelected
-                        ? 'border-[#007AFF] bg-[#F5F5F7] ring-1 ring-[#007AFF]/15'
-                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/60'
+                        ? 'border-[#007AFF] bg-[#F5F5F7] dark:bg-[#1F242D] dark:border-[#0071E3] ring-1 ring-[#007AFF]/15 dark:ring-[#0071E3]/30'
+                        : 'border-transparent dark:border-white/[0.06] bg-transparent dark:bg-[#141417] hover:border-black/[0.06] dark:hover:border-white/15 hover:bg-[#F5F5F7]/60 dark:hover:bg-[#1C1C20]'
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -991,28 +991,28 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       </span>
                     </div>
 
-                    <p className="mt-1.5 line-clamp-1 text-xs font-semibold text-[#1D1D1F]">
+                    <p className="mt-1.5 line-clamp-1 text-xs font-semibold text-[#1D1D1F] dark:text-white">
                       {cleanSupportText(ticket.subject)}
                     </p>
 
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#6E6E73]">
-                      <span className="font-medium text-[#1D1D1F] truncate">{ticket.customerName}</span>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">
+                      <span className="font-medium text-[#1D1D1F] dark:text-[#D4D4D8] truncate">{ticket.customerName}</span>
                       <span>·</span>
-                      <span className="rounded-md bg-white border border-black/[0.06] px-1.5 py-0.2 text-[9px] font-medium text-[#6E6E73]">
+                      <span className="rounded-md bg-white dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-1.5 py-0.2 text-[9px] font-medium text-[#6E6E73] dark:text-[#A1A1AA]">
                         {ticket.issueCode || ticket.category}
                       </span>
                       {ticket.priority && (
-                        <span className="rounded-md bg-white border border-black/[0.06] px-1.5 py-0.2 text-[9px] font-semibold text-[#1D1D1F]">
+                        <span className="rounded-md bg-white dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-1.5 py-0.2 text-[9px] font-semibold text-[#1D1D1F] dark:text-white">
                           {ticket.priority}
                         </span>
                       )}
                     </div>
 
-                    <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-[#86868B]">
+                    <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-[#86868B] dark:text-[#A1A1AA]">
                       <p className="line-clamp-1 flex-1">
                         {cleanSupportText(lastMessage?.message || lastMessage?.body || ticket.description || 'Support ticket logged')}
                       </p>
-                      <span className="shrink-0 text-[9px] font-medium">{formatDate(ticket.updatedAt)}</span>
+                      <span className="shrink-0 text-[9px] font-medium text-[#86868B] dark:text-[#71717A]">{formatDate(ticket.updatedAt)}</span>
                     </div>
                   </button>
                 );
@@ -1022,11 +1022,11 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
         </div>
 
         {/* Right Pane: Conversation & Message Stream */}
-        <div className={cn('h-full flex-col min-h-0 bg-[#F5F5F7]/40 overflow-hidden', mobileConversationOpen ? 'flex' : 'hidden lg:flex')}>
+        <div className={cn('h-full flex-col min-h-0 bg-[#F5F5F7]/40 dark:bg-[#0E0E11] overflow-hidden', mobileConversationOpen ? 'flex' : 'hidden lg:flex')}>
           {!selectedTicketDetail ? (
             <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white border border-black/[0.06] text-[#86868B]">
-                <MessageSquare className="h-6 w-6 text-[#1D1D1F]" />
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white dark:bg-[#18181C] border border-black/[0.06] dark:border-white/10 text-[#86868B] dark:text-[#A1A1AA]">
+                <MessageSquare className="h-6 w-6 text-[#1D1D1F] dark:text-white" />
               </div>
               <h3 className="mt-3 text-sm font-bold text-[#1D1D1F]">No Ticket Selected</h3>
               <p className="mt-1 text-xs text-[#6E6E73] max-w-xs">
@@ -1036,14 +1036,14 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
           ) : (
             <>
               {/* Ticket Detail Top Header (Compact & Separated Functions) */}
-              <header className="shrink-0 border-b border-black/[0.06] bg-white px-4 py-3">
+              <header className="shrink-0 border-b border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   {/* Left: Ticket Identity & Primary Status */}
                   <div className="flex min-w-0 items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setMobileConversationOpen(false)}
-                      className="cursor-pointer rounded-lg p-1.5 text-[#1D1D1F] hover:bg-[#F5F5F7] lg:hidden min-h-[32px] min-w-[32px] flex items-center justify-center shrink-0 border border-black/[0.08]"
+                      className="cursor-pointer rounded-lg p-1.5 text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] lg:hidden min-h-[32px] min-w-[32px] flex items-center justify-center shrink-0 border border-black/[0.08] dark:border-white/10"
                       aria-label="Back to ticket list"
                     >
                       <ArrowLeft className="h-4 w-4" />
@@ -1070,14 +1070,14 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     })()}
 
                     {selectedTicketDetail.priority && (
-                      <span className="rounded-md bg-[#F5F5F7] px-1.5 py-0.5 text-[9px] font-mono font-medium text-[#6E6E73] border border-black/[0.06] shrink-0">
+                      <span className="rounded-md bg-[#F5F5F7] dark:bg-white/[0.08] px-1.5 py-0.5 text-[9px] font-mono font-medium text-[#6E6E73] dark:text-[#A1A1AA] border border-black/[0.06] dark:border-white/10 shrink-0">
                         {selectedTicketDetail.priority}
                       </span>
                     )}
 
-                    <span className="text-black/[0.12] hidden sm:inline">|</span>
+                    <span className="text-black/[0.12] dark:text-white/20 hidden sm:inline">|</span>
 
-                    <h3 className="truncate text-xs font-bold text-[#1D1D1F] hidden sm:block max-w-xs md:max-w-sm lg:max-w-md">
+                    <h3 className="truncate text-xs font-bold text-[#1D1D1F] dark:text-white hidden sm:block max-w-xs md:max-w-sm lg:max-w-md">
                       {cleanSupportText(selectedTicketDetail.subject)}
                     </h3>
                   </div>
@@ -1091,8 +1091,8 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       className={cn(
                         'inline-flex min-h-[30px] cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition select-none',
                         showDetails
-                          ? 'border-[#1D1D1F] bg-[#1D1D1F] text-white'
-                          : 'border-black/[0.08] bg-white text-[#1D1D1F] hover:bg-[#F5F5F7]'
+                          ? 'border-[#1D1D1F] dark:border-white/20 bg-[#1D1D1F] dark:bg-[#2C2C32] text-white'
+                          : 'border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025]'
                       )}
                       title={showDetails ? 'Hide ticket details' : 'View full ticket metadata'}
                     >
@@ -1119,7 +1119,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       <button
                         type="button"
                         onClick={() => setCloseModalOpen(true)}
-                        className="inline-flex min-h-[30px] cursor-pointer items-center gap-1 rounded-lg border border-black/[0.08] bg-[#F5F5F7] px-2.5 text-xs font-semibold text-[#1D1D1F] hover:bg-[#E8E8ED]"
+                        className="inline-flex min-h-[30px] cursor-pointer items-center gap-1 rounded-lg border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-2.5 text-xs font-semibold text-[#1D1D1F] dark:text-white hover:bg-[#E8E8ED] dark:hover:bg-[#202025]"
                       >
                         <CheckCircle2 className="h-3.5 w-3.5 text-[#34C759]" />
                         <span>Confirm Resolved</span>
@@ -1131,7 +1131,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       <button
                         type="button"
                         onClick={() => setReopenModalOpen(true)}
-                        className="inline-flex min-h-[30px] cursor-pointer items-center gap-1 rounded-lg border border-black/[0.08] bg-white px-2.5 text-xs font-semibold text-[#1D1D1F] hover:bg-[#F5F5F7]"
+                        className="inline-flex min-h-[30px] cursor-pointer items-center gap-1 rounded-lg border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#18181C] px-2.5 text-xs font-semibold text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025]"
                       >
                         <RotateCcw className="h-3 w-3" />
                         <span>Reopen</span>
@@ -1145,8 +1145,8 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       className={cn(
                         'inline-flex min-h-[30px] cursor-pointer items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold transition',
                         showTimeline
-                          ? 'border-[#1D1D1F] bg-[#1D1D1F] text-white'
-                          : 'border-black/[0.08] bg-white text-[#1D1D1F] hover:bg-[#F5F5F7]'
+                          ? 'border-[#1D1D1F] dark:border-white/20 bg-[#1D1D1F] dark:bg-[#2C2C32] text-white'
+                          : 'border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025]'
                       )}
                       title="Toggle audit trail history"
                     >
@@ -1163,8 +1163,8 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                           className={cn(
                             'inline-flex min-h-[30px] cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition',
                             actionMenuOpen
-                              ? 'border-[#1D1D1F] bg-[#1D1D1F] text-white'
-                              : 'border-black/[0.08] bg-white text-[#1D1D1F] hover:bg-[#F5F5F7]'
+                              ? 'border-[#1D1D1F] dark:border-white/20 bg-[#1D1D1F] dark:bg-[#2C2C32] text-white'
+                              : 'border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025]'
                           )}
                           aria-expanded={actionMenuOpen}
                         >
@@ -1179,7 +1179,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                               className="fixed inset-0 z-40"
                               onClick={() => setActionMenuOpen(false)}
                             />
-                            <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-xl border border-black/[0.08] bg-white p-1 shadow-lg divide-y divide-black/[0.04] text-xs">
+                            <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#18181C] p-1 shadow-lg divide-y divide-black/[0.04] dark:divide-white/10 text-xs">
                               <div className="py-1">
                                 <button
                                   type="button"
@@ -1187,9 +1187,9 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                                     setActionMenuOpen(false);
                                     openTransitionModal();
                                   }}
-                                  className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] cursor-pointer"
+                                  className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] cursor-pointer"
                                 >
-                                  <RefreshCw className="h-3.5 w-3.5 text-[#6E6E73]" />
+                                  <RefreshCw className="h-3.5 w-3.5 text-[#6E6E73] dark:text-[#A1A1AA]" />
                                   <span>Transition Status...</span>
                                 </button>
                                 <button
@@ -1198,9 +1198,9 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                                     setActionMenuOpen(false);
                                     setReassignOpen(true);
                                   }}
-                                  className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] cursor-pointer"
+                                  className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] cursor-pointer"
                                 >
-                                  <Users className="h-3.5 w-3.5 text-[#6E6E73]" />
+                                  <Users className="h-3.5 w-3.5 text-[#6E6E73] dark:text-[#A1A1AA]" />
                                   <span>Reassign Team & Admin...</span>
                                 </button>
                               </div>
@@ -1212,9 +1212,9 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                                     setActionMenuOpen(false);
                                     setLinkIncidentOpen(true);
                                   }}
-                                  className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] cursor-pointer"
+                                  className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] cursor-pointer"
                                 >
-                                  <Siren className="h-3.5 w-3.5 text-[#6E6E73]" />
+                                  <Siren className="h-3.5 w-3.5 text-[#6E6E73] dark:text-[#A1A1AA]" />
                                   <span>Link Incident...</span>
                                 </button>
                                 <button
@@ -1223,9 +1223,9 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                                     setActionMenuOpen(false);
                                     setLinkDisputeOpen(true);
                                   }}
-                                  className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] cursor-pointer"
+                                  className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] cursor-pointer"
                                 >
-                                  <ShieldAlert className="h-3.5 w-3.5 text-[#6E6E73]" />
+                                  <ShieldAlert className="h-3.5 w-3.5 text-[#6E6E73] dark:text-[#A1A1AA]" />
                                   <span>Link Dispute...</span>
                                 </button>
                               </div>
@@ -1238,9 +1238,9 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                                       setActionMenuOpen(false);
                                       setCloseModalOpen(true);
                                     }}
-                                    className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] hover:bg-[#F5F5F7] cursor-pointer"
+                                    className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left font-medium text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] cursor-pointer"
                                   >
-                                    <CheckCircle2 className="h-3.5 w-3.5 text-[#6E6E73]" />
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-[#6E6E73] dark:text-[#A1A1AA]" />
                                     <span>Close Ticket...</span>
                                   </button>
                                 </div>
@@ -1256,13 +1256,13 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
 
               {/* Collapsible Ticket Details Drawer (Hidden unless user requests it) */}
               {showDetails && (
-                <div className="shrink-0 border-b border-black/[0.06] bg-[#F5F5F7]/70 p-3.5 text-xs transition-all">
+                <div className="shrink-0 border-b border-black/[0.06] dark:border-white/10 bg-[#F5F5F7]/70 dark:bg-[#141417] p-3.5 text-xs transition-all">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73]">Ticket Metadata & Linked Records</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#6E6E73] dark:text-[#A1A1AA]">Ticket Metadata & Linked Records</span>
                     <button
                       type="button"
                       onClick={() => setShowDetails(false)}
-                      className="text-[11px] text-[#6E6E73] hover:text-[#1D1D1F] font-medium cursor-pointer"
+                      className="text-[11px] text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white font-medium cursor-pointer"
                     >
                       Hide Info ▴
                     </button>
@@ -1270,77 +1270,77 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
 
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {/* Card 1: Customer & Assignment */}
-                    <div className="rounded-xl border border-black/[0.06] bg-white p-3 space-y-1.5">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#86868B]">Assignment & Contact</p>
+                    <div className="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-3 space-y-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#86868B] dark:text-[#71717A]">Assignment & Contact</p>
                       <div>
-                        <span className="text-[10px] text-[#6E6E73]">Customer: </span>
-                        <span className="font-semibold text-[#1D1D1F]">
+                        <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">Customer: </span>
+                        <span className="font-semibold text-[#1D1D1F] dark:text-white">
                           {selectedTicketDetail.customerName} ({selectedTicketDetail.customerRole || 'Renter'})
                         </span>
                       </div>
                       {selectedTicketDetail.customerEmail && (
-                        <p className="text-[11px] text-[#6E6E73] truncate">{selectedTicketDetail.customerEmail}</p>
+                        <p className="text-[11px] text-[#6E6E73] dark:text-[#A1A1AA] truncate">{selectedTicketDetail.customerEmail}</p>
                       )}
-                      <div className="pt-1 border-t border-black/[0.04]">
-                        <span className="text-[10px] text-[#6E6E73]">Assigned Team: </span>
-                        <span className="font-semibold text-[#1D1D1F]">{selectedTicketDetail.assignedTeam || 'CustomerSupport'}</span>
+                      <div className="pt-1 border-t border-black/[0.04] dark:border-white/10">
+                        <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">Assigned Team: </span>
+                        <span className="font-semibold text-[#1D1D1F] dark:text-white">{selectedTicketDetail.assignedTeam || 'CustomerSupport'}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-[#6E6E73]">Assigned Admin: </span>
-                        <span className="font-semibold text-[#1D1D1F]">{selectedTicketDetail.assignedAdminName || 'Unassigned'}</span>
+                        <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">Assigned Admin: </span>
+                        <span className="font-semibold text-[#1D1D1F] dark:text-white">{selectedTicketDetail.assignedAdminName || 'Unassigned'}</span>
                       </div>
                     </div>
 
                     {/* Card 2: Linked Records & Category */}
-                    <div className="rounded-xl border border-black/[0.06] bg-white p-3 space-y-1.5">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#86868B]">Linked Records</p>
+                    <div className="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-3 space-y-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#86868B] dark:text-[#71717A]">Linked Records</p>
                       <div>
-                        <span className="text-[10px] text-[#6E6E73]">Category: </span>
-                        <span className="font-semibold text-[#1D1D1F]">{selectedTicketDetail.category || 'General'}</span>
+                        <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">Category: </span>
+                        <span className="font-semibold text-[#1D1D1F] dark:text-white">{selectedTicketDetail.category || 'General'}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-[#6E6E73]">Incident: </span>
+                        <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">Incident: </span>
                         {selectedTicketDetail.incidentReference ? (
-                          <span className="font-mono font-semibold text-[#1D1D1F] bg-[#F5F5F7] px-1.5 py-0.2 rounded-md border border-black/[0.08] text-[10px]">
+                          <span className="font-mono font-semibold text-[#1D1D1F] dark:text-white bg-[#F5F5F7] dark:bg-white/[0.08] px-1.5 py-0.2 rounded-md border border-black/[0.08] dark:border-white/10 text-[10px]">
                             {selectedTicketDetail.incidentReference}
                           </span>
                         ) : (
-                          <span className="text-[11px] text-[#86868B]">None linked</span>
+                          <span className="text-[11px] text-[#86868B] dark:text-[#71717A]">None linked</span>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-[#6E6E73]">Dispute: </span>
+                        <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">Dispute: </span>
                         {selectedTicketDetail.disputeReference ? (
-                          <span className="font-mono font-semibold text-[#1D1D1F] bg-[#F5F5F7] px-1.5 py-0.2 rounded-md border border-black/[0.08] text-[10px]">
+                          <span className="font-mono font-semibold text-[#1D1D1F] dark:text-white bg-[#F5F5F7] dark:bg-white/[0.08] px-1.5 py-0.2 rounded-md border border-black/[0.08] dark:border-white/10 text-[10px]">
                             {selectedTicketDetail.disputeReference}
                           </span>
                         ) : (
-                          <span className="text-[11px] text-[#86868B]">None linked</span>
+                          <span className="text-[11px] text-[#86868B] dark:text-[#71717A]">None linked</span>
                         )}
                       </div>
                       {selectedTicketDetail.bookingId && (
-                        <div className="pt-1 border-t border-black/[0.04]">
-                          <span className="text-[10px] text-[#6E6E73]">Booking: </span>
-                          <span className="font-mono font-semibold text-[#1D1D1F]">#{selectedTicketDetail.bookingId}</span>
+                        <div className="pt-1 border-t border-black/[0.04] dark:border-white/10">
+                          <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">Booking: </span>
+                          <span className="font-mono font-semibold text-[#1D1D1F] dark:text-white">#{selectedTicketDetail.bookingId}</span>
                         </div>
                       )}
                     </div>
 
                     {/* Card 3: SLA & Attachments */}
-                    <div className="rounded-xl border border-black/[0.06] bg-white p-3 space-y-1.5">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#86868B]">SLA & Attachments</p>
+                    <div className="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-3 space-y-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#86868B] dark:text-[#71717A]">SLA & Attachments</p>
                       <div>
-                        <span className="text-[10px] text-[#6E6E73]">Resolution SLA: </span>
-                        <span className="font-medium text-[#1D1D1F]">
+                        <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">Resolution SLA: </span>
+                        <span className="font-medium text-[#1D1D1F] dark:text-white">
                           {selectedTicketDetail.resolutionDueAt ? formatDate(selectedTicketDetail.resolutionDueAt) : 'Standard'}
                         </span>
                       </div>
-                      <div className="pt-1 border-t border-black/[0.04]">
-                        <span className="text-[10px] text-[#6E6E73] block mb-1">
+                      <div className="pt-1 border-t border-black/[0.04] dark:border-white/10">
+                        <span className="text-[10px] text-[#6E6E73] dark:text-[#A1A1AA] block mb-1">
                           Attachments ({ticketAttachments.length}):
                         </span>
                         {ticketAttachments.length === 0 ? (
-                          <span className="text-[11px] text-[#86868B]">No files attached</span>
+                          <span className="text-[11px] text-[#86868B] dark:text-[#71717A]">No files attached</span>
                         ) : (
                           <div className="flex flex-wrap gap-1">
                             {ticketAttachments.map((att) => (
@@ -1348,12 +1348,12 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                                 key={att.attachmentId}
                                 type="button"
                                 onClick={() => void downloadAndOpenAttachment(viewer.token, att)}
-                                className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-black/[0.08] bg-[#F5F5F7] px-2 py-0.5 text-[10px] font-medium text-[#1D1D1F] hover:bg-[#E8E8ED] transition"
+                                className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-white/[0.08] px-2 py-0.5 text-[10px] font-medium text-[#1D1D1F] dark:text-white hover:bg-[#E8E8ED] dark:hover:bg-white/15 transition"
                                 title={`${att.fileName} (${formatFileSize(att.size || att.fileSize)})`}
                               >
-                                <FileText className="h-2.5 w-2.5 text-[#6E6E73]" />
+                                <FileText className="h-2.5 w-2.5 text-[#6E6E73] dark:text-[#A1A1AA]" />
                                 <span className="truncate max-w-[120px]">{att.fileName}</span>
-                                <Download className="h-2.5 w-2.5 text-[#86868B]" />
+                                <Download className="h-2.5 w-2.5 text-[#86868B] dark:text-[#A1A1AA]" />
                               </button>
                             ))}
                           </div>
@@ -1366,41 +1366,41 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
 
               {/* Embedded Refund Progress Card (RefundSummary) */}
               {selectedTicketDetail.refundSummary && (
-                <div className="shrink-0 border-b border-black/[0.06] bg-[#F5F5F7] px-4 py-3 text-xs">
+                <div className="shrink-0 border-b border-black/[0.06] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-4 py-3 text-xs">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <ShieldAlert className="h-4 w-4 text-[#1D1D1F] shrink-0" />
-                      <span className="font-bold text-[#1D1D1F]">
+                      <ShieldAlert className="h-4 w-4 text-[#1D1D1F] dark:text-white shrink-0" />
+                      <span className="font-bold text-[#1D1D1F] dark:text-white">
                         Refund & Dispute Progress
                       </span>
                       {selectedTicketDetail.refundSummary.disputeReference && (
-                        <span className="font-mono text-[10px] font-semibold text-[#1D1D1F] bg-white px-2 py-0.5 rounded-md border border-black/[0.08]">
+                        <span className="font-mono text-[10px] font-semibold text-[#1D1D1F] dark:text-white bg-white dark:bg-[#27272A] px-2 py-0.5 rounded-md border border-black/[0.08] dark:border-white/10">
                           {selectedTicketDetail.refundSummary.disputeReference}
                         </span>
                       )}
-                      <span className="inline-flex items-center gap-1 rounded-full bg-white border border-black/[0.08] px-2.5 py-0.5 text-[10px] font-semibold text-[#1D1D1F]">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white dark:bg-[#27272A] border border-black/[0.08] dark:border-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-[#1D1D1F] dark:text-white">
                         <span className="h-1.5 w-1.5 rounded-full bg-[#007AFF]" />
                         {selectedTicketDetail.refundSummary.status}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 text-[11px]">
                       {selectedTicketDetail.refundSummary.claimAmount != null && (
-                        <span className="text-[#6E6E73]">
-                          Claimed: <strong className="text-[#1D1D1F]">RM {Number(selectedTicketDetail.refundSummary.claimAmount).toFixed(2)}</strong>
+                        <span className="text-[#6E6E73] dark:text-[#A1A1AA]">
+                          Claimed: <strong className="text-[#1D1D1F] dark:text-white font-bold">RM {Number(selectedTicketDetail.refundSummary.claimAmount).toFixed(2)}</strong>
                         </span>
                       )}
                       {selectedTicketDetail.refundSummary.approvedAmount != null && (
-                        <span className="text-[#1D1D1F]">
+                        <span className="text-[#1D1D1F] dark:text-white">
                           Approved: <strong className="font-bold">RM {Number(selectedTicketDetail.refundSummary.approvedAmount).toFixed(2)}</strong>
                         </span>
                       )}
                     </div>
                   </div>
                   {(selectedTicketDetail.refundSummary.requiredEvidence || selectedTicketDetail.refundSummary.customerMessage || selectedTicketDetail.refundSummary.decisionReason) && (
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6E6E73]">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#6E6E73] dark:text-[#A1A1AA]">
                       {selectedTicketDetail.refundSummary.requiredEvidence && (
                         <span>
-                          <strong className="text-[#1D1D1F]">Evidence Needed:</strong> {selectedTicketDetail.refundSummary.requiredEvidence}
+                          <strong className="text-[#1D1D1F] dark:text-white">Evidence Needed:</strong> {selectedTicketDetail.refundSummary.requiredEvidence}
                         </span>
                       )}
                       {selectedTicketDetail.refundSummary.customerMessage && (
@@ -1408,7 +1408,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       )}
                       {selectedTicketDetail.refundSummary.decisionReason && (
                         <span>
-                          <strong className="text-[#1D1D1F]">Decision Note:</strong> {selectedTicketDetail.refundSummary.decisionReason}
+                          <strong className="text-[#1D1D1F] dark:text-white">Decision Note:</strong> {selectedTicketDetail.refundSummary.decisionReason}
                         </span>
                       )}
                     </div>
@@ -1417,29 +1417,29 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
               )}
 
               {/* Message Chat Feed / Audit Timeline */}
-              <div className="flex-1 min-h-0 space-y-3 overflow-y-auto p-3 sm:p-4">
+              <div className="flex-1 min-h-0 space-y-3 overflow-y-auto p-3 sm:p-4 bg-[#F5F5F7]/40 dark:bg-[#0E0E11]">
                 {showTimeline ? (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between border-b border-black/[0.06] pb-2">
-                      <h4 className="text-xs font-bold text-[#1D1D1F]">Full Ticket Audit History</h4>
-                      <span className="text-[10px] text-[#86868B]">
+                    <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-2">
+                      <h4 className="text-xs font-bold text-[#1D1D1F] dark:text-white">Full Ticket Audit History</h4>
+                      <span className="text-[10px] text-[#86868B] dark:text-[#A1A1AA]">
                         {selectedTicketDetail.auditTimeline?.length || 0} lifecycle events
                       </span>
                     </div>
                     {(!selectedTicketDetail.auditTimeline || selectedTicketDetail.auditTimeline.length === 0) ? (
-                      <p className="text-xs text-[#86868B] text-center py-6">No audit timeline recorded.</p>
+                      <p className="text-xs text-[#86868B] dark:text-[#A1A1AA] text-center py-6">No audit timeline recorded.</p>
                     ) : (
-                      <div className="relative border-l border-black/[0.1] ml-3 space-y-3.5 pl-4 text-xs">
+                      <div className="relative border-l border-black/[0.1] dark:border-white/10 ml-3 space-y-3.5 pl-4 text-xs">
                         {selectedTicketDetail.auditTimeline.map((ev, idx) => (
                           <div key={idx} className="relative">
-                            <div className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-[#1D1D1F] ring-4 ring-white" />
-                            <div className="rounded-xl border border-black/[0.06] bg-white p-3">
+                            <div className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-[#1D1D1F] dark:bg-white ring-4 ring-white dark:ring-[#141417]" />
+                            <div className="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-3">
                               <div className="flex items-center justify-between text-[10px]">
-                                <span className="font-bold text-[#1D1D1F]">{ev.action}</span>
-                                <span className="text-[#86868B]">{formatDate(ev.timestamp)}</span>
+                                <span className="font-bold text-[#1D1D1F] dark:text-white">{ev.action}</span>
+                                <span className="text-[#86868B] dark:text-[#A1A1AA]">{formatDate(ev.timestamp)}</span>
                               </div>
-                              <p className="font-medium text-[#6E6E73] mt-1 text-[11px]">{ev.detail}</p>
-                              <div className="mt-1 flex items-center gap-1 text-[9px] text-[#86868B]">
+                              <p className="font-medium text-[#6E6E73] dark:text-[#A1A1AA] mt-1 text-[11px]">{ev.detail}</p>
+                              <div className="mt-1 flex items-center gap-1 text-[9px] text-[#86868B] dark:text-[#71717A]">
                                 <span>Actor: {ev.actorName} ({ev.actorRole})</span>
                                 {ev.newState && <span>· State: {ev.newState}</span>}
                               </div>
@@ -1458,7 +1458,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       if (isSystem) {
                         return (
                           <div key={message.messageId} className="my-2 flex justify-center">
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-white px-3 py-1 text-[10px] font-medium text-[#6E6E73]">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] px-3 py-1 text-[10px] font-medium text-[#6E6E73] dark:text-[#A1A1AA]">
                               <CheckCircle2 className="h-3 w-3 text-[#34C759]" />
                               {cleanSupportText(message.message || message.body)}
                             </span>
@@ -1472,11 +1472,11 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                           className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}
                         >
                           <div className={cn('max-w-[88%] sm:max-w-[75%]', isOwn && 'text-right')}>
-                            <div className={cn('mb-1 flex items-center gap-1.5 px-1 text-[10px] font-medium text-[#86868B]', isOwn && 'justify-end')}>
-                              <span className="font-semibold text-[#1D1D1F]">{message.senderName}</span>
-                              <span className="rounded bg-[#F5F5F7] border border-black/[0.06] px-1.5 py-0.2 text-[8px] font-semibold text-[#6E6E73]">{message.senderRole}</span>
+                            <div className={cn('mb-1 flex items-center gap-1.5 px-1 text-[10px] font-medium text-[#86868B] dark:text-[#A1A1AA]', isOwn && 'justify-end')}>
+                              <span className="font-semibold text-[#1D1D1F] dark:text-[#D4D4D8]">{message.senderName}</span>
+                              <span className="rounded bg-[#F5F5F7] dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-1.5 py-0.2 text-[8px] font-semibold text-[#6E6E73] dark:text-[#A1A1AA]">{message.senderRole}</span>
                               {message.isInternal && (
-                                <span className="rounded bg-[#1D1D1F] px-1.5 py-0.2 text-[8px] font-semibold text-white">
+                                <span className="rounded bg-[#1D1D1F] dark:bg-white/20 px-1.5 py-0.2 text-[8px] font-semibold text-white">
                                   INTERNAL NOTE
                                 </span>
                               )}
@@ -1488,10 +1488,10 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                               className={cn(
                                 'rounded-2xl px-4 py-3 text-left text-xs leading-relaxed space-y-2',
                                 message.isInternal
-                                  ? 'border border-dashed border-black/[0.18] bg-[#F5F5F7] text-[#1D1D1F]'
+                                  ? 'border border-dashed border-black/[0.18] dark:border-white/20 bg-[#F5F5F7] dark:bg-[#18181C] text-[#1D1D1F] dark:text-white'
                                   : isOwn
                                   ? 'rounded-br-sm bg-[#007AFF] text-white'
-                                  : 'rounded-bl-sm border border-black/[0.06] bg-white text-[#1D1D1F]'
+                                  : 'rounded-bl-sm border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#1D1D1F] dark:text-white'
                               )}
                             >
                               {(message.message || message.body) && (
@@ -1499,7 +1499,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                               )}
 
                               {message.attachments && message.attachments.length > 0 && (
-                                <div className={cn('mt-2.5 space-y-1.5', (message.message || message.body) && 'border-t pt-2.5', isOwn && !message.isInternal ? 'border-white/20' : 'border-black/[0.06]')}>
+                                <div className={cn('mt-2.5 space-y-1.5', (message.message || message.body) && 'border-t pt-2.5', isOwn && !message.isInternal ? 'border-white/20' : 'border-black/[0.06] dark:border-white/10')}>
                                   {message.attachments.map((attachment) => (
                                     <AttachmentCard
                                       key={attachment.attachmentId}
@@ -1522,9 +1522,9 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
 
               {/* Bottom Composer / Action Area */}
               {selectedTicketDetail.status === 'Closed' ? (
-                <div className="shrink-0 border-t border-black/[0.06] bg-white p-3 text-center space-y-1.5">
-                  <p className="text-xs font-bold text-[#1D1D1F]">This ticket has been resolved and closed</p>
-                  <p className="text-[11px] text-[#6E6E73]">
+                <div className="shrink-0 border-t border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] p-3 text-center space-y-1.5">
+                  <p className="text-xs font-bold text-[#1D1D1F] dark:text-white">This ticket has been resolved and closed</p>
+                  <p className="text-[11px] text-[#6E6E73] dark:text-[#A1A1AA]">
                     If your issue persists, you can click Reopen Ticket to resume conversation with our team.
                   </p>
                   {mode === 'user' && (
@@ -1539,28 +1539,28 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   )}
                 </div>
               ) : (
-                <form onSubmit={handleSend} className="shrink-0 border-t border-black/[0.06] bg-white p-2.5 sm:p-3">
+                <form onSubmit={handleSend} className="shrink-0 border-t border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] p-2.5 sm:p-3">
                   {composerFiles.length > 0 && (
                     <div className="mb-2.5 flex flex-wrap gap-2">
                       {composerFiles.map((file, index) => (
                         <div
                           key={`${file.name}-${index}-${file.lastModified}`}
-                          className="inline-flex items-center gap-2 rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-2.5 py-1.5 text-[11px] font-medium text-[#1D1D1F]"
+                          className="inline-flex items-center gap-2 rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-2.5 py-1.5 text-[11px] font-medium text-[#1D1D1F] dark:text-white"
                         >
                           {isImageFile(file) ? (
                             <FileImageThumbnail file={file} />
                           ) : (
-                            <FileText className="h-4 w-4 text-[#6E6E73] shrink-0" />
+                            <FileText className="h-4 w-4 text-[#6E6E73] dark:text-[#A1A1AA] shrink-0" />
                           )}
                           <div className="min-w-0 max-w-[150px]">
-                            <p className="truncate leading-tight font-semibold text-[11px]">{file.name}</p>
-                            <p className="text-[9px] text-[#86868B]">{formatFileSize(file.size)}</p>
+                            <p className="truncate leading-tight font-semibold text-[11px] text-[#1D1D1F] dark:text-white">{file.name}</p>
+                            <p className="text-[9px] text-[#86868B] dark:text-[#71717A]">{formatFileSize(file.size)}</p>
                           </div>
                           <button
                             type="button"
                             onClick={() => setComposerFiles((curr) => curr.filter((_, i) => i !== index))}
                             aria-label={`Remove file ${file.name}`}
-                            className="cursor-pointer rounded-md p-1 text-[#86868B] hover:bg-black/[0.06] hover:text-[#1D1D1F] transition"
+                            className="cursor-pointer rounded-md p-1 text-[#86868B] dark:text-[#A1A1AA] hover:bg-black/[0.06] dark:hover:bg-white/10 hover:text-[#1D1D1F] dark:hover:text-white transition"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -1573,7 +1573,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-black/[0.08] bg-[#F5F5F7] text-[#6E6E73] transition-colors hover:text-[#1D1D1F]"
+                      className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] text-[#6E6E73] dark:text-[#A1A1AA] transition-colors hover:text-[#1D1D1F] dark:hover:text-white"
                       title="Attach documents or screenshots"
                     >
                       <Paperclip className="h-4 w-4" />
@@ -1602,10 +1602,10 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                           : 'Type a message... (Press Enter to send, Shift+Enter for new line)'
                       }
                       className={cn(
-                        'min-h-10 flex-1 resize-none rounded-xl border px-3.5 py-2.5 text-xs text-[#1D1D1F] placeholder:text-[#86868B] outline-none transition focus:bg-white',
+                        'min-h-10 flex-1 resize-none rounded-xl border px-3.5 py-2.5 text-xs text-[#1D1D1F] dark:text-white placeholder:text-[#86868B] dark:placeholder:text-[#71717A] outline-none transition focus:bg-white dark:focus:bg-[#18181C]',
                         isInternalNote
-                          ? 'border-dashed border-black/[0.2] bg-[#F5F5F7] focus:border-[#1D1D1F]'
-                          : 'border-black/[0.08] bg-[#F5F5F7]/80 focus:border-[#007AFF]'
+                          ? 'border-dashed border-black/[0.2] dark:border-white/20 bg-[#F5F5F7] dark:bg-[#18181C] focus:border-[#1D1D1F] dark:focus:border-white/40'
+                          : 'border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/80 dark:bg-[#18181C] focus:border-[#007AFF]'
                       )}
                     />
 
@@ -1614,7 +1614,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       disabled={sending || (!composer.trim() && composerFiles.length === 0)}
                       className={cn(
                         'flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-white transition disabled:cursor-not-allowed disabled:opacity-40',
-                        isInternalNote ? 'bg-[#1D1D1F] hover:bg-black' : 'bg-[#007AFF] hover:bg-[#0066D6]'
+                        isInternalNote ? 'bg-[#1D1D1F] hover:bg-black dark:bg-[#2C2C32] dark:hover:bg-[#38383E]' : 'bg-[#007AFF] hover:bg-[#0066D6]'
                       )}
                       aria-label="Send message"
                     >
@@ -1623,16 +1623,16 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] text-[#86868B]">
+                    <p className="text-[10px] text-[#86868B] dark:text-[#71717A]">
                       Up to 5 files (Images, PDF, Documents) · Max 10 MB each
                     </p>
                     {mode === 'admin' && (
-                      <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-[#6E6E73] select-none">
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-[#6E6E73] dark:text-[#A1A1AA] select-none">
                         <input
                           type="checkbox"
                           checked={isInternalNote}
                           onChange={(e) => setIsInternalNote(e.target.checked)}
-                          className="h-3.5 w-3.5 rounded border-black/[0.15] text-[#007AFF] focus:ring-[#007AFF]"
+                          className="h-3.5 w-3.5 rounded border-black/[0.15] dark:border-white/20 text-[#007AFF] focus:ring-[#007AFF]"
                         />
                         <span>Internal staff note</span>
                       </label>
@@ -1652,17 +1652,17 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
           role="dialog"
           aria-modal="true"
         >
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-2xl border border-black/[0.08]">
-            <div className="flex items-center justify-between border-b border-black/[0.06] p-4 sm:p-5">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white dark:bg-[#141417] shadow-2xl sm:rounded-2xl border border-black/[0.08] dark:border-white/10">
+            <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 p-4 sm:p-5">
               <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F7] text-[#1D1D1F]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white">
                   <Plus className="h-4.5 w-4.5" />
                 </span>
                 <div>
-                  <h3 className="text-base font-semibold tracking-tight text-[#1D1D1F]">
+                  <h3 className="text-base font-semibold tracking-tight text-[#1D1D1F] dark:text-white">
                     {mode === 'admin' ? 'Create Custom Ticket' : 'Create Support Ticket'}
                   </h3>
-                  <p className="text-[11px] text-[#6E6E73]">
+                  <p className="text-[11px] text-[#6E6E73] dark:text-[#A1A1AA]">
                     {mode === 'admin'
                       ? 'Manually log and assign a support ticket to an operational team.'
                       : 'Our support team typically responds within 15–30 minutes.'}
@@ -1676,7 +1676,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   setCreateOpen(false);
                   resetCreateForm();
                 }}
-                className="cursor-pointer rounded-xl p-2 text-[#86868B] hover:bg-[#F5F5F7] hover:text-[#1D1D1F]"
+                className="cursor-pointer rounded-xl p-2 text-[#86868B] dark:text-[#A1A1AA] hover:bg-[#F5F5F7] dark:hover:bg-white/10 hover:text-[#1D1D1F] dark:hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1686,23 +1686,23 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
               {mode === 'admin' && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Customer User ID *</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">Customer User ID *</span>
                     <input
                       type="number"
                       value={customerUserId}
                       onChange={(e) => setCustomerUserId(e.target.value)}
                       required
                       placeholder="e.g. 4"
-                      className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                      className="min-h-10 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 text-xs text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                     />
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Assigned Team</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">Assigned Team</span>
                     <SystemSelect
                       value={assignedTeamInput}
                       onChange={(e) => setAssignedTeamInput(e.target.value)}
-                      className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                      className="min-h-10 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 text-xs text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                     >
                       <option value="Payments">Payments</option>
                       <option value="ParkingOperations">Parking Operations</option>
@@ -1716,11 +1716,11 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
 
               {mode === 'user' && (
                 <label className="block space-y-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Issue Code *</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">Issue Code *</span>
                   <SystemSelect
                     value={issueCode}
                     onChange={(e) => setIssueCode(e.target.value)}
-                    className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs font-medium text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                    className="min-h-10 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 text-xs font-medium text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                   >
                     {viewer.role === 'PropertyOwner' || viewer.role === 'Owner' ? (
                       <>
@@ -1743,7 +1743,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
               )}
 
               <label className="block space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">
                   Subject / Summary {mode === 'admin' ? '*' : '(Optional)'}
                 </span>
                 <input
@@ -1752,18 +1752,18 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   maxLength={160}
                   required={mode === 'admin'}
                   placeholder="e.g. Double charged for Booking #101"
-                  className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                  className="min-h-10 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 text-xs text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 />
               </label>
 
               {mode === 'admin' && (
                 <div className="grid grid-cols-2 gap-3">
                   <label className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Category</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">Category</span>
                     <SystemSelect
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                      className="min-h-10 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 text-xs text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                     >
                       <option value="Payment">Payment</option>
                       <option value="ParkingAccess">Parking Access</option>
@@ -1774,11 +1774,11 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Priority</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">Priority</span>
                     <SystemSelect
                       value={priority}
                       onChange={(e) => setPriority(e.target.value)}
-                      className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                      className="min-h-10 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 text-xs text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                     >
                       <option value="P0">P0 - Emergency</option>
                       <option value="P1">P1 - High</option>
@@ -1792,17 +1792,17 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
               {mode === 'user' && (
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Booking ID (Optional)</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">Booking ID (Optional)</span>
                     <input
                       type="number"
                       value={bookingIdInput}
                       onChange={(e) => setBookingIdInput(e.target.value)}
                       placeholder="Auto-detected if blank"
-                      className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                      className="min-h-10 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 text-xs text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                     />
                   </label>
                   <label className="block space-y-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Claim Amount RM (Optional)</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">Claim Amount RM (Optional)</span>
                     <input
                       type="number"
                       step="0.01"
@@ -1810,14 +1810,14 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       value={claimAmountInput}
                       onChange={(e) => setClaimAmountInput(e.target.value)}
                       placeholder="Auto from booking if blank"
-                      className="min-h-10 w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 text-xs text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                      className="min-h-10 w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 text-xs text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                     />
                   </label>
                 </div>
               )}
 
               <label className="block space-y-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">Detailed Explanation *</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">Detailed Explanation *</span>
                 <textarea
                   value={openingMessage}
                   onChange={(event) => setOpeningMessage(event.target.value)}
@@ -1825,18 +1825,18 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   maxLength={2000}
                   required
                   placeholder="Explain the issue in detail..."
-                  className="w-full resize-none rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-3 text-xs leading-relaxed text-[#1D1D1F] outline-none focus:border-[#007AFF] focus:bg-white"
+                  className="w-full resize-none rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] p-3 text-xs leading-relaxed text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 />
               </label>
 
               {/* Attachment Box with Drag & Drop & Direct File Click */}
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B]">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#86868B] dark:text-[#A1A1AA]">
                     Attachments (Optional)
                   </span>
                   {openingFiles.length > 0 && (
-                    <span className="text-[10px] font-medium text-[#1D1D1F]">
+                    <span className="text-[10px] font-medium text-[#1D1D1F] dark:text-white">
                       {openingFiles.length} of {MAX_ATTACHMENT_COUNT} selected
                     </span>
                   )}
@@ -1864,15 +1864,15 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   className={cn(
                     'mt-1 flex min-h-22 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-4 text-center transition-all',
                     isDraggingModal
-                      ? 'border-[#007AFF] bg-[#F5F5F7] scale-[1.01]'
-                      : 'border-black/[0.12] bg-[#F5F5F7]/70 hover:border-black/[0.24] hover:bg-[#F5F5F7]'
+                      ? 'border-[#007AFF] bg-[#F5F5F7] dark:bg-white/[0.08] scale-[1.01]'
+                      : 'border-black/[0.12] dark:border-white/20 bg-[#F5F5F7]/70 dark:bg-[#18181C] hover:border-black/[0.24] dark:hover:border-white/40 hover:bg-[#F5F5F7] dark:hover:bg-[#202025]'
                   )}
                 >
-                  <UploadCloud className={cn('h-6 w-6 transition-colors', isDraggingModal ? 'text-[#007AFF]' : 'text-[#86868B]')} />
-                  <span className="mt-1.5 text-xs font-medium text-[#1D1D1F]">
+                  <UploadCloud className={cn('h-6 w-6 transition-colors', isDraggingModal ? 'text-[#007AFF]' : 'text-[#86868B] dark:text-[#A1A1AA]')} />
+                  <span className="mt-1.5 text-xs font-medium text-[#1D1D1F] dark:text-white">
                     {isDraggingModal ? 'Drop files here' : 'Add screenshots or PDF receipts'}
                   </span>
-                  <span className="mt-0.5 text-[10px] text-[#86868B]">
+                  <span className="mt-0.5 text-[10px] text-[#86868B] dark:text-[#A1A1AA]">
                     Click to browse or drag & drop · Up to 5 files · Max 10 MB each
                   </span>
                   <input
@@ -1893,13 +1893,13 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                 {openingFiles.length > 0 && (
                   <div className="mt-3 space-y-2">
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-semibold text-[#1D1D1F]">
+                      <span className="font-semibold text-[#1D1D1F] dark:text-white">
                         Ready to Upload ({openingFiles.length})
                       </span>
                       <button
                         type="button"
                         onClick={() => setOpeningFiles([])}
-                        className="cursor-pointer text-[#86868B] hover:text-[#1D1D1F] transition-colors font-medium text-[10px]"
+                        className="cursor-pointer text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white transition-colors font-medium text-[10px]"
                       >
                         Remove all
                       </button>
@@ -1911,22 +1911,22 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                         return (
                           <div
                             key={`${file.name}-${index}-${file.lastModified}`}
-                            className="flex items-center gap-2.5 rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2 text-xs text-[#1D1D1F] transition-all hover:bg-[#E8E8ED]"
+                            className="flex items-center gap-2.5 rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] p-2 text-xs text-[#1D1D1F] dark:text-white transition-all hover:bg-[#E8E8ED] dark:hover:bg-[#202025]"
                           >
                             {isImage ? (
                               <FileImageThumbnail file={file} />
                             ) : (
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white border border-black/[0.06] text-[#1D1D1F]">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 text-[#1D1D1F] dark:text-white">
                                 <FileText className="h-5 w-5" />
                               </div>
                             )}
 
                             <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium text-[11px] leading-tight text-[#1D1D1F]">{file.name}</p>
-                              <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#86868B]">
+                              <p className="truncate font-medium text-[11px] leading-tight text-[#1D1D1F] dark:text-white">{file.name}</p>
+                              <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#86868B] dark:text-[#A1A1AA]">
                                 <span>{formatFileSize(file.size)}</span>
                                 <span>·</span>
-                                <span className="inline-flex items-center gap-1 text-[#1D1D1F] font-medium">
+                                <span className="inline-flex items-center gap-1 text-[#1D1D1F] dark:text-white font-medium">
                                   <CheckCircle2 className="h-3 w-3 text-[#34C759]" />
                                   Attached
                                 </span>
@@ -1936,7 +1936,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                             <button
                               type="button"
                               onClick={() => setOpeningFiles((curr) => curr.filter((_, i) => i !== index))}
-                              className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-[#86868B] hover:bg-black/[0.06] hover:text-[#1D1D1F] transition"
+                              className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-[#86868B] dark:text-[#A1A1AA] hover:bg-black/[0.06] dark:hover:bg-white/10 hover:text-[#1D1D1F] dark:hover:text-white transition"
                               title={`Remove ${file.name}`}
                             >
                               <X className="h-4 w-4" />
@@ -1950,19 +1950,19 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
               </div>
 
               {formError && (
-                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-3.5 py-2 text-xs text-[#1D1D1F]">
+                <div role="alert" className="rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-3.5 py-2 text-xs text-[#1D1D1F] dark:text-white">
                   {formError}
                 </div>
               )}
 
-              <div className="flex justify-end gap-2.5 border-t border-black/[0.06] pt-4">
+              <div className="flex justify-end gap-2.5 border-t border-black/[0.06] dark:border-white/10 pt-4">
                 <button
                   type="button"
                   onClick={() => {
                     setCreateOpen(false);
                     resetCreateForm();
                   }}
-                  className="cursor-pointer min-h-10 rounded-xl border border-black/[0.08] px-4 text-xs font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="cursor-pointer min-h-10 rounded-xl border border-black/[0.08] dark:border-white/10 px-4 text-xs font-medium text-[#6E6E73] dark:text-[#A1A1AA] hover:bg-[#F5F5F7] dark:hover:bg-[#202025]"
                 >
                   Cancel
                 </button>
@@ -1983,24 +1983,24 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Reassign Modal (Admin) ── */}
       {reassignOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+            <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-[#1D1D1F]" />
-                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Reassign Support Ticket</h3>
+                <Users className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F] dark:text-white">Reassign Support Ticket</h3>
               </div>
-              <button type="button" onClick={() => setReassignOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setReassignOpen(false)} className="text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleReassign} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Target Department / Team *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">Target Department / Team *</label>
                 <SystemSelect
                   value={reassignTeam}
                   onChange={(e) => setReassignTeam(e.target.value)}
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 >
                   <option value="Payments">Payments & Finance</option>
                   <option value="ParkingOperations">Parking Operations</option>
@@ -2011,22 +2011,22 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Reassignment Reason *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">Reassignment Reason *</label>
                 <textarea
                   rows={3}
                   value={reassignReason}
                   onChange={(e) => setReassignReason(e.target.value)}
                   required
                   placeholder="Explain why this ticket is being reassigned..."
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] p-2.5 text-[#1D1D1F] dark:text-white dark:placeholder:text-[#71717A] outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06] dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setReassignOpen(false)}
-                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 text-xs font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] dark:border-white/10 px-3.5 py-1.5 text-xs font-medium text-[#6E6E73] dark:text-[#A1A1AA] hover:bg-[#F5F5F7] dark:hover:bg-[#202025]"
                 >
                   Cancel
                 </button>
@@ -2047,24 +2047,24 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Status Transition Modal (Admin) ── */}
       {transitionOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+            <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 text-[#1D1D1F]" />
-                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Transition Ticket Status</h3>
+                <RefreshCw className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F] dark:text-white">Transition Ticket Status</h3>
               </div>
-              <button type="button" onClick={() => setTransitionOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setTransitionOpen(false)} className="text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleTransition} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">New Status *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">New Status *</label>
                 <SystemSelect
                   value={transitionStatus}
                   onChange={(e) => setTransitionStatus(e.target.value)}
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white text-xs font-medium"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] text-xs font-medium"
                 >
                   <option value="InProgress">In Progress</option>
                   <option value="WaitingForCustomer">Waiting for Customer (Action Required)</option>
@@ -2074,39 +2074,39 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Resolution Code (Optional)</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">Resolution Code (Optional)</label>
                 <input
                   type="text"
                   value={transitionResolutionCode}
                   onChange={(e) => setTransitionResolutionCode(e.target.value)}
                   placeholder="e.g. GATE_UNLOCKED, REFUND_PROCESSED, CUSTOMER_ASSISTED"
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-[#1D1D1F] dark:text-white dark:placeholder:text-[#71717A] outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Status Note / Reason *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">Status Note / Reason *</label>
                 <textarea
                   rows={3}
                   value={transitionReason}
                   onChange={(e) => setTransitionReason(e.target.value)}
                   required
                   placeholder="Enter status update notes..."
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] p-2.5 text-[#1D1D1F] dark:text-white dark:placeholder:text-[#71717A] outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 />
               </div>
 
               {transitionModalError && (
-                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] px-3.5 py-2 text-xs text-[#1D1D1F]">
+                <div role="alert" className="rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] px-3.5 py-2 text-xs text-[#1D1D1F] dark:text-white">
                   {transitionModalError}
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06] dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setTransitionOpen(false)}
-                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 text-xs font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] dark:border-white/10 px-3.5 py-1.5 text-xs font-medium text-[#6E6E73] dark:text-[#A1A1AA] hover:bg-[#F5F5F7] dark:hover:bg-[#202025]"
                 >
                   Cancel
                 </button>
@@ -2127,22 +2127,22 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Close Ticket Modal (User & Admin) ── */}
       {closeModalOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+            <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-[#1D1D1F]" />
-                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">
+                <CheckCircle2 className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F] dark:text-white">
                   {mode === 'user' ? 'Confirm Issue Resolved & Close Ticket' : 'Resolve & Close Ticket'}
                 </h3>
               </div>
-              <button type="button" onClick={() => setCloseModalOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setCloseModalOpen(false)} className="text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleClose} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">
                   Resolution Summary {mode === 'admin' ? '*' : '(Optional)'}
                 </label>
                 <textarea
@@ -2155,15 +2155,15 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                       ? 'e.g. Gate has opened, no further assistance needed'
                       : 'e.g. Refund initiated and issue resolved'
                   }
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] p-2.5 text-xs text-[#1D1D1F] dark:text-white dark:placeholder:text-[#71717A] outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06] dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setCloseModalOpen(false)}
-                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 text-xs font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] dark:border-white/10 px-3.5 py-1.5 text-xs font-medium text-[#6E6E73] dark:text-[#A1A1AA] hover:bg-[#F5F5F7] dark:hover:bg-[#202025]"
                 >
                   Cancel
                 </button>
@@ -2184,35 +2184,35 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Reopen Ticket Modal (Customer) ── */}
       {reopenModalOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+            <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <RotateCcw className="h-4 w-4 text-[#1D1D1F]" />
-                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Reopen Support Ticket</h3>
+                <RotateCcw className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F] dark:text-white">Reopen Support Ticket</h3>
               </div>
-              <button type="button" onClick={() => setReopenModalOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setReopenModalOpen(false)} className="text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleReopen} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">Reason for Reopening *</label>
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">Reason for Reopening *</label>
                 <textarea
                   rows={3}
                   value={reopenReason}
                   onChange={(e) => setReopenReason(e.target.value)}
                   required
                   placeholder="Explain why the resolution did not resolve your issue..."
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 p-2.5 outline-none focus:border-[#007AFF] focus:bg-white"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] p-2.5 text-xs text-[#1D1D1F] dark:text-white dark:placeholder:text-[#71717A] outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06] dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setReopenModalOpen(false)}
-                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 text-xs font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] dark:border-white/10 px-3.5 py-1.5 text-xs font-medium text-[#6E6E73] dark:text-[#A1A1AA] hover:bg-[#F5F5F7] dark:hover:bg-[#202025]"
                 >
                   Cancel
                 </button>
@@ -2233,20 +2233,20 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Link Incident Modal (Admin) ── */}
       {linkIncidentOpen && selectedTicketDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+            <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <Siren className="h-4 w-4 text-[#1D1D1F]" />
-                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Link Ticket to Operational Incident</h3>
+                <Siren className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F] dark:text-white">Link Ticket to Operational Incident</h3>
               </div>
-              <button type="button" onClick={() => setLinkIncidentOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setLinkIncidentOpen(false)} className="text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleLinkIncident} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">
                   Operational Incident Reference or ID *
                 </label>
                 <input
@@ -2255,24 +2255,24 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   onChange={(e) => setLinkIncidentId(e.target.value)}
                   required
                   placeholder="e.g. INC-2026-52563 or 2"
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-mono text-xs"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-[#1D1D1F] dark:text-white dark:placeholder:text-[#71717A] outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] font-mono text-xs"
                 />
-                <p className="text-[10px] text-[#86868B] mt-1">
+                <p className="text-[10px] text-[#86868B] dark:text-[#A1A1AA] mt-1">
                   Connect ticket #{selectedTicketDetail.ticketReference} to an operational incident (e.g. INC-2026-52563) for unified telemetry and override tracking.
                 </p>
               </div>
 
               {linkIncidentError && (
-                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
+                <div role="alert" className="rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] p-2.5 text-xs text-[#1D1D1F] dark:text-white">
                   {linkIncidentError}
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06] dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setLinkIncidentOpen(false)}
-                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] dark:border-white/10 px-3.5 py-1.5 font-medium text-[#6E6E73] dark:text-[#A1A1AA] hover:bg-[#F5F5F7] dark:hover:bg-[#202025]"
                 >
                   Cancel
                 </button>
@@ -2293,20 +2293,20 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Link Support Ticket to Dispute Modal ── */}
       {linkDisputeOpen && selectedTicketDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+            <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4 text-[#1D1D1F]" />
-                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F]">Link Ticket to Dispute</h3>
+                <ShieldAlert className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
+                <h3 className="text-sm font-semibold tracking-tight text-[#1D1D1F] dark:text-white">Link Ticket to Dispute</h3>
               </div>
-              <button type="button" onClick={() => setLinkDisputeOpen(false)} className="text-[#86868B] hover:text-[#1D1D1F]">
+              <button type="button" onClick={() => setLinkDisputeOpen(false)} className="text-[#86868B] dark:text-[#A1A1AA] hover:text-[#1D1D1F] dark:hover:text-white">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <form onSubmit={handleLinkDispute} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-[#1D1D1F] mb-1">
+                <label className="block text-[11px] font-medium text-[#1D1D1F] dark:text-white mb-1">
                   Dispute Case Reference or ID *
                 </label>
                 <input
@@ -2315,24 +2315,24 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   onChange={(e) => setLinkDisputeId(e.target.value)}
                   required
                   placeholder="e.g. DSP-2026-96494 or 1"
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#F5F5F7]/60 px-3 py-2 outline-none focus:border-[#007AFF] focus:bg-white font-mono text-xs"
+                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] px-3 py-2 text-[#1D1D1F] dark:text-white dark:placeholder:text-[#71717A] outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C] font-mono text-xs"
                 />
-                <p className="text-[10px] text-[#86868B] mt-1">
+                <p className="text-[10px] text-[#86868B] dark:text-[#A1A1AA] mt-1">
                   Connect ticket #{selectedTicketDetail.ticketReference} to a financial dispute investigation (e.g. DSP-2026-96494) for unified reversal tracking.
                 </p>
               </div>
 
               {linkDisputeError && (
-                <div role="alert" className="rounded-xl border border-black/[0.08] bg-[#F5F5F7] p-2.5 text-xs text-[#1D1D1F]">
+                <div role="alert" className="rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#18181C] p-2.5 text-xs text-[#1D1D1F] dark:text-white">
                   {linkDisputeError}
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.06] dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setLinkDisputeOpen(false)}
-                  className="rounded-xl border border-black/[0.08] px-3.5 py-1.5 font-medium text-[#6E6E73] hover:bg-[#F5F5F7]"
+                  className="rounded-xl border border-black/[0.08] dark:border-white/10 px-3.5 py-1.5 font-medium text-[#6E6E73] dark:text-[#A1A1AA] hover:bg-[#F5F5F7] dark:hover:bg-[#202025]"
                 >
                   Cancel
                 </button>

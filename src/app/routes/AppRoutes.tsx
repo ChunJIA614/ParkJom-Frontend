@@ -38,8 +38,12 @@ export function AppRoutes() {
       <div className="font-sans text-[#1d1d1f] page-shell">
         <Suspense fallback={<RouteLoadingFallback />}>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            {/* The Login Page is the default main page on initial visit and after logout */}
+            <Route path="/" element={<LoginPage />} />
             <Route path="/login" element={<LoginPage />} />
+            {/* Landing Page is reached when user clicks "Back to Home" */}
+            <Route path="/home" element={<LandingPage />} />
+            <Route path="/landing" element={<LandingPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
@@ -55,6 +59,8 @@ export function AppRoutes() {
         <Routes>
           <Route path="/login" element={<Navigate to={dashboardPath} replace />} />
           <Route path="/" element={<Navigate to={dashboardPath} replace />} />
+          <Route path="/home" element={<Navigate to={dashboardPath} replace />} />
+          <Route path="/landing" element={<Navigate to={dashboardPath} replace />} />
           <Route path="/admin" element={<RequireRole role="Admin"><AdminDashboard /></RequireRole>} />
           <Route path="/owner" element={<RequireRole role="Owner"><OwnerDashboard /></RequireRole>} />
           <Route path="/commuter" element={<RequireRole role="Commuter"><CommuterDashboard /></RequireRole>} />

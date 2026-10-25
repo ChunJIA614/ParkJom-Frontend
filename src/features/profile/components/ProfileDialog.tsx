@@ -13,6 +13,7 @@ import {
   Loader2,
   Save,
   ShieldAlert,
+  SunMoon,
   Trash2,
   UserRound,
   Wallet,
@@ -20,6 +21,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { showAlert, showConfirm } from '@/contexts/ModalContext';
+import ThemeSegmentedControl from '@/components/ui/ThemeSegmentedControl';
+import { useTheme } from '@/app/theme/ThemeContext';
 import {
   deactivateMyAccount,
   getMyProfile,
@@ -46,11 +49,12 @@ const formatDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-const inputClass = 'w-full rounded-xl border border-black/[0.08] bg-white px-3.5 py-2.5 text-[13px] text-[#1d1d1f] transition-colors focus:border-[var(--workspace-accent,#007AFF)] focus:outline-none focus:ring-2 focus:ring-[var(--workspace-accent-soft,#e8f0fe)] disabled:bg-[#f5f5f7] disabled:text-[#8e8e93]';
+const inputClass = 'w-full rounded-xl border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-[#1c1c1e] px-3.5 py-2.5 text-[13px] text-[#1d1d1f] dark:text-[#f5f5f7] transition-colors focus:border-[var(--workspace-accent,#007AFF)] focus:outline-none focus:ring-2 focus:ring-[var(--workspace-accent-soft,#e8f0fe)] disabled:bg-[#f5f5f7] dark:disabled:bg-white/[0.04] disabled:text-[#8e8e93]';
 
 export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
   const navigate = useNavigate();
   const { user, setUser, logout } = useAuth();
+  const { preference, resolved } = useTheme();
   const token = user?.token ?? '';
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -238,12 +242,12 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="profile-dialog-title"
-        className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-[#f5f5f7] shadow-[0_24px_60px_rgba(15,23,42,0.25)] sm:max-w-2xl sm:rounded-3xl"
+        className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-[#f5f5f7] dark:bg-[#121214] shadow-[0_24px_60px_rgba(15,23,42,0.25)] sm:max-w-2xl sm:rounded-3xl border border-transparent dark:border-white/[0.08]"
       >
-        <header className="flex items-center justify-between border-b border-black/[0.06] bg-white px-5 py-4">
+        <header className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] px-5 py-4">
           <div>
-            <h2 id="profile-dialog-title" className="text-[16px] font-semibold text-[#1d1d1f]">My profile</h2>
-            <p className="text-[11px] text-[#6e6e73]">Manage your personal details, role, and account.</p>
+            <h2 id="profile-dialog-title" className="text-[16px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">My profile</h2>
+            <p className="text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">Manage your personal details, role, and account.</p>
           </div>
           <button
             ref={closeButtonRef}
@@ -251,7 +255,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
             onClick={onClose}
             disabled={isBusy}
             aria-label="Close"
-            className="rounded-full p-2 text-[#6e6e73] transition-colors hover:bg-black/[0.05] hover:text-[#1d1d1f] disabled:opacity-40"
+            className="rounded-full p-2 text-[#6e6e73] dark:text-[#a1a1a6] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.08] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7] disabled:opacity-40"
           >
             <X size={18} />
           </button>
@@ -275,7 +279,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
           )}
 
           {/* Identity card */}
-          <div className="rounded-2xl border border-black/[0.06] bg-white p-4 sm:p-5">
+          <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-4 sm:p-5">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center">
               <div className="relative shrink-0">
                 {pictureUrl && !imageFailed ? (
@@ -295,8 +299,8 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                 )}
               </div>
               <div className="min-w-0 flex-1 text-center sm:text-left">
-                <p className="truncate text-[17px] font-semibold text-[#1d1d1f]">{displayName}</p>
-                <p className="truncate text-[12px] text-[#6e6e73]">{profile?.email ?? user.email}</p>
+                <p className="truncate text-[17px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">{displayName}</p>
+                <p className="truncate text-[12px] text-[#6e6e73] dark:text-[#a1a1a6]">{profile?.email ?? user.email}</p>
                 <div className="mt-2 flex flex-wrap justify-center gap-1.5 sm:justify-start">
                   <span className="rounded-full bg-[#e8f0fe] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#007AFF]">
                     {profile?.roleName || USER_TYPE_LABELS[userType]}
@@ -324,7 +328,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isBusy || !profile}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3 py-2 text-[12px] font-semibold text-[#1d1d1f] transition-colors hover:bg-[#f5f5f7] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-white/[0.08] px-3 py-2 text-[12px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] transition-colors hover:bg-[#f5f5f7] dark:hover:bg-white/[0.12] disabled:opacity-50"
                 >
                   <Camera size={14} /> {pictureUrl ? 'Change' : 'Upload'}
                 </button>
@@ -334,7 +338,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                     onClick={() => void handleRemovePicture()}
                     disabled={isBusy || !profile}
                     aria-label="Remove profile picture"
-                    className="inline-flex items-center rounded-full border border-black/[0.08] bg-white px-2.5 py-2 text-[#d70015] transition-colors hover:bg-rose-50 disabled:opacity-50"
+                    className="inline-flex items-center rounded-full border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-white/[0.08] px-2.5 py-2 text-[#d70015] dark:text-rose-400 transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -352,12 +356,12 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
           ) : metrics.length > 0 && (
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               {metrics.map(({ label, value, icon: Icon, hint }) => (
-                <div key={label} className="rounded-2xl border border-black/[0.06] bg-white p-3">
-                  <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-[#8e8e93]">
+                <div key={label} className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-3">
+                  <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-[#8e8e93] dark:text-[#a1a1a6]">
                     <span>{label}</span>
                     <Icon size={14} className="text-[var(--workspace-accent,#007AFF)]" />
                   </div>
-                  <p className="mt-1.5 text-[16px] font-semibold text-[#1d1d1f]">{value}</p>
+                  <p className="mt-1.5 text-[16px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">{value}</p>
                   {hint && <p className="mt-0.5 text-[10px] text-[#8e8e93]">{hint}</p>}
                 </div>
               ))}
@@ -365,28 +369,28 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
           )}
 
           {/* Personal details */}
-          <form onSubmit={handleSave} className="space-y-3 rounded-2xl border border-black/[0.06] bg-white p-4 sm:p-5">
-            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f]">
+          <form onSubmit={handleSave} className="space-y-3 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-4 sm:p-5">
+            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
               <UserRound size={15} className="text-[var(--workspace-accent,#007AFF)]" /> Personal details
             </h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-[#6e6e73]">First name</span>
+                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">First name</span>
                 <input className={inputClass} value={form.firstName} maxLength={100} autoComplete="given-name" disabled={!profile || isBusy}
                   onChange={(event) => setForm((current) => ({ ...current, firstName: event.target.value }))} />
               </label>
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-[#6e6e73]">Last name</span>
+                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">Last name</span>
                 <input className={inputClass} value={form.lastName} maxLength={100} autoComplete="family-name" disabled={!profile || isBusy}
                   onChange={(event) => setForm((current) => ({ ...current, lastName: event.target.value }))} />
               </label>
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-[#6e6e73]">Phone number</span>
+                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">Phone number</span>
                 <input className={inputClass} type="tel" value={form.phoneNumber} maxLength={20} autoComplete="tel" placeholder="e.g. 0123456789" disabled={!profile || isBusy}
                   onChange={(event) => setForm((current) => ({ ...current, phoneNumber: event.target.value }))} />
               </label>
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-[#6e6e73]">Email</span>
+                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">Email</span>
                 <input className={inputClass} value={profile?.email ?? user.email} disabled readOnly />
               </label>
             </div>
@@ -404,30 +408,48 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
 
           {/* Account role (Single fixed role) */}
           {profile && (
-            <div className="flex flex-col gap-2 rounded-2xl border border-black/[0.06] bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="flex flex-col gap-2 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div>
-                <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f]">
+                <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
                   <UserRound size={15} className="text-[var(--workspace-accent,#007AFF)]" /> Account role
                 </h3>
-                <p className="mt-1 text-[11px] text-[#6e6e73]">
+                <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">
                   You are registered as a <strong>{USER_TYPE_LABELS[userType]}</strong>. Each account is assigned a single fixed role.
                 </p>
               </div>
-              <span className="inline-flex shrink-0 items-center rounded-full bg-[#f5f5f7] px-3.5 py-1.5 text-[12px] font-medium text-[#1d1d1f]">
+              <span className="inline-flex shrink-0 items-center rounded-full bg-[#f5f5f7] dark:bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-medium text-[#1d1d1f] dark:text-[#f5f5f7]">
                 {USER_TYPE_LABELS[userType]}
               </span>
             </div>
           )}
 
+          {/* Appearance */}
+          <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-4 sm:p-5">
+            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
+              <SunMoon size={15} className="text-[var(--workspace-accent,#007AFF)]" /> Appearance
+            </h3>
+            <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">
+              Choose how ParkJom looks. Your choice applies across every dashboard, map, and dialog on this device.
+            </p>
+            <div className="mt-3">
+              <ThemeSegmentedControl size="panel" />
+            </div>
+            <p className="mt-2 text-[10px] text-[#8e8e93]" aria-live="polite">
+              {preference === 'system'
+                ? `Following this device — currently ${resolved === 'dark' ? 'dark' : 'light'}.`
+                : `${preference === 'dark' ? 'Dark' : 'Light'} appearance is always on.`}
+            </p>
+          </div>
+
           {/* Danger zone */}
           {!isAdmin && profile && (
-            <div className="rounded-2xl border border-rose-200 bg-white p-4 sm:p-5">
+            <div className="rounded-2xl border border-rose-200 dark:border-rose-900/40 bg-white dark:bg-[#1c1c1e] p-4 sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#d70015]">
                     <ShieldAlert size={15} /> Deactivate account
                   </h3>
-                  <p className="mt-1 text-[11px] text-[#6e6e73]">
+                  <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">
                     Not possible while you have active or upcoming confirmed bookings. Owned parking spots will be unpublished.
                   </p>
                 </div>
@@ -445,7 +467,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
               {showDeactivate && (
                 <div className="mt-4 space-y-3 border-t border-rose-100 pt-4">
                   <label className="block space-y-1">
-                    <span className="text-[11px] font-semibold text-[#6e6e73]">Reason (optional)</span>
+                    <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">Reason (optional)</span>
                     <textarea
                       value={deactivateReason}
                       onChange={(event) => setDeactivateReason(event.target.value)}
@@ -456,7 +478,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                       className={`${inputClass} resize-none`}
                     />
                   </label>
-                  <label className="flex items-start gap-2 text-[11px] text-[#3a3a3c]">
+                  <label className="flex items-start gap-2 text-[11px] text-[#3a3a3c] dark:text-[#f5f5f7]">
                     <input
                       type="checkbox"
                       checked={deactivateAcknowledged}

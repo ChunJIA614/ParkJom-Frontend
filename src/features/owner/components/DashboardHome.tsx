@@ -19,23 +19,21 @@ import {
 import { getOwnerParkingWorkspace, localDateKey } from './AvailabilityScheduler';
 
 /**
- * The dashboard intentionally keeps the old data props optional so the owner
- * page can migrate away from wallet and booking-history state independently.
- * Only `bays` is rendered here; the two navigation callbacks are the new
- * entry points for the infrequent setup flow and the daily timetable flow.
+ * Overview panel. `bays` comes from Get My Parking and `bookings` from the
+ * owner booking-history API — together they decide whether a bay is locked
+ * today. The two navigation callbacks are the entry points for the infrequent
+ * setup flow and the daily timetable flow.
  */
 export interface DashboardHomeProps {
   bays: ParkingBay[];
   bookings?: Booking[];
+  bookingsError?: string | null;
   baysLoading?: boolean;
   baysError?: string | null;
   onRefreshBays?: () => void | Promise<void>;
   onConfigureParking?: (parkingSpotId: number) => void;
   onOpenTimetable?: (parkingSpotId: number) => void;
 
-  // Kept for compatibility with the current owner page while it is migrated.
-  walletBalance?: number;
-  onWithdraw?: (amount: number) => void;
   onUpdateAvailability?: (
     parkingSpotId: number,
     availabilityStatus: ParkingAvailabilityStatus,
@@ -44,8 +42,6 @@ export interface DashboardHomeProps {
     parkingSpotId: number,
     isPublished: boolean,
   ) => Promise<ParkingActionResult>;
-  activeBank?: { name: string; accNo: string; holder: string };
-  onResolveDispute?: (id: string) => void;
 }
 
 type StatusTone = 'green' | 'amber' | 'red' | 'blue' | 'slate';
@@ -237,6 +233,7 @@ function StatusLine({
 export default function DashboardHome({
   bays,
   bookings = [],
+  bookingsError = null,
   baysLoading = false,
   baysError = null,
   onRefreshBays,
@@ -302,6 +299,16 @@ export default function DashboardHome({
       {baysError && (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
           <span className="inline-flex items-center gap-2"><AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />{baysError}</span>
+          {onRefreshBays && <button type="button" onClick={() => void onRefreshBays()} className="font-semibold underline">Retry</button>}
+        </div>
+      )}
+
+      {bookingsError && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+          <span className="inline-flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Today&apos;s bookings could not be loaded, so bays may show as available when they are not. {bookingsError}
+          </span>
           {onRefreshBays && <button type="button" onClick={() => void onRefreshBays()} className="font-semibold underline">Retry</button>}
         </div>
       )}

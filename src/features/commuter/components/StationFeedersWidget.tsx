@@ -139,10 +139,10 @@ export default function StationFeedersWidget({
 
   if (compact) {
     return (
-      <div className={`station-feeders-compact mt-1.5 pt-1.5 border-t border-slate-100 ${className}`}>
+      <div className={`station-feeders-compact mt-1.5 pt-1.5 border-t border-slate-100 dark:border-white/10 ${className}`}>
         <div className="flex items-center justify-between gap-1 mb-1">
-          <div className="flex items-center gap-1 text-[10px] font-bold text-slate-700">
-            <Bus className="w-3 h-3 text-emerald-600 shrink-0" />
+          <div className="flex items-center gap-1 text-[10px] font-bold text-slate-700 dark:text-white">
+            <Bus className="w-3 h-3 text-emerald-500 shrink-0" />
             <span>Feeder Buses</span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
           </div>
@@ -150,7 +150,7 @@ export default function StationFeedersWidget({
             type="button"
             onClick={() => fetchFeeders(false)}
             disabled={isLoading}
-            className="text-[9.5px] text-slate-400 hover:text-slate-600 p-0.5 rounded transition disabled:opacity-40"
+            className="text-[9.5px] text-slate-400 dark:text-[#a1a1aa] hover:text-slate-600 dark:hover:text-white p-0.5 rounded transition disabled:opacity-40"
             title="Refresh feeders"
           >
             <RefreshCw className={`w-2.5 h-2.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -158,8 +158,8 @@ export default function StationFeedersWidget({
         </div>
 
         {isLoading && feeders.length === 0 ? (
-          <div className="py-1 text-[10px] text-slate-400 flex items-center justify-center gap-1">
-            <RefreshCw className="w-2.5 h-2.5 animate-spin text-emerald-600" />
+          <div className="py-1 text-[10px] text-slate-400 dark:text-[#a1a1aa] flex items-center justify-center gap-1">
+            <RefreshCw className="w-2.5 h-2.5 animate-spin text-emerald-500" />
             <span>Scanning buses...</span>
           </div>
         ) : feeders.length > 0 ? (
@@ -178,8 +178,8 @@ export default function StationFeedersWidget({
                   }}
                   className={`flex items-center justify-between text-[10px] rounded-md px-1.5 py-1 transition-colors cursor-pointer border ${
                     isSelected
-                      ? 'bg-emerald-100/90 border-emerald-500 text-emerald-900 shadow-2xs'
-                      : 'bg-emerald-50/60 hover:bg-emerald-50 border-emerald-100/80'
+                      ? 'bg-emerald-100/90 dark:bg-emerald-950/80 border-emerald-500 text-emerald-900 dark:text-emerald-200 shadow-2xs'
+                      : 'bg-emerald-50/60 dark:bg-white/[0.06] hover:bg-emerald-50 dark:hover:bg-white/10 border-emerald-100/80 dark:border-white/10'
                   }`}
                   title={isSelected ? 'Route shown on map (click to clear)' : 'Click to show full bus route on map'}
                 >
@@ -187,18 +187,18 @@ export default function StationFeedersWidget({
                     <span className="font-bold bg-emerald-600 text-white text-[9.5px] px-1 py-0.2 rounded font-mono shrink-0">
                       {f.routeId || 'BUS'}
                     </span>
-                    <span className="text-slate-600 font-mono text-[9.5px] truncate min-w-0">
+                    <span className="text-slate-600 dark:text-[#d4d4d8] font-mono text-[9.5px] truncate min-w-0">
                       {isSelected ? 'Route Shown' : f.licensePlate || f.vehicleId}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-1">
                     {f.distanceMeters != null && (
-                      <span className="text-[9.5px] text-slate-500">
+                      <span className="text-[9.5px] text-slate-500 dark:text-[#a1a1aa]">
                         {formatDistance(f.distanceMeters)}
                       </span>
                     )}
                     {f.estimatedArrivalMinutes != null && (
-                      <span className="font-bold text-emerald-700 bg-emerald-100/90 px-1 py-0.2 rounded text-[9.5px]">
+                      <span className="font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-900/60 px-1 py-0.2 rounded text-[9.5px]">
                         {formatEta(f.estimatedArrivalMinutes)}
                       </span>
                     )}
@@ -220,8 +220,8 @@ export default function StationFeedersWidget({
                   }}
                   className={`flex items-center justify-between text-[10px] rounded-md px-1.5 py-1 transition-colors cursor-pointer border ${
                     isSelected
-                      ? 'bg-emerald-100/90 border-emerald-500 text-emerald-900 shadow-2xs'
-                      : 'bg-slate-50 hover:bg-emerald-50/70 border-slate-200/80'
+                      ? 'bg-emerald-100/90 dark:bg-emerald-950/80 border-emerald-500 text-emerald-900 dark:text-emerald-200 shadow-2xs'
+                      : 'bg-slate-50 dark:bg-white/[0.06] hover:bg-emerald-50/70 dark:hover:bg-white/10 border-slate-200/80 dark:border-white/10'
                   }`}
                   title={isSelected ? 'Route shown on map (click to clear)' : 'Click to show full bus route on map'}
                 >
@@ -229,11 +229,11 @@ export default function StationFeedersWidget({
                     <span className="font-bold bg-emerald-600 text-white text-[9.5px] px-1 py-0.2 rounded font-mono shrink-0">
                       {r.shortName}
                     </span>
-                    <span className="text-slate-600 text-[9.5px] truncate min-w-0">
+                    <span className="text-slate-600 dark:text-[#d4d4d8] text-[9.5px] truncate min-w-0">
                       {r.longName}
                     </span>
                   </div>
-                  <span className="text-[9px] font-semibold text-emerald-700 shrink-0 ml-1">
+                  <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 shrink-0 ml-1">
                     {isSelected ? 'Shown' : 'Route'}
                   </span>
                 </div>
@@ -241,7 +241,7 @@ export default function StationFeedersWidget({
             })}
           </div>
         ) : (
-          <p className="text-[10px] text-slate-400 py-0.5 italic">
+          <p className="text-[10px] text-slate-400 dark:text-[#71717a] py-0.5 italic">
             No active feeder buses in range.
           </p>
         )}
@@ -251,24 +251,24 @@ export default function StationFeedersWidget({
 
   // Full / Sheet View (used in TransitHubSheet)
   return (
-    <div className={`station-feeders-widget rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-3 ${className}`}>
+    <div className={`station-feeders-widget rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#141417] p-3.5 space-y-3 ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100 shrink-0">
+          <span className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center border border-emerald-100 dark:border-emerald-800/40 shrink-0">
             <Bus className="w-4 h-4" />
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                 Approaching MRT Feeder Buses
               </h4>
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-semibold shrink-0 whitespace-nowrap">
-                <Radio className="w-2.5 h-2.5 animate-pulse text-emerald-600" />
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold shrink-0 whitespace-nowrap">
+                <Radio className="w-2.5 h-2.5 animate-pulse text-emerald-500" />
                 Live GTFS-R
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 truncate">
+            <p className="text-[11px] text-slate-500 dark:text-[#a1a1aa] truncate">
               Prasarana Rapid Bus · {stationName || 'Catchment area'} ({radiusMeters < 1000 ? `${radiusMeters}m` : `${radiusMeters / 1000}km`})
             </p>
           </div>
@@ -278,42 +278,42 @@ export default function StationFeedersWidget({
           type="button"
           onClick={() => fetchFeeders(false)}
           disabled={isLoading}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition disabled:opacity-50"
+          className="p-1.5 rounded-lg text-slate-400 dark:text-[#a1a1aa] hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition disabled:opacity-50"
           title="Refresh live feeder positions"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-500' : ''}`} />
         </button>
       </div>
 
       {/* Body States */}
       {isLoading && feeders.length === 0 ? (
-        <div className="py-8 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
-          <RefreshCw className="w-5 h-5 animate-spin text-emerald-600" />
+        <div className="py-8 text-center text-xs text-slate-500 dark:text-[#a1a1aa] flex flex-col items-center gap-2">
+          <RefreshCw className="w-5 h-5 animate-spin text-emerald-500" />
           <span className="font-medium">Connecting to Malaysia GTFS-Realtime telemetry…</span>
-          <span className="text-[11px] text-slate-400">Tracking active MRT feeder buses in vicinity</span>
+          <span className="text-[11px] text-slate-400 dark:text-[#71717a]">Tracking active MRT feeder buses in vicinity</span>
         </div>
       ) : error && feeders.length === 0 ? (
-        <div className="p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-700 flex items-start gap-2">
+        <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/40 rounded-xl text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
           <div>
             <span className="font-semibold">Unable to fetch live feeders.</span>
-            <p className="text-[11px] text-rose-600 mt-0.5">{error}</p>
+            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">{error}</p>
           </div>
         </div>
       ) : feeders.length === 0 ? (
-        <div className="py-6 text-center text-xs text-slate-500 bg-slate-50/60 rounded-xl border border-slate-100 px-4">
-          <Bus className="w-6 h-6 text-slate-300 mx-auto mb-1.5" />
-          <p className="font-medium text-slate-700">No MRT feeder buses currently in catchment area</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+        <div className="py-6 text-center text-xs text-slate-500 dark:text-[#a1a1aa] bg-slate-50/60 dark:bg-white/5 rounded-xl border border-slate-100 dark:border-white/10 px-4">
+          <Bus className="w-6 h-6 text-slate-300 dark:text-slate-600 mx-auto mb-1.5" />
+          <p className="font-medium text-slate-700 dark:text-white">No MRT feeder buses currently in catchment area</p>
+          <p className="text-[11px] text-slate-400 dark:text-[#71717a] mt-0.5">
             MRT feeder buses run at 10–15 min intervals during peak hours. Tap refresh to check for incoming buses.
           </p>
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-slate-500 px-1 font-medium">
+          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#a1a1aa] px-1 font-medium">
             <span>{feeders.length} active vehicle{feeders.length === 1 ? '' : 's'} tracked</span>
             {lastUpdated && (
-              <span className="text-[10px] text-slate-400">
+              <span className="text-[10px] text-slate-400 dark:text-[#71717a]">
                 Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             )}
@@ -335,12 +335,12 @@ export default function StationFeedersWidget({
                     }
                   }}
                   style={{
-                    borderColor: isSelected ? '#10b981' : '#e2e8f0',
+                    borderColor: isSelected ? '#10b981' : undefined,
                   }}
                   className={`p-2.5 rounded-xl transition-all cursor-pointer group ${
                     isSelected
-                      ? 'border-[1.5px] border-emerald-500 bg-emerald-50/80 ring-2 ring-emerald-500/20 shadow-xs'
-                      : 'border border-slate-200 hover:border-emerald-400 bg-white hover:bg-emerald-50/30 shadow-2xs'
+                      ? 'border-[1.5px] border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/70 ring-2 ring-emerald-500/20 shadow-xs'
+                      : 'border border-slate-200 dark:border-white/10 hover:border-emerald-400 bg-white dark:bg-[#18181C] hover:bg-emerald-50/30 dark:hover:bg-[#202025] shadow-2xs'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -350,7 +350,7 @@ export default function StationFeedersWidget({
                         {vehicle.routeId || 'T-BUS'}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white min-w-0">
                           <span className="truncate">MRT Feeder {vehicle.routeId || vehicle.vehicleId}</span>
                           {isSelected && (
                             <span className="shrink-0 whitespace-nowrap text-[9.5px] leading-none bg-emerald-600 text-white font-semibold px-1.5 py-0.5 rounded-full font-sans shadow-2xs">
@@ -358,11 +358,11 @@ export default function StationFeedersWidget({
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5 truncate">
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-[#a1a1aa] font-mono mt-0.5 truncate">
                           <span className="truncate">Plate: {vehicle.licensePlate || vehicle.vehicleId}</span>
                           {speed != null && (
-                            <span className="flex items-center gap-0.5 text-slate-600 font-sans shrink-0">
-                              <Gauge className="w-2.5 h-2.5 text-slate-400" />
+                            <span className="flex items-center gap-0.5 text-slate-600 dark:text-[#d4d4d8] font-sans shrink-0">
+                              <Gauge className="w-2.5 h-2.5 text-slate-400 dark:text-[#71717a]" />
                               {speed} km/h
                             </span>
                           )}
@@ -382,14 +382,14 @@ export default function StationFeedersWidget({
                           )}
                         </div>
                       ) : (
-                        <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded">
                           Live
                         </span>
                       )}
 
                       {vehicle.distanceMeters != null && (
-                        <span className="text-[10px] text-slate-500 mt-1 flex items-center gap-0.5">
-                          <Navigation className="w-2.5 h-2.5 text-slate-400" />
+                        <span className="text-[10px] text-slate-500 dark:text-[#a1a1aa] mt-1 flex items-center gap-0.5">
+                          <Navigation className="w-2.5 h-2.5 text-slate-400 dark:text-[#71717a]" />
                           {formatDistance(vehicle.distanceMeters)} away
                         </span>
                       )}
@@ -397,12 +397,12 @@ export default function StationFeedersWidget({
                   </div>
 
                   {/* Vehicle telemetry footer */}
-                  <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                  <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-white/10 flex items-center justify-between text-[10px] text-slate-400 dark:text-[#71717a]">
                     <span className="flex items-center gap-1">
                       <span className={`w-1.5 h-1.5 rounded-full ${isMoving ? 'bg-emerald-500' : 'bg-amber-400'}`} />
                       {isMoving ? `In motion (${speed} km/h)` : 'Stationary / At stop'}
                     </span>
-                    <span className="text-emerald-700 font-medium text-[10px]">
+                    <span className="text-emerald-700 dark:text-emerald-400 font-medium text-[10px]">
                       {isSelected ? 'Click to show all routes' : 'Click to show route on map'}
                     </span>
                   </div>

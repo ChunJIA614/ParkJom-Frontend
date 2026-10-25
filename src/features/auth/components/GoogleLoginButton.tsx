@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { GoogleLogin, googleLogout, type CredentialResponse } from '@react-oauth/google';
 import { Capacitor } from '@capacitor/core';
 import { useAuth, type UserRole } from '../context/AuthContext';
+import { useTheme } from '@/app/theme/ThemeContext';
 import { motion } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 import { completeUserProfile, signInWithGoogle } from '../api/authApi';
@@ -35,6 +36,7 @@ const fedCmButtonOptions = {
 
 export default function GoogleLoginButton() {
   const { setUser } = useAuth();
+  const { isDark } = useTheme();
   const [searchParams] = useSearchParams();
 
   // For new users: pre-select role from URL (e.g. /login?role=Owner)
@@ -51,6 +53,25 @@ export default function GoogleLoginButton() {
   const [phoneError, setPhoneError] = useState('');
   const [loginError, setLoginError] = useState('');
   const loginRequestInFlightRef = useRef(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  // Measure container and scale smoothly on narrow mobile screens so Google's pill border never cuts off
+  useEffect(() => {
+    const updateScale = () => {
+      if (wrapperRef.current) {
+        const containerWidth = wrapperRef.current.offsetWidth;
+        if (containerWidth > 0 && containerWidth < 380) {
+          setScale(containerWidth / 380);
+        } else {
+          setScale(1);
+        }
+      }
+    };
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
 
   const beginGoogleLoginRequest = () => {
     if (loginRequestInFlightRef.current) return false;
@@ -227,15 +248,15 @@ export default function GoogleLoginButton() {
     return (
       <div className="w-full space-y-4">
         <div className="text-left">
-          <p className="text-[13px] font-medium text-[#1d1d1f]">Welcome! One more step.</p>
-          <p className="text-[12px] text-[#6e6e73] mt-1">
+          <p className="text-[13px] font-medium text-[#1d1d1f] dark:text-white">Welcome! One more step.</p>
+          <p className="text-[12px] text-[#6e6e73] dark:text-[#a1a1aa] mt-1">
             Verify your phone number and choose your role to complete your profile.
           </p>
         </div>
 
         {/* Role selector */}
         <div className="space-y-1.5">
-          <p className="text-[11px] font-semibold text-[#6e6e73]">I am a...</p>
+          <p className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1aa]">I am a...</p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -243,7 +264,7 @@ export default function GoogleLoginButton() {
               className={`px-4 py-3 rounded-xl border text-[13px] font-semibold text-left transition-all
                 ${selectedRole === 3
                   ? 'bg-[#007AFF] text-white border-[#007AFF] shadow-sm'
-                  : 'bg-white text-[#1d1d1f] border-black/[0.08] hover:border-[#007AFF]/40'
+                  : 'bg-white dark:bg-[#18181C] text-[#1d1d1f] dark:text-white border-black/[0.08] dark:border-white/10 hover:border-[#007AFF]/40 dark:hover:border-white/20'
                 }`}
             >
               <span className="block text-[15px] mb-0.5">🚗</span>
@@ -256,7 +277,7 @@ export default function GoogleLoginButton() {
               className={`px-4 py-3 rounded-xl border text-[13px] font-semibold text-left transition-all
                 ${selectedRole === 2
                   ? 'bg-[#007AFF] text-white border-[#007AFF] shadow-sm'
-                  : 'bg-white text-[#1d1d1f] border-black/[0.08] hover:border-[#007AFF]/40'
+                  : 'bg-white dark:bg-[#18181C] text-[#1d1d1f] dark:text-white border-black/[0.08] dark:border-white/10 hover:border-[#007AFF]/40 dark:hover:border-white/20'
                 }`}
             >
               <span className="block text-[15px] mb-0.5">🏠</span>
@@ -272,8 +293,8 @@ export default function GoogleLoginButton() {
             placeholder="Phone number (e.g. 0123456789)"
             value={phoneNumber}
             onChange={(e) => { setPhoneNumber(e.target.value); setPhoneError(''); }}
-            className={`w-full px-4 py-3 rounded-xl border text-[14px] bg-white
-              ${phoneError ? 'border-red-400' : 'border-black/[0.08]'}
+            className={`w-full px-4 py-3 rounded-xl border text-[14px] bg-white dark:bg-[#18181C] text-[#1d1d1f] dark:text-white dark:placeholder:text-[#71717A]
+              ${phoneError ? 'border-red-400' : 'border-black/[0.08] dark:border-white/10'}
               focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30 focus:border-[#007AFF]
               transition-colors`}
           />
@@ -295,7 +316,7 @@ export default function GoogleLoginButton() {
         <button
           type="button"
           onClick={handleUseDifferentAccount}
-          className="text-[12px] text-[#6e6e73] hover:text-[#1d1d1f] transition-colors"
+          className="text-[12px] text-[#6e6e73] dark:text-[#a1a1aa] hover:text-[#1d1d1f] dark:hover:text-white transition-colors"
         >
           ← Use a different account
         </button>
@@ -305,13 +326,13 @@ export default function GoogleLoginButton() {
 
   // ---- Default: show Google Sign-In button ----
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-3 w-full">
       {isGoogleLoginPending ? (
         <button
           type="button"
           disabled
           aria-busy="true"
-          className="flex min-h-11 w-[260px] max-w-full cursor-wait items-center justify-center gap-2.5 rounded-full border border-black/10 bg-white px-6 text-[14px] font-semibold text-[#1d1d1f] shadow-sm opacity-80"
+          className="flex min-h-11 w-full max-w-[320px] cursor-wait items-center justify-center gap-2.5 rounded-full border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white shadow-sm opacity-80"
         >
           <Loader2 size={17} aria-hidden="true" className="animate-spin text-[#007AFF]" />
           <span aria-live="polite">Signing you in…</span>
@@ -321,25 +342,40 @@ export default function GoogleLoginButton() {
           type="button"
           whileTap={{ scale: 0.97 }}
           onClick={handleNativeGoogleLogin}
-          className="flex min-h-11 w-[260px] max-w-full items-center justify-center gap-3 rounded-full border border-black/10 bg-white px-6 text-[14px] font-semibold text-[#1d1d1f] shadow-sm"
+          className="flex min-h-11 w-full max-w-[320px] items-center justify-center gap-3 rounded-full border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white hover:dark:bg-[#1F1F24] shadow-sm"
         >
           <span aria-hidden="true" className="text-[17px] font-bold text-[#4285f4]">G</span>
           Continue with Google
         </motion.button>
       ) : (
-        <GoogleLogin
-          {...fedCmButtonOptions}
-          onSuccess={handleGoogleSuccess}
-          onError={handleGoogleError}
-          use_fedcm_for_button
-          theme="outline"
-          size="medium"
-          shape="pill"
-          text="continue_with"
-          width={260}
-        />
+        <div ref={wrapperRef} className="w-full flex justify-center items-center overflow-visible">
+          <div
+            style={{
+              width: 380,
+              transform: scale < 1 ? `scale(${scale})` : undefined,
+              transformOrigin: 'center center',
+            }}
+            className="flex justify-center shrink-0 rounded-full overflow-hidden"
+          >
+            <GoogleLogin
+              // Re-mount on theme change so the previous iframe cannot linger.
+              key={isDark ? 'google-dark' : 'google-light'}
+              {...fedCmButtonOptions}
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              use_fedcm_for_button
+              // In dark mode use filled_black to instruct Google GIS to render a dark pill
+              theme={isDark ? 'filled_black' : 'outline'}
+              size="large"
+              shape="pill"
+              text="continue_with"
+              width={380}
+              containerProps={{ className: 'google-signin-shell w-full flex justify-center' }}
+            />
+          </div>
+        </div>
       )}
-      <p className="text-[11px] text-[#8e8e93]">
+      <p className="text-[11px] text-[#8e8e93] dark:text-[#a1a1aa]">
         Use your Google account to sign in to ParkJom
       </p>
       {loginError && (

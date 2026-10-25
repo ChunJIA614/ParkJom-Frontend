@@ -70,17 +70,17 @@ export default function ParkingPass({
 
             {/* Connecting Rapid KL Bus Route to Station */}
             {connectingRoutes.length > 0 && (
-              <div className="rounded-xl bg-emerald-50/80 border border-emerald-200/90 p-2.5 my-2 text-xs">
+              <div className="rounded-xl bg-emerald-50/80 dark:bg-emerald-950/60 border border-emerald-200/90 dark:border-emerald-800/50 p-2.5 my-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-emerald-950 text-[11px]">
-                    <Bus size={14} className="text-emerald-600 shrink-0" />
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-950 dark:text-emerald-200 text-[11px]">
+                    <Bus size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span>Transit Connecting Bus</span>
                   </div>
-                  <span className="bg-emerald-200/80 text-emerald-900 font-mono font-bold px-1.5 py-0.2 rounded text-[10px]">
+                  <span className="bg-emerald-200/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-mono font-bold px-1.5 py-0.2 rounded text-[10px]">
                     Route {connectingRoutes[0].route.shortName}
                   </span>
                 </div>
-                <div className="text-[11px] text-emerald-800 mt-1 leading-tight">
+                <div className="text-[11px] text-emerald-800 dark:text-emerald-300 mt-1 leading-tight">
                   {connectingRoutes[0].nearestStopToSpot ? (
                     <>
                       <strong>{connectingRoutes[0].distanceToSpotMeters}m walk</strong> to stop <em>{connectingRoutes[0].nearestStopToSpot.stop.stopName}</em> → connects directly to <strong>{stationName || spot.station}</strong>
@@ -98,9 +98,9 @@ export default function ParkingPass({
                         : connectingRoutes[0].route.shortName,
                     )
                   }
-                  className={`mt-2 w-full py-1.5 px-3 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 ${
+                  className={`mt-2 w-full py-1.5 px-3 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
                     selectedBusRoute === connectingRoutes[0].route.shortName
-                      ? 'bg-emerald-800 text-white shadow-xs'
+                      ? 'bg-emerald-800 dark:bg-emerald-700 text-white shadow-xs'
                       : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
                   }`}
                 >

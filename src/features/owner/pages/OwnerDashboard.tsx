@@ -25,12 +25,16 @@ import PropertyOnboarding from '../components/PropertyOnboarding';
 import SettingsPanel from '../components/SettingsPanel';
 import ReviewReplies from '../components/ReviewReplies';
 import OwnerBookingHistory from '../components/OwnerBookingHistory';
+import OwnerWalletPanel from '../components/OwnerWalletPanel';
 import SupportWorkspace from '@/features/support/components/SupportWorkspace';
+import {
+  getOwnerAllSpotsBookingHistory,
+  type OwnerBookingHistoryItem,
+} from '@/features/bookings/api/bookingHistoryApi';
 import {
   ParkingBay,
   Booking,
   Notification,
-  WalletTransaction,
   MyParkingResponse,
   ParkingActionResult,
   ParkingAvailabilityStatus,
@@ -75,13 +79,66 @@ function saveNotifications(notifs: Notification[]) {
   localStorage.setItem('parkjom_owner_notifs', JSON.stringify(notifs));
 }
 
-type OwnerView = 'dashboard' | 'availability' | 'reviews' | 'registration' | 'settings' | 'tickets';
+function toDateKey(value: string): string | null {
+  const isoDate = value.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  if (isoDate) return isoDate;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+}
+
+function todayDateKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Turns the owner booking-history wire item into the shape `DashboardHome`
+ * matches against a bay. Bookings that no longer hold the bay (cancelled or
+ * expired) are dropped so they cannot show a spot as booked.
+ */
+function mapOwnerBookingToBooking(item: OwnerBookingHistoryItem): Booking | null {
+  const normalizedStatus = String(item.bookingStatus ?? '').trim().toLowerCase();
+  if (normalizedStatus === 'cancelled' || normalizedStatus === 'canceled' || normalizedStatus === 'expired') {
+    return null;
+  }
+
+  const startKey = toDateKey(item.startDate) ?? item.startDate;
+  const endKey = toDateKey(item.endDate) ?? startKey;
+  const today = todayDateKey();
+
+  // A stay that spans today carries today's key so the single-day matcher in
+  // DashboardHome can lock the bay for the whole stay, not just the first day.
+  const relevantDate = startKey && startKey <= today && today <= endKey ? today : startKey;
+
+  const status: Booking['status'] =
+    normalizedStatus === 'active' ? 'Active'
+      : normalizedStatus === 'completed' ? 'Completed'
+        : normalizedStatus === 'disputed' ? 'Disputed'
+          : 'Upcoming';
+
+  return {
+    id: `bk-${item.bookingId}`,
+    date: relevantDate,
+    renterPlate: item.vehicleNumberPlate || '',
+    renterName: item.renterName || item.vehicleNumberPlate || 'commuter',
+    bayId: String(item.parkingSpotId),
+    bayInfo: item.parkingLabel || `Spot #${item.parkingSpotId}`,
+    duration: `${item.bookedDays} day${item.bookedDays === 1 ? '' : 's'}`,
+    totalEarned: item.ownerPayoutAmount,
+    commissionPaid: Math.max(0, item.renterTotal - item.ownerPayoutAmount),
+    status,
+  };
+}
+
+type OwnerView = 'dashboard' | 'availability' | 'reviews' | 'registration' | 'wallet' | 'settings' | 'tickets';
 
 const OWNER_SEARCH_ITEMS = [
   { id: 'dashboard', label: 'Overview', keywords: ['dashboard', 'parking status', 'bookings'] },
   { id: 'availability', label: 'Configure Parking', keywords: ['availability', 'schedule', 'timetable'] },
   { id: 'reviews', label: 'Reviews', keywords: ['feedback', 'owner replies'] },
   { id: 'registration', label: 'Register Property', keywords: ['onboarding', 'new parking', 'bay'] },
+  { id: 'wallet', label: 'Earnings Wallet', keywords: ['wallet', 'earnings', 'payout', 'balance', 'transactions'] },
   { id: 'tickets', label: 'Support', keywords: ['tickets', 'issues', 'help'] },
   { id: 'settings', label: 'Settings', keywords: ['payout', 'bank account', 'preferences'] },
 ] satisfies Array<{ id: OwnerView; label: string; keywords: string[] }>;
@@ -99,7 +156,7 @@ export default function OwnerDashboard() {
   // Navigation View Router — persist across reloads
   const [activeView, setActiveView] = useState<OwnerView>(() => {
     const saved = localStorage.getItem('parkjom_owner_view');
-    const validViews: OwnerView[] = ['dashboard', 'availability', 'reviews', 'registration', 'settings', 'tickets'];
+    const validViews: OwnerView[] = ['dashboard', 'availability', 'reviews', 'registration', 'wallet', 'settings', 'tickets'];
     return saved && validViews.includes(saved as OwnerView) ? saved as OwnerView : 'dashboard';
   });
 
@@ -118,16 +175,14 @@ export default function OwnerDashboard() {
     localStorage.setItem('parkjom_owner_sidebar_collapsed', String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
-  // 1. Wallet Balance (RM) — TODO: fetch from backend
-  const [walletBalance, setWalletBalance] = useState(0);
-
-  // 2. Active Registered Parking Bays — fetched from backend
+  // 1. Active Registered Parking Bays — fetched from backend
   const [bays, setBays] = useState<ParkingBay[]>([]);
   const [baysLoading, setBaysLoading] = useState(true);
   const [baysError, setBaysError] = useState<string | null>(null);
 
-  // 3. Recent Bookings History — TODO: fetch from backend
+  // 2. Bookings for today — drives the "Booked now / Booked today" bay badge
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
 
   // 4. Notifications — persisted to localStorage
   const [notifications, setNotifications] = useState<Notification[]>(loadNotifications);
@@ -196,70 +251,47 @@ export default function OwnerDashboard() {
   // Sync notifications to localStorage
   useEffect(() => { saveNotifications(notifications); }, [notifications]);
 
+  // Load the owner's bookings so the overview can show which bays are locked today.
+  // The per-spot fan-out is the same source OwnerBookingHistory already uses.
+  const spotIdsKey = useMemo(
+    () => bays.map((bay) => bay.parkingSpotId).sort((a, b) => a - b).join(','),
+    [bays],
+  );
+
+  useEffect(() => {
+    if (activeView !== 'dashboard') return;
+
+    const token = user?.token ?? '';
+    const spotIds = spotIdsKey ? spotIdsKey.split(',').map(Number) : [];
+
+    if (!token || spotIds.length === 0) {
+      setBookings([]);
+      setBookingsError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setBookingsError(null);
+
+    getOwnerAllSpotsBookingHistory(token, spotIds, undefined, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setBookings(
+          result.data
+            .map(mapOwnerBookingToBooking)
+            .filter((booking): booking is Booking => booking !== null),
+        );
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setBookingsError(error instanceof Error ? error.message : 'Unable to load today’s bookings.');
+        }
+      });
+
+    return () => controller.abort();
+  }, [activeView, user?.token, spotIdsKey]);
+
   // --- INTERACTION ACTION HANDLERS ---
-
-  // Handle wallet withdrawals
-  const handleWithdrawFunds = (amount: number) => {
-    // 1. Subtract balance
-    setWalletBalance(prev => prev - amount);
-
-    // 2. Append transaction row to the tables list
-    const today = new Date();
-    const dateStr = today.getDate().toString().padStart(2, '0') + ' ' + 
-                    today.toLocaleString('en-US', { month: 'short' }) + ' ' + 
-                    today.getFullYear();
-
-    const newWithdrawalRow: Booking = {
-      id: `w-${Math.floor(Math.random() * 1000)}`,
-      date: dateStr,
-      renterPlate: 'WITHDRAWAL',
-      renterName: 'Direct Bank Settlement',
-      bayId: 'N/A',
-      bayInfo: 'Fund Settlement',
-      propertyName: 'Platform Wallet',
-      duration: `${activeBank.name.split(' ')[0]} Transfer`,
-      totalEarned: -amount,
-      commissionPaid: 0,
-      status: 'Upcoming' // Will show pending styled matching 'Upcoming'
-    };
-
-    setBookings(prev => [newWithdrawalRow, ...prev]);
-
-    // 3. Create a success notification
-    const newNotif: Notification = {
-      id: `n-${Date.now()}`,
-      title: 'Withdrawal Pending',
-      message: `RM ${amount.toFixed(2)} requested for transfer to ${activeBank.name.split(' ')[0]} account Ending in ${activeBank.accNo.slice(-4)}.`,
-      time: 'Just now',
-      unread: true,
-      type: 'payment'
-    };
-    setNotifications(prev => [newNotif, ...prev]);
-  };
-
-  // Resolve disputes (Acknowledge overstay penalty and credit the wallet!)
-  const handleResolveDispute = (bookingId: string) => {
-    setBookings(prev => prev.map(b => {
-      if (b.id === bookingId) {
-        return { ...b, status: 'Completed', totalEarned: b.totalEarned + 3.60 }; // Adds penalty RM 3.60
-      }
-      return b;
-    }));
-
-    // Credit overstay fine to balance
-    setWalletBalance(prev => prev + 3.60);
-
-    // Alert notification
-    const newNotif: Notification = {
-      id: `n-${Date.now()}`,
-      title: 'Dispute Resolved & Paid',
-      message: `Overstay penalty of RM 3.60 has been credited to your withdrawable wallet balance.`,
-      time: 'Just now',
-      unread: true,
-      type: 'payment'
-    };
-    setNotifications(prev => [newNotif, ...prev]);
-  };
 
   const handleUpdateParkingAvailability = async (
     parkingSpotId: number,
@@ -406,6 +438,7 @@ export default function OwnerDashboard() {
     availability: { title: 'Configure parking', description: 'Keep one-time parking details separate from the availability timetable you manage day to day.' },
     reviews: { title: 'Parking reviews', description: 'Read customer feedback and reply as the parking owner.' },
     registration: { title: 'Register a property', description: 'Submit a bay for verification and configure it for bookings.' },
+    wallet: { title: 'Earnings wallet', description: 'Track settled payouts, funds on hold, and every commission and refund line.' },
     tickets: { title: 'Support', description: 'Track booking, access, and settlement issues.' },
     settings: { title: 'Settings', description: 'Manage payout details and workspace preferences.' },
   };
@@ -456,22 +489,23 @@ export default function OwnerDashboard() {
           {activeView === 'dashboard' && (
             <div>
               <DashboardHome
-                walletBalance={walletBalance}
-                onWithdraw={handleWithdrawFunds}
                 bookings={bookings}
+                bookingsError={bookingsError}
                 bays={bays}
                 baysLoading={baysLoading}
                 baysError={baysError}
                 onRefreshBays={fetchMyParking}
                 onUpdateAvailability={handleUpdateParkingAvailability}
                 onUpdatePublication={handleUpdateParkingPublication}
-                activeBank={activeBank}
-                onResolveDispute={handleResolveDispute}
                 onConfigureParking={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'setup')}
                 onOpenTimetable={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'timetable')}
               />
               {user && <OwnerBookingHistory token={user.token} bays={bays} />}
             </div>
+          )}
+
+          {activeView === 'wallet' && user && (
+            <OwnerWalletPanel token={user.token} />
           )}
 
           {activeView === 'availability' && (
@@ -536,7 +570,7 @@ export default function OwnerDashboard() {
           { id: 'registration', icon: PlusSquare, label: 'Register' },
           { id: 'more', icon: Menu, label: 'More' },
         ]}
-        activeId={['tickets', 'settings'].includes(activeView) ? 'more' : activeView}
+        activeId={['tickets', 'settings', 'wallet'].includes(activeView) ? 'more' : activeView}
         onChange={(id) => {
           if (id === 'more') {
             setIsSidebarOpen(true);

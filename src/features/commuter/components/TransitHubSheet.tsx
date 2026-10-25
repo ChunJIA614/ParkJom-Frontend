@@ -14,6 +14,7 @@ import {
   Bus,
 } from 'lucide-react';
 import StationFeedersWidget from './StationFeedersWidget';
+import { readableTextOn } from '@/lib/contrast';
 import {
   TransitRoute,
   TransitStopSummary,
@@ -286,18 +287,18 @@ export default function TransitHubSheet({
 
   return (
     <div
-      className={`transit-hub-panel flex flex-col h-full bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden ${className}`}
+      className={`transit-hub-panel flex flex-col h-full bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200/80 dark:border-white/[0.12] shadow-xs overflow-hidden ${className}`}
       role="region"
       aria-label="Transit Stations and Live Departures"
     >
       {/* Refined Functional Header */}
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white">
+      <div className="px-4 py-3 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between shrink-0 bg-white dark:bg-[#1c1c1e]">
         <div className="flex items-center gap-2.5">
           <span className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
             <Train className="w-4 h-4 text-blue-600" />
           </span>
           <div>
-            <h2 className="text-xs font-bold text-slate-900 tracking-tight">Transit Explorer</h2>
+            <h2 className="text-xs font-bold text-slate-900 dark:text-[#f5f5f7] tracking-tight">Transit Explorer</h2>
             <p className="text-[10px] text-slate-500">Rapid KL GTFS Network</p>
           </div>
         </div>
@@ -314,7 +315,7 @@ export default function TransitHubSheet({
       </div>
 
       {/* Control Bar: Search & Subtle Line Filter Chips */}
-      <div className="px-4 py-2.5 shrink-0 space-y-2 border-b border-slate-100 bg-slate-50/40">
+      <div className="px-4 py-2.5 shrink-0 space-y-2 border-b border-slate-100 dark:border-white/[0.08] bg-slate-50/40 dark:bg-white/[0.02]">
         {/* Subtle Search Bar */}
         <div className="relative flex items-center">
           <Search className="w-3.5 h-3.5 absolute left-3 text-slate-400 pointer-events-none" />
@@ -323,7 +324,7 @@ export default function TransitHubSheet({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search station (e.g. Chow Kit, KLCC, TRX)..."
-            className="w-full h-8 pl-8 pr-7 bg-white border border-slate-200 rounded-lg text-xs font-normal text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+            className="w-full h-8 pl-8 pr-7 bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/[0.12] rounded-lg text-xs font-normal text-slate-900 dark:text-[#f5f5f7] placeholder-slate-400 dark:placeholder-[#8e8e93] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
           />
           {searchQuery && (
             <button
@@ -344,8 +345,8 @@ export default function TransitHubSheet({
             onClick={() => setSelectedLineFilter('ALL')}
             className={`h-6 px-2.5 rounded-md text-[11px] font-semibold whitespace-nowrap transition-colors ${
               selectedLineFilter === 'ALL'
-                ? 'bg-slate-900 text-white'
-                : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100'
+                ? 'bg-slate-900 dark:bg-[#0a84ff] text-white'
+                : 'bg-white dark:bg-white/[0.08] text-slate-600 dark:text-[#a1a1a6] border border-slate-200/80 dark:border-white/[0.12] hover:bg-slate-100 dark:hover:bg-white/[0.14]'
             }`}
           >
             All Lines
@@ -360,8 +361,8 @@ export default function TransitHubSheet({
                 onClick={() => setSelectedLineFilter(route.routeId)}
                 className={`h-6 px-2 rounded-md text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap transition-all border ${
                   isSelected
-                    ? 'bg-slate-900 text-white border-slate-900 font-semibold'
-                    : 'bg-white text-slate-700 border-slate-200/80 hover:bg-slate-50'
+                    ? 'bg-slate-900 dark:bg-[#0a84ff] text-white border-slate-900 dark:border-[#0a84ff] font-semibold'
+                    : 'bg-white dark:bg-white/[0.08] text-slate-700 dark:text-[#f5f5f7] border border-slate-200/80 dark:border-white/[0.12] hover:bg-slate-50 dark:hover:bg-white/[0.14]'
                 }`}
               >
                 <span
@@ -383,25 +384,28 @@ export default function TransitHubSheet({
         {activeStop ? (
           <div className="space-y-3">
             {/* Station Header Card */}
-            <div className="bg-slate-50/70 rounded-xl p-3 border border-slate-200/80">
+            <div className="bg-slate-50/70 dark:bg-white/[0.05] rounded-xl p-3 border border-slate-200/80 dark:border-white/[0.08]">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2.5 min-w-0">
                   {/* Compact Line Badge */}
                   <span
-                    className="px-2 py-0.5 rounded text-[11px] font-mono font-bold text-white shrink-0 mt-0.5 shadow-xs"
-                    style={{ backgroundColor: lineMeta?.color || '#007AFF' }}
+                    className="px-2 py-0.5 rounded text-[11px] font-mono font-bold shrink-0 mt-0.5 shadow-xs"
+                    style={{
+                      backgroundColor: lineMeta?.color || '#007AFF',
+                      color: readableTextOn(lineMeta?.color),
+                    }}
                   >
                     {activeStop.stopId}
                   </span>
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <h3 className="text-sm font-bold text-slate-900 truncate">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-[#f5f5f7] truncate">
                         {activeStop.stopName}
                       </h3>
                       {activeStop.wheelchairAccessible && (
                         <span
-                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white text-slate-600 border border-slate-200"
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white dark:bg-white/[0.08] text-slate-600 dark:text-[#f5f5f7] border border-slate-200 dark:border-white/[0.12]"
                           title="Wheelchair accessible"
                         >
                           <Accessibility className="w-2.5 h-2.5 text-blue-600" /> Accessible
@@ -409,11 +413,11 @@ export default function TransitHubSheet({
                       )}
                     </div>
 
-                    <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                    <div className="text-[11px] text-slate-500 dark:text-[#a1a1a6] mt-0.5 truncate">
                       <span>{lineMeta?.name || activeStop.routeName}</span>
                     </div>
 
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-500">
+                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-500 dark:text-[#a1a1a6]">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3 text-slate-400" />
                         {activeStop.operatingHours}
@@ -443,14 +447,14 @@ export default function TransitHubSheet({
             </div>
 
             {/* Segmented Sub-tabs: Departures vs Feeder Buses vs Parking Bays */}
-            <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
+            <div className="flex bg-slate-100 dark:bg-white/[0.06] p-0.5 rounded-lg text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setStationTab('departures')}
                 className={`flex-1 py-1 px-2 rounded-md transition-all ${
                   stationTab === 'departures'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-[#2c2c2e] text-slate-900 dark:text-[#f5f5f7] shadow-xs'
+                    : 'text-slate-500 dark:text-[#a1a1a6] hover:text-slate-800 dark:hover:text-[#f5f5f7]'
                 }`}
               >
                 Departures
@@ -460,8 +464,8 @@ export default function TransitHubSheet({
                 onClick={() => setStationTab('feeders')}
                 className={`flex-1 py-1 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
                   stationTab === 'feeders'
-                    ? 'bg-white text-emerald-800 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-[#2c2c2e] text-emerald-800 dark:text-emerald-400 shadow-xs'
+                    : 'text-slate-500 dark:text-[#a1a1a6] hover:text-slate-800 dark:hover:text-[#f5f5f7]'
                 }`}
               >
                 <span>Feeders</span>
@@ -472,8 +476,8 @@ export default function TransitHubSheet({
                 onClick={() => setStationTab('bays')}
                 className={`flex-1 py-1 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
                   stationTab === 'bays'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white dark:bg-[#2c2c2e] text-slate-900 dark:text-[#f5f5f7] shadow-xs'
+                    : 'text-slate-500 dark:text-[#a1a1a6] hover:text-slate-800 dark:hover:text-[#f5f5f7]'
                 }`}
               >
                 <span>Bays</span>
@@ -485,17 +489,17 @@ export default function TransitHubSheet({
 
             {/* Sub-tab 1: Live Departures */}
             {stationTab === 'departures' && (
-              <div className="rounded-xl border border-slate-200/80 bg-white p-3 space-y-2.5">
+              <div className="rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#141417] p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-white">
                       Live Departures
                     </h4>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-500">
+                    <span className="text-[10px] font-medium text-slate-500 dark:text-[#A1A1AA]">
                       {schedule?.isPeakHour
                         ? `Peak · ${schedule.frequencyMinutes}m interval`
                         : `Normal · ${schedule?.frequencyMinutes || 6}m interval`}
@@ -504,7 +508,7 @@ export default function TransitHubSheet({
                       type="button"
                       onClick={() => loadStationData(activeStop.stopId, parkingRadius)}
                       disabled={isLoadingSchedule}
-                      className="p-1 text-slate-400 hover:text-slate-700 transition disabled:opacity-50"
+                      className="p-1 text-slate-400 dark:text-[#A1A1AA] hover:text-slate-700 dark:hover:text-white transition disabled:opacity-50 cursor-pointer"
                       title="Refresh timetable"
                     >
                       <RefreshCw
@@ -515,28 +519,28 @@ export default function TransitHubSheet({
                 </div>
 
                 {isLoadingSchedule ? (
-                  <div className="py-6 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
+                  <div className="py-6 text-center text-xs text-slate-500 dark:text-[#A1A1AA] flex flex-col items-center gap-2">
                     <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
                     <span>Fetching live train times…</span>
                   </div>
                 ) : scheduleError ? (
-                  <div className="p-2.5 bg-rose-50 text-rose-700 rounded-lg text-xs">
+                  <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/50 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 rounded-lg text-xs">
                     {scheduleError}
                   </div>
                 ) : schedule?.departures && schedule.departures.length > 0 ? (
                   <div className="space-y-2">
                     {/* Direction Tabs */}
                     {schedule.departures.length > 1 && (
-                      <div className="flex bg-slate-100 p-0.5 rounded-lg gap-1">
+                      <div className="flex bg-slate-100 dark:bg-[#18181C] p-0.5 rounded-lg gap-1 border border-transparent dark:border-white/10">
                         {schedule.departures.map((dep, idx) => (
                           <button
                             key={idx}
                             type="button"
                             onClick={() => setActiveDirectionIndex(idx)}
-                            className={`flex-1 py-1 px-2 rounded-md text-xs font-semibold truncate transition-all ${
+                            className={`flex-1 py-1 px-2 rounded-md text-xs font-semibold truncate transition-all cursor-pointer ${
                               activeDirectionIndex === idx
-                                ? 'bg-white text-slate-900 shadow-xs'
-                                : 'text-slate-500 hover:text-slate-800'
+                                ? 'bg-white dark:bg-[#242429] text-slate-900 dark:text-white shadow-xs'
+                                : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                             }`}
                           >
                             {dep.direction}
@@ -552,22 +556,22 @@ export default function TransitHubSheet({
                       if (!currentDep) return null;
 
                       return (
-                        <div className="rounded-lg bg-slate-50 border border-slate-200/60 p-3">
+                        <div className="rounded-lg bg-slate-50 dark:bg-[#18181C] border border-slate-200/60 dark:border-white/10 p-3">
                           <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
+                              <div className="text-[10px] text-slate-500 dark:text-[#A1A1AA] font-medium uppercase tracking-wider">
                                 Next train to
                               </div>
-                              <div className="text-sm font-bold text-slate-900 truncate">
+                              <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
                                 {currentDep.destination}
                               </div>
-                              <div className="text-[11px] text-slate-500">
+                              <div className="text-[11px] text-slate-500 dark:text-[#A1A1AA]">
                                 {currentDep.trainType} · Departs {currentDep.estimatedDeparture}
                               </div>
                             </div>
 
                             <div className="text-right shrink-0">
-                              <div className="inline-flex items-baseline gap-1 bg-slate-900 text-white px-2.5 py-1 rounded-md font-mono">
+                              <div className="inline-flex items-baseline gap-1 bg-slate-900 dark:bg-white text-white dark:text-black px-2.5 py-1 rounded-md font-mono">
                                 <span className="text-base font-bold leading-none">
                                   {currentDep.minutesUntilArrival}
                                 </span>
@@ -579,13 +583,13 @@ export default function TransitHubSheet({
                           {/* Subsequent Departures */}
                           {currentDep.subsequentDepartures &&
                             currentDep.subsequentDepartures.length > 0 && (
-                              <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center gap-1.5 text-[11px]">
-                                <span className="text-slate-400 font-medium">Next:</span>
+                              <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-white/10 flex items-center gap-1.5 text-[11px]">
+                                <span className="text-slate-400 dark:text-[#71717A] font-medium">Next:</span>
                                 <div className="flex items-center gap-1 flex-wrap">
                                   {currentDep.subsequentDepartures.map((time, sIdx) => (
                                     <span
                                       key={sIdx}
-                                      className="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-mono text-[10px]"
+                                      className="px-1.5 py-0.5 rounded bg-white dark:bg-[#242429] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#E4E4E7] font-mono text-[10px]"
                                     >
                                       {time}
                                     </span>
@@ -598,7 +602,7 @@ export default function TransitHubSheet({
                     })()}
                   </div>
                 ) : (
-                  <div className="py-4 text-center text-xs text-slate-500">
+                  <div className="py-4 text-center text-xs text-slate-500 dark:text-[#A1A1AA]">
                     Outside operating hours ({schedule?.operatingHours || '06:00 - 23:50'}).
                   </div>
                 )}
@@ -619,13 +623,13 @@ export default function TransitHubSheet({
 
             {/* Sub-tab 3: Nearby Parking Bays */}
             {stationTab === 'bays' && (
-              <div className="rounded-xl border border-slate-200/80 bg-white p-3 space-y-2.5">
+              <div className="rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#141417] p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-white">
                       Verified Bays Near Station
                     </h4>
-                    <p className="text-[10px] text-slate-500">
+                    <p className="text-[10px] text-slate-500 dark:text-[#A1A1AA]">
                       {isLoadingParking
                         ? 'Searching walking distance bays…'
                         : `${nearbyParking?.totalAvailableSpots ?? 0} available bay(s)`}
@@ -633,7 +637,7 @@ export default function TransitHubSheet({
                   </div>
 
                   {/* Radius selector */}
-                  <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px] font-medium">
+                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#18181C] p-0.5 rounded-lg text-[10px] font-medium border border-transparent dark:border-white/10">
                     {[500, 1500, 3000].map((r) => (
                       <button
                         key={r}
@@ -642,10 +646,10 @@ export default function TransitHubSheet({
                           setParkingRadius(r);
                           loadStationData(activeStop.stopId, r);
                         }}
-                        className={`px-1.5 py-0.5 rounded ${
+                        className={`px-1.5 py-0.5 rounded cursor-pointer ${
                           parkingRadius === r
-                            ? 'bg-white text-slate-900 font-bold shadow-xs'
-                            : 'text-slate-500 hover:text-slate-800'
+                            ? 'bg-white dark:bg-[#242429] text-slate-900 dark:text-white font-bold shadow-xs'
+                            : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                         }`}
                       >
                         {r >= 1000 ? `${r / 1000}km` : `${r}m`}
@@ -655,12 +659,12 @@ export default function TransitHubSheet({
                 </div>
 
                 {isLoadingParking ? (
-                  <div className="py-6 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
+                  <div className="py-6 text-center text-xs text-slate-500 dark:text-[#A1A1AA] flex flex-col items-center gap-2">
                     <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
                     <span>Loading verified parking spots…</span>
                   </div>
                 ) : parkingError ? (
-                  <div className="p-2.5 bg-rose-50 text-rose-700 rounded-lg text-xs">
+                  <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/50 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 rounded-lg text-xs">
                     {parkingError}
                   </div>
                 ) : nearbyParking?.parkingSpots && nearbyParking.parkingSpots.length > 0 ? (
@@ -669,24 +673,24 @@ export default function TransitHubSheet({
                       <div
                         key={spot.parkingSpotId}
                         onClick={() => onSelectParkingSpot(spot)}
-                        className="p-2.5 rounded-lg border border-slate-200/80 hover:border-blue-500/60 bg-white hover:bg-slate-50/50 transition cursor-pointer flex items-center justify-between gap-2"
+                        className="p-2.5 rounded-lg border border-slate-200/80 dark:border-white/10 hover:border-blue-500/60 dark:hover:border-[#0071E3] bg-white dark:bg-[#18181C] hover:bg-slate-50/50 dark:hover:bg-[#202025] transition cursor-pointer flex items-center justify-between gap-2"
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded bg-blue-50 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                            <span className="w-5 h-5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-bold text-[10px] flex items-center justify-center shrink-0">
                               P
                             </span>
-                            <span className="text-xs font-semibold text-slate-900 truncate">
+                            <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
                               {spot.propertyName}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-500 mt-0.5">
+                          <p className="text-[10px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">
                             Bay {spot.parkingLabel} · {spot.walkingTimeMinutes} min walk ({spot.distanceMeters}m)
                           </p>
                         </div>
 
                         <div className="text-right shrink-0">
-                          <span className="text-xs font-bold text-slate-900 font-mono block">
+                          <span className="text-xs font-bold text-slate-900 dark:text-white font-mono block">
                             RM {spot.monthlyRate.toFixed(2)}/mo
                           </span>
                           {onOpenParkingDetail && (
@@ -696,7 +700,7 @@ export default function TransitHubSheet({
                                 e.stopPropagation();
                                 onOpenParkingDetail(convertToParkingSpotDto(spot, activeStop));
                               }}
-                              className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold"
+                              className="text-[10px] text-blue-600 dark:text-[#3894FF] hover:text-blue-800 dark:hover:text-blue-300 font-semibold cursor-pointer"
                             >
                               Reserve →
                             </button>
@@ -706,10 +710,10 @@ export default function TransitHubSheet({
                     ))}
                   </div>
                 ) : (
-                  <div className="py-6 text-center text-xs text-slate-500 space-y-1">
-                    <MapPin className="w-5 h-5 text-slate-400 mx-auto" />
-                    <p className="font-semibold text-slate-700">No bays within {parkingRadius}m</p>
-                    <p className="text-[11px] text-slate-400">
+                  <div className="py-6 text-center text-xs text-slate-500 dark:text-[#A1A1AA] space-y-1">
+                    <MapPin className="w-5 h-5 text-slate-400 dark:text-[#71717A] mx-auto" />
+                    <p className="font-semibold text-slate-700 dark:text-[#E4E4E7]">No bays within {parkingRadius}m</p>
+                    <p className="text-[11px] text-slate-400 dark:text-[#71717A]">
                       Try expanding the search radius above.
                     </p>
                   </div>
@@ -725,11 +729,11 @@ export default function TransitHubSheet({
             {/* GPS Near Me Shortcut Strip */}
             {userLocation && nearbyStations.length > 0 && !searchQuery && (
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-                  <span className="flex items-center gap-1 text-slate-700">
-                    <Navigation className="w-3 h-3 text-blue-600" /> Nearest Stations
+                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]">
+                  <span className="flex items-center gap-1 text-slate-700 dark:text-[#E4E4E7]">
+                    <Navigation className="w-3 h-3 text-blue-600 dark:text-[#3894FF]" /> Nearest Stations
                   </span>
-                  <span className="text-[10px] text-slate-400 font-normal">GPS</span>
+                  <span className="text-[10px] text-slate-400 dark:text-[#71717A] font-normal">GPS</span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5">
@@ -741,20 +745,20 @@ export default function TransitHubSheet({
                         key={station.stopId}
                         type="button"
                         onClick={() => handleSelectStation(station)}
-                        className="flex items-center justify-between p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200/70 text-left transition group"
+                        className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-[#18181C] hover:bg-slate-100 dark:hover:bg-[#202025] border border-slate-200/70 dark:border-white/10 text-left transition group cursor-pointer"
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span
-                            className="min-w-[2.4rem] px-1.5 h-5 rounded-md text-[9.5px] font-mono font-bold text-white inline-flex items-center justify-center tracking-tight shrink-0 shadow-xs"
-                            style={{ backgroundColor: color }}
+                            className="min-w-[2.4rem] px-1.5 h-5 rounded-md text-[9.5px] font-mono font-bold inline-flex items-center justify-center tracking-tight shrink-0 shadow-xs"
+                            style={{ backgroundColor: color, color: readableTextOn(color) }}
                           >
                             {station.stopId}
                           </span>
-                          <span className="text-xs font-medium text-slate-900 truncate group-hover:text-blue-600">
+                          <span className="text-xs font-medium text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-[#3894FF]">
                             {station.stopName}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono font-medium text-slate-500 shrink-0 ml-1">
+                        <span className="text-[10px] font-mono font-medium text-slate-500 dark:text-[#A1A1AA] shrink-0 ml-1">
                           {station.walkingTimeMinutes}m
                         </span>
                       </button>
@@ -766,7 +770,7 @@ export default function TransitHubSheet({
 
             {/* Station Search / Filtered List */}
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]">
                 <span>
                   {searchQuery
                     ? `Results (${displayedStops.length})`
@@ -778,12 +782,12 @@ export default function TransitHubSheet({
               </div>
 
               {displayedStops.length === 0 ? (
-                <div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-200/70">
-                  <Search className="w-5 h-5 text-slate-400 mx-auto mb-1.5" />
-                  <p className="text-xs font-semibold text-slate-800">
+                <div className="p-6 text-center bg-slate-50 dark:bg-[#18181C] rounded-xl border border-slate-200/70 dark:border-white/10">
+                  <Search className="w-5 h-5 text-slate-400 dark:text-[#71717A] mx-auto mb-1.5" />
+                  <p className="text-xs font-semibold text-slate-800 dark:text-white">
                     No stations found for "{searchQuery}"
                   </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">
                     Check spelling or clear line filter.
                   </p>
                 </div>
@@ -797,31 +801,31 @@ export default function TransitHubSheet({
                         key={`${stop.routeId}-${stop.stopId}`}
                         type="button"
                         onClick={() => handleSelectStation(stop)}
-                        className="w-full flex items-center justify-between p-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200/60 text-left transition group"
+                        className="w-full flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#141417] hover:bg-slate-50 dark:hover:bg-[#18181C] border border-slate-200/60 dark:border-white/10 text-left transition group cursor-pointer"
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <div className="flex items-center gap-1 shrink-0">
                             <span
-                              className="min-w-[2.5rem] px-1.5 h-5 rounded-md text-[9.5px] font-mono font-bold text-white inline-flex items-center justify-center tracking-tight shrink-0 shadow-xs"
-                              style={{ backgroundColor: color }}
+                              className="min-w-[2.5rem] px-1.5 h-5 rounded-md text-[9.5px] font-mono font-bold inline-flex items-center justify-center tracking-tight shrink-0 shadow-xs"
+                              style={{ backgroundColor: color, color: readableTextOn(color) }}
                             >
                               {stop.stopId}
                             </span>
                             {stop.extraLines?.map((extra) => (
                               <span
                                 key={extra.stopId}
-                                className="min-w-[2.5rem] px-1.5 h-5 rounded-md text-[9.5px] font-mono font-bold text-white inline-flex items-center justify-center tracking-tight shrink-0 shadow-xs"
-                                style={{ backgroundColor: extra.color }}
+                                className="min-w-[2.5rem] px-1.5 h-5 rounded-md text-[9.5px] font-mono font-bold inline-flex items-center justify-center tracking-tight shrink-0 shadow-xs"
+                                style={{ backgroundColor: extra.color, color: readableTextOn(extra.color) }}
                               >
                                 {extra.stopId}
                               </span>
                             ))}
                           </div>
                           <div className="min-w-0">
-                            <span className="text-xs font-semibold text-slate-900 group-hover:text-blue-600 truncate block">
+                            <span className="text-xs font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-[#3894FF] truncate block">
                               {stop.stopName}
                             </span>
-                            <span className="text-[10px] text-slate-500 block truncate">
+                            <span className="text-[10px] text-slate-500 dark:text-[#A1A1AA] block truncate">
                               {stop.extraLines && stop.extraLines.length > 0
                                 ? 'Interchange Station'
                                 : stop.routeName}
@@ -829,7 +833,7 @@ export default function TransitHubSheet({
                           </div>
                         </div>
 
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 shrink-0" />
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-[#71717A] group-hover:text-blue-600 dark:group-hover:text-[#3894FF] shrink-0" />
                       </button>
                     );
                   })}

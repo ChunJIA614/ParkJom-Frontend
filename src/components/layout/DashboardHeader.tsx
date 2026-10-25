@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, LogOut, Menu, Search, UserRound } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Search, SunMoon, UserRound } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
+import ThemeSegmentedControl from '@/components/ui/ThemeSegmentedControl';
 import { showConfirm } from '@/contexts/ModalContext';
 import ProfileDialog from '@/features/profile/components/ProfileDialog';
 
@@ -209,7 +210,7 @@ export default function DashboardHeader({
             <BrandLogo alt="" className="h-8 w-8 shadow-sm transition-transform group-active:scale-95" />
             <div className="min-w-0 text-left">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-[15px] text-[#111] tracking-[-0.02em] truncate">
+                <span className="font-semibold text-[15px] text-[#111] dark:text-[#f5f5f7] tracking-[-0.02em] truncate">
                   ParkJom
                 </span>
                 {badge && (
@@ -222,7 +223,7 @@ export default function DashboardHeader({
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-[#6e6e73] font-medium leading-none mt-0.5 truncate hidden sm:block">
+              <p className="text-[11px] text-[#6e6e73] dark:text-[#a1a1a6] font-medium leading-none mt-0.5 truncate hidden sm:block">
                 {meta.portal}
               </p>
             </div>
@@ -321,7 +322,7 @@ export default function DashboardHeader({
                 aria-controls="dashboard-account-menu"
                 className="workspace-header__account-button"
               >
-                <span className="hidden lg:inline max-w-[150px] truncate text-[13px] font-semibold text-[#333]">
+                <span className="hidden lg:inline max-w-[150px] truncate text-[13px] font-semibold text-[#333] dark:text-[#f5f5f7]">
                   {displayName}
                 </span>
                 {user.picture && !profileImageFailed ? (
@@ -346,21 +347,28 @@ export default function DashboardHeader({
               </button>
 
               {accountOpen && (
-                <div id="dashboard-account-menu" role="menu" className="workspace-header__account-menu">
-                  <div className="border-b border-[#f1f3f4] px-3 py-2.5">
-                    <p className="truncate text-[12px] font-semibold text-[#111]">{displayName}</p>
-                    {user.email && <p className="mt-0.5 truncate text-[10px] text-[#8e8e93]">{user.email}</p>}
+                <div id="dashboard-account-menu" role="menu" className="workspace-header__account-menu bg-white dark:bg-[#1c1c1e] text-[#1d1d1f] dark:text-[#f5f5f7] border-black/[0.08] dark:border-white/[0.12]">
+                  <div className="border-b border-[#f1f3f4] dark:border-white/[0.08] px-3 py-2.5">
+                    <p className="truncate text-[12px] font-semibold text-zinc-900 dark:text-zinc-100">{displayName}</p>
+                    {user.email && <p className="mt-0.5 truncate text-[10px] text-zinc-500 dark:text-zinc-400">{user.email}</p>}
                   </div>
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => { setAccountOpen(false); setProfileOpen(true); }}
-                    className="workspace-header__account-menu-item"
+                    className="workspace-header__account-menu-item hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[#3a3a3c] dark:text-[#f5f5f7]"
                   >
                     <UserRound size={16} aria-hidden="true" />
                     <span>My profile</span>
                   </button>
-                  <button type="button" role="menuitem" onClick={handleSignOut} className="workspace-header__account-menu-item">
+                  <div className="border-t border-b border-[#f1f3f4] dark:border-white/[0.08] px-3 py-2.5 space-y-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#8e8e93] dark:text-[#a1a1a6] tracking-wide">
+                      <SunMoon size={14} aria-hidden="true" className="text-[var(--system-primary,#0071e3)] dark:text-[#0a84ff]" />
+                      <span>Appearance</span>
+                    </div>
+                    <ThemeSegmentedControl size="compact" />
+                  </div>
+                  <button type="button" role="menuitem" onClick={handleSignOut} className="workspace-header__account-menu-item hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400">
                     <LogOut size={16} aria-hidden="true" />
                     <span>Sign out</span>
                   </button>

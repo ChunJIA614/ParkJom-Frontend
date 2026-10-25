@@ -10,7 +10,8 @@ interface OverstayEnforcementProps {
   overstays: OverstayRecord[];
   setOverstays: React.Dispatch<React.SetStateAction<OverstayRecord[]>>;
   addActivityLog: (type: string, message: string, user: string) => void;
-  gracePeriodMinutes: number;
+  /** Null while the stored configuration is still loading. */
+  gracePeriodMinutes: number | null;
 }
 
 export default function OverstayEnforcement({ 
@@ -30,7 +31,7 @@ export default function OverstayEnforcement({
       setOverstays(prev => prev.map(o => o.id === record.id ? { ...o, status: 'warning_sent' } : o));
       setLoadingRecordId(null);
       setSuccessToast(`Warning message dispatched successfully to ${record.vehicleNo} (${record.userPhone})`);
-      addActivityLog('overstay', `Driver warned via Push Notification & SMS: Overstay buffer of ${gracePeriodMinutes} mins exceeded.`, "Telecom Gateway Confirmation");
+      addActivityLog('overstay', `Driver warned via Push Notification & SMS: Overstay buffer of ${gracePeriodMinutes ?? 'unknown'} mins exceeded.`, "Telecom Gateway Confirmation");
       setTimeout(() => setSuccessToast(null), 3000);
     }, 1000);
   };
@@ -100,7 +101,7 @@ export default function OverstayEnforcement({
         <div className="text-xs space-y-1">
           <span className="font-bold text-amber-800 block">Enforcement System Overview</span>
           <p className="text-amber-700 leading-relaxed">
-            The overstay engine scans active bookings via ultrasonic sensors on the ESP32. If a vehicle remains parked past their reservation window and exceeds the global <strong>Grace Period ({gracePeriodMinutes} mins)</strong>, they are automatically placed in the violation queue.
+            The overstay engine scans active bookings via ultrasonic sensors on the ESP32. If a vehicle remains parked past their reservation window and exceeds the global <strong>Grace Period ({gracePeriodMinutes === null ? 'unknown' : `${gracePeriodMinutes} mins`})</strong>, they are automatically placed in the violation queue.
           </p>
         </div>
       </div>
@@ -259,7 +260,7 @@ export default function OverstayEnforcement({
                 <span className="bg-[#2563EB]/5 text-[#2563EB] font-bold px-1.5 py-0.5 rounded font-mono text-[10px]">Tier 1</span>
                 <div>
                   <span className="font-semibold text-slate-700 block">Warning Period</span>
-                  <p className="text-[11px] text-slate-500">First {gracePeriodMinutes} mins are covered by buffer. Driver receives push warnings.</p>
+                  <p className="text-[11px] text-slate-500">First {gracePeriodMinutes === null ? '—' : gracePeriodMinutes} mins are covered by buffer. Driver receives push warnings.</p>
                 </div>
               </div>
 

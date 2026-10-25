@@ -18,13 +18,15 @@ import { ParkingSpot, Booking } from '../types';
 import { loadRailNetworkData } from '@/services/transitData';
 import { watchDeviceLocation } from '@/services/deviceCapabilities';
 import { showAlert } from '@/contexts/ModalContext';
+import { useTheme } from '@/app/theme/ThemeContext';
 import SystemSelect from '@/components/ui/SystemSelect';
+import StationPickerSheet from './StationPickerSheet';
 import {
   Search,
   Navigation,
   Train,
   Clock,
-  ChevronRight,
+  ChevronDown,
   Layers,
   Loader2,
   LocateFixed,
@@ -843,6 +845,10 @@ export default function CommuterMap({
   onRoutesCalculated,
 }: CommuterMapProps) {
   const klCenter: [number, number] = [3.1390, 101.6869];
+  // Basemap follows the app appearance: CARTO ships matched light/dark styles,
+  // which reads far better than inverting light tiles with a CSS filter.
+  const { isDark } = useTheme();
+  const basemapStyle = isDark ? 'dark_all' : 'light_all';
   const [mapTarget, setMapTarget] = useState<MapTarget | null>(null);
   const [currentZoom, setCurrentZoom] = useState(12);
   const [openPanel, setOpenPanel] = useState<'stations' | 'lines' | 'legend' | 'busRoutes' | null>(null);
@@ -1303,16 +1309,18 @@ export default function CommuterMap({
       try {
         const { lines } = await loadRailNetworkData();
         const linesData = lines as GeoJsonCollection<RailLineFeature>;
-        setAllLines(linesData);
+        if (linesData && Array.isArray(linesData.features)) {
+          setAllLines(linesData);
 
-        const uniqueRoutes = [
-          ...new Set<string>(linesData.features.map((f: RailLineFeature) => f.properties.route_name)),
-        ];
-        const initVisible: Record<string, boolean> = {};
-        uniqueRoutes.forEach((route) => {
-          initVisible[route] = true;
-        });
-        setVisibleLines(initVisible);
+          const uniqueRoutes = [
+            ...new Set<string>(linesData.features.map((f: RailLineFeature) => f.properties.route_name)),
+          ];
+          const initVisible: Record<string, boolean> = {};
+          uniqueRoutes.forEach((route) => {
+            initVisible[route] = true;
+          });
+          setVisibleLines(initVisible);
+        }
 
         setGtfsLoading(false);
       } catch (err: any) {
@@ -1324,7 +1332,7 @@ export default function CommuterMap({
   }, []);
 
   const filteredLines: GeoJsonCollection<RailLineFeature> | null = useMemo(() => {
-    if (!allLines) return null;
+    if (!allLines || !Array.isArray(allLines.features)) return null;
     const filtered = allLines.features.filter(
       (feature) => visibleLines[feature.properties.route_name] === true
     );
@@ -1552,8 +1560,50 @@ export default function CommuterMap({
       .slice(0, 3);
   }, [effectiveUserLocation, stationNames, stationDistances]);
 
-  const filteredList = stationNames.filter((n) =>
-    n.toLowerCase().includes(stationFilter.toLowerCase())
+  // Line colours + codes per station, so a list row can carry the same ring the
+  // marker uses on the map instead of a generic train glyph.
+  const stationMeta = useMemo(() => {
+    const meta = new Map<string, { lines: string[]; ring: string; code: string }>();
+    stationFeatures.forEach((feature: any) => {
+      const rawName = String(feature?.properties?.name || '');
+      if (!rawName) return;
+      const lines = getStationLines(feature);
+      const entry = { lines, ring: getRingBackground(lines), code: getStationCode(feature) };
+      [rawName, cleanStationName(rawName)].forEach((key) => {
+        if (!key) return;
+        if (!meta.has(key)) meta.set(key, entry);
+        const normalized = normalizeStationKey(key);
+        if (normalized && !meta.has(normalized)) meta.set(normalized, entry);
+      });
+    });
+    return meta;
+  }, [stationFeatures]);
+
+  const metaForStation = (name: string) =>
+    stationMeta.get(name) ?? stationMeta.get(normalizeStationKey(name));
+
+  const stationQuery = stationFilter.trim().toLowerCase();
+
+  // "Nearest to you" only earns its space when it is not duplicating the list.
+  const showNearest = Boolean(effectiveUserLocation) && nearestStations.length > 0 && !stationQuery;
+
+  const matchingStations = useMemo(
+    () => stationNames.filter((name) => name.toLowerCase().includes(stationQuery)),
+    [stationNames, stationQuery],
+  );
+
+  const nearestKeys = useMemo(
+    () => new Set(nearestStations.map((station) => normalizeStationKey(station.name))),
+    [nearestStations],
+  );
+
+  // stationNames is already sorted A→Z, which is how people scan a long list.
+  const listStations = useMemo(
+    () =>
+      showNearest
+        ? matchingStations.filter((name) => !nearestKeys.has(normalizeStationKey(name)))
+        : matchingStations,
+    [matchingStations, showNearest, nearestKeys],
   );
 
   // Zoomed-out station clusters (for zoom <= 11)
@@ -1633,6 +1683,8 @@ export default function CommuterMap({
         code,
       });
       setOpenPanel(null);
+      // Start the next open on the nearest list, not on a stale query.
+      setStationFilter('');
       setMapTarget({
         lat: coords[1],
         lng: coords[0],
@@ -1744,12 +1796,13 @@ export default function CommuterMap({
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
       >
-        {/* CartoDB Dataviz Light Tile Layer */}
+        {/* CARTO basemap — light/dark variant tracks the app appearance */}
         <TileLayer
+          key={basemapStyle}
           url={
             import.meta.env.VITE_CARTO_API_KEY
-              ? `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${import.meta.env.VITE_CARTO_API_KEY}`
-              : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+              ? `https://{s}.basemaps.cartocdn.com/${basemapStyle}/{z}/{x}/{y}{r}.png?key=${import.meta.env.VITE_CARTO_API_KEY}`
+              : `https://{s}.basemaps.cartocdn.com/${basemapStyle}/{z}/{x}/{y}{r}.png`
           }
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
         />
@@ -2020,16 +2073,16 @@ export default function CommuterMap({
             >
               <Popup autoPan={false}>
                 <div className="text-xs min-w-[160px] py-1">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-white">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#007AFF] shadow-xs" />
                     <span>Your Current Location</span>
                   </div>
-                  <p className="text-slate-500 text-[11px] mt-1">
+                  <p className="text-slate-500 dark:text-[#a1a1aa] text-[11px] mt-1">
                     {effectiveAccuracy
                       ? `Accurate to ~${Math.round(effectiveAccuracy)} m`
                       : 'GPS position active'}
                   </p>
-                  <div className="mt-1 text-[10px] text-slate-400 font-mono">
+                  <div className="mt-1 text-[10px] text-slate-400 dark:text-[#71717a] font-mono">
                     {effectiveUserLocation.lat.toFixed(5)}, {effectiveUserLocation.lng.toFixed(5)}
                   </div>
                   {stationFeatures.length > 0 && (
@@ -2296,11 +2349,11 @@ export default function CommuterMap({
             closeButton={false}
           >
             <div className="w-[196px] sm:w-[208px] text-[11px] leading-snug select-none">
-              <div className="flex items-center gap-1 font-bold text-slate-900 text-[12px]">
-                <Train className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <div className="flex items-center gap-1 font-bold text-slate-900 dark:text-white text-[12px]">
+                <Train className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                 <span className="truncate">{activeStationPopup.name}</span>
                 {activeStationPopup.code && (
-                  <span className="font-mono text-[9.5px] font-bold bg-slate-100 text-slate-700 px-1 py-0.2 rounded border border-slate-200 shrink-0">
+                  <span className="font-mono text-[9.5px] font-bold bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-white px-1 py-0.2 rounded border border-slate-200 dark:border-white/15 shrink-0">
                     {activeStationPopup.code}
                   </span>
                 )}
@@ -2311,20 +2364,20 @@ export default function CommuterMap({
                     setDismissedStation(activeStationPopup.name);
                     setActiveStationPopup(null);
                   }}
-                  className="ml-auto w-4 h-4 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors shrink-0"
+                  className="ml-auto w-4 h-4 flex items-center justify-center text-slate-400 dark:text-[#a1a1aa] hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded transition-colors shrink-0"
                   aria-label="Close station popup"
                 >
                   <X className="w-3 h-3" />
                 </button>
               </div>
-              <div className="text-slate-500 text-[10px] mt-0.5 truncate">
+              <div className="text-slate-500 dark:text-[#a1a1aa] text-[10px] mt-0.5 truncate">
                 {(activeStationPopup.network || 'Transit Station').replace(/;/g, ' · ')}
               </div>
-              <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between gap-1.5 text-[10px]">
-                <span className="font-semibold text-emerald-600">
+              <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-white/10 flex items-center justify-between gap-1.5 text-[10px]">
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                   {spots.length} bay{spots.length === 1 ? '' : 's'} in range
                 </span>
-                <span className="text-[9.5px] text-slate-400">
+                <span className="text-[9.5px] text-slate-400 dark:text-[#71717a]">
                   ≤ {distanceRadius < 1000 ? `${distanceRadius}m` : `${distanceRadius / 1000}km`}
                 </span>
               </div>
@@ -2347,14 +2400,14 @@ export default function CommuterMap({
                     e.stopPropagation();
                     if (spots[0]) onSpotClick(spots[0]);
                   }}
-                  className="mt-1.5 w-full flex items-center justify-center gap-1 bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-semibold py-1 px-2 rounded-md transition-colors shadow-2xs"
+                  className="mt-1.5 w-full flex items-center justify-center gap-1 bg-[#0071E3] hover:bg-[#0077ED] text-white text-[10px] font-semibold py-1 px-2 rounded-md transition-colors shadow-2xs"
                 >
-                  <Car className="w-3 h-3 text-emerald-400 shrink-0" />
+                  <Car className="w-3 h-3 text-emerald-300 shrink-0" />
                   <span className="truncate">View Parking Bays ({spots.length})</span>
                 </button>
               ) : (
-                <div className="mt-1.5 w-full py-1 px-1.5 bg-slate-50 border border-slate-100 rounded-md text-center text-[9.5px] text-slate-500 flex items-center justify-center gap-1">
-                  <Car className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                <div className="mt-1.5 w-full py-1 px-1.5 bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/10 rounded-md text-center text-[9.5px] text-slate-500 dark:text-[#a1a1aa] flex items-center justify-center gap-1">
+                  <Car className="w-2.5 h-2.5 text-slate-400 dark:text-[#71717a] shrink-0" />
                   <span className="truncate">No private bays in radius</span>
                 </div>
               )}
@@ -2385,25 +2438,25 @@ export default function CommuterMap({
           >
             <Popup autoPan={false}>
               <div className="text-xs min-w-[210px] p-1">
-                <div className="flex items-center gap-1.5 font-bold text-slate-900 text-sm">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white text-sm">
                   <span className="w-5 h-5 rounded-md bg-blue-600 text-white flex items-center justify-center text-xs font-mono font-bold">
                     P
                   </span>
                   <span className="truncate">{formatShortSpotName(activeBookingSpot.name)}</span>
                 </div>
-                <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/50">
                   <span>Your Reserved Bay</span>
                   <span>Bay {activeBookingSpot.parkingLabel}</span>
                 </div>
                 {activeBookingSpot.address && (
-                  <p className="mt-1 text-[11px] text-slate-500 leading-tight line-clamp-2">
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-[#A1A1AA] leading-tight line-clamp-2">
                     {formatShortAddress(activeBookingSpot.address)}
                   </p>
                 )}
                 {drivingRoute && (
-                  <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="text-slate-500">From your location:</span>
-                    <strong className="text-blue-700 font-bold">
+                  <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-white/10 flex items-center justify-between text-xs">
+                    <span className="text-slate-500 dark:text-[#A1A1AA]">From your location:</span>
+                    <strong className="text-blue-700 dark:text-blue-400 font-bold">
                       {drivingRoute.durationText} ({drivingRoute.distanceText})
                     </strong>
                   </div>
@@ -2416,9 +2469,9 @@ export default function CommuterMap({
                     }
                     target="_blank"
                     rel="noreferrer"
-                    className="py-1 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-[11px] text-center flex items-center justify-center gap-1 shadow-2xs transition"
+                    className="py-1 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 dark:bg-white/10 dark:text-white dark:border-white/14 dark:hover:bg-white/15 font-bold text-[11px] text-center flex items-center justify-center gap-1 shadow-2xs transition"
                   >
-                    <Navigation size={11} className="text-cyan-600" />
+                    <Navigation size={11} className="text-cyan-600 dark:text-cyan-400" />
                     <span>Waze</span>
                   </a>
                   <a
@@ -2428,9 +2481,9 @@ export default function CommuterMap({
                     }
                     target="_blank"
                     rel="noreferrer"
-                    className="py-1 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-[11px] text-center flex items-center justify-center gap-1 shadow-2xs transition"
+                    className="py-1 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 dark:bg-white/10 dark:text-white dark:border-white/14 dark:hover:bg-white/15 font-bold text-[11px] text-center flex items-center justify-center gap-1 shadow-2xs transition"
                   >
-                    <Navigation size={11} className="text-blue-600" />
+                    <Navigation size={11} className="text-blue-600 dark:text-blue-400" />
                     <span>Google Maps</span>
                   </a>
                 </div>
@@ -2481,35 +2534,35 @@ export default function CommuterMap({
               <Popup autoPan={false}>
                 <div className="w-[196px] sm:w-[208px] text-[10.5px] leading-snug select-none">
                   <div className="flex items-center justify-between gap-1">
-                    <strong className="text-slate-900 text-[12px] truncate">{formatShortSpotName(spot.name)}</strong>
-                    <span className="bg-emerald-50 text-emerald-700 text-[9.5px] font-bold px-1 py-0.2 rounded border border-emerald-200 shrink-0">
+                    <strong className="text-slate-900 dark:text-white text-[12px] truncate">{formatShortSpotName(spot.name)}</strong>
+                    <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[9.5px] font-bold px-1 py-0.2 rounded border border-emerald-200 dark:border-emerald-800/50 shrink-0">
                       Bay {spot.parkingLabel}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between gap-1 text-slate-600 mt-1 font-semibold text-[10px]">
+                  <div className="flex items-center justify-between gap-1 text-slate-600 dark:text-[#D4D4D8] mt-1 font-semibold text-[10px]">
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-blue-600 shrink-0" />
+                      <Clock className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />
                       {spot.dailyRate !== null
                         ? `RM ${spot.dailyRate.toFixed(2)}/day`
                         : spot.monthlyRate > 0
                           ? `RM ${spot.monthlyRate.toFixed(2)}/mo`
                           : 'Rate not set'}
                     </span>
-                    <span className="text-slate-400 font-normal text-[9.5px]">
+                    <span className="text-slate-400 dark:text-[#A1A1AA] font-normal text-[9.5px]">
                       {spot.distanceToStation ? spot.distanceToStation.toFixed(1) : (spot.distance / 1000).toFixed(1)}km
                       {spot.timeToStationInMinutes ? ` · ${spot.timeToStationInMinutes}m` : ''}
                     </span>
                   </div>
                   {spot.address && (
-                    <div className="mt-0.5 text-[9.5px] text-slate-400 truncate">{formatShortAddress(spot.address)}</div>
+                    <div className="mt-0.5 text-[9.5px] text-slate-400 dark:text-[#A1A1AA] truncate">{formatShortAddress(spot.address)}</div>
                   )}
 
                   {/* Connecting Rapid KL Bus Route to Station */}
                   {spotRoutes.length > 0 && (
-                    <div className="mt-1.5 p-1.5 bg-emerald-50/80 rounded-md border border-emerald-200/80 text-[10px]">
+                    <div className="mt-1.5 p-1.5 bg-emerald-50/80 dark:bg-emerald-950/60 rounded-md border border-emerald-200/80 dark:border-emerald-800/50 text-[10px]">
                       <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1 font-bold text-emerald-900 text-[10px] truncate">
-                          <Bus className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <div className="flex items-center gap-1 font-bold text-emerald-900 dark:text-emerald-200 text-[10px] truncate">
+                          <Bus className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                           <span className="truncate">Feeder Bus</span>
                         </div>
                         <span className="text-[9.5px] bg-emerald-600 text-white font-mono font-bold px-1 py-0.2 rounded shrink-0">
@@ -2526,7 +2579,7 @@ export default function CommuterMap({
                         }}
                         className={`mt-1 w-full py-1 px-1.5 rounded font-semibold text-[9.5px] transition-colors flex items-center justify-center gap-1 ${
                           effectiveBusRoute === spotRoutes[0].route.shortName
-                            ? 'bg-emerald-800 text-white'
+                            ? 'bg-emerald-800 dark:bg-emerald-700 text-white'
                             : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
                         }`}
                       >
@@ -2590,7 +2643,7 @@ export default function CommuterMap({
                           },
                         });
                       }}
-                      className="py-1 px-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[9.5px] font-semibold rounded-md transition-colors truncate"
+                      className="py-1 px-1.5 bg-slate-900 dark:bg-[#242429] dark:border dark:border-white/14 hover:bg-slate-800 dark:hover:bg-[#2C2C32] text-white text-[9.5px] font-semibold rounded-md transition-colors truncate cursor-pointer"
                     >
                       Book Bay
                     </button>
@@ -2627,24 +2680,40 @@ export default function CommuterMap({
 
       {/* Top Bar: Station Indicator (mobile only), Radius, Lines & Legend */}
       <div className="map-toolbar absolute top-3 left-3 right-3 z-[800] flex items-center justify-between gap-2 pointer-events-none">
-        {/* Left: Active Station Quick Badge (Mobile only, on desktop left sidebar already handles stations) */}
-        <div className="pointer-events-auto flex items-center gap-1.5 lg:hidden">
+        {/* Left: Active Station control (mobile only; on desktop the sidebar handles stations).
+            On phones it gets its own full-width row: picking a station is the screen's primary job. */}
+        <div className="map-toolbar__station-wrap pointer-events-auto flex min-w-0 items-center lg:hidden">
           <button
             type="button"
             data-map-control
             onClick={() => setOpenPanel((panel) => panel === 'stations' ? null : 'stations')}
             aria-expanded={openPanel === 'stations'}
+            aria-haspopup="dialog"
             aria-controls="station-picker"
-            className="map-toolbar__station bg-white/95 backdrop-blur rounded-xl border border-slate-200/80 shadow-xs px-2.5 py-1.5 flex items-center gap-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors"
+            aria-label={selectedStation ? `Station: ${selectedStation}. Change station` : 'Choose a station'}
+            className="map-toolbar__station map-capsule flex min-w-0 items-center gap-2.5 pl-2 pr-3.5 text-left"
           >
-            <Train className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-            <span className="truncate max-w-[120px]">{selectedStation || 'Select Station'}</span>
-            <ChevronRight className={`w-3 h-3 text-slate-400 transition-transform shrink-0 ${openPanel === 'stations' ? 'rotate-90' : ''}`} />
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#007aff] text-white" aria-hidden="true">
+              <Train className="h-4 w-4" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="text-[11px] font-medium text-[#6e6e73] dark:text-[#8e8e93]">
+                {selectedStation ? 'Station' : 'Start here'}
+              </span>
+              <span className={`truncate text-[15px] font-semibold ${
+                selectedStation
+                  ? 'text-[#1d1d1f] dark:text-[#f2f2f7]'
+                  : 'text-[#007aff] dark:text-[#409cff]'
+              }`}>
+                {selectedStation || 'Choose a station'}
+              </span>
+            </span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-[#8e8e93] transition-transform ${openPanel === 'stations' ? 'rotate-180' : ''}`} aria-hidden="true" />
           </button>
         </div>
 
         {/* Right: Radius Filter, Lines Toggle, Legend */}
-        <div className="pointer-events-auto flex items-center gap-1.5 flex-wrap justify-end ml-auto">
+        <div className="map-toolbar__filters pointer-events-auto flex items-center gap-1.5 flex-wrap justify-end ml-auto">
           {/* Radius Filter — auto-refilters nearby spots on change */}
           <SystemSelect
             value={distanceRadius}
@@ -2652,7 +2721,7 @@ export default function CommuterMap({
               onDistanceRadiusChange(Number(e.target.value));
             }}
             aria-label="Parking search radius"
-            className="map-toolbar__radius workspace-map-control bg-white/95 backdrop-blur rounded-xl border border-slate-200/80 shadow-xs px-2.5 py-1.5 text-xs font-medium text-slate-700"
+            className="map-toolbar__radius map-capsule workspace-map-control whitespace-nowrap px-3.5 text-[13px] font-semibold"
           >
             <option value={300}>Within 300m</option>
             <option value={500}>Within 500m</option>
@@ -2669,11 +2738,11 @@ export default function CommuterMap({
               onClick={() => setOpenPanel((panel) => panel === 'lines' ? null : 'lines')}
               aria-expanded={openPanel === 'lines'}
               aria-controls="rail-lines-panel"
-              className="workspace-map-control flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-xs backdrop-blur hover:bg-slate-50"
+              className="map-capsule workspace-map-control flex items-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-semibold"
             >
               <Layers className="h-3.5 w-3.5 text-blue-600" />
               Lines
-              <ChevronRight className={`h-3 w-3 text-slate-400 transition-transform ${openPanel === 'lines' ? 'rotate-90' : ''}`} />
+              <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${openPanel === 'lines' ? 'rotate-180' : ''}`} />
             </button>
 
             {openPanel === 'lines' && (
@@ -2694,14 +2763,19 @@ export default function CommuterMap({
               onClick={() => setOpenPanel((panel) => panel === 'busRoutes' ? null : 'busRoutes')}
               aria-expanded={openPanel === 'busRoutes'}
               aria-controls="bus-routes-panel"
-              className={`workspace-map-control flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold shadow-xs backdrop-blur transition-all ${
-                effectiveBusRoute
-                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-200'
-                  : 'bg-white/95 text-slate-700 border-slate-200/80 hover:bg-slate-50'
+              className={`map-capsule workspace-map-control flex items-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-semibold ${
+                effectiveBusRoute ? 'is-active-bus' : ''
               }`}
             >
               <Bus className={`h-3.5 w-3.5 ${effectiveBusRoute ? 'text-white' : 'text-emerald-600'}`} />
-              <span>{effectiveBusRoute ? `Route ${effectiveBusRoute}` : 'Bus Routes'}</span>
+              {effectiveBusRoute ? (
+                <span>{`Route ${effectiveBusRoute}`}</span>
+              ) : (
+                <span>
+                  <span className="sm:hidden">Bus</span>
+                  <span className="hidden sm:inline">Bus Routes</span>
+                </span>
+              )}
               {effectiveBusRoute ? (
                 <span
                   onClick={(e) => {
@@ -2714,7 +2788,7 @@ export default function CommuterMap({
                   ✕
                 </span>
               ) : (
-                <ChevronRight className={`h-3 w-3 text-slate-400 transition-transform ${openPanel === 'busRoutes' ? 'rotate-90' : ''}`} />
+                <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${openPanel === 'busRoutes' ? 'rotate-180' : ''}`} />
               )}
             </button>
 
@@ -2889,7 +2963,7 @@ export default function CommuterMap({
             onClick={() => setOpenPanel((panel) => panel === 'legend' ? null : 'legend')}
             aria-expanded={openPanel === 'legend'}
             aria-controls="map-legend-modal"
-            className="workspace-map-control hidden sm:flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-xs backdrop-blur hover:bg-slate-50"
+            className="map-capsule workspace-map-control hidden sm:flex items-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-semibold"
           >
             <Info className="h-3.5 w-3.5 text-blue-600" />
             Legend
@@ -2914,80 +2988,24 @@ export default function CommuterMap({
         )}
       </button>
 
-      {/* Station List Dropdown */}
-      {openPanel === 'stations' && (
-        <div id="station-picker" data-map-control className="map-station-dropdown absolute top-[60px] left-4 z-[1000] w-72 bg-white/98 backdrop-blur rounded-xl border border-slate-200 shadow-xl overflow-hidden">
-          <div className="p-3 border-b border-slate-100">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Filter stations..."
-                value={stationFilter}
-                onChange={(e) => setStationFilter(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
-              />
-            </div>
-          </div>
-
-          {/* Quick select: nearest stations */}
-          {effectiveUserLocation && !stationFilter && nearestStations.length > 0 && (
-            <div className="p-2 border-b border-slate-100 bg-slate-50/60">
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider px-2 py-1 flex items-center gap-1">
-                <Navigation className="w-3 h-3 text-blue-600" />
-                Nearest to you
-              </div>
-              <div className="space-y-0.5 mt-1">
-                {nearestStations.map((station) => (
-                  <button
-                    key={`nearest-${station.name}`}
-                    onClick={() => handleListStationClick(station.name)}
-                    className="w-full text-left px-2.5 py-1.5 text-xs rounded-lg hover:bg-white hover:shadow-xs transition-all flex items-center justify-between text-slate-700"
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <Train className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span className="truncate font-medium">{station.name}</span>
-                    </div>
-                    <span className="text-[10px] text-blue-600 font-semibold shrink-0 ml-2">
-                      {station.distance < 1 ? `${Math.round(station.distance * 1000)}m` : `${station.distance.toFixed(1)}km`}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="map-station-dropdown__list overflow-y-auto">
-            {filteredList.slice(0, 50).map((name) => {
-              const distance = stationDistances.get(name) ?? stationDistances.get(normalizeStationKey(name));
-              return (
-                <button
-                  key={name}
-                  onClick={() => handleListStationClick(name)}
-                  className={`w-full text-left px-4 py-2 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    selectedStation === name ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <Train className={`w-3.5 h-3.5 shrink-0 ${selectedStation === name ? 'text-blue-600' : 'text-slate-400'}`} />
-                    <span className="truncate">{name}</span>
-                  </div>
-                  {distance !== undefined && (
-                    <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-2">
-                      {distance < 1 ? `${Math.round(distance * 1000)}m` : `${distance.toFixed(1)}km`}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-            {filteredList.length === 0 && (
-              <div className="px-4 py-4 text-xs text-slate-400 text-center">
-                No stations found
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <StationPickerSheet
+        open={openPanel === 'stations'}
+        onClose={() => setOpenPanel(null)}
+        query={stationFilter}
+        onQueryChange={setStationFilter}
+        selectedStation={selectedStation}
+        onSelectStation={handleListStationClick}
+        nearestStations={nearestStations}
+        listStations={listStations}
+        showNearest={showNearest}
+        distanceFor={(name) =>
+          stationDistances.get(name) ?? stationDistances.get(normalizeStationKey(name))
+        }
+        ringFor={(name) => metaForStation(name)?.ring}
+        hasUserLocation={Boolean(effectiveUserLocation)}
+        locationStatus={effectiveStatus}
+        onRequestLocation={onRequestLocation}
+      />
 
       {/* ── Google Maps Style Navigation Drawer / Mobile Bottom Sheet ── */}
       {showLinearNavigator && (drivingRoute || linearPlan) && (

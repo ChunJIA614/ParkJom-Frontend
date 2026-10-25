@@ -14,7 +14,8 @@ interface FinanceSettlementProps {
   transactions: Transaction[];
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
   addActivityLog: (type: string, message: string, user: string) => void;
-  commissionRate: number;
+  /** Null while the stored configuration is still loading. */
+  commissionRate: number | null;
 }
 
 export default function FinanceSettlement({ 
@@ -85,10 +86,14 @@ export default function FinanceSettlement({
         <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm space-y-2">
           <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Commission Percentage (Cut)</span>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-800">{commissionRate}%</span>
+            <span className="text-2xl font-bold text-slate-800">{commissionRate === null ? '—' : `${commissionRate}%`}</span>
             <span className="text-xs text-slate-500 font-medium">Standard peer deduction</span>
           </div>
-          <p className="text-[10px] text-slate-400">All transactions incur a {commissionRate}% commission charge processed on reservation checkout.</p>
+          <p className="text-[10px] text-slate-400">
+            {commissionRate === null
+              ? 'The stored commission rate could not be loaded.'
+              : `All transactions incur a ${commissionRate}% commission charge processed on reservation checkout.`}
+          </p>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm space-y-2">
@@ -269,14 +274,16 @@ export default function FinanceSettlement({
                   <th className="py-2.5 px-2">Driver (User)</th>
                   <th className="py-2.5 px-2">Parking Location / Owner</th>
                   <th className="py-2.5 px-2">Gross Volume</th>
-                  <th className="py-2.5 px-2">Platform Cut ({commissionRate}%)</th>
+                  <th className="py-2.5 px-2">Platform Cut ({commissionRate === null ? '—' : `${commissionRate}%`})</th>
                   <th className="py-2.5 px-2">Status</th>
                   <th className="py-2.5 px-2">Timestamp</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
                 {filteredTx.map((tx) => {
-                  const calculatedCommission = Math.round((tx.amount * (commissionRate / 100)) * 100) / 100;
+                  const calculatedCommission = commissionRate === null
+                    ? null
+                    : Math.round((tx.amount * (commissionRate / 100)) * 100) / 100;
                   
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/50">
@@ -287,7 +294,9 @@ export default function FinanceSettlement({
                         <div className="text-[10px] text-slate-400">Owner: {tx.ownerName}</div>
                       </td>
                       <td className="py-3 px-2 font-bold text-slate-800">RM {tx.amount.toFixed(2)}</td>
-                      <td className="py-3 px-2 text-[#2563EB] font-bold font-mono">RM {calculatedCommission.toFixed(2)}</td>
+                      <td className="py-3 px-2 text-[#2563EB] font-bold font-mono">
+                        {calculatedCommission === null ? '—' : `RM ${calculatedCommission.toFixed(2)}`}
+                      </td>
                       <td className="py-3 px-2">
                         {tx.status === 'completed' && (
                           <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Completed</span>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useInView, useReducedMotion } from 'motion/react';
 import { CalendarCheck, ChevronDown, ChevronRight, MapPin, TrainFront } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
+import { readableTextOn } from '@/lib/contrast';
 import HeroScrollCanvas, { getHeroPinViewports } from '@/components/HeroScrollCanvas';
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -164,7 +165,7 @@ function LocalNav() {
     >
       <div className="mx-auto flex max-w-[1024px] items-center justify-between px-5 md:px-6" style={{ height: NAV_HEIGHT }}>
         <a
-          href="/"
+          href="/home"
           className={`inline-flex items-center gap-2 text-[21px] font-semibold tracking-[0.011em] ${dark ? 'text-[#f5f5f7]' : 'text-[#1d1d1f]'}`}
           aria-label="ParkJom home"
         >
@@ -356,8 +357,8 @@ function PopularStations() {
                 >
                   <span className="inline-flex items-center gap-2 text-[12px] tracking-[-0.01em] text-[#6e6e73]">
                     <span
-                      className="grid h-5 min-w-7 place-items-center rounded-[5px] px-1 text-[10px] font-semibold text-white"
-                      style={{ backgroundColor: line.color }}
+                      className="grid h-5 min-w-7 place-items-center rounded-[5px] px-1 text-[10px] font-semibold"
+                      style={{ backgroundColor: line.color, color: readableTextOn(line.color) }}
                     >
                       {line.short}
                     </span>
