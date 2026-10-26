@@ -2679,10 +2679,10 @@ export default function CommuterMap({
       )}
 
       {/* Top Bar: Station Indicator (mobile only), Radius, Lines & Legend */}
-      <div className="map-toolbar absolute top-3 left-3 right-3 z-[800] flex items-center justify-between gap-2 pointer-events-none">
+      <div className="map-toolbar absolute top-3 left-3 right-3 z-[800] flex items-center justify-between gap-2.5 overflow-x-auto no-scrollbar pointer-events-none">
         {/* Left: Active Station control (mobile only; on desktop the sidebar handles stations).
             On phones it gets its own full-width row: picking a station is the screen's primary job. */}
-        <div className="map-toolbar__station-wrap pointer-events-auto flex min-w-0 items-center lg:hidden">
+        <div className="map-toolbar__station-wrap pointer-events-auto flex shrink-0 items-center lg:hidden">
           <button
             type="button"
             data-map-control
@@ -2691,29 +2691,29 @@ export default function CommuterMap({
             aria-haspopup="dialog"
             aria-controls="station-picker"
             aria-label={selectedStation ? `Station: ${selectedStation}. Change station` : 'Choose a station'}
-            className="map-toolbar__station map-capsule flex min-w-0 items-center gap-2.5 pl-2 pr-3.5 text-left"
+            className="map-toolbar__station map-capsule shrink-0 !inline-flex !items-center !gap-2 !whitespace-nowrap !rounded-full !py-1.5 !pl-1.5 !pr-3.5 !justify-start text-left cursor-pointer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              padding: '6px 14px 6px 6px',
+              borderRadius: '9999px',
+            }}
           >
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#007aff] text-white" aria-hidden="true">
               <Train className="h-4 w-4" />
             </span>
-            <span className="flex min-w-0 flex-1 flex-col leading-tight">
-              <span className="text-[11px] font-medium text-[#6e6e73] dark:text-[#8e8e93]">
-                {selectedStation ? 'Station' : 'Start here'}
-              </span>
-              <span className={`truncate text-[15px] font-semibold ${
-                selectedStation
-                  ? 'text-[#1d1d1f] dark:text-[#f2f2f7]'
-                  : 'text-[#007aff] dark:text-[#409cff]'
-              }`}>
-                {selectedStation || 'Choose a station'}
-              </span>
+            <span className="text-[13px] font-medium text-[#1d1d1f] dark:text-white whitespace-nowrap">
+              {selectedStation || 'Start here'}
             </span>
             <ChevronDown className={`h-4 w-4 shrink-0 text-[#8e8e93] transition-transform ${openPanel === 'stations' ? 'rotate-180' : ''}`} aria-hidden="true" />
           </button>
         </div>
 
         {/* Right: Radius Filter, Lines Toggle, Legend */}
-        <div className="map-toolbar__filters pointer-events-auto flex items-center gap-1.5 flex-wrap justify-end ml-auto">
+        <div className="map-toolbar__filters pointer-events-auto flex items-center gap-2.5 flex-nowrap shrink-0 ml-auto">
           {/* Radius Filter — auto-refilters nearby spots on change */}
           <SystemSelect
             value={distanceRadius}

@@ -2,6 +2,7 @@ import { apiRequest, authorizationHeaders } from '@/services/apiClient';
 import type {
   ParkingAvailabilityStatus,
   ParkingAvailabilityRulesPayload,
+  CloseParkingAvailabilityPayload,
   ParkingAvailabilityRuleInput,
   ParkingConfigurationPayload,
   ParkingImageUpdatePayload,
@@ -130,6 +131,18 @@ export function deleteAvailabilityRule(
   return apiRequest(`/owner/parking/${parkingSpotId}/availability-rules/${ruleId}`, {
     method: 'DELETE',
     headers: authorizationHeaders(token),
+  });
+}
+
+export function closeParkingAvailabilityDates(
+  token: string,
+  parkingSpotId: number,
+  payload: CloseParkingAvailabilityPayload,
+): Promise<Response> {
+  return apiRequest(`/owner/parking/${parkingSpotId}/availability-rules/close`, {
+    method: 'POST',
+    headers: authorizationHeaders(token, 'application/json'),
+    body: JSON.stringify(payload),
   });
 }
 

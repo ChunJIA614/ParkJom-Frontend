@@ -30,7 +30,7 @@ export default function ThemeSegmentedControl({ size = 'compact', className = ''
 
   return (
     <div
-      className={`theme-switch grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#f1f3f4] dark:bg-[#2c2c2e] border border-black/[0.04] dark:border-white/[0.06] select-none ${className}`.trim()}
+      className={`theme-switch grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#f1f3f4] dark:bg-[#141417] border border-black/[0.04] dark:border-white/[0.06] select-none ${className}`.trim()}
       data-size={size}
       role="radiogroup"
       aria-label="Appearance"
@@ -45,17 +45,17 @@ export default function ThemeSegmentedControl({ size = 'compact', className = ''
             aria-checked={active}
             title={hint}
             onClick={() => setPreference(value)}
-            className={`theme-switch__option flex items-center justify-center gap-1.5 rounded-lg font-medium transition-all duration-150 cursor-pointer ${
+            className={`theme-switch__option flex items-center justify-center gap-1.5 rounded-lg transition-all duration-150 cursor-pointer ${
               active
-                ? 'is-active bg-white dark:bg-[#3a3a3c] text-[#1d1d1f] dark:text-[#f5f5f7] shadow-[0_1px_3px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] font-semibold'
-                : 'text-[#6e6e73] dark:text-[#a1a1a6] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7] hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
+                ? 'is-active bg-white dark:bg-[#2C2C31] text-[#1d1d1f] dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.4)] font-bold border-none'
+                : 'text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#1d1d1f] dark:hover:text-white bg-transparent border-none'
             } ${size === 'panel' ? 'py-2 px-3 text-[13px]' : 'py-1 px-1.5 text-[11px]'}`}
           >
             <Icon
               size={size === 'panel' ? 15 : 13}
               strokeWidth={2.2}
               aria-hidden="true"
-              className={active ? 'text-[var(--system-primary,#0071e3)] dark:text-[#0a84ff]' : 'opacity-70'}
+              className={active ? 'text-[var(--system-primary,#0071e3)] dark:text-[#0A84FF]' : 'text-current opacity-80'}
             />
             <span className="leading-none">{label}</span>
           </button>

@@ -63,16 +63,23 @@ export interface ParkingImageUpdatePayload {
   isPrimary: boolean;
 }
 
+export type OwnerAvailabilityDayPattern = 'Weekdays' | 'Everyday';
+
 export interface ParkingAvailabilityRuleInput {
   fromDate: string;
   toDate: string;
   fromTime: string;
   toTime: string;
-  dayPattern: string;
+  dayPattern: OwnerAvailabilityDayPattern | string;
 }
 
 export interface ParkingAvailabilityRulesPayload {
   rules: ParkingAvailabilityRuleInput[];
+}
+
+export interface CloseParkingAvailabilityPayload {
+  fromDate: string;
+  toDate: string;
 }
 
 export interface ParkingAvailabilityRule extends ParkingAvailabilityRuleInput {

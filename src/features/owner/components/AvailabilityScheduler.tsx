@@ -30,6 +30,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { showConfirm } from '@/contexts/ModalContext';
 import {
+  closeParkingAvailabilityDates,
   createParkingAvailabilityRules,
   deleteParkingImage,
   getOwnerAvailabilityCalendar,
@@ -46,6 +47,7 @@ import type {
   ParkingConfigurationResponse,
   ParkingImagesResponse,
   ParkingSpotImage,
+  OwnerAvailabilityDayPattern,
 } from '../types';
 
 /**
@@ -498,7 +500,7 @@ export default function AvailabilityScheduler({
   const [bulkEnd, setBulkEnd] = useState(todayKey);
   const [bulkFromTime, setBulkFromTime] = useState('09:00');
   const [bulkToTime, setBulkToTime] = useState('19:00');
-  const [bulkDayPattern, setBulkDayPattern] = useState('Weekdays');
+  const [bulkDayPattern, setBulkDayPattern] = useState<OwnerAvailabilityDayPattern>('Weekdays');
   const [bulkStatus, setBulkStatus] = useState<'available' | 'unavailable'>('available');
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -630,9 +632,6 @@ export default function AvailabilityScheduler({
       setWorkspace((current) => {
         const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
         const days = { ...spot.days };
-        const closedOverrides = Object.fromEntries(Object.entries(days).filter(([date, day]) => (
-          date.startsWith(`${body.month}-`) && day.ownerOverride === 'closed'
-        )));
         Object.keys(days).forEach((date) => {
           if (date.startsWith(`${body.month}-`)) delete days[date];
         });
@@ -642,18 +641,6 @@ export default function AvailabilityScheduler({
           days[day.date] = {
             status,
             configuredHours: normaliseConfiguredHours(day.configuredHours),
-          };
-        });
-        Object.entries(closedOverrides).forEach(([date, override]) => {
-          if (days[date]?.status === 'booked') return;
-          days[date] = {
-            ...override,
-            ...days[date],
-            status: 'unavailable',
-            configuredHours: days[date]?.configuredHours?.length
-              ? days[date].configuredHours
-              : override.configuredHours,
-            ownerOverride: 'closed',
           };
         });
         return {
@@ -1220,10 +1207,16 @@ export default function AvailabilityScheduler({
         setBulkMessage(null);
         return;
       }
-      if (!bulkDayPattern.trim()) {
-        setBulkError('Enter a day pattern such as Weekdays.');
-        setBulkMessage(null);
-        return;
+      if (bulkDayPattern === 'Weekdays') {
+        const hasWeekday = keys.some((date) => {
+          const day = dateFromKey(date).getDay();
+          return day >= 1 && day <= 5;
+        });
+        if (!hasWeekday) {
+          setBulkError('A Weekdays rule must include at least one weekday (Mon–Fri) in the date range.');
+          setBulkMessage(null);
+          return;
+        }
       }
     }
 
@@ -1233,7 +1226,7 @@ export default function AvailabilityScheduler({
       : keys;
     const editableDates = matchingDates.filter((date) => {
       const currentDay = statusFor(currentSpot, date);
-      return !dateKeyIsPast(date) && currentDay.status !== 'booked';
+      return currentDay.status !== 'booked';
     });
     const skipped = keys.length - editableDates.length;
     const changed = editableDates.reduce((count, date) => (
@@ -1241,38 +1234,56 @@ export default function AvailabilityScheduler({
     ), 0);
 
     let backendMessage = '';
-    if (nextStatus === 'available') {
-      const token = user?.token ?? '';
-      if (!token) {
-        setBulkError('Your owner session is missing an authorization token.');
-        setBulkMessage(null);
-        return;
-      }
-
-      setAvailabilitySaving(true);
-      setBulkError(null);
+    const token = user?.token ?? '';
+    if (!token) {
+      setBulkError('Your owner session is missing an authorization token.');
       setBulkMessage(null);
-      try {
+      return;
+    }
+
+    setAvailabilitySaving(true);
+    setBulkError(null);
+    setBulkMessage(null);
+    try {
+      if (nextStatus === 'available') {
         const response = await createParkingAvailabilityRules(token, activeBay.parkingSpotId, {
           rules: [{
             fromDate: bulkStart,
             toDate: bulkEnd,
             fromTime: bulkFromTime,
             toTime: bulkToTime,
-            dayPattern: bulkDayPattern.trim(),
+            dayPattern: bulkDayPattern,
           }],
         });
-        const body = await response.json().catch(() => null) as ParkingAvailabilityRulesResponse | null;
+        const rawBody = await response.json().catch(() => null);
+        const body = rawBody as (ParkingAvailabilityRulesResponse & { errors?: Record<string, string[]>; title?: string }) | null;
         if (!response.ok || !body?.success || !Array.isArray(body.data)) {
-          throw new Error(body?.message || `Unable to create availability rules (${response.status}).`);
+          const detail = body?.message
+            || (body?.errors ? Object.values(body.errors).flat().join(' ') : null)
+            || body?.title;
+          throw new Error(detail || `Unable to create availability rules (${response.status}).`);
         }
         backendMessage = `${body.message}${body.timeZone ? ` Time zone: ${body.timeZone}.` : ''}`;
-      } catch (error) {
-        setBulkError(error instanceof Error ? error.message : 'Unable to create availability rules.');
-        return;
-      } finally {
-        setAvailabilitySaving(false);
+      } else {
+        const response = await closeParkingAvailabilityDates(token, activeBay.parkingSpotId, {
+          fromDate: bulkStart,
+          toDate: bulkEnd,
+        });
+        const rawBody = await response.json().catch(() => null);
+        const body = rawBody as (ParkingAvailabilityRulesResponse & { errors?: Record<string, string[]>; title?: string }) | null;
+        if (!response.ok || !body?.success) {
+          const detail = body?.message
+            || (body?.errors ? Object.values(body.errors).flat().join(' ') : null)
+            || body?.title;
+          throw new Error(detail || `Unable to close dates (${response.status}).`);
+        }
+        backendMessage = body.message;
       }
+    } catch (error) {
+      setBulkError(error instanceof Error ? error.message : `Unable to ${nextStatus === 'available' ? 'create availability rules' : 'close dates'}.`);
+      return;
+    } finally {
+      setAvailabilitySaving(false);
     }
 
     updateWorkspace((current) => {
@@ -1280,21 +1291,19 @@ export default function AvailabilityScheduler({
       const days = { ...spot.days };
       editableDates.forEach((date) => {
         days[date] = nextStatus === 'unavailable'
-          ? { ...days[date], status: 'unavailable', ownerOverride: 'closed' }
-          : { status: 'available' };
+          ? { ...days[date], status: 'unavailable', ownerOverride: undefined }
+          : { ...days[date], status: 'available', ownerOverride: undefined };
       });
       return { ...current, spots: { ...current.spots, [activeSpotId]: { ...spot, days } } };
     });
     setBulkError(null);
     const localMessage = `${changed} day${changed === 1 ? '' : 's'} marked ${statusMeta[nextStatus].shortLabel.toLowerCase()}.${skipped ? ` ${skipped} day${skipped === 1 ? '' : 's'} outside the pattern, booked, or past.` : ''}`;
     setBulkMessage(backendMessage ? `${backendMessage} ${localMessage}` : localMessage);
-    if (nextStatus === 'available') await fetchAvailabilityCalendar();
+    await fetchAvailabilityCalendar();
   };
 
   const applySelectedDayStatus = async (nextStatus: 'available' | 'unavailable') => {
-    if (!activeSpotId || !activeBay || dateKeyIsPast(selectedDate)) {
-      setDayError('Past dates are read-only.');
-      setDayMessage(null);
+    if (!activeSpotId || !activeBay) {
       return;
     }
     const currentDay = statusFor(workspace.spots[activeSpotId], selectedDate);
@@ -1313,22 +1322,50 @@ export default function AvailabilityScheduler({
     setDayMessage(null);
     setDayError(null);
     try {
-      if (nextStatus === 'available' && currentDay.ownerOverride !== 'closed') {
-        const token = user?.token ?? '';
-        if (!token) throw new Error('Your owner session is missing an authorization token.');
-        const weekday = new Intl.DateTimeFormat('en-MY', { weekday: 'long' }).format(dateFromKey(selectedDate));
+      const token = user?.token ?? '';
+      if (!token) throw new Error('Your owner session is missing an authorization token.');
+
+      if (nextStatus === 'available') {
+        const cleanTime = (t: string | undefined, fallback: string) => {
+          if (!t) return fallback;
+          const match = t.trim().match(/^([01]\d|2[0-3]):[0-5]\d/);
+          return match ? match[0] : fallback;
+        };
+        const ruleFrom = cleanTime(currentDay.configuredHours?.[0]?.from, bulkFromTime);
+        const ruleTo = cleanTime(currentDay.configuredHours?.[0]?.to, bulkToTime);
+        if (ruleFrom >= ruleTo) {
+          throw new Error('Opening time must be earlier than closing time.');
+        }
+
         const response = await createParkingAvailabilityRules(token, activeBay.parkingSpotId, {
           rules: [{
             fromDate: selectedDate,
             toDate: selectedDate,
-            fromTime: currentDay.configuredHours?.[0]?.from ?? bulkFromTime,
-            toTime: currentDay.configuredHours?.[0]?.to ?? bulkToTime,
-            dayPattern: weekday,
+            fromTime: ruleFrom,
+            toTime: ruleTo,
+            dayPattern: 'Everyday',
           }],
         });
-        const body = await response.json().catch(() => null) as ParkingAvailabilityRulesResponse | null;
+        const rawBody = await response.json().catch(() => null);
+        const body = rawBody as (ParkingAvailabilityRulesResponse & { errors?: Record<string, string[]>; title?: string }) | null;
         if (!response.ok || !body?.success || !Array.isArray(body.data)) {
-          throw new Error(body?.message || `Unable to open this date (${response.status}).`);
+          const detail = body?.message
+            || (body?.errors ? Object.values(body.errors).flat().join(' ') : null)
+            || body?.title;
+          throw new Error(detail || `Unable to open this date (${response.status}).`);
+        }
+      } else {
+        const response = await closeParkingAvailabilityDates(token, activeBay.parkingSpotId, {
+          fromDate: selectedDate,
+          toDate: selectedDate,
+        });
+        const rawBody = await response.json().catch(() => null);
+        const body = rawBody as (ParkingAvailabilityRulesResponse & { errors?: Record<string, string[]>; title?: string }) | null;
+        if (!response.ok || !body?.success) {
+          const detail = body?.message
+            || (body?.errors ? Object.values(body.errors).flat().join(' ') : null)
+            || body?.title;
+          throw new Error(detail || `Unable to close this date (${response.status}).`);
         }
       }
 
@@ -1336,7 +1373,7 @@ export default function AvailabilityScheduler({
         const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
         const existingDay = statusFor(spot, selectedDate);
         const updatedDay: OwnerParkingDay = nextStatus === 'unavailable'
-          ? { ...existingDay, status: 'unavailable', ownerOverride: 'closed' }
+          ? { ...existingDay, status: 'unavailable', ownerOverride: undefined }
           : { ...existingDay, status: 'available', ownerOverride: undefined };
         return {
           ...current,
@@ -1347,7 +1384,7 @@ export default function AvailabilityScheduler({
         };
       });
       setDayMessage(`${formatShortDate(selectedDate)} is now ${statusMeta[nextStatus].shortLabel.toLowerCase()}.`);
-      if (nextStatus === 'available') await fetchAvailabilityCalendar();
+      await fetchAvailabilityCalendar();
     } catch (error) {
       setDayError(error instanceof Error ? error.message : `Unable to mark this date ${statusMeta[nextStatus].shortLabel.toLowerCase()}.`);
     } finally {
@@ -1390,7 +1427,7 @@ export default function AvailabilityScheduler({
       : keys;
     const editable = matchingKeys.filter((date) => {
       const day = statusFor(activeSpot, date);
-      return !dateKeyIsPast(date) && day.status !== 'booked';
+      return day.status !== 'booked';
     });
     return {
       total: keys.length,
@@ -1424,7 +1461,7 @@ export default function AvailabilityScheduler({
 
   return (
     <div className="space-y-3 sm:space-y-5 md:space-y-6">
-      <div className="rounded-2xl border border-white/80 bg-white/90 p-2 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.38)] md:p-3">
+      <div className="rounded-2xl border border-white/80 dark:border-white/10 bg-white/90 dark:bg-[#141417] p-2 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.38)] md:p-3">
         <div className="flex flex-col gap-1.5 sm:gap-2.5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-2 px-1 sm:gap-3 sm:px-2 sm:py-1">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-blue-600 text-white shadow-sm sm:h-10 sm:w-10 sm:rounded-xl"><CalendarDays className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" /></div>
@@ -1449,10 +1486,10 @@ export default function AvailabilityScheduler({
       <AnimatePresence mode="wait" initial={false}>
       {section === 'setup' ? (
         <motion.section id="parking-setup-panel" role="tabpanel" aria-labelledby="parking-setup-tab" key="setup" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition}>
-          <div className="space-y-3 rounded-2xl border border-slate-200/90 bg-white/90 p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] sm:space-y-5 sm:p-4 md:p-6">
+          <div className="space-y-3 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/90 dark:bg-[#141417] p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] sm:space-y-5 sm:p-4 md:p-6 overflow-hidden">
             <div className="hidden flex-col gap-2 sm:flex sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Parking setup</h2>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white">Parking setup</h2>
                 <p className="mt-0.5 text-[11px] text-slate-500">Set the information commuters see before they choose a date.</p>
               </div>
               <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${activeSetup.published ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
@@ -1461,7 +1498,7 @@ export default function AvailabilityScheduler({
               </span>
             </div>
 
-            <div className="rounded-2xl bg-slate-50 p-2.5 sm:p-3.5" aria-label="Setup progress">
+            <div className="rounded-2xl bg-slate-50 dark:bg-[#18181C] p-2.5 sm:p-3.5 border border-slate-200/50 dark:border-white/10" aria-label="Setup progress">
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold text-blue-600">Step {setupStep} of {SETUP_STEPS.length}</p>
@@ -1553,16 +1590,16 @@ export default function AvailabilityScheduler({
             {setupStep === 2 && (
               <motion.div key="description-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
                 <div>
-                  <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Describe the parking spot</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">Help commuters recognise the bay and find it without calling you.</p>
+                  <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Describe the parking spot</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">Help commuters recognise the bay and find it without calling you.</p>
                 </div>
                 <label className="block">
-                  <span className="mb-2 block text-xs font-semibold text-slate-800">Description</span>
-                  <textarea value={setupForm.description} onChange={(event) => replaceSetupForm('description', event.target.value)} rows={6} maxLength={500} placeholder="Covered bay on Level B2, beside the lift lobby. Enter through the visitor lane." className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 sm:py-3.5" />
-                  <span className="mt-1.5 block text-right text-[11px] tabular-nums text-slate-400">{setupForm.description.length}/500</span>
+                  <span className="mb-2 block text-xs font-semibold text-slate-800 dark:text-slate-200">Description</span>
+                  <textarea value={setupForm.description} onChange={(event) => replaceSetupForm('description', event.target.value)} rows={6} maxLength={500} placeholder="Covered bay on Level B2, beside the lift lobby. Enter through the visitor lane." className="w-full resize-none rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-slate-900 dark:text-white outline-none placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:border-blue-500 focus:bg-white dark:focus:bg-[#18181C] focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/40 sm:py-3.5" />
+                  <span className="mt-1.5 block text-right text-[11px] tabular-nums text-slate-400 dark:text-slate-500">{setupForm.description.length}/500</span>
                 </label>
-                <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(1)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
+                <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
+                  <button type="button" onClick={() => setSetupStep(1)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
                   <button type="button" onClick={continueFromDescription} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
@@ -1571,44 +1608,44 @@ export default function AvailabilityScheduler({
             {setupStep === 3 && (
               <motion.div key="pricing-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
                 <div>
-                  <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Set your rates</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">Add one or both prices. Leave a rate empty if you do not offer it.</p>
+                  <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Set your rates</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">Add one or both prices. Leave a rate empty if you do not offer it.</p>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="min-w-0 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-3 shadow-sm sm:p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <label htmlFor="owner-daily-rate" className="text-xs font-semibold text-slate-700">Daily rate</label>
-                      <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500">Optional</span>
+                      <label htmlFor="owner-daily-rate" className="text-xs font-semibold text-slate-700 dark:text-slate-200">Daily rate</label>
+                      <span className="rounded-md bg-slate-100 dark:bg-white/10 px-2 py-1 text-[9px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Optional</span>
                     </div>
-                    <div className="mt-3 flex min-h-14 items-center rounded-xl border border-slate-200 bg-slate-50 p-1.5 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
-                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 px-3 text-sm font-bold text-blue-700">RM</span>
-                      <input id="owner-daily-rate" type="text" inputMode="decimal" value={setupForm.dailyRate} onChange={(event) => replaceRate('dailyRate', event.target.value)} placeholder="0" aria-describedby="owner-daily-rate-unit" className="min-w-0 flex-1 border-0 bg-transparent px-3 text-2xl font-bold text-slate-950 outline-none placeholder:text-slate-300" />
+                    <div className="mt-3 flex min-h-14 min-w-0 w-full items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-1.5 focus-within:border-blue-400 focus-within:bg-white dark:focus-within:bg-[#18181C] focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40">
+                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 dark:bg-blue-950/40 px-3 text-sm font-bold text-blue-700 dark:text-blue-400">RM</span>
+                      <input id="owner-daily-rate" type="text" size={1} inputMode="decimal" value={setupForm.dailyRate} onChange={(event) => replaceRate('dailyRate', event.target.value)} placeholder="0" aria-describedby="owner-daily-rate-unit" className="min-w-0 w-full flex-1 border-0 !border-0 bg-transparent !bg-transparent px-3 text-2xl font-bold text-slate-950 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:ring-0 focus:border-0 !shadow-none" />
                       <div className="flex shrink-0 gap-1">
-                        <button type="button" onClick={() => adjustRate('dailyRate', -1)} disabled={!setupForm.dailyRate || Number(setupForm.dailyRate) <= 1 || setupBusy} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-35" aria-label="Decrease daily rate by RM 1" title="Decrease by RM 1"><Minus className="h-4 w-4" aria-hidden="true" /></button>
-                        <button type="button" onClick={() => adjustRate('dailyRate', 1)} disabled={setupBusy} className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Increase daily rate by RM 1" title="Increase by RM 1"><Plus className="h-4 w-4" aria-hidden="true" /></button>
+                        <button type="button" onClick={() => adjustRate('dailyRate', -1)} disabled={!setupForm.dailyRate || Number(setupForm.dailyRate) <= 1 || setupBusy} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#2C2C31] text-slate-600 dark:text-slate-300 hover:border-blue-200 hover:text-blue-700 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-35" aria-label="Decrease daily rate by RM 1" title="Decrease by RM 1"><Minus className="h-4 w-4" aria-hidden="true" /></button>
+                        <button type="button" onClick={() => adjustRate('dailyRate', 1)} disabled={setupBusy} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Increase daily rate by RM 1" title="Increase by RM 1"><Plus className="h-4 w-4" aria-hidden="true" /></button>
                       </div>
                     </div>
-                    <p id="owner-daily-rate-unit" className="mt-2 text-[10px] text-slate-500">Charged per booking day. Minimum RM 1.</p>
+                    <p id="owner-daily-rate-unit" className="mt-2 text-[10px] text-slate-500 dark:text-[#A1A1AA]">Charged per booking day. Minimum RM 1.</p>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                  <div className="min-w-0 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-3 shadow-sm sm:p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <label htmlFor="owner-monthly-rate" className="text-xs font-semibold text-slate-700">Monthly rate</label>
-                      <span className="rounded-md bg-slate-100 px-2 py-1 text-[9px] font-semibold text-slate-500">Optional</span>
+                      <label htmlFor="owner-monthly-rate" className="text-xs font-semibold text-slate-700 dark:text-slate-200">Monthly rate</label>
+                      <span className="rounded-md bg-slate-100 dark:bg-white/10 px-2 py-1 text-[9px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Optional</span>
                     </div>
-                    <div className="mt-3 flex min-h-14 items-center rounded-xl border border-slate-200 bg-slate-50 p-1.5 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
-                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 px-3 text-sm font-bold text-blue-700">RM</span>
-                      <input id="owner-monthly-rate" type="text" inputMode="decimal" value={setupForm.monthlyRate} onChange={(event) => replaceRate('monthlyRate', event.target.value)} placeholder="0" aria-describedby="owner-monthly-rate-unit" className="min-w-0 flex-1 border-0 bg-transparent px-3 text-2xl font-bold text-slate-950 outline-none placeholder:text-slate-300" />
+                    <div className="mt-3 flex min-h-14 min-w-0 w-full items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-1.5 focus-within:border-blue-400 focus-within:bg-white dark:focus-within:bg-[#18181C] focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40">
+                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 dark:bg-blue-950/40 px-3 text-sm font-bold text-blue-700 dark:text-blue-400">RM</span>
+                      <input id="owner-monthly-rate" type="text" size={1} inputMode="decimal" value={setupForm.monthlyRate} onChange={(event) => replaceRate('monthlyRate', event.target.value)} placeholder="0" aria-describedby="owner-monthly-rate-unit" className="min-w-0 w-full flex-1 border-0 !border-0 bg-transparent !bg-transparent px-3 text-2xl font-bold text-slate-950 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:ring-0 focus:border-0 !shadow-none" />
                       <div className="flex shrink-0 gap-1">
-                        <button type="button" onClick={() => adjustRate('monthlyRate', -1)} disabled={!setupForm.monthlyRate || Number(setupForm.monthlyRate) <= 1 || setupBusy} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-35" aria-label="Decrease monthly rate by RM 1" title="Decrease by RM 1"><Minus className="h-4 w-4" aria-hidden="true" /></button>
-                        <button type="button" onClick={() => adjustRate('monthlyRate', 1)} disabled={setupBusy} className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Increase monthly rate by RM 1" title="Increase by RM 1"><Plus className="h-4 w-4" aria-hidden="true" /></button>
+                        <button type="button" onClick={() => adjustRate('monthlyRate', -1)} disabled={!setupForm.monthlyRate || Number(setupForm.monthlyRate) <= 1 || setupBusy} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#2C2C31] text-slate-600 dark:text-slate-300 hover:border-blue-200 hover:text-blue-700 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-35" aria-label="Decrease monthly rate by RM 1" title="Decrease by RM 1"><Minus className="h-4 w-4" aria-hidden="true" /></button>
+                        <button type="button" onClick={() => adjustRate('monthlyRate', 1)} disabled={setupBusy} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Increase monthly rate by RM 1" title="Increase by RM 1"><Plus className="h-4 w-4" aria-hidden="true" /></button>
                       </div>
                     </div>
-                    <p id="owner-monthly-rate-unit" className="mt-2 text-[10px] text-slate-500">Charged for a monthly booking. Minimum RM 1.</p>
+                    <p id="owner-monthly-rate-unit" className="mt-2 text-[10px] text-slate-500 dark:text-[#A1A1AA]">Charged for a monthly booking. Minimum RM 1.</p>
                   </div>
                 </div>
-                <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(2)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
+                <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
+                  <button type="button" onClick={() => setSetupStep(2)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
                   <button type="button" onClick={() => void continueFromPricing()} disabled={setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{setupSaving ? 'Saving…' : 'Save & review'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
@@ -1617,22 +1654,22 @@ export default function AvailabilityScheduler({
             {setupStep === 4 && (
               <motion.div key="review-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
                 <div>
-                  <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Review your listing</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">This is what commuters will see before booking.</p>
+                  <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Review your listing</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">This is what commuters will see before booking.</p>
                 </div>
-                <div className="overflow-hidden rounded-3xl border border-black/5 bg-white shadow-[0_16px_45px_-30px_rgba(15,23,42,0.45)]">
+                <div className="overflow-hidden rounded-3xl border border-black/5 dark:border-white/10 bg-white dark:bg-[#18181C] shadow-[0_16px_45px_-30px_rgba(15,23,42,0.45)]">
                   {setupPhotos[0] && <img src={setupPhotos[0]} alt="Parking listing cover" className="aspect-[16/7] w-full object-cover sm:aspect-[16/10]" />}
                   <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold text-blue-600">{activeBay.propertyName || `Property #${activeBay.propertyId}`}</p><h4 className="mt-1 text-lg font-bold text-slate-950">{activeBay.bayNumber || activeBay.parkingLabel}</h4></div><span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">{setupPhotos.length} photo{setupPhotos.length === 1 ? '' : 's'}</span></div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{setupForm.description}</p>
-                    <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-4">
-                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Daily</p><p className="mt-1 text-base font-bold text-slate-900">{setupForm.dailyRate ? `RM ${Number(setupForm.dailyRate).toFixed(2)}` : 'Not offered'}</p></div>
-                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Monthly</p><p className="mt-1 text-base font-bold text-slate-900">{setupForm.monthlyRate ? `RM ${Number(setupForm.monthlyRate).toFixed(2)}` : 'Not offered'}</p></div>
+                    <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">{activeBay.propertyName || `Property #${activeBay.propertyId}`}</p><h4 className="mt-1 text-lg font-bold text-slate-950 dark:text-white">{activeBay.bayNumber || activeBay.parkingLabel}</h4></div><span className="shrink-0 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:text-[#A1A1AA]">{setupPhotos.length} photo{setupPhotos.length === 1 ? '' : 's'}</span></div>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">{setupForm.description}</p>
+                    <div className="grid grid-cols-2 gap-2 border-t border-slate-100 dark:border-white/10 pt-4">
+                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Daily</p><p className="mt-1 text-base font-bold text-slate-900 dark:text-white">{setupForm.dailyRate ? `RM ${Number(setupForm.dailyRate).toFixed(2)}` : 'Not offered'}</p></div>
+                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Monthly</p><p className="mt-1 text-base font-bold text-slate-900 dark:text-white">{setupForm.monthlyRate ? `RM ${Number(setupForm.monthlyRate).toFixed(2)}` : 'Not offered'}</p></div>
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(3)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Edit</button>
+                <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
+                  <button type="button" onClick={() => setSetupStep(3)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Edit</button>
                   <button type="button" onClick={continueToPublish} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
@@ -1640,11 +1677,11 @@ export default function AvailabilityScheduler({
 
             {setupStep === 5 && (
               <motion.div key="publish-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 text-center sm:space-y-5">
-                <div className={`mx-auto grid h-16 w-16 place-items-center rounded-full ${activeSetup.published ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>{activeSetup.published ? <CheckCircle2 className="h-8 w-8" aria-hidden="true" /> : <ShieldCheck className="h-8 w-8" aria-hidden="true" />}</div>
-                <div><h3 className="text-2xl font-bold tracking-tight text-slate-950">{activeSetup.published ? 'Your parking is live' : 'Ready to publish'}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">{activeSetup.published ? 'Commuters can now see this listing. Open bookable dates in the availability timetable.' : 'Publishing makes this listing visible. Dates remain closed until you open them in the timetable.'}</p></div>
-                <div className="mx-auto grid max-w-md grid-cols-3 gap-2"><div className="rounded-2xl bg-slate-50 p-3"><ImagePlus className="mx-auto h-4 w-4 text-blue-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600">{setupPhotos.length} photos</p></div><div className="rounded-2xl bg-slate-50 p-3"><FileText className="mx-auto h-4 w-4 text-blue-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600">Details ready</p></div><div className="rounded-2xl bg-slate-50 p-3"><Car className="mx-auto h-4 w-4 text-blue-600" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600">Rates set</p></div></div>
-                <div className="flex gap-2 border-t border-slate-100 pt-3 sm:pt-5">
-                  {!activeSetup.published && <button type="button" onClick={() => setSetupStep(4)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>}
+                <div className={`mx-auto grid h-16 w-16 place-items-center rounded-full ${activeSetup.published ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' : 'bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'}`}>{activeSetup.published ? <CheckCircle2 className="h-8 w-8" aria-hidden="true" /> : <ShieldCheck className="h-8 w-8" aria-hidden="true" />}</div>
+                <div><h3 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">{activeSetup.published ? 'Your parking is live' : 'Ready to publish'}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500 dark:text-[#A1A1AA]">{activeSetup.published ? 'Commuters can now see this listing. Open bookable dates in the availability timetable.' : 'Publishing makes this listing visible. Dates remain closed until you open them in the timetable.'}</p></div>
+                <div className="mx-auto grid max-w-md grid-cols-3 gap-2"><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><ImagePlus className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">{setupPhotos.length} photos</p></div><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><FileText className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Details ready</p></div><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><Car className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Rates set</p></div></div>
+                <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
+                  {!activeSetup.published && <button type="button" onClick={() => setSetupStep(4)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>}
                   {activeSetup.published ? <button type="button" onClick={() => setSection('timetable')} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700"><CalendarRange className="h-4 w-4" aria-hidden="true" /> Set availability</button> : <button type="button" onClick={() => void handlePublish()} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" aria-hidden="true" /> {publishing ? 'Publishing…' : 'Publish listing'}</button>}
                 </div>
               </motion.div>
@@ -1692,13 +1729,13 @@ export default function AvailabilityScheduler({
                 </div>
                 <button type="button" onClick={goToCurrentMonth} className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-bold text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Today</button>
               </div>
-              <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{Array.from({ length: calendarStartOffset }, (_, index) => <span key={`calendar-offset-${index}`} aria-hidden="true" />)}{calendarDays.map((day) => { const key = localDateKey(day); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={past} aria-selected={selected} aria-disabled={past || undefined} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-1 py-2 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}${past ? ', read-only' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : past ? ' · past dates are read-only' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-[#007AFF] text-white' : key === todayKey ? 'ring-1 ring-inset ring-[#007AFF] text-[#007AFF]' : 'text-slate-800'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[9px] font-semibold leading-none ${meta.cell} ${past ? 'opacity-55' : ''}`}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
+              <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{Array.from({ length: calendarStartOffset }, (_, index) => <span key={`calendar-offset-${index}`} aria-hidden="true" />)}{calendarDays.map((day) => { const key = localDateKey(day); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={false} aria-selected={selected} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-1 py-2 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-[#007AFF] text-white' : key === todayKey ? 'ring-1 ring-inset ring-[#007AFF] text-[#007AFF]' : 'text-slate-800'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[9px] font-semibold leading-none ${meta.cell} ${past ? 'opacity-55' : ''}`}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
               <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400"><Info className="h-3.5 w-3.5" aria-hidden="true" /> Select a date to inspect it. Use the inspector action to open or close it.</p>
             </div>
 
              <aside className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:sticky md:top-28 md:self-start md:p-5">
               <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Selected day</p><h3 className="mt-1 text-sm font-bold text-slate-900">{formatLongDate(selectedDate)}</h3></div>
-              <div className={`rounded-2xl border p-4 ${selectedDayMeta.badge}`} aria-live="polite"><div className="flex items-center gap-2"><SelectedDayIcon className="h-4 w-4" aria-hidden="true" /><span className="text-xs font-bold">{selectedDay.status === 'booked' ? 'Booked · locked' : selectedDayMeta.label}</span>{daySaving && <RefreshCw className="ml-auto h-3.5 w-3.5 animate-spin" aria-label="Saving day status" />}</div>{selectedDay.status === 'booked' && <p className="mt-2 text-xs leading-relaxed">This date is locked because one commuter already has the booking.</p>}{selectedDayIsPast && selectedDay.status !== 'booked' && <p className="mt-2 text-xs leading-relaxed">Past dates are read-only.</p>}{!selectedDayIsPast && selectedDay.status !== 'booked' && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => void applySelectedDayStatus('available')} disabled={daySaving} aria-pressed={selectedDay.status === 'available'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'available' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Check className="h-4 w-4" aria-hidden="true" /> Open</button><button type="button" onClick={() => void applySelectedDayStatus('unavailable')} disabled={daySaving} aria-pressed={selectedDay.status === 'unavailable'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'unavailable' ? 'border-slate-400 bg-slate-200 text-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Ban className="h-4 w-4" aria-hidden="true" /> Closed</button></div>}</div>
+              <div className={`rounded-2xl border p-4 ${selectedDayMeta.badge}`} aria-live="polite"><div className="flex items-center gap-2"><SelectedDayIcon className="h-4 w-4" aria-hidden="true" /><span className="text-xs font-bold">{selectedDay.status === 'booked' ? 'Booked · locked' : selectedDayMeta.label}</span>{daySaving && <RefreshCw className="ml-auto h-3.5 w-3.5 animate-spin" aria-label="Saving day status" />}</div>{selectedDay.status === 'booked' && <p className="mt-2 text-xs leading-relaxed">This date is locked because one commuter already has the booking.</p>}{selectedDay.status !== 'booked' && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => void applySelectedDayStatus('available')} disabled={daySaving} aria-pressed={selectedDay.status === 'available'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'available' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Check className="h-4 w-4" aria-hidden="true" /> Open</button><button type="button" onClick={() => void applySelectedDayStatus('unavailable')} disabled={daySaving} aria-pressed={selectedDay.status === 'unavailable'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'unavailable' ? 'border-slate-400 bg-slate-200 text-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Ban className="h-4 w-4" aria-hidden="true" /> Closed</button></div>}</div>
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-slate-700">Configured hours</span><span className="text-[9px] font-semibold text-slate-400">{calendarTimeZone}</span></div>
                 {selectedDay.configuredHours?.length ? (
@@ -1757,8 +1794,8 @@ export default function AvailabilityScheduler({
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">From</span><input type="date" min={todayKey} value={bulkStart} onChange={(event) => setBulkStart(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
-                  <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">To</span><input type="date" min={todayKey} value={bulkEnd} onChange={(event) => setBulkEnd(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                  <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">From</span><input type="date" value={bulkStart} onChange={(event) => setBulkStart(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                  <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">To</span><input type="date" value={bulkEnd} onChange={(event) => setBulkEnd(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
                 </div>
               </section>
 
@@ -1769,14 +1806,14 @@ export default function AvailabilityScheduler({
                     <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">Opens</span><input type="time" value={bulkFromTime} onChange={(event) => setBulkFromTime(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
                     <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">Closes</span><input type="time" value={bulkToTime} onChange={(event) => setBulkToTime(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
                   </div>
-                  <label className="mt-2 block"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">Repeat on</span><input type="text" value={bulkDayPattern} onChange={(event) => setBulkDayPattern(event.target.value)} disabled={availabilitySaving} placeholder="Weekdays" className="min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                  <label className="mt-2 block"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Repeat pattern</span><SystemSelect value={bulkDayPattern} onChange={(event) => setBulkDayPattern(event.target.value as OwnerAvailabilityDayPattern)} disabled={availabilitySaving} className="min-h-10 w-full rounded-lg border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-[#18181C] px-2.5 text-[11px] font-semibold text-slate-800 dark:text-white outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60"><option value="Weekdays">Weekdays (Mon – Fri)</option><option value="Everyday">Every day (Mon – Sun)</option></SystemSelect></label>
                 </section>
               )}
             </div>
 
             <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[11px] leading-relaxed text-slate-500" aria-live="polite">{bulkPreview.total ? <><strong className="text-slate-800">{bulkPreview.changed}</strong> day{bulkPreview.changed === 1 ? '' : 's'} will change · <strong className="text-slate-800">{bulkPreview.skipped}</strong> skipped</> : 'Choose a date range to preview changes.'}</p>
-              <button type="button" onClick={() => void bulkUpdate(bulkStatus)} disabled={availabilitySaving || !bulkPreview.total || bulkPreview.total > MAX_BULK_DAYS || (bulkStatus === 'available' ? !bulkPreview.editable : !bulkPreview.changed)} className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-xs font-semibold text-white hover:bg-[#006EE6] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"><Check className="h-4 w-4" aria-hidden="true" /> {availabilitySaving ? 'Creating rule…' : bulkStatus === 'available' ? 'Create rule' : 'Apply range'}</button>
+              <button type="button" onClick={() => void bulkUpdate(bulkStatus)} disabled={availabilitySaving || !bulkPreview.total || bulkPreview.total > MAX_BULK_DAYS || !bulkPreview.editable} className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-xs font-semibold text-white hover:bg-[#006EE6] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"><Check className="h-4 w-4" aria-hidden="true" /> {availabilitySaving ? 'Creating rule…' : bulkStatus === 'available' ? 'Create rule' : 'Apply range'}</button>
             </div>
             {bulkError && <p role="alert" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{bulkError}</p>}
             {bulkMessage && <p role="status" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{bulkMessage}</p>}

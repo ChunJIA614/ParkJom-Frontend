@@ -2476,10 +2476,10 @@ export default function CommuterDashboard() {
 
           {/* ─── TAB: Active Session ─── */}
           {activeTab === 'active' && (
-            <div className="space-y-4">
+            <div className="flex flex-col gap-5">
               <JourneyStrip activeStep={journeyStep} />
               {!activeBooking ? (
-                <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-8 text-center">
+                <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-8 text-center mt-1">
                   <Clock size={32} className="mx-auto text-[#dadce0] dark:text-[#71717A] mb-2" />
                   <p className="text-[15px] font-semibold text-[#111] dark:text-white">No active booking</p>
                   <p className="text-[13px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">Find and book a parking spot to get started.</p>

@@ -362,7 +362,7 @@ export default function DashboardHeader({
                     <span>My profile</span>
                   </button>
                   <div className="border-t border-b border-[#f1f3f4] dark:border-white/[0.08] px-3 py-2.5 space-y-2">
-                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#8e8e93] dark:text-[#a1a1a6] tracking-wide">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#8e8e93] dark:text-[#D4D4D8] tracking-wide">
                       <SunMoon size={14} aria-hidden="true" className="text-[var(--system-primary,#0071e3)] dark:text-[#0a84ff]" />
                       <span>Appearance</span>
                     </div>

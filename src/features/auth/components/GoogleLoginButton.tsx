@@ -354,8 +354,9 @@ export default function GoogleLoginButton() {
               width: 380,
               transform: scale < 1 ? `scale(${scale})` : undefined,
               transformOrigin: 'center center',
+              colorScheme: 'light',
             }}
-            className="flex justify-center shrink-0 rounded-full overflow-hidden"
+            className="flex justify-center items-center shrink-0"
           >
             <GoogleLogin
               // Re-mount on theme change so the previous iframe cannot linger.
@@ -370,7 +371,7 @@ export default function GoogleLoginButton() {
               shape="pill"
               text="continue_with"
               width={380}
-              containerProps={{ className: 'google-signin-shell w-full flex justify-center' }}
+              containerProps={{ className: 'google-signin-shell flex justify-center' }}
             />
           </div>
         </div>

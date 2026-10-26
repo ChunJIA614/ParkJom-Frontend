@@ -49,7 +49,7 @@ const formatDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-const inputClass = 'w-full rounded-xl border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-[#1c1c1e] px-3.5 py-2.5 text-[13px] text-[#1d1d1f] dark:text-[#f5f5f7] transition-colors focus:border-[var(--workspace-accent,#007AFF)] focus:outline-none focus:ring-2 focus:ring-[var(--workspace-accent-soft,#e8f0fe)] disabled:bg-[#f5f5f7] dark:disabled:bg-white/[0.04] disabled:text-[#8e8e93]';
+const inputClass = 'w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#121214] px-3.5 py-2.5 text-[13px] text-[#1d1d1f] dark:text-white transition-colors focus:border-[var(--workspace-accent,#007AFF)] focus:outline-none focus:ring-2 focus:ring-[var(--workspace-accent-soft,#e8f0fe)] disabled:bg-[#f5f5f7] dark:disabled:bg-white/[0.04] disabled:text-[#8e8e93] dark:disabled:text-[#71717A]';
 
 export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
   const navigate = useNavigate();
@@ -236,18 +236,18 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
   ] : [];
 
   return createPortal(
-    <div className="fixed inset-0 z-[1300] flex items-end justify-center bg-slate-900/40 backdrop-blur-xs sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[1300] flex items-end justify-center bg-black/60 backdrop-blur-xs sm:items-center sm:p-4">
       <button type="button" aria-label="Close profile" className="absolute inset-0 cursor-default" onClick={() => !isBusy && onClose()} />
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="profile-dialog-title"
-        className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-[#f5f5f7] dark:bg-[#121214] shadow-[0_24px_60px_rgba(15,23,42,0.25)] sm:max-w-2xl sm:rounded-3xl border border-transparent dark:border-white/[0.08]"
+        className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-[#f5f5f7] dark:bg-[#121214] shadow-[0_24px_60px_rgba(15,23,42,0.25)] sm:max-w-2xl sm:rounded-3xl border border-transparent dark:border-white/10"
       >
-        <header className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] px-5 py-4">
+        <header className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] px-5 py-4">
           <div>
-            <h2 id="profile-dialog-title" className="text-[16px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">My profile</h2>
-            <p className="text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">Manage your personal details, role, and account.</p>
+            <h2 id="profile-dialog-title" className="text-[16px] font-semibold text-[#1d1d1f] dark:text-white">My profile</h2>
+            <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Manage your personal details, role, and account.</p>
           </div>
           <button
             ref={closeButtonRef}
@@ -279,42 +279,42 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
           )}
 
           {/* Identity card */}
-          <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-4 sm:p-5">
+          <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-4 sm:p-5">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center">
               <div className="relative shrink-0">
                 {pictureUrl && !imageFailed ? (
-                  <img src={pictureUrl} alt="" onError={() => setImageFailed(true)} className="h-20 w-20 rounded-full object-cover ring-1 ring-black/[0.08]" />
+                  <img src={pictureUrl} alt="" onError={() => setImageFailed(true)} className="h-20 w-20 rounded-full object-cover ring-1 ring-black/[0.08] dark:ring-white/10" />
                 ) : (
                   <span
-                    className="flex h-20 w-20 items-center justify-center rounded-full text-[26px] font-bold ring-1 ring-black/[0.08]"
+                    className="flex h-20 w-20 items-center justify-center rounded-full text-[26px] font-bold ring-1 ring-black/[0.08] dark:ring-white/10"
                     style={{ backgroundColor: 'var(--workspace-accent-soft, #e8f0fe)', color: 'var(--workspace-accent, #007AFF)' }}
                   >
                     {initials}
                   </span>
                 )}
                 {(busy === 'upload' || busy === 'remove') && (
-                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-white/70">
+                  <span className="absolute inset-0 flex items-center justify-center rounded-full bg-white/70 dark:bg-black/60">
                     <Loader2 size={20} className="animate-spin text-[#007AFF]" />
                   </span>
                 )}
               </div>
               <div className="min-w-0 flex-1 text-center sm:text-left">
-                <p className="truncate text-[17px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">{displayName}</p>
-                <p className="truncate text-[12px] text-[#6e6e73] dark:text-[#a1a1a6]">{profile?.email ?? user.email}</p>
+                <p className="truncate text-[17px] font-semibold text-[#1d1d1f] dark:text-white">{displayName}</p>
+                <p className="truncate text-[12px] text-[#6e6e73] dark:text-[#A1A1AA]">{profile?.email ?? user.email}</p>
                 <div className="mt-2 flex flex-wrap justify-center gap-1.5 sm:justify-start">
-                  <span className="rounded-full bg-[#e8f0fe] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#007AFF]">
+                  <span className="rounded-full bg-[#e8f0fe] dark:bg-blue-950/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#007AFF] dark:text-[#3894FF]">
                     {profile?.roleName || USER_TYPE_LABELS[userType]}
                   </span>
                   <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                    (profile?.accountStatus ?? 'Active').toLowerCase() === 'active' ? 'bg-[#f0fdf4] text-[#16a34a]' : 'bg-[#fefce8] text-[#a16207]'
+                    (profile?.accountStatus ?? 'Active').toLowerCase() === 'active' ? 'bg-[#f0fdf4] dark:bg-emerald-950/50 text-[#16a34a] dark:text-emerald-400' : 'bg-[#fefce8] dark:bg-amber-950/50 text-[#a16207] dark:text-amber-400'
                   }`}>
                     {profile?.accountStatus ?? 'Active'}
                   </span>
                   {profile && !profile.isProfileComplete && (
-                    <span className="rounded-full bg-[#fff7ed] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#c2410c]">Incomplete</span>
+                    <span className="rounded-full bg-[#fff7ed] dark:bg-orange-950/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#c2410c] dark:text-orange-400">Incomplete</span>
                   )}
                 </div>
-                {profile?.createdAt && <p className="mt-2 text-[10px] text-[#8e8e93]">Member since {formatDate(profile.createdAt)}</p>}
+                {profile?.createdAt && <p className="mt-2 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">Member since {formatDate(profile.createdAt)}</p>}
               </div>
               <div className="flex shrink-0 gap-2">
                 <input
@@ -328,7 +328,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isBusy || !profile}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-white/[0.08] px-3 py-2 text-[12px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] transition-colors hover:bg-[#f5f5f7] dark:hover:bg-white/[0.12] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] dark:border-white/10 bg-white dark:bg-white/[0.08] px-3 py-2 text-[12px] font-semibold text-[#1d1d1f] dark:text-white transition-colors hover:bg-[#f5f5f7] dark:hover:bg-white/[0.14] disabled:opacity-50 cursor-pointer"
                 >
                   <Camera size={14} /> {pictureUrl ? 'Change' : 'Upload'}
                 </button>
@@ -338,59 +338,59 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                     onClick={() => void handleRemovePicture()}
                     disabled={isBusy || !profile}
                     aria-label="Remove profile picture"
-                    className="inline-flex items-center rounded-full border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-white/[0.08] px-2.5 py-2 text-[#d70015] dark:text-rose-400 transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50"
+                    className="inline-flex items-center rounded-full border border-black/[0.08] dark:border-white/10 bg-white dark:bg-white/[0.08] px-2.5 py-2 text-[#d70015] dark:text-rose-400 transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50 cursor-pointer"
                   >
                     <Trash2 size={14} />
                   </button>
                 )}
               </div>
             </div>
-            <p className="mt-3 text-center text-[10px] text-[#8e8e93] sm:text-left">JPG, PNG, or WEBP · up to 5 MB</p>
+            <p className="mt-3 text-center text-[10px] text-[#8e8e93] dark:text-[#A1A1AA] sm:text-left">JPG, PNG, or WEBP · up to 5 MB</p>
           </div>
 
           {/* Activity summary */}
           {busy === 'load' && !profile ? (
-            <div className="flex items-center justify-center gap-2 rounded-2xl border border-black/[0.06] bg-white py-10 text-[12px] text-[#6e6e73]">
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] py-10 text-[12px] text-[#6e6e73] dark:text-[#A1A1AA]">
               <Loader2 size={16} className="animate-spin" /> Loading your profile…
             </div>
           ) : metrics.length > 0 && (
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               {metrics.map(({ label, value, icon: Icon, hint }) => (
-                <div key={label} className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-3">
-                  <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-[#8e8e93] dark:text-[#a1a1a6]">
+                <div key={label} className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-3">
+                  <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-[#8e8e93] dark:text-[#A1A1AA]">
                     <span>{label}</span>
                     <Icon size={14} className="text-[var(--workspace-accent,#007AFF)]" />
                   </div>
-                  <p className="mt-1.5 text-[16px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">{value}</p>
-                  {hint && <p className="mt-0.5 text-[10px] text-[#8e8e93]">{hint}</p>}
+                  <p className="mt-1.5 text-[16px] font-semibold text-[#1d1d1f] dark:text-white">{value}</p>
+                  {hint && <p className="mt-0.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{hint}</p>}
                 </div>
               ))}
             </div>
           )}
 
           {/* Personal details */}
-          <form onSubmit={handleSave} className="space-y-3 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-4 sm:p-5">
-            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
+          <form onSubmit={handleSave} className="space-y-3 rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-4 sm:p-5">
+            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-white">
               <UserRound size={15} className="text-[var(--workspace-accent,#007AFF)]" /> Personal details
             </h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">First name</span>
+                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA]">First name</span>
                 <input className={inputClass} value={form.firstName} maxLength={100} autoComplete="given-name" disabled={!profile || isBusy}
                   onChange={(event) => setForm((current) => ({ ...current, firstName: event.target.value }))} />
               </label>
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">Last name</span>
+                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA]">Last name</span>
                 <input className={inputClass} value={form.lastName} maxLength={100} autoComplete="family-name" disabled={!profile || isBusy}
                   onChange={(event) => setForm((current) => ({ ...current, lastName: event.target.value }))} />
               </label>
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">Phone number</span>
+                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA]">Phone number</span>
                 <input className={inputClass} type="tel" value={form.phoneNumber} maxLength={20} autoComplete="tel" placeholder="e.g. 0123456789" disabled={!profile || isBusy}
                   onChange={(event) => setForm((current) => ({ ...current, phoneNumber: event.target.value }))} />
               </label>
               <label className="block space-y-1">
-                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">Email</span>
+                <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA]">Email</span>
                 <input className={inputClass} value={profile?.email ?? user.email} disabled readOnly />
               </label>
             </div>
@@ -398,7 +398,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
               <button
                 type="submit"
                 disabled={!isDirty || isBusy}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--workspace-accent,#007AFF)] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--workspace-accent,#007AFF)] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40 cursor-pointer"
               >
                 {busy === 'save' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Save changes
@@ -408,33 +408,33 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
 
           {/* Account role (Single fixed role) */}
           {profile && (
-            <div className="flex flex-col gap-2 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="flex flex-col gap-2 rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div>
-                <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
+                <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-white">
                   <UserRound size={15} className="text-[var(--workspace-accent,#007AFF)]" /> Account role
                 </h3>
-                <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">
+                <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
                   You are registered as a <strong>{USER_TYPE_LABELS[userType]}</strong>. Each account is assigned a single fixed role.
                 </p>
               </div>
-              <span className="inline-flex shrink-0 items-center rounded-full bg-[#f5f5f7] dark:bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-medium text-[#1d1d1f] dark:text-[#f5f5f7]">
+              <span className="inline-flex shrink-0 items-center rounded-full bg-[#f5f5f7] dark:bg-white/[0.08] px-3.5 py-1.5 text-[12px] font-medium text-[#1d1d1f] dark:text-white">
                 {USER_TYPE_LABELS[userType]}
               </span>
             </div>
           )}
 
           {/* Appearance */}
-          <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] p-4 sm:p-5">
-            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
+          <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-4 sm:p-5">
+            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#1d1d1f] dark:text-white">
               <SunMoon size={15} className="text-[var(--workspace-accent,#007AFF)]" /> Appearance
             </h3>
-            <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">
+            <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
               Choose how ParkJom looks. Your choice applies across every dashboard, map, and dialog on this device.
             </p>
             <div className="mt-3">
               <ThemeSegmentedControl size="panel" />
             </div>
-            <p className="mt-2 text-[10px] text-[#8e8e93]" aria-live="polite">
+            <p className="mt-2 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]" aria-live="polite">
               {preference === 'system'
                 ? `Following this device — currently ${resolved === 'dark' ? 'dark' : 'light'}.`
                 : `${preference === 'dark' ? 'Dark' : 'Light'} appearance is always on.`}
@@ -443,13 +443,13 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
 
           {/* Danger zone */}
           {!isAdmin && profile && (
-            <div className="rounded-2xl border border-rose-200 dark:border-rose-900/40 bg-white dark:bg-[#1c1c1e] p-4 sm:p-5">
+            <div className="rounded-2xl border border-rose-200 dark:border-rose-900/40 bg-white dark:bg-[#18181C] p-4 sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#d70015]">
+                  <h3 className="flex items-center gap-2 text-[13px] font-semibold text-[#d70015] dark:text-rose-400">
                     <ShieldAlert size={15} /> Deactivate account
                   </h3>
-                  <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">
+                  <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
                     Not possible while you have active or upcoming confirmed bookings. Owned parking spots will be unpublished.
                   </p>
                 </div>
@@ -458,16 +458,16 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                     type="button"
                     onClick={() => setShowDeactivate(true)}
                     disabled={isBusy}
-                    className="shrink-0 rounded-full border border-rose-200 px-4 py-2 text-[12px] font-semibold text-[#d70015] transition-colors hover:bg-rose-50 disabled:opacity-50"
+                    className="shrink-0 rounded-full border border-rose-200 dark:border-rose-900/60 px-4 py-2 text-[12px] font-semibold text-[#d70015] dark:text-rose-400 transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50 cursor-pointer"
                   >
                     Deactivate…
                   </button>
                 )}
               </div>
               {showDeactivate && (
-                <div className="mt-4 space-y-3 border-t border-rose-100 pt-4">
+                <div className="mt-4 space-y-3 border-t border-rose-100 dark:border-rose-900/40 pt-4">
                   <label className="block space-y-1">
-                    <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1a6]">Reason (optional)</span>
+                    <span className="text-[11px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA]">Reason (optional)</span>
                     <textarea
                       value={deactivateReason}
                       onChange={(event) => setDeactivateReason(event.target.value)}
@@ -478,13 +478,13 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                       className={`${inputClass} resize-none`}
                     />
                   </label>
-                  <label className="flex items-start gap-2 text-[11px] text-[#3a3a3c] dark:text-[#f5f5f7]">
+                  <label className="flex items-start gap-2 text-[11px] text-[#3a3a3c] dark:text-white cursor-pointer">
                     <input
                       type="checkbox"
                       checked={deactivateAcknowledged}
                       onChange={(event) => setDeactivateAcknowledged(event.target.checked)}
                       disabled={isBusy}
-                      className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-[#d70015]"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-white/20 bg-white dark:bg-[#121214] accent-[#d70015]"
                     />
                     I understand I will be signed out and lose access to my ParkJom account.
                   </label>
@@ -493,7 +493,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                       type="button"
                       onClick={() => { setShowDeactivate(false); setDeactivateAcknowledged(false); setDeactivateReason(''); }}
                       disabled={isBusy}
-                      className="rounded-full px-4 py-2 text-[12px] font-semibold text-[#6e6e73] hover:bg-black/[0.04] disabled:opacity-50"
+                      className="rounded-full px-4 py-2 text-[12px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA] hover:bg-black/[0.04] dark:hover:bg-white/[0.08] hover:text-[#1d1d1f] dark:hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -501,7 +501,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                       type="button"
                       onClick={() => void handleDeactivate()}
                       disabled={!deactivateAcknowledged || isBusy}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-[#d70015] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[#d70015] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40 cursor-pointer"
                     >
                       {busy === 'deactivate' && <Loader2 size={14} className="animate-spin" />}
                       Deactivate account

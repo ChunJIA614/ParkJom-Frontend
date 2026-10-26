@@ -14,6 +14,7 @@ export interface SystemSelectProps
   onChange?: (event: React.ChangeEvent<HTMLSelectElement>) => void;
   options?: SystemSelectOption[];
   placeholder?: string;
+  leadingIcon?: React.ReactNode;
 }
 
 function extractOptionsFromChildren(children: React.ReactNode): SystemSelectOption[] {
@@ -58,6 +59,7 @@ export default function SystemSelect({
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledBy,
   placeholder,
+  leadingIcon,
 }: SystemSelectProps) {
   const generatedId = useId();
   const selectId = id || `system-select-${generatedId}`;
@@ -184,7 +186,10 @@ export default function SystemSelect({
           open ? 'is-open border-[#007aff] dark:border-[#0071E3] bg-white dark:bg-[#18181C] ring-3 ring-[#007aff]/14 dark:ring-[#0071E3]/20' : ''
         } ${isFullWidth ? 'w-full' : ''} ${className}`}
       >
-        <span className="truncate">{selectedOption?.label ?? ''}</span>
+        <span className="inline-flex items-center gap-2 min-w-0">
+          {leadingIcon}
+          <span className="truncate">{selectedOption?.label ?? ''}</span>
+        </span>
         <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 text-[#8e8e93] dark:text-[#A1A1AA] transition-transform duration-150 ${
             open ? 'rotate-180 text-[#007aff] dark:text-[#3894FF]' : ''
