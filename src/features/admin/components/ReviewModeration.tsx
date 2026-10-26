@@ -424,19 +424,19 @@ export default function ReviewModeration({ token, parkingSpots, onModerated }: R
                             </div>
                             <div className="mt-3"><StarRating rating={review.rating} /></div>
 
-                            <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
-                              <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Commuter feedback</p>
-                              <p className="mt-1 whitespace-pre-line text-xs leading-5 text-slate-700">
+                            <div className="mt-3 rounded-lg border border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] px-3 py-3">
+                              <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Commuter feedback</p>
+                              <p className="review-comment-text mt-1 whitespace-pre-line text-xs leading-5">
                                 {review.comment || 'The commuter did not leave a written comment.'}
                               </p>
                             </div>
 
-                            <div className={`mt-3 rounded-lg border px-3 py-3 ${review.ownerReply ? 'border-blue-100 bg-blue-50/60' : 'border-dashed border-slate-200 bg-white'}`}>
+                            <div className={`mt-3 rounded-lg border px-3 py-3 ${review.ownerReply ? 'review-owner-reply-box' : 'border-dashed border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03]'}`}>
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className={`text-[9px] font-bold uppercase tracking-wide ${review.ownerReply ? 'text-blue-700' : 'text-slate-400'}`}>Owner response</p>
-                                {review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="text-[10px] text-blue-500">{formatDateTime(review.ownerReplyAt)}</time>}
+                                <p className={`text-[9px] font-bold uppercase tracking-wide ${review.ownerReply ? 'review-owner-reply-title' : 'text-slate-400 dark:text-slate-500'}`}>Owner response</p>
+                                {review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="review-owner-reply-time text-[10px]">{formatDateTime(review.ownerReplyAt)}</time>}
                               </div>
-                              <p className={`mt-1 text-[11px] leading-4 ${review.ownerReply ? 'text-slate-700' : 'text-slate-400'}`}>
+                              <p className={`mt-1 text-[11px] leading-4 ${review.ownerReply ? 'review-owner-reply-text' : 'text-slate-400 dark:text-slate-500'}`}>
                                 {review.ownerReply || 'No owner response has been recorded for this review.'}
                               </p>
                             </div>

@@ -190,15 +190,15 @@ export default function OwnerWalletPanel({ token }: Props) {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+      <section className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] p-4 shadow-sm md:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">
               <Wallet className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Earnings wallet</h2>
-              <p className="mt-1 text-[11px] text-slate-500">{statusLine}</p>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Earnings wallet</h2>
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-[#A1A1AA]">{statusLine}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -206,7 +206,7 @@ export default function OwnerWalletPanel({ token }: Props) {
               type="button"
               onClick={retryAll}
               disabled={summaryLoading || feedLoading}
-              className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-50"
+              className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-3 text-[11px] font-semibold text-slate-600 dark:text-slate-200 transition-colors hover:bg-slate-50 dark:hover:bg-white/5 disabled:cursor-wait disabled:opacity-50"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${summaryLoading || feedLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
               Refresh
@@ -215,7 +215,7 @@ export default function OwnerWalletPanel({ token }: Props) {
               type="button"
               disabled
               title="Withdrawals are not available yet."
-              className="inline-flex min-h-9 cursor-not-allowed items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 text-[11px] font-semibold text-slate-400"
+              className="inline-flex min-h-9 cursor-not-allowed items-center justify-center gap-1.5 rounded-lg bg-slate-100 dark:bg-white/[0.06] px-3 text-[11px] font-semibold text-slate-400 dark:text-[#71717A]"
             >
               <ArrowDownToLine className="h-3.5 w-3.5" aria-hidden="true" />
               Withdraw
@@ -233,12 +233,12 @@ export default function OwnerWalletPanel({ token }: Props) {
           </div>
         ) : (
           <>
-            <div className="owner-wallet-hero mt-4 rounded-xl border border-emerald-100 bg-emerald-50/60 dark:border-[rgba(52,211,153,0.28)] dark:bg-[#111C18] px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-emerald-700 dark:text-[#34D399]">Available to withdraw</p>
-              <p className="mt-1 text-2xl font-black text-emerald-800 dark:text-[#4ADE80]">
+            <div className="owner-wallet-hero mt-4 rounded-xl border border-slate-100 dark:border-white/10 bg-white dark:bg-[#141417] px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-slate-400 dark:text-[#A1A1AA]">Available to withdraw</p>
+              <p className="mt-1 text-2xl font-black text-emerald-600 dark:text-emerald-400">
                 {summaryLoading ? '—' : money(available)}
               </p>
-              <p className="mt-1 text-[10px] text-emerald-700/80 dark:text-[#A7F3D0]">
+              <p className="mt-1 text-[10px] text-slate-400 dark:text-[#A1A1AA]">
                 Settled owner payouts currently sitting in your wallet.
               </p>
             </div>
@@ -329,7 +329,7 @@ export default function OwnerWalletPanel({ token }: Props) {
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-bold text-slate-600">
+          <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] px-4 py-2.5 text-[11px] font-bold text-slate-600 dark:text-slate-300">
             <button
               type="button"
               onClick={() => setPage((value) => Math.max(1, value - 1))}

@@ -175,10 +175,10 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
     <section className="space-y-5" aria-labelledby="owner-reviews-heading">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 id="owner-reviews-heading" className="text-2xl font-extrabold tracking-tight text-slate-900">
+          <h1 id="owner-reviews-heading" className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
             Parking reviews
           </h1>
-          <p className="mt-1 text-xs leading-normal text-slate-500">
+          <p className="mt-1 text-xs leading-normal text-slate-500 dark:text-slate-400">
             Read verified customer feedback and publish a response from the parking owner.
           </p>
         </div>
@@ -186,7 +186,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
           type="button"
           onClick={() => void loadReviews()}
           disabled={loading || waitingForParking}
-          className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1e2025] px-4 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-[#252830] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
           Refresh reviews
@@ -194,14 +194,14 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
       </div>
 
       {notice && (
-        <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
           <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
           {notice}
         </div>
       )}
 
       {loadError && (
-        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-950/40 px-4 py-3 text-xs text-rose-700 dark:text-rose-400">
           <span className="inline-flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
             {loadError}
@@ -213,21 +213,21 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
       )}
 
       {(waitingForParking || loading) && items.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" aria-hidden="true" />
-          <p className="mt-2 text-xs font-medium text-slate-500">Loading parking reviews...</p>
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16171B] p-10 text-center shadow-sm">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" aria-hidden="true" />
+          <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Loading parking reviews...</p>
         </div>
       ) : bays.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <Building2 className="mx-auto h-7 w-7 text-slate-300" aria-hidden="true" />
-          <h2 className="mt-3 text-sm font-bold text-slate-900">No registered parking spots</h2>
-          <p className="mt-1 text-xs text-slate-500">Register a parking spot before managing customer reviews.</p>
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16171B] p-10 text-center shadow-sm">
+          <Building2 className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" aria-hidden="true" />
+          <h2 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">No registered parking spots</h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Register a parking spot before managing customer reviews.</p>
         </div>
       ) : items.length === 0 && !loadError ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <MessageSquare className="mx-auto h-7 w-7 text-slate-300" aria-hidden="true" />
-          <h2 className="mt-3 text-sm font-bold text-slate-900">No reviews yet</h2>
-          <p className="mt-1 text-xs text-slate-500">New customer reviews for your parking spots will appear here.</p>
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16171B] p-10 text-center shadow-sm">
+          <MessageSquare className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" aria-hidden="true" />
+          <h2 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">No reviews yet</h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">New customer reviews for your parking spots will appear here.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -237,20 +237,20 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
             const isDeleting = deletingId === review.reviewId;
 
             return (
-              <article key={review.reviewId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <article key={review.reviewId} className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16171B] p-5 shadow-sm sm:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-sm font-extrabold text-slate-900">
+                      <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">
                         {review.reviewerDisplayName || 'ParkJom commuter'}
                       </h2>
                       {review.isVerifiedBooking && (
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                        <span className="rounded-full border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
                           Verified booking
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
                       <span>{bay.propertyName}</span>
                       <span aria-hidden="true">·</span>
                       <span>{bay.parkingLabel || `Spot #${bay.parkingSpotId}`}</span>
@@ -262,34 +262,34 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                     {Array.from({ length: 5 }, (_, index) => (
                       <Star
                         key={index}
-                        className={`h-4 w-4 ${index < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`}
+                        className={`h-4 w-4 ${index < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200 dark:text-slate-700'}`}
                         aria-hidden="true"
                       />
                     ))}
                   </div>
                 </div>
 
-                <p className="mt-4 text-sm leading-6 text-slate-700">
+                <p className="review-comment-text mt-4 text-sm leading-6">
                   {review.comment || 'The reviewer did not leave a written comment.'}
                 </p>
 
                 {review.ownerReply && !isEditing && (
-                  <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+                  <div className="review-owner-reply-box mt-4 rounded-xl px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-blue-700">Your reply</p>
+                      <p className="review-owner-reply-title text-[10px] font-extrabold uppercase tracking-wide">Your reply</p>
                       {review.ownerReplyAt && (
-                        <time dateTime={review.ownerReplyAt} className="text-[10px] text-blue-500">
+                        <time dateTime={review.ownerReplyAt} className="review-owner-reply-time text-[10px]">
                           {formatReviewDate(review.ownerReplyAt)}
                         </time>
                       )}
                     </div>
-                    <p className="mt-1 text-xs leading-5 text-slate-700">{review.ownerReply}</p>
+                    <p className="review-owner-reply-text mt-1 text-xs leading-5">{review.ownerReply}</p>
                   </div>
                 )}
 
                 {isEditing ? (
-                  <form onSubmit={submitReply} className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <label htmlFor={`owner-reply-${review.reviewId}`} className="block text-xs font-bold text-slate-700">
+                  <form onSubmit={submitReply} className="mt-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-4">
+                    <label htmlFor={`owner-reply-${review.reviewId}`} className="block text-xs font-bold text-slate-700 dark:text-slate-200">
                       Your reply
                     </label>
                     <textarea
@@ -304,7 +304,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                       autoFocus
                       disabled={isSaving}
                       placeholder="Thank the reviewer or respond to their feedback."
-                      className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs leading-5 text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                      className="mt-2 w-full resize-y rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2.5 text-xs leading-5 text-slate-800 dark:text-white outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 disabled:opacity-60"
                     />
                     {replyError && (
                       <p role="alert" className="mt-2 flex items-center gap-1.5 text-xs font-medium text-rose-600">
@@ -320,7 +320,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                           setReplyError(null);
                         }}
                         disabled={isSaving}
-                        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1e2025] px-4 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#252830] disabled:opacity-60"
                       >
                         <X className="h-4 w-4" aria-hidden="true" />
                         Cancel
@@ -341,7 +341,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                       type="button"
                       onClick={() => void removeReview(review)}
                       disabled={isDeleting}
-                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-4 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-500/20 bg-white dark:bg-[#1e2025] px-4 text-xs font-bold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
                       Delete review
@@ -350,7 +350,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                       type="button"
                       onClick={() => beginReply(review)}
                       disabled={isDeleting}
-                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-blue-200 bg-white px-4 text-xs font-bold text-blue-700 hover:bg-blue-50"
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-blue-200 dark:border-blue-500/20 bg-white dark:bg-[#1e2025] px-4 text-xs font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
                     >
                       {review.ownerReply ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <MessageSquare className="h-4 w-4" aria-hidden="true" />}
                       {review.ownerReply ? 'Edit reply' : 'Reply to review'}

@@ -1202,13 +1202,13 @@ export default function ParkingDetail() {
                         </div>
                       </div>
                     ) : (
-                      <p className="mt-3 whitespace-pre-line text-[12px] leading-5 text-[#5f6368]">{review.comment || 'No written comment.'}</p>
+                      <p className="review-comment-text mt-3 whitespace-pre-line text-[12px] leading-5">{review.comment || 'No written comment.'}</p>
                     )}
 
                     {review.ownerReply && (
-                      <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-black/[0.05]">
-                        <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#007AFF]"><MessageSquare size={11} /> Owner reply</p>
-                        <p className="mt-1 text-[11px] leading-4 text-[#5f6368]">{review.ownerReply}</p>
+                      <div className="review-owner-reply-box mt-3 rounded-xl p-3">
+                        <p className="review-owner-reply-title flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide"><MessageSquare size={11} /> Owner reply</p>
+                        <p className="review-owner-reply-text mt-1 text-[11px] leading-4">{review.ownerReply}</p>
                       </div>
                     )}
                   </article>

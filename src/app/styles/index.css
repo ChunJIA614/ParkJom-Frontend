@@ -1371,6 +1371,128 @@ html {
   box-shadow: 0 10px 24px rgba(0, 102, 214, 0.26);
 }
 
+/* ── Review comments & owner replies high-contrast readability ── */
+.app-workspace .review-owner-reply-box,
+.review-owner-reply-box {
+  background-color: #f0f7ff !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+.dark .app-workspace .review-owner-reply-box,
+.dark .review-owner-reply-box {
+  background-color: #111a2e !important;
+  border: 1px solid rgba(96, 165, 250, 0.28) !important;
+}
+
+.app-workspace .review-owner-reply-title,
+.review-owner-reply-title {
+  color: #1d4ed8 !important;
+  font-weight: 800 !important;
+}
+
+.dark .app-workspace .review-owner-reply-title,
+.dark .review-owner-reply-title {
+  color: #60a5fa !important;
+  font-weight: 800 !important;
+}
+
+.app-workspace .review-owner-reply-time,
+.review-owner-reply-time {
+  color: #3b82f6 !important;
+}
+
+.dark .app-workspace .review-owner-reply-time,
+.dark .review-owner-reply-time {
+  color: #93c5fd !important;
+}
+
+.app-workspace .review-owner-reply-text,
+.review-owner-reply-text {
+  color: #0f172a !important;
+  font-weight: 500 !important;
+}
+
+.dark .app-workspace .review-owner-reply-text,
+.dark .review-owner-reply-text {
+  color: #f8fafc !important;
+  font-weight: 500 !important;
+}
+
+.app-workspace .review-comment-text,
+.review-comment-text {
+  color: #1e293b !important;
+}
+
+.dark .app-workspace .review-comment-text,
+.dark .review-comment-text {
+  color: #f1f5f9 !important;
+}
+
+/* ── Photo upload dropzone high-contrast styling ── */
+.app-workspace .photo-upload-dropzone,
+.photo-upload-dropzone {
+  background-color: #f0f7ff !important;
+  border: 1.5px dashed #93c5fd !important;
+  transition: all 150ms ease !important;
+}
+
+.app-workspace .photo-upload-dropzone:hover:not(:disabled),
+.photo-upload-dropzone:hover:not(:disabled) {
+  background-color: #e0f0fe !important;
+  border-color: #3b82f6 !important;
+}
+
+.dark .app-workspace .photo-upload-dropzone,
+.dark .photo-upload-dropzone {
+  background-color: #111a2e !important;
+  border: 1.5px dashed rgba(96, 165, 250, 0.35) !important;
+}
+
+.dark .app-workspace .photo-upload-dropzone:hover:not(:disabled),
+.dark .photo-upload-dropzone:hover:not(:disabled) {
+  background-color: #15223c !important;
+  border-color: #60a5fa !important;
+}
+
+.app-workspace .photo-upload-icon-circle,
+.photo-upload-icon-circle {
+  background-color: #ffffff !important;
+  color: #2563eb !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark .app-workspace .photo-upload-icon-circle,
+.dark .photo-upload-icon-circle {
+  background-color: rgba(37, 99, 235, 0.22) !important;
+  color: #60a5fa !important;
+  border: 1px solid rgba(96, 165, 250, 0.3) !important;
+  box-shadow: none !important;
+}
+
+.app-workspace .photo-upload-title,
+.photo-upload-title {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+.dark .app-workspace .photo-upload-title,
+.dark .photo-upload-title {
+  color: #f8fafc !important;
+  font-weight: 700 !important;
+}
+
+.app-workspace .photo-upload-subtext,
+.photo-upload-subtext {
+  color: #475569 !important;
+  font-weight: 500 !important;
+}
+
+.dark .app-workspace .photo-upload-subtext,
+.dark .photo-upload-subtext {
+  color: #cbd5e1 !important;
+  font-weight: 500 !important;
+}
+
 .brand-logo {
   display: block;
   aspect-ratio: 1;
@@ -4583,9 +4705,17 @@ html {
 }
 
 /* ── Dark Theme Owner Wallet & Photo Dropzone ── */
+.app-workspace .owner-wallet-hero,
+.owner-wallet-hero {
+  background-color: #ffffff !important;
+  border: 1px solid #f1f5f9 !important;
+}
+
+.dark .app-workspace .owner-wallet-hero,
 .dark .owner-wallet-hero {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(20, 20, 23, 0.95) 100%) !important;
-  border: 1px solid rgba(52, 211, 153, 0.28) !important;
+  background-color: #141417 !important;
+  background-image: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 .dark .photo-dropzone {

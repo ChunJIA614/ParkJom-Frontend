@@ -1529,8 +1529,8 @@ export default function AvailabilityScheduler({
             {setupStep === 1 && (
               <motion.div key="photos-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
                 <div>
-                  <h3 className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">Show commuters the exact spot</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 sm:mt-1 sm:text-sm">Add at least one clear photo. The first photo becomes the cover.</p>
+                  <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Show commuters the exact spot</h3>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">Add at least one clear photo. The first photo becomes the cover.</p>
                 </div>
                 <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={handlePhotoChange} className="hidden" />
                 <button
@@ -1539,15 +1539,15 @@ export default function AvailabilityScheduler({
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={handlePhotoFileDrop}
                   disabled={pendingPhotoCount > 0 || setupPhotos.length >= MAX_PHOTOS || setupBusy}
-                  className="flex min-h-24 w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-blue-300 bg-blue-50/50 px-4 text-center transition-colors hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-36 sm:gap-2 sm:px-5"
+                  className="photo-upload-dropzone flex min-h-24 w-full flex-col items-center justify-center gap-1.5 rounded-2xl px-4 text-center disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-36 sm:gap-2 sm:px-5"
                 >
-                  <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-blue-600 shadow-sm"><UploadCloud className="h-5 w-5" aria-hidden="true" /></span>
-                  <span className="text-sm font-semibold text-slate-900">Tap to add photos</span>
-                  <span className="text-[11px] text-slate-500">or drop JPG, PNG, WEBP here · {setupPhotos.length}/{MAX_PHOTOS}</span>
+                  <span className="photo-upload-icon-circle grid h-11 w-11 place-items-center rounded-full"><UploadCloud className="h-5 w-5" aria-hidden="true" /></span>
+                  <span className="photo-upload-title text-sm">Tap to add photos</span>
+                  <span className="photo-upload-subtext text-[11px]">or drop JPG, PNG, WEBP here · {setupPhotos.length}/{MAX_PHOTOS}</span>
                 </button>
                 {setupPhotos.length > 0 && (
                   <div>
-                    <div className="mb-2 flex items-center gap-1.5 text-[11px] text-slate-500"><GripVertical className="h-3.5 w-3.5" aria-hidden="true" />Drag to reorder, or tap one photo then another to swap.</div>
+                    <div className="mb-2 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-[#A1A1AA]"><GripVertical className="h-3.5 w-3.5" aria-hidden="true" />Drag to reorder, or tap one photo then another to swap.</div>
                     <div className="grid grid-cols-3 gap-2 sm:gap-3">
                       {setupPhotos.map((photo, index) => {
                         const uploadedImage = activeSetup.images.find((image) => image.secureUrl === photo);
@@ -1566,7 +1566,7 @@ export default function AvailabilityScheduler({
                             onDragEnd={() => setDraggedPhotoIndex(null)}
                             onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
                             onDrop={(event) => { event.preventDefault(); const from = draggedPhotoIndex ?? Number(event.dataTransfer.getData('text/plain')); if (Number.isInteger(from)) void swapPhotos(from, index); setDraggedPhotoIndex(null); setSelectedPhotoIndex(null); }}
-                            className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-2xl bg-slate-100 shadow-sm outline-none transition ${selected ? 'ring-4 ring-blue-500/25 ring-offset-2' : 'ring-1 ring-black/5'} ${draggedPhotoIndex === index ? 'opacity-50' : ''}`}
+                            className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-2xl bg-slate-100 dark:bg-white/5 shadow-sm outline-none transition ${selected ? 'ring-4 ring-blue-500/25 ring-offset-2' : 'ring-1 ring-black/5 dark:ring-white/10'} ${draggedPhotoIndex === index ? 'opacity-50' : ''}`}
                           >
                             <img src={photo} alt="" className="h-full w-full object-cover" draggable={false} />
                             <span className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm ${index === 0 ? 'bg-white text-slate-900' : 'bg-slate-950/70 text-white'}`}>{index === 0 ? 'Cover' : index + 1}</span>
@@ -1581,7 +1581,7 @@ export default function AvailabilityScheduler({
                   </div>
                 )}
                 {pendingPhotoCount > 0 && <p className="text-[11px] font-medium text-blue-600">Preparing photo preview…</p>}
-                <div className="border-t border-slate-100 pt-3 sm:pt-5">
+                <div className="border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
                   <button type="button" onClick={() => void continueFromPhotos()} disabled={pendingPhotoCount > 0 || setupBusy} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{imagesUploading ? 'Uploading photos…' : 'Continue'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>

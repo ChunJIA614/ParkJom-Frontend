@@ -554,9 +554,9 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                   `}
                 >
                   <UploadCloud className="w-10 h-10 text-slate-400 mb-3" />
-                  <h3 className="font-bold text-xs text-slate-700 mb-1">Drag & drop an ownership document here</h3>
-                  <p className="text-[10px] text-slate-400 mb-3">JPG, JPEG, PNG, or PDF only · maximum 10 MB</p>
-                  <span className="bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm">
+                  <h3 className="font-bold text-xs text-slate-700 dark:text-white mb-1">Drag & drop an ownership document here</h3>
+                  <p className="text-[10px] text-slate-400 dark:text-[#A1A1AA] mb-3">JPG, JPEG, PNG, or PDF only · maximum 10 MB</p>
+                  <span className="bg-white dark:bg-[#1C1C1E] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm">
                     Browse Files
                   </span>
                   
