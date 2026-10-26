@@ -1,4 +1,5 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
+import type { Booking, ParkingSpot } from '../types';
 
 export interface BookingAvailabilityTimeRange {
   from: string;
@@ -270,4 +271,106 @@ export async function cancelBooking(
   }
 
   return result;
+}
+
+
+export interface ActiveBookingSpotWire {
+  parkingSpotId: number;
+  parkingLabel?: string | null;
+  propertyId: number;
+  propertyName?: string | null;
+  address?: string | null;
+  latitude: number;
+  longitude: number;
+  stationName?: string | null;
+  distanceToStation: number;
+  timeToStationInMinutes: number;
+  availabilityStatus?: string | null;
+  monthlyRate?: number | null;
+  dailyRate?: number | null;
+  primaryImageUrl?: string | null;
+  ownerName?: string | null;
+}
+
+export interface ActiveBookingData {
+  bookingId: number;
+  bookingReference: string;
+  startTime: string;
+  endTime: string;
+  vehiclePlate: string;
+  status: string;
+  totalPaid: number;
+  spot: ActiveBookingSpotWire;
+}
+
+export interface ActiveBookingResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data: ActiveBookingData | null;
+  upcomingBookings?: ActiveBookingData[];
+}
+
+export function normalizeActiveBooking(data: ActiveBookingData): Booking {
+  const spot: ParkingSpot = {
+    id: `spot-${data.spot.parkingSpotId}`,
+    parkingSpotId: data.spot.parkingSpotId,
+    parkingLabel: data.spot.parkingLabel || 'Bay',
+    propertyId: data.spot.propertyId,
+    propertyName: data.spot.propertyName || 'Parking Spot',
+    address: data.spot.address || '',
+    latitude: data.spot.latitude,
+    longitude: data.spot.longitude,
+    lat: data.spot.latitude,
+    lng: data.spot.longitude,
+    stationName: data.spot.stationName || '',
+    station: data.spot.stationName || '',
+    distanceToStation: data.spot.distanceToStation,
+    distance: data.spot.distanceToStation,
+    timeToStationInMinutes: data.spot.timeToStationInMinutes,
+    availabilityStatus: data.spot.availabilityStatus || 'Available',
+    available: true,
+    monthlyRate: data.spot.monthlyRate ?? 0,
+    dailyRate: data.spot.dailyRate ?? null,
+    pricePerHour: data.spot.dailyRate ? Number((data.spot.dailyRate / 24).toFixed(2)) : 2.5,
+    primaryImageUrl: data.spot.primaryImageUrl ?? null,
+    name: `${data.spot.propertyName || 'Parking Spot'} - Bay ${data.spot.parkingLabel || ''}`.trim(),
+    type: 'Condo Bay',
+    owner: data.spot.ownerName || 'Property Owner',
+  };
+
+  return {
+    id: `booking-${data.bookingId}`,
+    bookingId: data.bookingId,
+    spot,
+    startTime: new Date(data.startTime),
+    endTime: new Date(data.endTime),
+    vehiclePlate: data.vehiclePlate,
+    status: data.status === 'Completed' ? 'Completed' : data.status === 'Confirmed' ? 'Upcoming' : 'Active',
+    totalPaid: data.totalPaid,
+  };
+}
+
+export interface ActiveBookingResult {
+  current: ActiveBookingData | null;
+  upcoming: ActiveBookingData[];
+}
+
+export async function getActiveBooking(
+  token: string,
+  signal?: AbortSignal,
+): Promise<ActiveBookingResult> {
+  const response = await apiRequest('/commuter/bookings/active', {
+    method: 'GET',
+    headers: authorizationHeaders(token),
+    signal,
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return { current: null, upcoming: [] };
+    throw new Error(await readApiError(response, 'Unable to load active reservation.'));
+  }
+
+  const payload = (await response.json().catch(() => null)) as ActiveBookingResponse | null;
+  return { current: payload?.data ?? null, upcoming: payload?.upcomingBookings ?? [] };
 }

@@ -12,7 +12,7 @@ import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { showConfirm } from '@/contexts/ModalContext';
 import type { Booking, ParkingSpot } from '../types';
-import { saveJourneySession } from '../lib/journeySession';
+import { loadJourneySession, saveJourneySession } from '../lib/journeySession';
 import { getWalkingRoute } from '@/services/walkingRoutes';
 import {
   planMultimodalJourney,
@@ -547,10 +547,10 @@ export default function ParkingDetail() {
 
   if (isFetchingSpot) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
+      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa] dark:bg-[#000000]">
         <div className="text-center space-y-4">
-          <Loader2 size={36} className="mx-auto text-[#007AFF] animate-spin" />
-          <p className="text-[#5f6368] font-medium text-[14px]">Loading parking spot...</p>
+          <Loader2 size={36} className="mx-auto text-[#007AFF] dark:text-[#0A84FF] animate-spin" />
+          <p className="text-[#5f6368] dark:text-[#A1A1AA] font-medium text-[14px]">Loading parking spot...</p>
         </div>
       </div>
     );
@@ -558,11 +558,11 @@ export default function ParkingDetail() {
 
   if (!spot) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa]">
+      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa] dark:bg-[#000000]">
         <div className="text-center space-y-4">
-          <MapPin size={40} className="mx-auto text-[#dadce0]" />
-          <p className="text-[#5f6368] font-medium text-[15px]">{fetchSpotError || 'No parking spot selected.'}</p>
-          <button onClick={() => navigate('/commuter')} className="text-[13px] text-[#007AFF] font-semibold hover:underline">
+          <MapPin size={40} className="mx-auto text-[#dadce0] dark:text-white/20" />
+          <p className="text-[#5f6368] dark:text-[#A1A1AA] font-medium text-[15px]">{fetchSpotError || 'No parking spot selected.'}</p>
+          <button onClick={() => navigate('/commuter')} className="text-[13px] text-[#007AFF] dark:text-[#0A84FF] font-semibold hover:underline cursor-pointer">
             &larr; Back to Transit Map
           </button>
         </div>
@@ -589,7 +589,7 @@ export default function ParkingDetail() {
   const isDateAvailable = (dateKey: string) => dateKey >= minimumBookingDate && Boolean(getAvailabilityForDate(dateKey));
 
   const isRangeAvailable = (fromDate: string, toDate: string) => {
-    if (!fromDate || !toDate || toDate <= fromDate) return false;
+    if (!fromDate || !toDate || toDate < fromDate) return false;
 
     let cursor = dateFromKey(fromDate);
     const lastDate = dateFromKey(toDate);
@@ -602,15 +602,15 @@ export default function ParkingDetail() {
 
   const invalidDates = !startDate
     || !endDate
-    || endDate <= startDate
+    || endDate < startDate
     || startDate < minimumBookingDate
     || !isRangeAvailable(startDate, endDate);
   const displayedRate = quote?.ratePerDay ?? spot.dailyRate ?? 0;
   const displayedTotal = quote?.rentalSubtotal ?? 0;
 
   const dateValidationError = startDate && endDate
-    ? endDate <= startDate
-      ? 'Choose an end date after the start date.'
+    ? endDate < startDate
+      ? 'Choose an end date on or after the start date.'
       : startDate < minimumBookingDate
         ? `Bookings open from ${formatDateKey(minimumBookingDate)}.`
         : !isRangeAvailable(startDate, endDate)
@@ -625,18 +625,38 @@ export default function ParkingDetail() {
     setBookingError(null);
     setDateSelectionError(null);
     idempotencyKeyRef.current = null;
-    if (!startDate || endDate || dateKey <= startDate) {
+
+    if (!startDate) {
       setStartDate(dateKey);
       setEndDate('');
       return;
     }
 
-    if (!isRangeAvailable(startDate, dateKey)) {
-      setDateSelectionError('Choose a continuous range where every day is available.');
+    if (!endDate) {
+      if (dateKey >= startDate) {
+        if (!isRangeAvailable(startDate, dateKey)) {
+          setDateSelectionError('Choose a continuous range where every day is available.');
+          return;
+        }
+        setEndDate(dateKey);
+        return;
+      }
+      setStartDate(dateKey);
+      setEndDate('');
       return;
     }
 
-    setEndDate(dateKey);
+    if (startDate === endDate && dateKey > startDate) {
+      if (!isRangeAvailable(startDate, dateKey)) {
+        setDateSelectionError('Choose a continuous range where every day is available.');
+        return;
+      }
+      setEndDate(dateKey);
+      return;
+    }
+
+    setStartDate(dateKey);
+    setEndDate('');
   };
 
   const handleBook = async () => {
@@ -685,7 +705,10 @@ export default function ParkingDetail() {
         totalPaid: quote.renterTotal,
       };
 
-      saveJourneySession(booking, 'reserved', user.userId);
+      const currentSession = loadJourneySession(user.userId);
+      if (!currentSession || new Date(currentSession.booking.endTime) <= new Date() || new Date(booking.startTime) <= new Date(currentSession.booking.startTime)) {
+        saveJourneySession(booking, 'reserved', user.userId);
+      }
       setReservationReady(true);
     } catch (error) {
       setBookingError(error instanceof Error ? error.message : 'Unable to complete this booking.');
@@ -696,7 +719,7 @@ export default function ParkingDetail() {
 
   if (reservationReady) {
     return (
-      <div className="page-shell text-[#1d1d1f]">
+      <div className="page-shell text-[#1d1d1f] dark:text-white">
         <DashboardHeader
           role="commuter"
           user={user}
@@ -704,30 +727,30 @@ export default function ParkingDetail() {
           onBrandClick={() => navigate('/commuter', { replace: true, state: { activeTab: 'home' } })}
         />
         <main className="max-w-xl mx-auto px-4 py-10 md:py-16">
-          <div className="bg-white rounded-2xl border border-black/[0.08] overflow-hidden">
-            <div className="bg-[#1c1c1e] text-white p-6 md:p-8">
-              <div className="w-11 h-11 rounded-xl bg-[#34c759] flex items-center justify-center mb-6">
-                <ShieldCheck size={23} />
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 overflow-hidden shadow-2xl">
+            <div className="bg-[#18181C] text-white p-6 md:p-8 border-b border-black/[0.08] dark:border-white/10">
+              <div className="w-12 h-12 rounded-2xl bg-[#34c759] dark:bg-[#30D158] flex items-center justify-center mb-6 shadow-sm">
+                <ShieldCheck size={26} className="text-white" />
               </div>
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-[-0.03em]">Parking Pass ready</h1>
-              <p className="text-[#c7c7cc] text-[13px] mt-2 leading-relaxed">Your selected bay and booking time are collected in one pass for arrival and access.</p>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-[-0.03em] text-white">Parking Pass ready</h1>
+              <p className="text-[#6e6e73] dark:text-[#A1A1AA] text-[13px] mt-2 leading-relaxed">Your selected bay and booking time are collected in one pass for arrival and access.</p>
             </div>
-            <div className="p-6 md:p-8 space-y-5">
+            <div className="p-6 md:p-8 space-y-5 bg-white dark:bg-[#1C1C1E]">
               <div>
-                <p className="text-[11px] text-[#6e6e73]">Bay {spot.parkingLabel}</p>
-                <p className="font-semibold mt-1">{spot.address}</p>
-                <p className="text-[12px] text-[#6e6e73] mt-1">{stationName || 'Klang Valley transit area'}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73] dark:text-[#A1A1AA]">Bay {spot.parkingLabel}</p>
+                <p className="font-bold text-base mt-1 text-[#111] dark:text-white">{spot.address}</p>
+                <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] mt-1">{stationName || 'Klang Valley transit area'}</p>
               </div>
-              <div className="grid grid-cols-2 gap-4 py-4 border-y border-black/[0.08]">
-                <div><p className="text-[11px] text-[#6e6e73]">Booking dates</p><p className="text-[13px] font-semibold mt-1">{quote?.startDate} to {quote?.endDate}</p></div>
-                <div><p className="text-[11px] text-[#6e6e73]">Duration</p><p className="text-[13px] font-semibold mt-1">{quote?.bookedDays} day{quote?.bookedDays === 1 ? '' : 's'}</p></div>
+              <div className="grid grid-cols-2 gap-4 py-4 border-y border-black/[0.08] dark:border-white/10">
+                <div><p className="text-[11px] text-[#6e6e73]">Booking dates</p><p className="text-[13px] font-semibold mt-1">{quote?.startDate === quote?.endDate ? quote?.startDate : `${quote?.startDate} to ${quote?.endDate}`}</p></div>
+                <div><p className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73] dark:text-[#A1A1AA]">Duration</p><p className="text-[13px] font-bold mt-1 text-[#111] dark:text-white">{quote?.bookedDays} day{quote?.bookedDays === 1 ? '' : 's'}</p></div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[13px] text-[#6e6e73]">Paid total</span>
-                <strong>RM {quote?.renterTotal.toFixed(2)}</strong>
+                <span className="text-[13px] text-[#6e6e73] dark:text-[#A1A1AA]">Paid total</span>
+                <strong className="text-lg font-bold text-[#111] dark:text-white">RM {quote?.renterTotal.toFixed(2)}</strong>
               </div>
-              <p className="text-[11px] text-[#6e6e73] leading-relaxed">Booking reference: {confirmedBooking?.bookingReference}</p>
-              <button type="button" onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })} className="w-full min-h-11 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold">Continue to my parking pass</button>
+              <p className="text-[11px] font-mono text-[#6e6e73] dark:text-[#8E8E93] leading-relaxed">Booking reference: {confirmedBooking?.bookingReference}</p>
+              <button type="button" onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })} className="w-full min-h-12 rounded-xl bg-[#007AFF] dark:bg-[#0071E3] hover:bg-[#0066d6] dark:hover:bg-[#0077ED] text-white text-[13px] font-semibold transition-all shadow-md active:scale-[0.99] cursor-pointer">Continue to my parking pass</button>
             </div>
           </div>
         </main>
@@ -736,7 +759,7 @@ export default function ParkingDetail() {
   }
 
   return (
-    <div className="page-shell text-[#1d1d1f] pb-24">
+    <div className="page-shell text-[#1d1d1f] dark:text-white pb-24">
       <DashboardHeader
         role="commuter"
         user={user}
@@ -745,28 +768,28 @@ export default function ParkingDetail() {
       />
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 pt-6 md:pt-10">
-        <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-[13px] font-medium text-[#6e6e73] hover:text-[#1d1d1f]">
+        <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-[13px] font-medium text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#1d1d1f] dark:hover:text-white transition-colors cursor-pointer">
           <ArrowLeft size={17} /> Back to map
         </button>
       </div>
 
       {/* ── Content card ── */}
       <div className="max-w-3xl mx-auto px-4 md:px-6 mt-5 relative z-10">
-        <div className="bg-white rounded-2xl border border-[#e8eaed] p-6 md:p-8 space-y-6">
+        <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-6 md:p-8 space-y-6 shadow-sm">
 
           {/* Title & Quick Overview */}
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h1 className="text-xl md:text-2xl font-bold text-[#111] tracking-[-0.01em] leading-tight">{spot.address}</h1>
-                <div className="flex items-center gap-1.5 mt-2 text-[13px] text-[#5f6368]">
+                <h1 className="text-xl md:text-2xl font-bold text-[#111] dark:text-white tracking-[-0.01em] leading-tight">{spot.address}</h1>
+                <div className="flex items-center gap-1.5 mt-2 text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
                   <MapPin size={14} className="text-[#007AFF] shrink-0" />
                   <span>{stationName ? `${stationName} area` : 'Klang Valley'}</span>
                 </div>
               </div>
               <button type="button" onClick={() => void handleToggleFavorite()} disabled={isFavoriteLoading || isFavoriteUpdating}
                 aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={isFavorite}
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition disabled:cursor-wait disabled:opacity-70 ${isFavorite ? 'border-rose-200 bg-rose-50 text-rose-500' : 'border-[#dadce0] text-[#5f6368] hover:text-rose-500'}`}>
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition cursor-pointer disabled:cursor-wait disabled:opacity-70 ${isFavorite ? 'border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400' : 'border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#1E1E22] text-[#5f6368] dark:text-[#A1A1AA] hover:text-rose-500 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800'}`}>
                 {isFavoriteLoading || isFavoriteUpdating ? <Loader2 size={18} className="animate-spin text-[#007AFF]" /> : <Heart size={18} fill={isFavorite ? 'currentColor' : 'none'} />}
               </button>
             </div>
@@ -777,41 +800,41 @@ export default function ParkingDetail() {
                 RM {displayedRate.toFixed(2)} <span className="font-normal text-blue-600">/ day</span>
               </span>
               {spot.parkingLabel && (
-                <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
-                  <Car size={13} className="text-slate-500" /> Bay {spot.parkingLabel}
+                <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-[#1E1E22] px-2.5 py-1 font-semibold text-slate-700 dark:text-[#E4E4E7] border border-transparent dark:border-white/10">
+                  <Car size={13} className="text-slate-500 dark:text-[#A1A1AA]" /> Bay {spot.parkingLabel}
                 </span>
               )}
               {walkingInfo && (
-                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 font-medium text-emerald-800 border border-emerald-100">
-                  <Footprints size={13} className="text-emerald-600" /> {walkingInfo.durationText} walk ({walkingInfo.distanceText})
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 font-medium text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/60">
+                  <Footprints size={13} className="text-emerald-600 dark:text-emerald-400" /> {walkingInfo.durationText} walk ({walkingInfo.distanceText})
                 </span>
               )}
-              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 px-2.5 py-1 text-slate-600 border border-slate-200">
-                <Wifi size={13} className="text-[#007AFF]" /> Smart bollard access
+              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 dark:bg-[#1E1E22] px-2.5 py-1 text-slate-600 dark:text-[#D4D4D8] border border-slate-200 dark:border-white/10">
+                <Wifi size={13} className="text-[#007AFF] dark:text-[#0A84FF]" /> Smart bollard access
               </span>
             </div>
           </div>
 
           {favoriteError && (
-            <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[12px] text-rose-700">
+            <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3 text-[12px] text-rose-700 dark:text-rose-300">
               <AlertTriangle size={15} className="mt-0.5 shrink-0" />
               <span>{favoriteError}</span>
             </div>
           )}
 
-          <div className="h-px bg-[#e8eaed]" />
+          <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
 
 {/* Booking dates */}
           <div>
-            <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-4 flex items-center gap-1.5">
+            <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider mb-4 flex items-center gap-1.5">
               <Calendar size={14} className="text-[#007AFF]" /> Select Booking Dates
             </h3>
 
-            <div className="rounded-2xl border border-[#e8eaed] bg-[#fbfcfe] p-4">
+            <div className="rounded-2xl border border-[#e8eaed] dark:border-white/10 bg-[#fbfcfe] dark:bg-[#18181C] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[13px] font-semibold text-[#111]">{calendarMonth.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })}</p>
-                  <p className="mt-0.5 text-[10px] text-[#8e8e93]">
+                  <p className="text-[13px] font-semibold text-[#111] dark:text-white">{calendarMonth.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })}</p>
+                  <p className="mt-0.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">
                     {isAvailabilityLoading
                       ? 'Loading available days…'
                       : currentMonthAvailability
@@ -820,12 +843,12 @@ export default function ParkingDetail() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button type="button" aria-label="Previous month" disabled={isAvailabilityLoading || calendarMonth <= minimumCalendarMonth} onClick={() => setCalendarMonth((current) => addMonths(current, -1))} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#dadce0] bg-white text-[#5f6368] transition hover:border-[#007AFF] hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft size={16} /></button>
-                  <button type="button" aria-label="Next month" disabled={isAvailabilityLoading} onClick={() => setCalendarMonth((current) => addMonths(current, 1))} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#dadce0] bg-white text-[#5f6368] transition hover:border-[#007AFF] hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-40"><ChevronRight size={16} /></button>
+                  <button type="button" aria-label="Previous month" disabled={isAvailabilityLoading || calendarMonth <= minimumCalendarMonth} onClick={() => setCalendarMonth((current) => addMonths(current, -1))} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#007AFF] hover:text-[#007AFF] dark:hover:border-[#0071E3] dark:hover:text-[#0071E3] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronLeft size={16} /></button>
+                  <button type="button" aria-label="Next month" disabled={isAvailabilityLoading} onClick={() => setCalendarMonth((current) => addMonths(current, 1))} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#007AFF] hover:text-[#007AFF] dark:hover:border-[#0071E3] dark:hover:text-[#0071E3] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronRight size={16} /></button>
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#9ca3af]" aria-hidden="true">
+              <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#9ca3af] dark:text-[#71717A]" aria-hidden="true">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
               </div>
 
@@ -846,72 +869,101 @@ export default function ParkingDetail() {
                       aria-label={`${formatDateKey(dateKey)}${isAvailable ? ', available' : ', unavailable'}`}
                       aria-pressed={isStart || isEnd}
                       onClick={() => handleDateSelection(dateKey)}
-                      className={`relative flex min-h-10 items-center justify-center rounded-xl text-[12px] font-semibold transition ${
+                      className={`relative flex min-h-10 items-center justify-center rounded-xl text-[12px] font-semibold transition cursor-pointer ${
                         isStart || isEnd
-                          ? 'bg-[#007AFF] text-white shadow-sm'
+                          ? 'bg-[#007AFF] dark:bg-[#0071E3] text-white shadow-sm font-bold'
                           : isInRange
-                            ? 'bg-[#e8f0fe] text-[#0066d6]'
+                            ? 'bg-[#e8f0fe] dark:bg-blue-950/60 text-[#0066d6] dark:text-blue-200'
                             : isAvailable
-                              ? 'bg-white text-[#111] ring-1 ring-[#e8eaed] hover:bg-[#e8f0fe] hover:text-[#0066d6]'
-                              : 'cursor-not-allowed bg-transparent text-[#c7c7cc]'
-                      } ${isToday && !isStart && !isEnd ? 'ring-2 ring-[#007AFF]/30' : ''}`}
+                              ? 'bg-white dark:bg-[#1E1E22] text-[#111] dark:text-white ring-1 ring-[#e8eaed] dark:ring-white/10 hover:bg-[#e8f0fe] dark:hover:bg-[#2C2C32] hover:text-[#0066d6] dark:hover:text-white'
+                              : 'cursor-not-allowed bg-transparent text-[#c7c7cc] dark:text-[#3F3F46]'
+                      } ${isToday && !isStart && !isEnd ? 'ring-2 ring-[#007AFF]/30 dark:ring-[#0071E3]/50' : ''}`}
                     >
                       {dateFromKey(dateKey).getDate()}
-                      {isAvailable && !isStart && !isEnd && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-[#34c759]" aria-hidden="true" />}
+                      {isAvailable && !isStart && !isEnd && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-[#34c759] dark:bg-[#30D158]" aria-hidden="true" />}
                     </button>
                   );
                 })}
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-[#6e6e73]">
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#34c759]" /> Available</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#007AFF]" /> Selected</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#c7c7cc]" /> Unavailable</span>
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-[#6e6e73] dark:text-[#A1A1AA]">
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#34c759] dark:bg-[#30D158]" /> Available</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3]" /> Selected</span>
+                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#c7c7cc] dark:bg-[#52525B]" /> Unavailable</span>
               </div>
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-[#f8f9fa] px-3 py-2.5">
-                <p className="text-[10px] font-medium text-[#8e8e93]">Start date</p>
-                <p className="mt-1 text-[12px] font-semibold text-[#111]">{startDate ? formatDateKey(startDate) : 'Choose a date'}</p>
+              <div className="rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/10 px-3 py-2.5">
+                <p className="text-[10px] font-medium text-[#8e8e93] dark:text-[#A1A1AA]">Start date</p>
+                <p className="mt-1 text-[12px] font-bold text-[#111] dark:text-white">{startDate ? formatDateKey(startDate) : 'Choose a date'}</p>
               </div>
-              <div className="rounded-xl bg-[#f8f9fa] px-3 py-2.5">
-                <p className="text-[10px] font-medium text-[#8e8e93]">End date</p>
-                <p className="mt-1 text-[12px] font-semibold text-[#111]">{endDate ? formatDateKey(endDate) : 'Choose a date'}</p>
+              <div
+                className={`rounded-xl px-3 py-2.5 transition border ${
+                  startDate && !endDate 
+                    ? 'cursor-pointer border-[#007AFF]/40 dark:border-[#0071E3]/50 bg-[#f0f7ff] dark:bg-blue-950/30 hover:bg-[#e4efff] dark:hover:bg-blue-950/50' 
+                    : 'bg-[#f8f9fa] dark:bg-[#18181C] border-transparent dark:border-white/10'
+                }`}
+                onClick={() => {
+                  if (startDate && !endDate) handleDateSelection(startDate);
+                }}
+              >
+                <p className="text-[10px] font-medium text-[#8e8e93] dark:text-[#A1A1AA]">End date</p>
+                <p className={`mt-1 text-[12px] font-bold ${startDate && !endDate ? 'text-[#007AFF] dark:text-[#3894FF]' : 'text-[#111] dark:text-white'}`}>
+                  {endDate
+                    ? `${formatDateKey(endDate)}${startDate === endDate ? ' (1 day)' : ''}`
+                    : startDate
+                      ? 'Click for 1 day'
+                      : 'Choose a date'}
+                </p>
               </div>
             </div>
 
             {isAvailabilityLoading && (
-              <p role="status" className="mt-3 flex items-center gap-2 text-[11px] font-medium text-[#5f6368]"><Loader2 size={13} className="animate-spin text-[#007AFF]" /> Checking this month’s availability…</p>
+              <p role="status" className="mt-3 flex items-center gap-2 text-[11px] font-medium text-[#5f6368] dark:text-[#A1A1AA]"><Loader2 size={13} className="animate-spin text-[#007AFF]" /> Checking this month’s availability…</p>
             )}
             {availabilityError && (
-              <div role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[12px] text-rose-700">
+              <div role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3 text-[12px] text-rose-700 dark:text-rose-300">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span>{availabilityError}</span>
               </div>
             )}
             {!isAvailabilityLoading && currentMonthAvailability && currentMonthAvailability.totalAvailableDates === 0 && (
-              <p className="mt-3 rounded-xl bg-[#f8f9fa] p-3 text-[11px] text-[#6e6e73]">No bookable dates are published for this month. Use the arrows to check another month.</p>
+              <p className="mt-3 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/[0.06] p-3 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">No bookable dates are published for this month. Use the arrows to check another month.</p>
             )}
             {startDate && !endDate && !dateSelectionError && (
-              <p className="mt-3 text-[11px] font-medium text-[#007AFF]">Now choose an available end date.</p>
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-[#f0f7ff] dark:bg-blue-950/30 p-2.5 border border-[#007AFF]/20 dark:border-blue-500/30">
+                <p className="text-[11px] font-medium text-[#007AFF] dark:text-[#3894FF]">Choose an end date, or book for just 1 day.</p>
+                <button
+                  type="button"
+                  onClick={() => handleDateSelection(startDate)}
+                  className="shrink-0 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] transition active:scale-95 cursor-pointer shadow-xs"
+                >
+                  Book 1 day ({formatDateKey(startDate)})
+                </button>
+              </div>
+            )}
+            {startDate && endDate && startDate === endDate && !dateSelectionError && (
+              <p className="mt-3 text-[11px] font-medium text-[#16a34a]">
+                ✓ 1-day booking selected for {formatDateKey(startDate)}. Select a later date to extend.
+              </p>
             )}
             {selectedStartAvailability?.timeRanges.length ? (
-              <p className="mt-3 text-[11px] text-[#6e6e73]">Available hours on {formatDateKey(startDate)}: {selectedStartAvailability.timeRanges.map((range) => `${range.from}–${range.to}`).join(', ')}</p>
+              <p className="mt-3 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Available hours on {formatDateKey(startDate)}: {selectedStartAvailability.timeRanges.map((range) => `${range.from}–${range.to}`).join(', ')}</p>
             ) : null}
 
             {(dateSelectionError || dateValidationError) && (
-              <div className="mt-3 flex items-start gap-2 text-[12px] text-[#dc2626] bg-[#fef2f2] border border-[#fecaca] rounded-xl p-3">
+              <div className="mt-3 flex items-start gap-2 text-[12px] text-[#dc2626] dark:text-rose-400 bg-[#fef2f2] dark:bg-rose-950/30 border border-[#fecaca] dark:border-rose-900/40 rounded-xl p-3">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                 <span>{dateSelectionError || dateValidationError}</span>
               </div>
             )}
 
             <div className="mt-4 space-y-1">
-              <label className="text-[11px] font-medium text-[#5f6368]">Vehicle</label>
+              <label className="text-[11px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">Vehicle</label>
               <SystemSelect value={selectedVehicleId ?? ''} onChange={(event) => setSelectedVehicleId(Number(event.target.value) || null)}
                 disabled={isVehiclesLoading || vehicles.length === 0}
-                className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] bg-white focus:outline-none focus:border-[#007AFF]">
+                className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#121214] text-[#111] dark:text-white focus:outline-none focus:border-[#007AFF]">
                 {vehicles.length === 0 && <option value="">{isVehiclesLoading ? 'Loading vehicles…' : 'No vehicles available'}</option>}
                 {vehicles.map((vehicle) => (
                   <option key={vehicle.vehicleId} value={vehicle.vehicleId}>{vehicle.plate} · {vehicle.brand} {vehicle.model}</option>
@@ -920,7 +972,7 @@ export default function ParkingDetail() {
             </div>
 
             {bookingError && (
-              <div className="mt-3 flex items-start gap-2 text-[12px] text-[#dc2626] bg-[#fef2f2] border border-[#fecaca] rounded-xl p-3">
+              <div className="mt-3 flex items-start gap-2 text-[12px] text-[#dc2626] dark:text-rose-400 bg-[#fef2f2] dark:bg-rose-950/30 border border-[#fecaca] dark:border-rose-900/40 rounded-xl p-3">
                 <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                 <span>{bookingError}</span>
               </div>
@@ -931,33 +983,33 @@ export default function ParkingDetail() {
           {quote && (
             <div className="space-y-2 text-[13px]">
               <div className="flex justify-between">
-                <span className="text-[#5f6368]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} day{quote.bookedDays === 1 ? '' : 's'}</span>
-                <span className="font-semibold text-[#111]">RM {quote.rentalSubtotal.toFixed(2)}</span>
+                <span className="text-[#5f6368] dark:text-[#A1A1AA]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} day{quote.bookedDays === 1 ? '' : 's'}</span>
+                <span className="font-semibold text-[#111] dark:text-white">RM {quote.rentalSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#5f6368]">10% platform fee (included)</span>
-                <span className="font-semibold text-[#111]">RM {quote.platformFee.toFixed(2)}</span>
+                <span className="text-[#5f6368] dark:text-[#A1A1AA]">10% platform fee (included)</span>
+                <span className="font-semibold text-[#111] dark:text-white">RM {quote.platformFee.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between font-bold text-[15px]">
+              <div className="flex justify-between font-bold text-[15px] text-[#111] dark:text-white">
                 <span>Total</span>
                 <span>RM {quote.renterTotal.toFixed(2)}</span>
               </div>
-              <p className="text-[11px] text-[#9ca3af]">Quote expires {new Date(quote.expiresAt).toLocaleString('en-MY')}.</p>
+              <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">Quote expires {new Date(quote.expiresAt).toLocaleString('en-MY')}.</p>
             </div>
           )}
 
-          <div className="h-px bg-[#e8eaed]" />
+          <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
 
           {/* Amenities */}
           <div>
-            <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-3">Parking Space Details</h3>
+            <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider mb-3">Parking Space Details</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {[
                 { icon: Car, label: 'Private parking bay' },
                 { icon: Wifi, label: 'Smart bollard access' },
                 { icon: Navigation, label: 'Transit-adjacent' },
               ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex items-center gap-2 text-[13px] text-[#5f6368] bg-[#f8f9fa] rounded-xl p-3">
+                <div key={label} className="flex items-center gap-2 text-[13px] text-[#5f6368] dark:text-[#D4D4D8] bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/[0.06] rounded-xl p-3">
                   <Icon size={15} className="text-[#007AFF] shrink-0" /> {label}
                 </div>
               ))}
@@ -966,45 +1018,45 @@ export default function ParkingDetail() {
 
           {/* About */}
           <div>
-            <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider mb-2">About This Space</h3>
-            <p className="text-[13px] text-[#5f6368] leading-relaxed">
+            <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider mb-2">About This Space</h3>
+            <p className="text-[13px] text-[#5f6368] dark:text-[#D4D4D8] leading-relaxed">
               A private parking bay offered near {stationName || 'an LRT/MRT station'}. ParkJom coordinates the reservation and smart-bollard access flow for the parking session.
             </p>
           </div>
 
-          <div className="h-px bg-[#e8eaed]" />
+          <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
 
                     {/* 3. Station Connection & Distance (Continuous Route, moved lower based on user perspective) */}
           <div className="space-y-3">
             <div>
-              <h3 className="text-[11px] font-semibold text-[#9ca3af] uppercase tracking-wider flex items-center gap-1.5">
-                <Compass size={14} className="text-[#007AFF]" /> Station Connection & Distance
+              <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider flex items-center gap-1.5">
+                <Compass size={14} className="text-[#007AFF] dark:text-[#0A84FF]" /> Station Connection & Distance
               </h3>
-              <p className="text-[12px] text-[#5f6368] mt-0.5">
+              <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
                 Walking and transit options from parking bay to {stationName ? `${stationName} Station` : 'the station entrance'}
               </p>
             </div>
 
 {/* OpenTripPlanner Multimodal Continuous Journey (OTP Model) */}
           {multimodalPlan ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-xs">
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Compass className="w-4 h-4 text-blue-600" />
-                  <h3 className="font-bold text-slate-900 text-sm">
+                  <Compass className="w-4 h-4 text-blue-600 dark:text-[#0A84FF]" />
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm">
                     Continuous Route: Parking ➔ Station Entrance
                   </h3>
                 </div>
-                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px] font-semibold">
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#121214] p-0.5 rounded-lg text-[10px] font-semibold border border-transparent dark:border-white/[0.06]">
                   {(['balanced', 'less_walk', 'fastest'] as CommuterPreference[]).map((pref) => (
                     <button
                       key={pref}
                       type="button"
                       onClick={() => setPreference(pref)}
-                      className={`px-2 py-0.5 rounded capitalize transition ${
+                      className={`px-2 py-0.5 rounded capitalize transition cursor-pointer ${
                         preference === pref
-                          ? 'bg-white text-slate-900 font-bold shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800'
+                          ? 'bg-white dark:bg-[#2C2C31] text-slate-900 dark:text-white font-bold shadow-xs'
+                          : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                       }`}
                     >
                       {pref.replace('_', ' ')}
@@ -1024,31 +1076,31 @@ export default function ParkingDetail() {
                         onClick={() => setActiveItineraryId(it.id)}
                         className={`p-3 rounded-xl border transition cursor-pointer relative ${
                           isSelected
-                            ? 'bg-blue-50/80 border-blue-400 text-blue-950 shadow-xs'
-                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                            ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 dark:border-[#0071E3]/60 text-blue-950 dark:text-blue-100 shadow-xs'
+                            : 'bg-slate-50 dark:bg-[#141417] border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#D4D4D8] hover:bg-slate-100 dark:hover:bg-[#1E1E22]'
                         }`}
                       >
                         {it.isRecommended && (
-                          <span className="absolute -top-2 right-2 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider flex items-center gap-0.5 shadow-xs">
+                          <span className="absolute -top-2 right-2 bg-emerald-600 dark:bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider flex items-center gap-0.5 shadow-xs">
                             <Sparkles size={8} />
                             Optimal J(r)
                           </span>
                         )}
-                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900 dark:text-white">
                           {it.type === 'transit_feeder' ? (
-                            <Bus size={14} className="text-emerald-600" />
+                            <Bus size={14} className="text-emerald-600 dark:text-emerald-400" />
                           ) : (
-                            <Footprints size={14} className="text-blue-600" />
+                            <Footprints size={14} className="text-blue-600 dark:text-[#0A84FF]" />
                           )}
                           <span>{it.title}</span>
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2">
-                          <strong className="text-slate-900 font-semibold">~{it.totalDurationMinutes} mins</strong>
+                        <div className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-1 flex items-center gap-2">
+                          <strong className="text-slate-900 dark:text-white font-semibold">~{it.totalDurationMinutes} mins</strong>
                           <span>·</span>
                           <span>{(it.totalWalkDistanceMeters >= 1000 ? (it.totalWalkDistanceMeters / 1000).toFixed(1) + " km" : it.totalWalkDistanceMeters + "m")} walk</span>
                         </div>
-                                                {it.savingsSummary && (
-                          <div className="text-[10px] text-emerald-700 font-bold mt-1">
+                        {it.savingsSummary && (
+                          <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold mt-1">
                             ✓ {it.savingsSummary}
                           </div>
                         )}
@@ -1064,31 +1116,31 @@ export default function ParkingDetail() {
                   multimodalPlan.allItineraries.find((i) => i.id === activeItineraryId) ||
                   multimodalPlan.recommendedItinerary;
                 return (
-                  <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-white/[0.08] text-xs">
+                    <div className="text-[10px] font-bold text-slate-400 dark:text-[#A1A1AA] uppercase tracking-wider">
                       Turn-by-turn Linear Journey
                     </div>
                     {activeIt.legs.map((leg, lIdx) => (
-                      <div key={lIdx} className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 border border-slate-100">
-                        <div className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      <div key={lIdx} className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 dark:bg-[#141417] border border-slate-100 dark:border-white/[0.06]">
+                        <div className="w-5 h-5 rounded-full bg-blue-600 dark:bg-[#0071E3] text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                           {lIdx + 1}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-slate-800 text-[11px]">{leg.title}</div>
-                          <p className="text-[10px] text-slate-500 mt-0.5">{leg.summary}</p>
+                          <div className="font-semibold text-slate-800 dark:text-white text-[11px]">{leg.title}</div>
+                          <p className="text-[10px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">{leg.summary}</p>
                           {leg.transitDetails && (
-                            <div className="mt-1 text-[10px] bg-emerald-50 text-emerald-800 px-2 py-1 rounded font-medium border border-emerald-200">
+                            <div className="mt-1 text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 px-2 py-1 rounded font-medium border border-emerald-200 dark:border-emerald-800/60">
                               Ride {leg.transitDetails.routeShortName} ({leg.transitDetails.numStops} stops) ➔ {leg.transitDetails.alightingStopName}
                             </div>
                           )}
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400 shrink-0 font-medium">
+                        <span className="text-[10px] font-mono text-slate-400 dark:text-[#8E8E93] shrink-0 font-medium">
                           ~{leg.durationMinutes} min
                         </span>
                       </div>
                     ))}
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 font-semibold text-xs">
-                      <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-950 dark:text-emerald-200 font-semibold text-xs">
+                      <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
                       <span>Arrive at {activeIt.targetStationEntranceName}</span>
                     </div>
                   </div>
@@ -1096,20 +1148,20 @@ export default function ParkingDetail() {
               })()}
             </div>
           ) : isLoadingRoute ? (
-            <div className="bg-[#f8f9fa] border border-[#e8eaed] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368]">
+            <div className="bg-[#f8f9fa] dark:bg-[#18181C] border border-[#e8eaed] dark:border-white/10 rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
               <Loader2 size={16} className="animate-spin text-[#007AFF] shrink-0" />
               Calculating multimodal route via OTP engine...
             </div>
           ) : walkingInfo ? (
-            <div className="bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl p-4 flex items-center gap-4">
+            <div className="bg-[#f0fdf4] dark:bg-emerald-950/40 border border-[#bbf7d0] dark:border-emerald-800/60 rounded-xl p-4 flex items-center gap-4">
               <div className="w-10 h-10 rounded-full bg-[#dcfce7] flex items-center justify-center shrink-0">
                 <Navigation size={20} className="text-[#16a34a]" />
               </div>
               <div className="flex-1">
-                <p className="text-[13px] font-semibold text-[#15803d]">
+                <p className="text-[13px] font-semibold text-[#15803d] dark:text-emerald-300">
                   {walkingInfo.distanceText} &middot; {walkingInfo.durationText}
                 </p>
-                <p className="text-[12px] text-[#16a34a]">
+                <p className="text-[12px] text-[#16a34a] dark:text-emerald-400">
                   Walking distance to {stationName || 'station'}
                 </p>
               </div>
@@ -1118,97 +1170,97 @@ export default function ParkingDetail() {
               </span>
             </div>
           ) : bayCoordinates ? (
-            <div className="bg-[#fefce8] border border-[#fde68a] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#a16207]">
+            <div className="bg-[#fefce8] dark:bg-amber-950/30 border border-[#fde68a] dark:border-amber-800/40 rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#a16207] dark:text-amber-300">
               <MapPin size={16} className="shrink-0" />
               Select a station on the map to calculate multimodal route.
             </div>
           ) : (
-            <div className="bg-[#f8f9fa] border border-[#e8eaed] rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368]">
+            <div className="bg-[#f8f9fa] dark:bg-[#18181C] border border-[#e8eaed] dark:border-white/10 rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
               <MapPin size={16} className="shrink-0" />
               Route preview unavailable — this bay has no location data yet.
             </div>
           )}
           </div>
 
-          <div className="h-px bg-[#e8eaed]" />
+          <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
 
           {/* Reviews */}
           <section aria-labelledby="parking-reviews-title">
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af]">Verified stays</p>
-                <h2 id="parking-reviews-title" className="mt-1 text-[17px] font-bold text-[#111]">Commuter reviews</h2>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">Verified stays</p>
+                <h2 id="parking-reviews-title" className="mt-1 text-[17px] font-bold text-[#111] dark:text-white">Commuter reviews</h2>
               </div>
               <div className="text-right">
-                <div className="flex items-center justify-end gap-1 text-[#ff9500]"><Star size={16} fill="currentColor" /><strong className="text-[15px] text-[#111]">{averageRating.toFixed(1)}</strong></div>
-                <p className="mt-0.5 text-[10px] text-[#8e8e93]">{reviewMeta?.totalCount ?? reviews.length} verified reviews</p>
+                <div className="flex items-center justify-end gap-1 text-[#ff9500]"><Star size={16} fill="currentColor" /><strong className="text-[15px] text-[#111] dark:text-white">{averageRating.toFixed(1)}</strong></div>
+                <p className="mt-0.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewMeta?.totalCount ?? reviews.length} verified reviews</p>
               </div>
             </div>
 
             {reviewsLoadError && (
-              <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[11px] font-medium text-rose-700">{reviewsLoadError}</p>
+              <p role="alert" className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewsLoadError}</p>
             )}
             {reviewDeleteError && (
-              <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[11px] font-medium text-rose-700">{reviewDeleteError}</p>
+              <p role="alert" className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewDeleteError}</p>
             )}
 
             <div className="mt-4 space-y-3">
               {isReviewsLoading && reviews.length === 0 && (
-                <div className="rounded-2xl bg-[#f8f9fa] p-8 text-center" role="status"><Loader2 size={24} className="mx-auto animate-spin text-[#007AFF]" /><p className="mt-3 text-[12px] font-medium text-[#5f6368]">Loading reviews…</p></div>
+                <div className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] p-8 text-center" role="status"><Loader2 size={24} className="mx-auto animate-spin text-[#007AFF] dark:text-[#0A84FF]" /><p className="mt-3 text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">Loading reviews…</p></div>
               )}
               {!isReviewsLoading && reviews.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-[#d2d2d7] p-8 text-center"><Star size={25} className="mx-auto text-[#d2d2d7]" /><p className="mt-3 text-[12px] font-semibold text-[#5f6368]">No reviews yet</p><p className="mt-1 text-[11px] text-[#8e8e93]">Completed commuters can be the first to review this parking spot.</p></div>
+                <div className="rounded-2xl border border-dashed border-[#d2d2d7] dark:border-white/12 bg-[#f8f9fa]/50 dark:bg-[#18181C]/50 p-8 text-center"><Star size={25} className="mx-auto text-[#d2d2d7] dark:text-[#71717A]" /><p className="mt-3 text-[12px] font-semibold text-[#5f6368] dark:text-white">No reviews yet</p><p className="mt-1 text-[11px] text-[#8e8e93] dark:text-[#A1A1AA]">Completed commuters can be the first to review this parking spot.</p></div>
               )}
               {reviews.map((review) => {
                 const isEditing = reviewEditDraft?.reviewId === review.reviewId;
                 const isOwnReview = review.reviewerId !== 0 && review.reviewerId === user?.userId;
                 return (
-                  <article key={review.reviewId} className="rounded-2xl bg-[#f8f9fa] p-4 ring-1 ring-black/[0.04]">
+                  <article key={review.reviewId} className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/[0.06] p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f0fe] text-[11px] font-bold text-[#007AFF]">{review.reviewerName.charAt(0)}</span>
-                        <div><p className="text-[12px] font-semibold text-[#111]">{review.reviewerName}</p><p className="text-[10px] text-[#8e8e93]">Verified booking · {new Date(review.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}</p></div>
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f0fe] dark:bg-blue-950/50 text-[11px] font-bold text-[#007AFF] dark:text-[#3894FF]">{review.reviewerName.charAt(0)}</span>
+                        <div><p className="text-[12px] font-semibold text-[#111] dark:text-white">{review.reviewerName}</p><p className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">Verified booking · {new Date(review.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}</p></div>
                       </div>
                       <div className="flex items-center gap-1">
                         <div className="mr-1 flex gap-0.5 text-[#ff9500]" aria-label={`${review.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill={index < review.rating ? 'currentColor' : 'none'} className={index < review.rating ? '' : 'text-[#d2d2d7]'} />)}</div>
                         {isOwnReview && !isEditing && (
                           <>
-                            <button type="button" aria-label="Edit your review" title="Edit your review" onClick={() => startReviewEdit(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] transition hover:bg-[#e8f0fe] hover:text-[#007AFF]"><Pencil size={14} /></button>
-                            <button type="button" disabled={reviewDeletingId !== null} aria-label="Delete your review" title="Delete your review" onClick={() => void handleDeleteReview(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] transition hover:bg-[#fff2f1] hover:text-[#d92d20] disabled:cursor-wait disabled:opacity-60">{reviewDeletingId === review.reviewId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}</button>
+                            <button type="button" aria-label="Edit your review" title="Edit your review" onClick={() => startReviewEdit(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#e8f0fe] dark:hover:bg-white/[0.08] hover:text-[#007AFF] dark:hover:text-white cursor-pointer"><Pencil size={14} /></button>
+                            <button type="button" disabled={reviewDeletingId !== null} aria-label="Delete your review" title="Delete your review" onClick={() => void handleDeleteReview(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#fff2f1] dark:hover:bg-rose-950/40 hover:text-[#d92d20] dark:hover:text-rose-400 disabled:cursor-wait disabled:opacity-60 cursor-pointer">{reviewDeletingId === review.reviewId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}</button>
                           </>
                         )}
                       </div>
                     </div>
 
                     {isEditing && reviewEditDraft ? (
-                      <div className="mt-4 space-y-3 rounded-xl bg-white p-3 ring-1 ring-black/[0.06]">
+                      <div className="mt-4 space-y-3 rounded-xl bg-white dark:bg-[#121214] p-3 ring-1 ring-black/[0.06] dark:ring-white/10">
                         <fieldset>
-                          <legend className="text-[11px] font-semibold text-[#5f6368]">Rating</legend>
+                          <legend className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Rating</legend>
                           <div className="mt-2 flex gap-1 text-[#ff9500]">
                             {Array.from({ length: 5 }, (_, index) => {
                               const value = index + 1;
-                              return <button key={value} type="button" disabled={isReviewUpdating} aria-label={`Set rating to ${value} star${value === 1 ? '' : 's'}`} onClick={() => { setReviewEditDraft({ ...reviewEditDraft, rating: value }); setReviewUpdateError(null); }} className="rounded-md p-1 transition hover:bg-amber-50 disabled:cursor-wait"><Star size={21} fill={value <= reviewEditDraft.rating ? 'currentColor' : 'none'} className={value <= reviewEditDraft.rating ? '' : 'text-[#d2d2d7]'} /></button>;
+                              return <button key={value} type="button" disabled={isReviewUpdating} aria-label={`Set rating to ${value} star${value === 1 ? '' : 's'}`} onClick={() => { setReviewEditDraft({ ...reviewEditDraft, rating: value }); setReviewUpdateError(null); }} className="rounded-md p-1 transition hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:cursor-wait"><Star size={21} fill={value <= reviewEditDraft.rating ? 'currentColor' : 'none'} className={value <= reviewEditDraft.rating ? '' : 'text-[#d2d2d7] dark:text-[#52525B]'} /></button>;
                             })}
                           </div>
                         </fieldset>
                         <div>
-                          <div className="flex items-center justify-between"><label htmlFor={`review-edit-${review.reviewId}`} className="text-[11px] font-semibold text-[#5f6368]">Comment</label><span className="text-[10px] text-[#8e8e93]">{reviewEditDraft.comment.length}/500</span></div>
-                          <textarea id={`review-edit-${review.reviewId}`} value={reviewEditDraft.comment} maxLength={500} rows={4} disabled={isReviewUpdating} onChange={(event) => { setReviewEditDraft({ ...reviewEditDraft, comment: event.target.value }); setReviewUpdateError(null); }} className="mt-2 w-full resize-none rounded-xl border border-[#d2d2d7] bg-white p-3 text-[12px] leading-5 outline-none transition focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10 disabled:cursor-wait disabled:opacity-70" />
+                          <div className="flex items-center justify-between"><label htmlFor={`review-edit-${review.reviewId}`} className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Comment</label><span className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewEditDraft.comment.length}/500</span></div>
+                          <textarea id={`review-edit-${review.reviewId}`} value={reviewEditDraft.comment} maxLength={500} rows={4} disabled={isReviewUpdating} onChange={(event) => { setReviewEditDraft({ ...reviewEditDraft, comment: event.target.value }); setReviewUpdateError(null); }} className="mt-2 w-full resize-none rounded-xl border border-[#d2d2d7] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#111] dark:text-white p-3 text-[12px] leading-5 outline-none transition focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10 disabled:cursor-wait disabled:opacity-70" />
                         </div>
-                        {reviewUpdateError && <p role="alert" className="rounded-lg bg-[#fff2f1] px-3 py-2 text-[11px] font-medium text-[#d92d20]">{reviewUpdateError}</p>}
+                        {reviewUpdateError && <p role="alert" className="rounded-lg bg-[#fff2f1] dark:bg-rose-950/40 px-3 py-2 text-[11px] font-medium text-[#d92d20] dark:text-rose-400">{reviewUpdateError}</p>}
                         <div className="flex justify-end gap-2">
-                          <button type="button" disabled={isReviewUpdating} onClick={() => { setReviewEditDraft(null); setReviewUpdateError(null); }} className="min-h-9 rounded-lg px-3 text-[11px] font-semibold text-[#5f6368] hover:bg-[#f1f3f4] disabled:cursor-wait disabled:opacity-70">Cancel</button>
-                          <button type="button" disabled={isReviewUpdating} onClick={() => void handleUpdateReview()} className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 text-[11px] font-semibold text-white hover:bg-[#0066d6] disabled:cursor-wait disabled:opacity-70">{isReviewUpdating && <Loader2 size={13} className="animate-spin" />}{isReviewUpdating ? 'Saving…' : 'Save changes'}</button>
+                          <button type="button" disabled={isReviewUpdating} onClick={() => { setReviewEditDraft(null); setReviewUpdateError(null); }} className="min-h-9 rounded-lg px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#242429] disabled:cursor-wait disabled:opacity-70 cursor-pointer">Cancel</button>
+                          <button type="button" disabled={isReviewUpdating} onClick={() => void handleUpdateReview()} className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-3 text-[11px] font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] disabled:cursor-wait disabled:opacity-70 cursor-pointer">{isReviewUpdating && <Loader2 size={13} className="animate-spin" />}{isReviewUpdating ? 'Saving…' : 'Save changes'}</button>
                         </div>
                       </div>
                     ) : (
-                      <p className="review-comment-text mt-3 whitespace-pre-line text-[12px] leading-5">{review.comment || 'No written comment.'}</p>
+                      <p className="review-comment-text mt-3 whitespace-pre-line text-[12px] leading-5 text-[#333] dark:text-[#D4D4D8]">{review.comment || 'No written comment.'}</p>
                     )}
 
                     {review.ownerReply && (
-                      <div className="review-owner-reply-box mt-3 rounded-xl p-3">
-                        <p className="review-owner-reply-title flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide"><MessageSquare size={11} /> Owner reply</p>
-                        <p className="review-owner-reply-text mt-1 text-[11px] leading-4">{review.ownerReply}</p>
+                      <div className="review-owner-reply-box mt-3 rounded-xl p-3 bg-slate-100/70 dark:bg-[#121214] border border-slate-200 dark:border-white/[0.08]">
+                        <p className="review-owner-reply-title flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]"><MessageSquare size={11} /> Owner reply</p>
+                        <p className="review-owner-reply-text mt-1 text-[11px] leading-4 text-slate-700 dark:text-[#D4D4D8]">{review.ownerReply}</p>
                       </div>
                     )}
                   </article>
@@ -1217,26 +1269,28 @@ export default function ParkingDetail() {
             </div>
             {reviewMeta && reviewMeta.totalPages > 1 && (
               <nav aria-label="Review pages" className="mt-4 flex items-center justify-between gap-3">
-                <button type="button" disabled={reviewPage <= 1 || isReviewsLoading} onClick={() => setReviewPage((current) => Math.max(1, current - 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] bg-white px-3 text-[11px] font-semibold text-[#5f6368] hover:bg-[#f8f9fa] disabled:cursor-not-allowed disabled:opacity-50">Previous</button>
-                <span className="text-[11px] font-medium text-[#8e8e93]">Page {reviewPage} of {reviewMeta.totalPages}</span>
-                <button type="button" disabled={reviewPage >= reviewMeta.totalPages || isReviewsLoading} onClick={() => setReviewPage((current) => Math.min(reviewMeta.totalPages, current + 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] bg-white px-3 text-[11px] font-semibold text-[#5f6368] hover:bg-[#f8f9fa] disabled:cursor-not-allowed disabled:opacity-50">Next</button>
+                <button type="button" disabled={reviewPage <= 1 || isReviewsLoading} onClick={() => setReviewPage((current) => Math.max(1, current - 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Previous</button>
+                <span className="text-[11px] font-medium text-[#8e8e93] dark:text-[#A1A1AA]">Page {reviewPage} of {reviewMeta.totalPages}</span>
+                <button type="button" disabled={reviewPage >= reviewMeta.totalPages || isReviewsLoading} onClick={() => setReviewPage((current) => Math.min(reviewMeta.totalPages, current + 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Next</button>
               </nav>
             )}
-            <p className="mt-3 flex items-center gap-1.5 text-[10px] text-[#8e8e93]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
+            <p className="mt-3 flex items-center gap-1.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
           </section>
         </div>
       </div>
 
       {/* ── Bottom fixed booking bar ── */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#e8eaed] px-4 md:px-6 py-4 z-40">
+      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#141417]/95 border-t border-[#e8eaed] dark:border-white/10 px-4 md:px-6 py-4 z-40 backdrop-blur-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
           <div>
-            <p className="font-bold text-[#111] text-[15px]">{displayedRate > 0 ? `RM ${displayedRate.toFixed(2)}` : 'Daily rate'} <span className="text-[13px] font-normal text-[#5f6368]">/ day</span></p>
-            <p className="text-[11px] text-[#9ca3af]">{quote ? `${quote.bookedDays} days · RM ${quote.renterTotal.toFixed(2)} total (incl. RM ${quote.platformFee.toFixed(2)} platform fee)` : 'Request a quote for exact pricing'}</p>
+            <p className="font-bold text-[#111] dark:text-white text-[15px]">{displayedRate > 0 ? `RM ${displayedRate.toFixed(2)}` : 'Daily rate'} <span className="text-[13px] font-normal text-[#5f6368] dark:text-[#A1A1AA]">/ day</span></p>
+            <p className="text-[11px] text-[#9ca3af] dark:text-[#A1A1AA]">{quote ? `${quote.bookedDays} ${quote.bookedDays === 1 ? 'day' : 'days'} · RM ${quote.renterTotal.toFixed(2)} total (incl. RM ${quote.platformFee.toFixed(2)} platform fee)` : 'Request a quote for exact pricing'}</p>
           </div>
           <button onClick={handleBook} disabled={invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId)}
             className={`font-semibold text-[13px] px-8 py-3 rounded-xl transition flex items-center gap-2 ${
-              invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId) ? 'bg-[#e8eaed] text-[#9ca3af] cursor-not-allowed' : 'bg-[#007AFF] text-white hover:bg-[#1d4ed8] active:scale-[0.98]'
+              invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId) 
+                ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] dark:border dark:border-white/10 cursor-not-allowed' 
+                : 'bg-[#007AFF] dark:bg-[#0071E3] text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] active:scale-[0.98] cursor-pointer shadow-sm'
             }`}>
             {isBookingLoading ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
             {isBookingLoading ? (quote ? 'Confirming…' : 'Creating quote…') : quote ? `Confirm & Pay · RM ${quote.renterTotal.toFixed(2)}` : 'Get Booking Quote'}

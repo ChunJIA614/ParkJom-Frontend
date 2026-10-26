@@ -244,16 +244,16 @@ const selectedParkingIcon = L.divIcon({
   popupAnchor: [0, -19],
 });
 
-// Prominent glowing beacon icon for the user's reserved parking bay
+// Prominent Apple HIG beacon icon for the user's reserved parking bay
 const activeReservedParkingIcon = L.divIcon({
   className: 'custom-active-booking-icon',
   html: `
     <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
-      <div style="position: absolute; top: -6px; width: 44px; height: 44px; border-radius: 9999px; background: rgba(0, 122, 255, 0.35); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-      <div style="width: 36px; height: 36px; border-radius: 12px; background: linear-gradient(135deg, #007AFF, #0051cb); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; box-shadow: 0 4px 14px rgba(0, 122, 255, 0.5); border: 2.5px solid #ffffff; z-index: 2;">
-        🅿️
+      <div style="position: absolute; top: -4px; width: 44px; height: 44px; border-radius: 9999px; background: rgba(10, 132, 255, 0.35); animation: ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+      <div style="width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, #0A84FF, #0056B3); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif; box-shadow: 0 4px 16px rgba(10, 132, 255, 0.55), 0 0 0 1.5px rgba(255, 255, 255, 0.9); z-index: 2;">
+        P
       </div>
-      <div style="background: #0f172a; color: white; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 9999px; margin-top: 3px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1.5px solid rgba(255,255,255,0.4); z-index: 2;">
+      <div style="background: rgba(18, 19, 24, 0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: #F5F5F7; font-size: 10px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; padding: 2px 8px; border-radius: 9999px; margin-top: 4px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.45); border: 1px solid rgba(255, 255, 255, 0.16); z-index: 2;">
         Reserved Bay
       </div>
     </div>
@@ -277,20 +277,36 @@ const userLocationIcon = L.divIcon({
   popupAnchor: [0, -18],
 });
 
-// Linear Journey Multimodal Icons
+// Linear Journey Multimodal Icons (Apple HIG dark glass capsules with vector SF badges)
 const boardStopIcon = L.divIcon({
   className: 'custom-board-stop-icon',
   html: `
     <div style="
-      background: #059669; color: white; padding: 3px 8px; border-radius: 9999px;
-      font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-      border: 2px solid white; display: flex; align-items: center; gap: 4px;
+      background: rgba(18, 19, 24, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: #F5F5F7;
+      padding: 3px 10px 3px 4px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     ">
-      <span>🚌 Board Bus Here</span>
+      <div style="width: 18px; height: 18px; border-radius: 50%; background: #30D158; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.6-.1-1.1-.3-1.6l-1.3-4.1C18.1 7.2 17.1 6 15.9 6H6.1C4.9 6 3.9 7.2 3.6 8.3L2.3 12.4c-.2.5-.3 1-.3 1.6 0 .4.1.8.2 1.2.3 1.1.8 2.8.8 2.8h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg>
+      </div>
+      <span>Board Bus</span>
     </div>
   `,
-  iconSize: [95, 24],
-  iconAnchor: [48, 12],
+  iconSize: [100, 26],
+  iconAnchor: [50, 13],
   popupAnchor: [0, -14],
 });
 
@@ -298,32 +314,64 @@ const alightStopIcon = L.divIcon({
   className: 'custom-alight-stop-icon',
   html: `
     <div style="
-      background: #0284c7; color: white; padding: 3px 8px; border-radius: 9999px;
-      font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-      border: 2px solid white; display: flex; align-items: center; gap: 4px;
+      background: rgba(18, 19, 24, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: #F5F5F7;
+      padding: 3px 10px 3px 4px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     ">
-      <span>🛑 Alight Bus Here</span>
+      <div style="width: 18px; height: 18px; border-radius: 50%; background: #FF9F0A; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11"/><path d="m15 10 5-4-5-4"/><path d="M5 21v-7a4 4 0 0 1 4-4h11"/></svg>
+      </div>
+      <span>Alight Bus</span>
     </div>
   `,
-  iconSize: [95, 24],
-  iconAnchor: [48, 12],
-  popupAnchor: [0, -14],
+  iconSize: [100, 26],
+  iconAnchor: [50, 28],
+  popupAnchor: [0, -28],
 });
 
 const stationEntranceIcon = L.divIcon({
   className: 'custom-station-entrance-icon',
   html: `
     <div style="
-      background: #0f172a; color: white; padding: 3px 8px; border-radius: 9999px;
-      font-size: 10px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      border: 2px solid #14b8a6; display: flex; align-items: center; gap: 4px;
+      background: rgba(18, 19, 24, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: #F5F5F7;
+      padding: 3px 10px 3px 4px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     ">
-      <span>🚉 Station Entrance</span>
+      <div style="width: 18px; height: 18px; border-radius: 50%; background: #5E5CE6; display: flex; align-items: center; justify-content: center; color: #FFFFFF; flex-shrink: 0;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="3" rx="2"/><path d="M4 11h16"/><path d="M12 3v8"/><path d="m8 19-2 3"/><path d="m18 22-2-3"/><circle cx="8" cy="15" r="1"/><circle cx="16" cy="15" r="1"/></svg>
+      </div>
+      <span>Station Entrance</span>
     </div>
   `,
-  iconSize: [110, 24],
-  iconAnchor: [55, 12],
-  popupAnchor: [0, -14],
+  iconSize: [130, 26],
+  iconAnchor: [65, -6],
+  popupAnchor: [0, 8],
 });
 
 // ---- Station Marker Generator based on Station Marker System Spec ----
@@ -550,7 +598,9 @@ function createLiveBusIcon(bearing: number = 0, routeId: string = '') {
       <div class="live-transit-bus-marker">
         <div class="live-bus-body" style="transform: rotate(${safeBearing}deg);">
           <div class="live-bus-pointer"></div>
-          <div class="live-bus-glyph">🚌</div>
+          <div class="live-bus-glyph" style="display:flex;align-items:center;justify-content:center;">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="color: #FFFFFF;"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.6-.1-1.1-.3-1.6l-1.3-4.1C18.1 7.2 17.1 6 15.9 6H6.1C4.9 6 3.9 7.2 3.6 8.3L2.3 12.4c-.2.5-.3 1-.3 1.6 0 .4.1.8.2 1.2.3 1.1.8 2.8.8 2.8h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg>
+          </div>
         </div>
         <div class="live-bus-badge-label">${safeRoute}</div>
       </div>
@@ -761,8 +811,8 @@ function MapLegendModal({ isOpen, onClose }: MapLegendModalProps) {
 
           {/* Live Feeder Bus */}
           <div className="p-2 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center gap-2.5 col-span-2">
-            <div className="w-[26px] h-[26px] rounded-full bg-[#059669] shadow-[0_0_0_2px_#fff,0_2px_6px_rgba(5,150,105,0.3)] flex items-center justify-center text-xs text-white shrink-0">
-              🚌
+            <div className="w-[26px] h-[26px] rounded-full bg-[#30D158] shadow-[0_2px_8px_rgba(48,209,88,0.35)] flex items-center justify-center text-xs text-white shrink-0">
+              <Bus size={13} className="text-white" />
             </div>
             <div>
               <div className="font-bold text-slate-800 text-[11px] flex items-center gap-1.5">
@@ -2017,12 +2067,15 @@ export default function CommuterMap({
                 icon={L.divIcon({
                   className: 'custom-exit-marker',
                   html: `
-                    <div style="background: #2563eb; color: white; border: 2px solid white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
-                      🚪
+                    <div style="background: rgba(18, 19, 24, 0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.18); border-radius: 9999px; padding: 2px 7px 2px 3px; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); white-space: nowrap;">
+                      <div style="width: 16px; height: 16px; border-radius: 50%; background: #0A84FF; display: flex; align-items: center; justify-content: center; color: white;">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                      </div>
+                      <span style="color: #F5F5F7; font-size: 10px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;">Exit</span>
                     </div>
                   `,
-                  iconSize: [22, 22],
-                  iconAnchor: [11, 11],
+                  iconSize: [56, 22],
+                  iconAnchor: [28, 11],
                 })}
               >
                 <Popup autoPan={false}>

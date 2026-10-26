@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
-import { Building, Sliders, Save, CheckCircle, Wifi, Battery, Radio, ShieldAlert, UserRound } from 'lucide-react';
+import { Building, Sliders, Save, CheckCircle, Wifi, Battery, Radio, ShieldAlert, UserRound, Sparkles } from 'lucide-react';
 import { showAlert } from '@/contexts/ModalContext';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import ProfileDialog from '@/features/profile/components/ProfileDialog';
@@ -162,27 +162,37 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-4 border-b border-slate-50 pb-3">
                 <div>
-                  <span className="block text-xs font-bold text-slate-800">Email Notifications</span>
+                  <div className="flex items-center gap-2">
+                    <span className="block text-xs font-bold text-slate-800">Email Notifications</span>
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-200">
+                      <Sparkles className="h-2.5 w-2.5" /> Upcoming
+                    </span>
+                  </div>
                   <span className="block text-[10px] text-slate-400 mt-0.5 leading-normal">Weekly supplies, ledger activity audits, and verification notices.</span>
                 </div>
                 <input 
                   type="checkbox"
-                  checked={emailAlerts}
-                  onChange={(e) => setEmailAlerts(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                  disabled
+                  checked={false}
+                  className="rounded border-slate-200 text-slate-300 w-4 h-4 cursor-not-allowed opacity-50"
                 />
               </div>
 
               <div className="flex items-start justify-between gap-4 border-b border-slate-50 pb-3">
                 <div>
-                  <span className="block text-xs font-bold text-slate-800">WhatsApp Smart Access Alerts</span>
+                  <div className="flex items-center gap-2">
+                    <span className="block text-xs font-bold text-slate-800">WhatsApp Smart Access Alerts</span>
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-200">
+                      <Sparkles className="h-2.5 w-2.5" /> Upcoming
+                    </span>
+                  </div>
                   <span className="block text-[10px] text-slate-400 mt-0.5 leading-normal">Real-time status events of barrier actuations and overstay alert notifications.</span>
                 </div>
                 <input 
                   type="checkbox"
-                  checked={whatsAppAlerts}
-                  onChange={(e) => setWhatsAppAlerts(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                  disabled
+                  checked={false}
+                  className="rounded border-slate-200 text-slate-300 w-4 h-4 cursor-not-allowed opacity-50"
                 />
               </div>
 

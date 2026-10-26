@@ -18,7 +18,9 @@ import {
   History,
   Plus,
   X,
+  Sparkles,
   ArrowUpRight,
+  ArrowDownLeft,
   Camera,
   Clock,
   Coins,
@@ -41,6 +43,7 @@ import {
   ClipboardList,
   Heart,
   Menu,
+  Calendar,
 } from 'lucide-react';
 import {
   ParkingSpot,
@@ -51,6 +54,7 @@ import {
   WalletTopUpStatus,
   WalletTopUpState,
   WalletTopUpHistoryItem,
+  WalletTransactionItem,
 } from '../types';
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
@@ -83,11 +87,12 @@ import {
 } from '../api/favoriteApi';
 import {
   createWalletTopUp,
+  getWalletHistory,
   getWalletSummary,
   getWalletTopUpHistory,
   getWalletTopUpStatus,
 } from '../api/walletApi';
-import { cancelBooking } from '../api/bookingApi';
+import { cancelBooking, getActiveBooking, normalizeActiveBooking } from '../api/bookingApi';
 import type { VehicleCatalogEntry } from '../data/vehicleCatalog';
 import {
   addVehicle as createVehicleRequest,
@@ -361,6 +366,10 @@ export default function CommuterDashboard() {
   const [walletTopUpFeedback, setWalletTopUpFeedback] = useState<WalletTopUpFeedback | null>(null);
   const [topUpHistory, setTopUpHistory] = useState<WalletTopUpHistoryItem[]>([]);
   const [isTopUpHistoryLoading, setIsTopUpHistoryLoading] = useState(false);
+  const [walletTransactions, setWalletTransactions] = useState<WalletTransactionItem[]>([]);
+  const [walletActivityFilter, setWalletActivityFilter] = useState<'all' | 'topup' | 'deduction'>('all');
+  const [walletActivityPage, setWalletActivityPage] = useState(1);
+  const [isWalletActivityLoading, setIsWalletActivityLoading] = useState(false);
   const [cancelingBookingId, setCancelingBookingId] = useState<number | null>(null);
   const handledTopUpReturnRef = useRef<string | null>(null);
   const walletReconciliationRef = useRef(false);
@@ -423,6 +432,8 @@ export default function CommuterDashboard() {
 
   // Active Reservation / Session — TODO: fetch from backend
   const [activeBooking, setActiveBooking] = useState<Booking | null>(initialJourney?.booking ?? null);
+  const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([]);
+  const [activeBookingRefreshKey, setActiveBookingRefreshKey] = useState<number>(0);
   const [journeyStage, setJourneyStage] = useState<JourneyStage>(initialJourney?.stage ?? 'reserved');
 
   // IoT Access Control & Bollard states
@@ -443,10 +454,11 @@ export default function CommuterDashboard() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotificationsDrawer, setShowNotificationsDrawer] = useState<boolean>(false);
 
-  // Synchronize active reservation strictly with the current authenticated user
+  // Synchronize active reservation strictly with the current authenticated user (local session + server cross-device restore)
   useEffect(() => {
     const resetJourneyState = () => {
       setActiveBooking(null);
+      setUpcomingBookings([]);
       setJourneyStage('reserved');
       setIsBollardUnlocked(false);
       setBollardAnimationState('raised');
@@ -454,52 +466,65 @@ export default function CommuterDashboard() {
       setSecondsRemaining(0);
     };
 
-    if (!user?.userId) {
+    if (!user?.userId || !user?.token) {
       resetJourneyState();
       return;
     }
 
-    const session = loadJourneySession(user.userId);
-    if (!session) {
-      resetJourneyState();
-      return;
+    const localSession = loadJourneySession(user.userId);
+    if (localSession?.booking) {
+      setActiveBooking(localSession.booking);
+      setJourneyStage(localSession.stage);
+      setIsBollardUnlocked(localSession.stage === 'unlocked');
+      setBollardAnimationState(localSession.stage === 'unlocked' ? 'lowered' : 'raised');
+      setGpsVerified(
+        localSession.stage === 'arrived' || localSession.stage === 'unlocked' || localSession.stage === 'parked'
+          ? 'verified'
+          : 'idle',
+      );
+      setSecondsRemaining(Math.max(0, Math.floor((localSession.booking.endTime.getTime() - Date.now()) / 1000)));
     }
-
-    setActiveBooking(session.booking);
-    setJourneyStage(session.stage);
-    setIsBollardUnlocked(session.stage === 'unlocked');
-    setBollardAnimationState(session.stage === 'unlocked' ? 'lowered' : 'raised');
-    setGpsVerified(
-      session.stage === 'arrived' || session.stage === 'unlocked' || session.stage === 'parked'
-        ? 'verified'
-        : 'idle',
-    );
-    setSecondsRemaining(Math.max(0, Math.floor((session.booking.endTime.getTime() - Date.now()) / 1000)));
-
-    if (!user.token || !session.booking.bookingId) return;
 
     const controller = new AbortController();
-    void getCommuterBookingHistory(user.token, 1, 20, controller.signal)
-      .then((result) => {
+    void getActiveBooking(user.token, controller.signal)
+      .then((activeResult) => {
         if (controller.signal.aborted) return;
-        const matched = result.data.find((item) => item.booking.bookingId === session.booking.bookingId);
-        const status = matched?.booking.bookingStatus.toLowerCase() ?? '';
-        const isInvalidOrForeign = !matched
-          || (matched.booking.renterId > 0 && matched.booking.renterId !== user.userId)
-          || status === 'cancelled'
-          || status === 'completed';
 
-        if (isInvalidOrForeign) {
+        if (!activeResult.current && (!activeResult.upcoming || activeResult.upcoming.length === 0)) {
           clearJourneySession(user.userId);
           resetJourneyState();
+          return;
         }
+
+        if (activeResult.current) {
+          const normalized = normalizeActiveBooking(activeResult.current);
+        const stage: JourneyStage =
+          localSession?.booking?.bookingId === normalized.bookingId ? localSession.stage : 'reserved';
+
+        setActiveBooking(normalized);
+        setJourneyStage(stage);
+        setIsBollardUnlocked(stage === 'unlocked');
+        setBollardAnimationState(stage === 'unlocked' ? 'lowered' : 'raised');
+        setGpsVerified(
+          stage === 'arrived' || stage === 'unlocked' || stage === 'parked' ? 'verified' : 'idle',
+        );
+        setSecondsRemaining(Math.max(0, Math.floor((normalized.endTime.getTime() - Date.now()) / 1000)));
+        saveJourneySession(normalized, stage, user.userId);
+        } else {
+          setActiveBooking(null);
+        }
+
+        setUpcomingBookings((activeResult.upcoming || []).map(normalizeActiveBooking));
       })
       .catch(() => {
-        // Keep local user-scoped session when offline or endpoint is unreachable
+        // Fallback: If offline or API fails, keep local session if valid
+        if (!localSession) {
+          resetJourneyState();
+        }
       });
 
     return () => controller.abort();
-  }, [user?.token, user?.userId]);
+  }, [user?.token, user?.userId, activeBookingRefreshKey]);
 
   useEffect(() => {
     if (!user?.userId || !user.token) {
@@ -578,7 +603,7 @@ export default function CommuterDashboard() {
       });
 
     return () => controller.abort();
-  }, [user?.token, user?.userId]);
+  }, [user?.token, user?.userId, activeBookingRefreshKey]);
 
   const handleToggleFavorite = async (spot: ParkingSpot) => {
     if (!user?.userId || !user.token || isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)) return;
@@ -1260,18 +1285,150 @@ export default function CommuterDashboard() {
     setShowTopUpModal(true);
   };
 
-  const refreshTopUpHistory = useCallback(async () => {
+  const refreshWalletActivity = useCallback(async () => {
     if (!user?.token) return;
+    setIsWalletActivityLoading(true);
     setIsTopUpHistoryLoading(true);
     try {
-      const res = await getWalletTopUpHistory(user.token, 1, 10);
-      setTopUpHistory(res.data);
+      const [historyResult, topUpResult] = await Promise.allSettled([
+        getWalletHistory(user.token, { page: 1, pageSize: 50 }),
+        getWalletTopUpHistory(user.token, 1, 10),
+      ]);
+      if (historyResult.status === 'fulfilled') {
+        setWalletTransactions(historyResult.value.data);
+      }
+      if (topUpResult.status === 'fulfilled') {
+        setTopUpHistory(topUpResult.value.data);
+      }
     } catch {
-      // keep existing
+      // keep existing on error
     } finally {
+      setIsWalletActivityLoading(false);
       setIsTopUpHistoryLoading(false);
     }
   }, [user?.token]);
+
+  const refreshTopUpHistory = refreshWalletActivity;
+
+  const allWalletActivities = useMemo(() => {
+    interface ActivityItem {
+      id: string;
+      type: 'topup' | 'deduction' | 'refund';
+      category: 'topup' | 'deduction';
+      title: string;
+      subtitle: string;
+      amount: number;
+      currency: string;
+      status: string;
+      createdAt: string;
+      isPending?: boolean;
+    }
+
+    const list: ActivityItem[] = [];
+    const seenRefs = new Set<string>();
+
+    for (const item of walletTransactions) {
+      const isDeduction = item.amount < 0 || item.type === 'Payment' || item.type === 'Withdrawal' || item.type === 'OverstayPenalty';
+      const isRefund = item.type === 'Refund';
+
+      let type: 'topup' | 'deduction' | 'refund' = 'topup';
+      let category: 'topup' | 'deduction' = 'topup';
+      let title = 'Wallet top-up';
+
+      if (isRefund) {
+        type = 'refund';
+        category = 'topup';
+        title = 'Booking refund';
+      } else if (item.type === 'Payment') {
+        type = 'deduction';
+        category = 'deduction';
+        title = 'Parking payment';
+      } else if (item.type === 'OverstayPenalty') {
+        type = 'deduction';
+        category = 'deduction';
+        title = 'Overstay penalty';
+      } else if (item.type === 'Withdrawal') {
+        type = 'deduction';
+        category = 'deduction';
+        title = 'Wallet withdrawal';
+      } else if (isDeduction) {
+        type = 'deduction';
+        category = 'deduction';
+        title = 'Wallet deduction';
+      }
+
+      const dateStr = item.createdAt
+        ? new Date(item.createdAt).toLocaleDateString('en-MY')
+        : '';
+
+      const refPart = item.bookingId
+        ? `Booking #${item.bookingId}`
+        : item.referenceNumber
+        ? `Ref #${item.referenceNumber.length > 20 ? item.referenceNumber.slice(0, 20) + '...' : item.referenceNumber}`
+        : `Tx #${item.transactionId}`;
+
+      const subtitle = `${refPart} · ${item.status || 'Completed'} · ${dateStr}`;
+
+      if (item.referenceNumber) {
+        seenRefs.add(item.referenceNumber.toLowerCase());
+      }
+
+      list.push({
+        id: `tx-${item.transactionId}`,
+        type,
+        category,
+        title,
+        subtitle,
+        amount: Math.abs(item.amount),
+        currency: 'MYR',
+        status: item.status || 'Completed',
+        createdAt: item.createdAt,
+        isPending: item.status?.toLowerCase() === 'pending',
+      });
+    }
+
+    for (const item of topUpHistory) {
+      const isPending = item.status?.toLowerCase() === 'pending';
+      const topUpRef = `topup-${item.paymentId}`.toLowerCase();
+      if (seenRefs.has(topUpRef) || seenRefs.has(`payment-${item.paymentId}`)) continue;
+
+      if (isPending || walletTransactions.length === 0) {
+        const dateStr = item.createdAt
+          ? new Date(item.createdAt).toLocaleDateString('en-MY')
+          : '';
+        list.push({
+          id: `topup-${item.paymentId}`,
+          type: 'topup',
+          category: 'topup',
+          title: 'Wallet top-up',
+          subtitle: `Payment #${item.paymentId} · ${item.status} · ${dateStr}`,
+          amount: Math.abs(item.amount),
+          currency: item.currency || 'MYR',
+          status: item.status,
+          createdAt: item.createdAt,
+          isPending,
+        });
+      }
+    }
+
+    return list.sort((a, b) => {
+      const timeA = new Date(a.createdAt).getTime() || 0;
+      const timeB = new Date(b.createdAt).getTime() || 0;
+      return timeB - timeA;
+    });
+  }, [walletTransactions, topUpHistory]);
+
+  const filteredActivities = useMemo(() => {
+    if (walletActivityFilter === 'all') return allWalletActivities;
+    return allWalletActivities.filter((a) => a.category === walletActivityFilter);
+  }, [allWalletActivities, walletActivityFilter]);
+
+  const ACTIVITY_PAGE_SIZE = 10;
+  const totalActivityPages = Math.max(1, Math.ceil(filteredActivities.length / ACTIVITY_PAGE_SIZE));
+  const paginatedActivities = useMemo(() => {
+    const start = (walletActivityPage - 1) * ACTIVITY_PAGE_SIZE;
+    return filteredActivities.slice(start, start + ACTIVITY_PAGE_SIZE);
+  }, [filteredActivities, walletActivityPage]);
 
   const handleCancelBooking = async (bookingId: number) => {
     if (!user?.token || cancelingBookingId !== null) return;
@@ -1299,11 +1456,13 @@ export default function CommuterDashboard() {
       if (activeBooking?.bookingId === bookingId) {
         clearJourneySession(user?.userId);
         setActiveBooking(null);
+      setUpcomingBookings([]);
         setJourneyStage('reserved');
         setIsBollardUnlocked(false);
         setBollardAnimationState('raised');
       }
       setBookingHistoryRefreshKey((prev) => prev + 1);
+      setActiveBookingRefreshKey((prev) => prev + 1);
     } catch (err) {
       await showAlert({
         title: 'Cancellation Failed',
@@ -1724,6 +1883,7 @@ export default function CommuterDashboard() {
       };
       setHistory(prev => [completed, ...prev]);
       setActiveBooking(null);
+      setUpcomingBookings([]);
       clearJourneySession(user?.userId);
       setJourneyStage('reserved');
       setIsBollardUnlocked(false);
@@ -1966,14 +2126,6 @@ export default function CommuterDashboard() {
     };
   }, [isTopUpLoading, showNotificationsDrawer, showQRScanner, showTopUpModal]);
 
-  const simulateQRSuccess = () => {
-    setQrCodeScanned(true);
-    setTimeout(() => {
-      closeQRScanner();
-      handleUnlockBollard();
-    }, 1200);
-  };
-
   // Mark all notifications as read
   const markAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -2090,7 +2242,7 @@ export default function CommuterDashboard() {
 
           {/* Active booking banner */}
           {activeBooking && activeTab !== 'active' && (
-            <div className="w-full bg-white text-slate-800 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] font-semibold mb-4 border border-blue-200/80 shadow-xs bg-gradient-to-r from-blue-50/70 via-white to-white">
+            <div className="active-booking-banner w-full rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] font-semibold mb-4 transition-all duration-200">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="flex h-2.5 w-2.5 relative shrink-0">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
@@ -2098,14 +2250,14 @@ export default function CommuterDashboard() {
                 </span>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Reserved Parking Bay</span>
-                    <span className="bg-blue-100 text-blue-800 text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">Bay {activeBooking.spot.parkingLabel}</span>
+                    <span className="active-booking-tag text-[10px] font-bold uppercase tracking-wider">Reserved Parking Bay</span>
+                    <span className="active-booking-bay-badge text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">Bay {activeBooking.spot.parkingLabel}</span>
                   </div>
-                  <div className="truncate text-slate-900 font-bold">{formatShortSpotName(activeBooking.spot.name)}</div>
+                  <div className="active-booking-spot-name truncate font-bold">{formatShortSpotName(activeBooking.spot.name)}</div>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200/80 px-3 py-1.5 rounded-xl text-xs">{formatTime(secondsRemaining)}</span>
+                <span className="active-booking-timer font-mono font-bold px-3 py-1.5 rounded-xl text-xs">{formatTime(secondsRemaining)}</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -2114,7 +2266,7 @@ export default function CommuterDashboard() {
                     setMobileTransitTab('transit');
                     setTransitWorkspaceMode('navigation');
                   }}
-                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow-xs flex items-center gap-1.5"
+                  className="active-booking-drive-btn px-3.5 py-1.5 font-bold rounded-xl text-xs transition shadow-xs flex items-center gap-1.5"
                 >
                   <Navigation size={13} />
                   <span>Drive to Bay</span>
@@ -2122,7 +2274,7 @@ export default function CommuterDashboard() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('active')}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition"
+                  className="active-booking-pass-btn px-3 py-1.5 font-semibold rounded-xl text-xs transition"
                 >
                   Pass
                 </button>
@@ -2479,12 +2631,24 @@ export default function CommuterDashboard() {
             <div className="flex flex-col gap-5">
               <JourneyStrip activeStep={journeyStep} />
               {!activeBooking ? (
+                upcomingBookings.length > 0 ? (
+                  <div className="bg-[#eff6ff] dark:bg-blue-950/30 rounded-2xl border border-blue-200/60 dark:border-blue-900/40 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-1">
+                    <div>
+                      <p className="text-[14px] font-semibold text-[#111] dark:text-white">No parking session in progress right now</p>
+                      <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
+                        You have {upcomingBookings.length} future reservation{upcomingBookings.length > 1 ? 's' : ''} scheduled below.
+                      </p>
+                    </div>
+                    <button onClick={() => setActiveTab('map')} className="shrink-0 px-4 py-2 rounded-xl bg-[#007AFF] text-white text-[12px] font-semibold hover:bg-[#0066d6] transition-colors cursor-pointer">Book another</button>
+                  </div>
+                ) : (
                 <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-8 text-center mt-1">
                   <Clock size={32} className="mx-auto text-[#dadce0] dark:text-[#71717A] mb-2" />
                   <p className="text-[15px] font-semibold text-[#111] dark:text-white">No active booking</p>
                   <p className="text-[13px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">Find and book a parking spot to get started.</p>
                   <button onClick={() => setActiveTab('map')} className="mt-4 px-5 py-2.5 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold hover:bg-[#0066d6] transition-colors cursor-pointer">Find a bay</button>
                 </div>
+              )
               ) : (
                 <>
                   {/* Session Info */}
@@ -2573,6 +2737,61 @@ export default function CommuterDashboard() {
                     <CheckCircle2 size={17} /> {journeyStage === 'parked' ? 'Complete Booking' : 'Unlock and re-secure the bay to complete'}
                   </button>
                 </>
+              )}
+
+              {upcomingBookings.length > 0 && (
+                <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">
+                        Upcoming Reservations
+                      </h3>
+                      <span className="text-[10px] font-mono font-bold bg-[#eef5ff] dark:bg-white/10 text-[#007AFF] dark:text-blue-400 px-2 py-0.5 rounded-full">
+                        {upcomingBookings.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">Future bookings</p>
+                  </div>
+
+                  <div className="divide-y divide-[#f1f3f4] dark:divide-white/10">
+                    {upcomingBookings.map((b) => (
+                      <article key={b.bookingId} className="py-3.5 first:pt-1 last:pb-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-[14px] font-bold text-[#111] dark:text-white">{b.spot.name}</p>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-[#007AFF] dark:text-blue-300 border border-blue-200/50 dark:border-blue-800/50">
+                              Confirmed
+                            </span>
+                          </div>
+                          <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">
+                            {b.spot.station} &middot; Plate: {b.vehiclePlate || 'N/A'}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-1 text-[11px] font-medium text-[#007AFF]">
+                            <Calendar size={13} />
+                            <span>
+                              {b.startTime.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              {' – '}
+                              {b.endTime.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 shrink-0">
+                          <span className="text-[14px] font-bold text-[#111] dark:text-white">
+                            RM {(b.totalPaid ?? 0).toFixed(2)}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={cancelingBookingId === b.bookingId}
+                            onClick={() => void handleCancelBooking(b.bookingId)}
+                            className="text-[11px] font-semibold text-[#dc2626] hover:underline disabled:opacity-50 cursor-pointer"
+                          >
+                            {cancelingBookingId === b.bookingId ? 'Cancelling…' : 'Cancel reservation'}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -2726,61 +2945,185 @@ export default function CommuterDashboard() {
                 )}
               </div>
               <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">Top-up Activity</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">
+                      Wallet Activity
+                    </h3>
+                    <div className="inline-flex rounded-lg bg-[#f1f3f4] dark:bg-[#1E1E24] p-0.5 text-[11px] font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => { setWalletActivityFilter('all'); setWalletActivityPage(1); }}
+                        className={`rounded-md px-2.5 py-1 transition-all cursor-pointer ${
+                          walletActivityFilter === 'all'
+                            ? 'bg-white dark:bg-[#2A2A32] text-[#111] dark:text-white shadow-xs'
+                            : 'text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white'
+                        }`}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setWalletActivityFilter('topup'); setWalletActivityPage(1); }}
+                        className={`rounded-md px-2.5 py-1 transition-all cursor-pointer ${
+                          walletActivityFilter === 'topup'
+                            ? 'bg-white dark:bg-[#2A2A32] text-[#111] dark:text-white shadow-xs'
+                            : 'text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white'
+                        }`}
+                      >
+                        Top-ups
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setWalletActivityFilter('deduction'); setWalletActivityPage(1); }}
+                        className={`rounded-md px-2.5 py-1 transition-all cursor-pointer ${
+                          walletActivityFilter === 'deduction'
+                            ? 'bg-white dark:bg-[#2A2A32] text-[#111] dark:text-white shadow-xs'
+                            : 'text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white'
+                        }`}
+                      >
+                        Deductions
+                      </button>
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => void refreshTopUpHistory()}
-                    disabled={isTopUpHistoryLoading}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:underline disabled:opacity-50"
+                    onClick={() => void refreshWalletActivity()}
+                    disabled={isWalletActivityLoading}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:underline disabled:opacity-50 self-start sm:self-auto cursor-pointer"
                   >
-                    <RefreshCw size={12} className={isTopUpHistoryLoading ? 'animate-spin' : ''} />
+                    <RefreshCw size={12} className={isWalletActivityLoading ? 'animate-spin' : ''} />
                     Refresh
                   </button>
                 </div>
-                {topUpHistory.length > 0 ? (
+
+                {paginatedActivities.length > 0 ? (
                   <div className="space-y-2">
-                    {topUpHistory.map((item) => (
-                      <div key={item.paymentId} className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-3.5">
-                        <div>
-                          <p className="text-[13px] font-semibold text-[#111] dark:text-white">Wallet top-up</p>
-                          <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">
-                            Payment #{item.paymentId} · {item.status} · {new Date(item.createdAt).toLocaleDateString('en-MY')}
-                          </p>
+                    {paginatedActivities.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-3.5"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                              item.category === 'deduction'
+                                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400'
+                                : item.type === 'refund'
+                                ? 'bg-blue-50 dark:bg-blue-950/40 text-[#007AFF] dark:text-[#38bdf8]'
+                                : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+                            }`}
+                          >
+                            {item.category === 'deduction' ? (
+                              <ArrowUpRight size={16} />
+                            ) : (
+                              <ArrowDownLeft size={16} />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate text-[13px] font-semibold text-[#111] dark:text-white">
+                                {item.title}
+                              </p>
+                              {item.isPending && (
+                                <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                                  Pending
+                                </span>
+                              )}
+                            </div>
+                            <p className="truncate text-[11px] text-[#9ca3af] dark:text-[#71717A]">
+                              {item.subtitle}
+                            </p>
+                          </div>
                         </div>
-                        <span className={`text-[13px] font-semibold ${item.status === 'Completed' ? 'text-[#007AFF]' : 'text-[#5f6368] dark:text-[#A1A1AA]'}`}>
-                          +{item.currency} {item.amount.toFixed(2)}
+                        <span
+                          className={`shrink-0 text-[13px] font-semibold ${
+                            item.category === 'deduction'
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : item.isPending
+                              ? 'text-[#5f6368] dark:text-[#A1A1AA]'
+                              : 'text-[#007AFF] dark:text-[#38bdf8]'
+                          }`}
+                        >
+                          {item.category === 'deduction' ? '-' : '+'}{item.currency} {item.amount.toFixed(2)}
                         </span>
                       </div>
                     ))}
+
+                    {totalActivityPages > 1 && (
+                      <div className="flex items-center justify-between pt-3 border-t border-[#e8eaed] dark:border-white/10 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">
+                        <button
+                          type="button"
+                          onClick={() => setWalletActivityPage((p) => Math.max(1, p - 1))}
+                          disabled={walletActivityPage === 1 || isWalletActivityLoading}
+                          className="disabled:opacity-40 disabled:cursor-not-allowed hover:text-[#111] dark:hover:text-white cursor-pointer"
+                        >
+                          Previous
+                        </button>
+                        <span>
+                          Page {walletActivityPage} of {totalActivityPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setWalletActivityPage((p) => Math.min(totalActivityPages, p + 1))}
+                          disabled={walletActivityPage >= totalActivityPages || isWalletActivityLoading}
+                          className="disabled:opacity-40 disabled:cursor-not-allowed hover:text-[#111] dark:hover:text-white cursor-pointer"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
-                ) : (walletTopUpFeedback?.payment || pendingTopUp) ? (
+                ) : (walletTopUpFeedback?.payment || pendingTopUp) && walletActivityFilter !== 'deduction' ? (
                   <div className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-3.5">
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#111] dark:text-white">Wallet top-up</p>
-                      <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">
-                        Payment #{(walletTopUpFeedback?.payment || pendingTopUp)?.paymentId}
-                        {' · '}
-                        {walletTopUpFeedback?.tone === 'success'
-                          ? 'Credited'
-                          : walletTopUpFeedback?.title === 'Top-up cancelled'
-                          ? 'Cancelled'
-                          : walletTopUpFeedback?.title === 'Checkout expired'
-                            ? 'Expired'
-                          : (walletTopUpFeedback?.payment || pendingTopUp)?.stage === 'confirming'
-                            ? 'Confirmation pending'
-                            : 'Checkout incomplete'}
-                      </p>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950/40 text-[#007AFF]">
+                        <ArrowDownLeft size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-[#111] dark:text-white">Wallet top-up</p>
+                        <p className="truncate text-[11px] text-[#9ca3af] dark:text-[#71717A]">
+                          Payment #{(walletTopUpFeedback?.payment || pendingTopUp)?.paymentId}
+                          {' · '}
+                          {walletTopUpFeedback?.tone === 'success'
+                            ? 'Credited'
+                            : walletTopUpFeedback?.title === 'Top-up cancelled'
+                            ? 'Cancelled'
+                            : walletTopUpFeedback?.title === 'Checkout expired'
+                              ? 'Expired'
+                            : (walletTopUpFeedback?.payment || pendingTopUp)?.stage === 'confirming'
+                              ? 'Confirmation pending'
+                              : 'Checkout incomplete'}
+                        </p>
+                      </div>
                     </div>
-                    <span className="text-[13px] font-semibold text-[#007AFF]">
+                    <span className="shrink-0 text-[13px] font-semibold text-[#007AFF]">
                       RM {(walletTopUpFeedback?.payment || pendingTopUp)?.amount.toFixed(2)}
                     </span>
                   </div>
                 ) : (
                   <div className="flex min-h-24 flex-col items-center justify-center rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 px-4 text-center">
-                    <Coins size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
-                    <p className="text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">No recent top-ups</p>
-                    <p className="mt-1 text-[11px] text-[#9ca3af] dark:text-[#71717A]">Your next wallet top-up will appear here.</p>
+                    {walletActivityFilter === 'deduction' ? (
+                      <ArrowUpRight size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
+                    ) : walletActivityFilter === 'topup' ? (
+                      <ArrowDownLeft size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
+                    ) : (
+                      <Coins size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
+                    )}
+                    <p className="text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">
+                      {walletActivityFilter === 'deduction'
+                        ? 'No deductions yet'
+                        : walletActivityFilter === 'topup'
+                        ? 'No top-ups yet'
+                        : 'No wallet activity'}
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#9ca3af] dark:text-[#71717A]">
+                      {walletActivityFilter === 'deduction'
+                        ? 'Your parking payments and deductions will appear here.'
+                        : walletActivityFilter === 'topup'
+                        ? 'Your wallet top-ups will appear here.'
+                        : 'Your top-ups and parking payments will appear here.'}
+                    </p>
                   </div>
                 )}
               </div>
@@ -3126,7 +3469,7 @@ export default function CommuterDashboard() {
         items={[
           { id: 'map', icon: Map, label: 'Transit' },
           { id: 'home', icon: Compass, label: 'Browse' },
-          { id: 'active', icon: Unlock, label: 'Pass', dot: !!activeBooking },
+          { id: 'active', icon: Unlock, label: 'Pass', dot: !!activeBooking || upcomingBookings.length > 0 },
           { id: 'wallet', icon: Wallet, label: 'Wallet' },
           { id: 'more', icon: Menu, label: 'More' },
         ]}
@@ -3170,17 +3513,21 @@ export default function CommuterDashboard() {
               <h3 id="notifications-title" className="text-[15px] font-bold text-[#111] dark:text-white">Notifications</h3>
               <button type="button" aria-label="Close notifications" onClick={() => setShowNotificationsDrawer(false)} className="p-1.5 rounded-lg hover:bg-[#f1f3f4] dark:hover:bg-[#202025] text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white cursor-pointer"><X size={18} /></button>
             </div>
-            {unreadCount > 0 && (
-              <button onClick={markAllRead} className="text-[11px] text-[#007AFF] font-semibold mb-3 hover:underline cursor-pointer">Mark all as read</button>
-            )}
-            <div className="space-y-1">
-              {notifications.map((n) => (
-                <div key={n.id} className={`p-3 rounded-xl ${n.read ? 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]' : 'bg-[#eff6ff] dark:bg-[#1E2430]'}`}>
-                  <p className="text-[13px] font-semibold text-[#111] dark:text-white">{n.title}</p>
-                  <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">{n.message}</p>
-                  <p className="text-[10px] text-[#9ca3af] dark:text-[#71717A] mt-1">{n.time}</p>
+            <div className="mt-3 space-y-4">
+              <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-[#1C1C1E] p-5 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-[#0A84FF]">
+                  <Bell className="h-6 w-6" />
                 </div>
-              ))}
+                <div className="mt-3 flex items-center justify-center gap-1.5">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">Notification Center</h4>
+                  <span className="rounded-full bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/40">
+                    Service Upcoming
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-[#A1A1AA] leading-relaxed">
+                  Real-time push alerts, booking confirmation receipts, and 15-minute grace period reminders will be delivered directly here once the notifications engine is connected.
+                </p>
+              </div>
             </div>
           </motion.div>
         </div>
@@ -3284,8 +3631,16 @@ export default function CommuterDashboard() {
             <div className="absolute inset-0 border-2 border-[#007AFF] rounded-2xl m-4" />
             {!qrCodeScanned && <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#007AFF] animate-pulse motion-reduce:hidden" style={{ animation: 'scanLine 2s ease-in-out infinite' }} />}
           </div>
-          <p id="qr-scanner-title" className="text-white text-[13px] mt-4 font-medium">{qrCodeScanned ? 'Scanned!' : 'Point camera at IoT bollard QR code'}</p>
-          <button onClick={simulateQRSuccess} className="mt-6 px-6 py-3 rounded-xl bg-white text-[#111] text-[13px] font-semibold">Simulate Scan</button>
+          <p id="qr-scanner-title" className="text-white text-[13px] mt-4 font-medium">Point camera at IoT bollard QR code</p>
+          <div className="mt-5 flex flex-col items-center gap-2 max-w-xs text-center px-4">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-3 py-1 text-[11px] font-bold text-amber-300 border border-amber-500/30">
+              <Sparkles className="h-3 w-3" />
+              Camera Auto-Scan Upcoming
+            </span>
+            <p className="text-white/70 text-xs leading-relaxed">
+              Automated camera frame QR recognition is currently in preview. To unlock the bay, please use the <strong>Unlock Barrier</strong> button on your active reservation pass.
+            </p>
+          </div>
         </div>
       )}
 

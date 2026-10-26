@@ -225,6 +225,30 @@ export interface WalletHistoryParams {
   status?: string;
 }
 
+type WalletTransactionWire = Partial<WalletTransactionItem> & {
+  TransactionId?: number;
+  Type?: string;
+  Amount?: number;
+  Status?: string;
+  PaymentMethod?: string;
+  ReferenceNumber?: string;
+  BookingId?: number | null;
+  CreatedAt?: string;
+};
+
+const normalizeTransactionItem = (wire: WalletTransactionWire): WalletTransactionItem => ({
+  transactionId: wire.transactionId ?? wire.TransactionId ?? 0,
+  type: wire.type ?? wire.Type ?? '',
+  amount: typeof (wire.amount ?? wire.Amount) === 'number'
+    ? (wire.amount ?? wire.Amount)
+    : Number(wire.amount ?? wire.Amount ?? 0),
+  status: wire.status ?? wire.Status ?? '',
+  paymentMethod: wire.paymentMethod ?? wire.PaymentMethod ?? '',
+  referenceNumber: wire.referenceNumber ?? wire.ReferenceNumber ?? '',
+  bookingId: wire.bookingId ?? wire.BookingId ?? null,
+  createdAt: wire.createdAt ?? wire.CreatedAt ?? '',
+});
+
 export async function getWalletHistory(
   token: string,
   params: WalletHistoryParams = {},
@@ -248,10 +272,36 @@ export async function getWalletHistory(
     throw new Error(await readApiError(response, 'Unable to load wallet transaction history.'));
   }
 
-  const payload = (await response.json().catch(() => null)) as WalletHistoryResponse | null;
-  if (!payload || !payload.success) {
-    throw new Error(payload?.message || 'Unable to load wallet transaction history.');
+  const payload = (await response.json().catch(() => null)) as (WalletHistoryResponse & {
+    Data?: WalletTransactionWire[];
+    Code?: number;
+    Success?: boolean;
+    Message?: string;
+    Month?: string | null;
+    Type?: string | null;
+    Status?: string | null;
+    TotalCount?: number;
+    Page?: number;
+    PageSize?: number;
+    TotalPages?: number;
+  }) | null;
+  if (!payload || !(payload.success ?? payload.Success)) {
+    throw new Error(payload?.message || payload?.Message || 'Unable to load wallet transaction history.');
   }
 
-  return payload;
+  const rawList = payload.data ?? payload.Data ?? [];
+
+  return {
+    code: payload.code ?? payload.Code ?? 200,
+    success: payload.success ?? payload.Success ?? true,
+    message: payload.message ?? payload.Message ?? '',
+    month: payload.month ?? payload.Month ?? null,
+    type: payload.type ?? payload.Type ?? null,
+    status: payload.status ?? payload.Status ?? null,
+    totalCount: payload.totalCount ?? payload.TotalCount ?? 0,
+    page: payload.page ?? payload.Page ?? 1,
+    pageSize: payload.pageSize ?? payload.PageSize ?? 10,
+    totalPages: payload.totalPages ?? payload.TotalPages ?? 1,
+    data: Array.isArray(rawList) ? rawList.map(normalizeTransactionItem) : [],
+  };
 }

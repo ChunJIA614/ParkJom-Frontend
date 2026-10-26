@@ -386,12 +386,14 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                       type="button"
                       onClick={handlePropertySearch}
                       disabled={isSearchingStation}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-slate-100 transition disabled:opacity-50"
+                      title="Search property"
+                      aria-label="Search property location"
+                      className="property-search-btn absolute right-1.5 top-1/2 -translate-y-1/2 !min-h-0 h-7 w-7 flex items-center justify-center rounded-md bg-transparent hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-white transition disabled:opacity-50"
                     >
                       {isSearchingStation ? (
-                        <Loader2 size={15} className="animate-spin text-blue-600" />
+                        <Loader2 size={15} className="animate-spin text-blue-600 dark:text-blue-400" />
                       ) : (
-                        <Search size={15} className="text-slate-400" />
+                        <Search size={15} className="text-slate-400 dark:text-slate-400" />
                       )}
                     </button>
                   </div>

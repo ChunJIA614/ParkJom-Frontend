@@ -1493,6 +1493,141 @@ html {
   font-weight: 500 !important;
 }
 
+/* ── Active booking journey banner (Apple HIG dark & light consistency) ── */
+.app-workspace .active-booking-banner,
+.active-booking-banner {
+  background: linear-gradient(90deg, rgba(239, 246, 255, 0.9) 0%, #ffffff 60%, #ffffff 100%) !important;
+  border: 1px solid rgba(191, 219, 254, 0.8) !important;
+  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.06) !important;
+  color: #1e293b !important;
+}
+
+.dark .app-workspace .active-booking-banner,
+.dark .active-booking-banner {
+  background: linear-gradient(90deg, rgba(10, 132, 255, 0.12) 0%, rgba(22, 23, 27, 0.95) 45%, #141417 100%) !important;
+  border: 1px solid rgba(56, 148, 255, 0.28) !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45) !important;
+  color: #f5f5f7 !important;
+}
+
+.app-workspace .active-booking-tag,
+.active-booking-tag {
+  color: #007aff !important;
+}
+
+.dark .app-workspace .active-booking-tag,
+.dark .active-booking-tag {
+  color: #3894ff !important;
+}
+
+.app-workspace .active-booking-bay-badge,
+.active-booking-bay-badge {
+  background-color: #dbeafe !important;
+  color: #1d4ed8 !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+.dark .app-workspace .active-booking-bay-badge,
+.dark .active-booking-bay-badge {
+  background-color: rgba(10, 132, 255, 0.18) !important;
+  color: #60a5fa !important;
+  border: 1px solid rgba(96, 165, 250, 0.3) !important;
+}
+
+.app-workspace .active-booking-spot-name,
+.active-booking-spot-name {
+  color: #0f172a !important;
+}
+
+.dark .app-workspace .active-booking-spot-name,
+.dark .active-booking-spot-name {
+  color: #ffffff !important;
+}
+
+.app-workspace .active-booking-timer,
+.active-booking-timer {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.dark .app-workspace .active-booking-timer,
+.dark .active-booking-timer {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+.app-workspace .active-booking-drive-btn,
+.active-booking-drive-btn {
+  background-color: #007aff !important;
+  color: #ffffff !important;
+}
+
+.app-workspace .active-booking-drive-btn:hover,
+.active-booking-drive-btn:hover {
+  background-color: #0066d6 !important;
+}
+
+.app-workspace .active-booking-pass-btn,
+.active-booking-pass-btn {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.app-workspace .active-booking-pass-btn:hover,
+.active-booking-pass-btn:hover {
+  background-color: #e2e8f0 !important;
+}
+
+.dark .app-workspace .active-booking-pass-btn,
+.dark .active-booking-pass-btn {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #f8fafc !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+.dark .app-workspace .active-booking-pass-btn:hover,
+.dark .active-booking-pass-btn:hover {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* ── Inline input action buttons (Search, Clear, etc.) ── */
+.app-workspace .property-search-btn,
+.property-search-btn {
+  min-height: 1.75rem !important;
+  height: 1.75rem !important;
+  width: 1.75rem !important;
+  padding: 0 !important;
+  background-color: transparent !important;
+  border: none !important;
+  color: #8e8e93 !important;
+}
+
+.app-workspace .property-search-btn:hover,
+.property-search-btn:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+  color: #1d1d1f !important;
+}
+
+.dark .app-workspace .property-search-btn,
+.dark .property-search-btn {
+  background-color: transparent !important;
+  border: none !important;
+  color: #a1a1a6 !important;
+}
+
+.dark .app-workspace .property-search-btn:hover,
+.dark .property-search-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.dark .app-workspace .relative > button.absolute:not([class*="bg-blue"]):not([class*="bg-emerald"]):not([class*="bg-amber"]) {
+  background-color: transparent;
+}
+
 .brand-logo {
   display: block;
   aspect-ratio: 1;

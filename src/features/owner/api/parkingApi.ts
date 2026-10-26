@@ -211,14 +211,28 @@ export function updateParkingAvailability(
   });
 }
 
+export function publishParking(token: string, parkingSpotId: number): Promise<Response> {
+  return apiRequest(`/owner/parking/${parkingSpotId}/publish`, {
+    method: 'POST',
+    headers: authorizationHeaders(token),
+  });
+}
+
+export function unpublishParking(token: string, parkingSpotId: number): Promise<Response> {
+  return apiRequest(`/owner/parking/${parkingSpotId}/unpublish`, {
+    method: 'POST',
+    headers: authorizationHeaders(token),
+  });
+}
+
 export function updateParkingPublication(
   token: string,
   parkingSpotId: number,
   isPublished: boolean,
 ): Promise<Response> {
-  return apiRequest('/parking/publish', {
-    method: 'PUT',
-    headers: authorizationHeaders(token, 'application/json'),
-    body: JSON.stringify({ parkingSpotId, isPublished }),
+  const action = isPublished ? 'publish' : 'unpublish';
+  return apiRequest(`/owner/parking/${parkingSpotId}/${action}`, {
+    method: 'POST',
+    headers: authorizationHeaders(token),
   });
 }

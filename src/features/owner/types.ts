@@ -316,3 +316,37 @@ export interface OwnerEarningsTransactionsResponse {
   totalPages: number;
   data: OwnerEarningsTransactionItem[];
 }
+
+export interface OwnerPayoutAccount {
+  bankName: string;
+  accountNumber: string;
+  accountHolderName: string;
+  autoWithdraw?: boolean;
+  updatedAt?: string | null;
+}
+
+export interface OwnerPayoutAccountResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data: OwnerPayoutAccount | null;
+}
+
+export interface OwnerWithdrawalResult {
+  transactionId: number;
+  referenceNumber: string;
+  amount: number;
+  remainingBalance: number;
+  bankName: string;
+  accountNumber: string;
+  accountHolderName: string;
+  createdAt: string;
+}
+
+export interface OwnerWithdrawalResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  data: OwnerWithdrawalResult;
+}
+

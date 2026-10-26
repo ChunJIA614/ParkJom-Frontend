@@ -1130,7 +1130,11 @@ export default function AvailabilityScheduler({
         isPublished?: boolean;
       } | null;
       if (!response.ok || body?.success !== true || body.isPublished === false) {
-        throw new Error(body?.message || `Unable to publish the parking listing (${response.status}).`);
+        const missingReqs = (body as any)?.missingRequirements;
+        const missing = Array.isArray(missingReqs) && missingReqs.length > 0
+          ? ' (Missing: ' + missingReqs.join(', ') + ')'
+          : '';
+        throw new Error((body?.message ? body.message + missing : null) || 'Unable to publish the parking listing (' + response.status + ').');
       }
       persistSetup(true, new Date().toISOString(), body.message || 'Parking listing published. Choose open dates in Availability.');
     } catch (error) {

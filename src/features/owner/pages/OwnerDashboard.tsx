@@ -28,6 +28,10 @@ import OwnerBookingHistory from '../components/OwnerBookingHistory';
 import OwnerWalletPanel from '../components/OwnerWalletPanel';
 import SupportWorkspace from '@/features/support/components/SupportWorkspace';
 import {
+  getOwnerPayoutAccount,
+  saveOwnerPayoutAccount,
+} from '../api/earningsApi';
+import {
   getOwnerAllSpotsBookingHistory,
   type OwnerBookingHistoryItem,
 } from '@/features/bookings/api/bookingHistoryApi';
@@ -248,6 +252,28 @@ export default function OwnerDashboard() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [fetchMyParking]);
 
+  // Fetch saved payout bank account from backend
+  useEffect(() => {
+    let cancelled = false;
+    const token = user?.token;
+    if (!token) return;
+
+    void getOwnerPayoutAccount(token)
+      .then((account) => {
+        if (cancelled || !account) return;
+        setActiveBank({
+          name: account.bankName,
+          accNo: account.accountNumber,
+          holder: account.accountHolderName,
+        });
+      })
+      .catch((err) => {
+        console.warn('Unable to load owner payout account:', err);
+      });
+
+    return () => { cancelled = true; };
+  }, [user?.token]);
+
   // Sync notifications to localStorage
   useEffect(() => { saveNotifications(notifications); }, [notifications]);
 
@@ -417,9 +443,26 @@ export default function OwnerDashboard() {
     fetchMyParking();
   };
 
-  // Save payout Bank Account settings
-  const handleSaveBank = (bankDetails: { name: string; accNo: string; holder: string }) => {
+  // Save payout Bank Account settings to backend
+  const handleSaveBank = async (bankDetails: { name: string; accNo: string; holder: string }) => {
     setActiveBank(bankDetails);
+    const token = user?.token;
+    if (!token) return;
+
+    try {
+      const saved = await saveOwnerPayoutAccount(token, {
+        bankName: bankDetails.name,
+        accountNumber: bankDetails.accNo,
+        accountHolderName: bankDetails.holder,
+      });
+      setActiveBank({
+        name: saved.bankName,
+        accNo: saved.accountNumber,
+        holder: saved.accountHolderName,
+      });
+    } catch (err) {
+      console.error('Failed to persist payout bank account:', err);
+    }
   };
 
   // Clear unread notification badge count
@@ -505,7 +548,11 @@ export default function OwnerDashboard() {
           )}
 
           {activeView === 'wallet' && user && (
-            <OwnerWalletPanel token={user.token} />
+            <OwnerWalletPanel
+              token={user.token}
+              activeBank={activeBank}
+              onNavigateSettings={() => setActiveView('settings')}
+            />
           )}
 
           {activeView === 'availability' && (

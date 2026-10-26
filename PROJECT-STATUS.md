@@ -14,13 +14,13 @@ This document supersedes the earlier frontend-only review. The previous version 
 
 | | Count |
 |---|---|
-| ✅ Complete — UI + backend wired end to end | **26** |
-| 🟡 Partial — screen exists, data or behaviour missing | **5** |
-| ❌ Not started — UI shell only, or no UI at all | **6** |
+| ✅ Complete — UI + backend wired end to end | **29** |
+| 🟡 Partial — screen exists, data or behaviour missing | **4** |
+| ❌ Not started — UI shell only, or no UI at all | **4** |
 
-**37 functional areas. 70% complete.**
+**37 functional areas. 78% complete.**
 
-> **Tier 1 shipped on 25 Oct 2026** — see the implementation log at the end. Owner earnings are now live, the overview knows which bays are booked today, and the commuter barrier release is a real backend command.
+> **Tier 1 shipped on 25 Oct 2026, Tier 2 shipped on 26 Oct 2026** — see the implementation logs at the end. Owner earnings are live, commuter barrier release is real, admin overview KPIs & charts are live, system configuration is persisted in the database, and parking spot detail maps receive real coordinates.
 
 The distribution is lopsided, and the backend confirms it:
 
@@ -119,17 +119,15 @@ This is a dead schema: the columns and enum value were provisioned, then the fea
 ## 🟡 Partial (5)
 
 ### 1. Commuter — Active journey & IoT access
-Journey strip, countdown, parking pass and stage machine all work. **Barrier release is now real** (see log): `handleUnlockBollard` calls `POST /api/support/gate-unlock` and only advances the journey on an accepted command. Remaining gaps:
-- QR scanner opens the camera but **never decodes a frame**
-- Active booking restored from `localStorage` only — cannot resume on a second device
-- `handleLockBollard` still runs a local `setTimeout` rather than dispatching an `Exit` command
+Journey strip, countdown, parking pass and stage machine all work. Barrier release is real (`POST /api/support/gate-unlock`).
+- ✅ **Cross-device journey restoration complete**: `GET /api/commuter/bookings/active` backend endpoint implemented & integrated with frontend. Commuters seamlessly resume ongoing or upcoming bookings on any device.
+- Remaining gaps: QR scanner frame decoding, lock bollard exit event command.
 
-There is no `GET /api/commuter/bookings/active`.
-
-### 2. Owner — Wallet withdrawals & payout account
-The **read side is complete** (balance, held, paid, gross, paginated transaction feed). What remains is the write side:
-- Withdraw button is present but disabled — no `POST /api/owner/withdrawals` exists
-- Bank beneficiary is still `{ name: '-', accNo: '-', holder: '-' }`; saving shows a toast and persists nothing. No `GET`/`PUT /api/owner/payout-account`.
+### 2. Owner — Wallet withdrawals & payout account (✅ Completed)
+The full withdrawal and payout loop is live and verified:
+- Bank card credentials saved and retrieved via `GET`/`PUT /api/owner/payout-account` and stored in Azure SQL `OwnerPayoutAccounts`.
+- Withdraw button enabled in `OwnerWalletPanel.tsx` with modal, validation (RM 10.00 min, sufficient balance), and instant feedback.
+- `POST /api/owner/withdrawals` deducts wallet balance atomically and creates `TransactionType.Withdrawal` with `WDR-` reference.
 
 ### 3. Owner — Settings (bank + notification toggles)
 `onSaveBank` shows a success dialog and persists nothing. Three toggles (email alerts, WhatsApp alerts, auto-withdraw) are local state. No endpoint on either side.
@@ -169,7 +167,7 @@ The second reference is gone; `dotnet sln list` now reports one project. **The `
 
 ---
 
-## ✅ Complete (26) — do not re-work
+## ✅ Complete (29) — do not re-work
 
 | Area | Backend route |
 |---|---|
@@ -178,6 +176,7 @@ The second reference is gone; `dotnet sln list` now reports one project. **The `
 | Landing page | Static by design |
 | Commuter discovery | `api/parking/search`, `nearby`, `filter`; `api/gtfs/stops/{id}/nearby-parking` |
 | Commuter booking | `api/public/parking/{id}/booking-availability`, `booking-quotes`; `api/commuter/bookings/confirm`, `cancel` |
+| Commuter parking detail | `api/public/parking/{id}` (lat, lng, station, distance) — **wired 26 Oct** |
 | Commuter wallet | `api/wallet/history`, `topup`, `topup/history`, `topup/status`, `topup/success`, `topup/cancel`; `api/stripe/webhook` |
 | Commuter reviews | `api/reviews` (POST/GET/PUT/DELETE + `parking/{id}`) |
 | Commuter favorites | `api/favorites` (GET, POST, update) |
@@ -189,6 +188,8 @@ The second reference is gone; `dotnet sln list` now reports one project. **The `
 | Owner review replies | `api/reviews/{id}/owner-reply` |
 | Owner earnings wallet | `api/owner/earnings/summary`, `transactions` — **wired 25 Oct** (`OwnerWalletPanel`) |
 | Owner overview bay status | `api/owner/parking/{id}/bookings` — **wired 25 Oct**, drives "Booked now / Booked today" |
+| Admin platform overview | `api/admin/dashboard` — **wired 26 Oct** |
+| Admin system configuration | `api/admin/system-config` (GET/PUT) — **wired 26 Oct** |
 | Admin user governance | `api/admin/users` (GET/PUT) |
 | Admin listing governance | `api/parking/verification-requests` (+ decision), `api/admin/account-suspensions` |
 | Admin vehicle registry | `api/vehicle/all` |
@@ -243,6 +244,32 @@ Items 1–4 are the highest value per unit of work. Item 3 carries a correctness
 10. Settlement — payouts, transactions, real export
 11. Overstay enforcement — detection worker + records
 12. Owner payout account + withdrawals
+
+---
+
+## Implementation log — Priority 2 (Fund Withdrawal & Cross-Device Active Journey), 26 Oct 2026
+
+**Verification:** `npx tsc --noEmit` & `npm run build` → 0 errors · Live API verified against running backend and Azure SQL.
+
+| # | Change | Files |
+|---|---|---|
+| 1 | `OwnerPayoutAccount` entity model + DB table + Azure SQL migration `20261026050442_AddOwnerPayoutAccount` applied. Created `GET /api/owner/payout-account` and `PUT /api/owner/payout-account` allowing property owners to securely link and retrieve bank account credentials (bank name, account number, account holder name, auto-withdraw toggle). | `Models/OwnerPayoutAccount.cs`, `Data/ApplicationDbContext.cs`, `DTOs/OwnerPayoutAccountDTO.cs`, `Controllers/OwnerPayoutController.cs` |
+| 2 | Implemented `POST /api/owner/withdrawals` with validations: minimum RM 10.00, verified payout bank binding, wallet balance check, atomic balance deduction via `_walletService.Deduct`, and transaction creation with `TransactionType.Withdrawal` and `WDR-` reference. | `Controllers/OwnerPayoutController.cs`, `DTOs/OwnerWithdrawalDTO.cs` |
+| 3 | Frontend Owner Withdrawal flow fully unlocked: added `getOwnerPayoutAccount`, `saveOwnerPayoutAccount`, and `requestOwnerWithdrawal` APIs. Unlocked the "Withdraw" button in `OwnerWalletPanel.tsx`, rendered interactive withdrawal modal with linked bank display, amount input, `MAX` quick-fill, and balance deduction feedback. Integrated payout account persistence in `OwnerDashboard.tsx`. | `features/owner/api/earningsApi.ts`, `features/owner/types.ts`, `features/owner/components/OwnerWalletPanel.tsx`, `features/owner/pages/OwnerDashboard.tsx` |
+| 4 | Implemented `GET /api/commuter/bookings/active` backend endpoint: queries current ongoing or upcoming confirmed bookings for the authenticated renter, projections include full spot coordinates, property details, transit station, and vehicle plate. Returns 200 with `ActiveBookingDTO` or 200 with `data: null`. | `Controllers/CommuterBookingController.cs`, `DTOs/BookingDTO.cs` |
+| 5 | Cross-device active journey restoration in Commuter frontend: wired `getActiveBooking` and `normalizeActiveBooking` into `CommuterDashboard.tsx`. Automatically restores active journey and session state across devices and browser sessions even if local storage is cleared. | `features/commuter/api/bookingApi.ts`, `features/commuter/pages/CommuterDashboard.tsx` |
+
+---
+
+## Implementation log — Tier 2, 26 Oct 2026
+
+**Verification:** `npx tsc --noEmit` → 0 errors · `dotnet build` → 0 errors, 0 warnings · Migration applied to Azure SQL.
+
+| # | Change | Files |
+|---|---|---|
+| 1 | `ParkingSpotDetailDTO` now projects `Latitude`, `Longitude`, `StationName`, `DistanceToStation`, `TimeToStation` from `Property` & `Station`. Verified by live API request. | `DTOs/SearchDTO.cs`, `Controllers/PublicParkingController.cs` |
+| 2 | `GET /api/admin/dashboard` implemented with live aggregate data for stats (revenue, commission, users, bollards rate, pending listings, disputes, tickets, overstays), booking counts, weekly trends, top stations, 24h utilization, user growth, and revenue by rate type. Tested and verified end to end. | `Controllers/AdminDashboardController.cs` *(new)*, `DTOs/AdminDashboardDTO.cs` *(new)* |
+| 3 | `SystemConfiguration` model + DB table + Azure SQL migration `20261026042909_AddSystemConfiguration` applied. `GET`/`PUT /api/admin/system-config` endpoints wired. `BookingCheckoutController` refactored to read the platform commission rate dynamically from the database. | `Models/SystemConfiguration.cs` *(new)*, `Data/ApplicationDbContext.cs`, `DTOs/AdminSystemConfigDTO.cs` *(new)*, `Controllers/AdminSystemConfigController.cs` *(new)*, `Controllers/BookingCheckoutController.cs` |
 
 ---
 
