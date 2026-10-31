@@ -8,19 +8,15 @@ import {
   X,
   Loader2,
   ShieldCheck,
-  Car,
   Unlock,
   RefreshCw,
 } from 'lucide-react';
 import {
-  DEMO_CAR_PRESETS,
   compressFileToDataUrl,
-  renderSyntheticCarDataUrl,
   scanVehicleWithVision,
   verifyBarrierPlateWithVision,
   type VehicleVisionScanData,
   type BarrierPlateVerifyData,
-  type DemoCarPreset,
 } from '../api/vehicleVisionApi';
 
 interface VehicleAiScannerModalProps {
@@ -51,7 +47,7 @@ export default function VehicleAiScannerModal({
   onApplyVehicle,
   onBarrierVerified,
 }: VehicleAiScannerModalProps) {
-  const [activeInputTab, setActiveInputTab] = useState<'camera' | 'upload' | 'presets'>('presets');
+  const [activeInputTab, setActiveInputTab] = useState<'upload' | 'camera'>('upload');
   const [cameraStreamActive, setCameraStreamActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
@@ -86,7 +82,7 @@ export default function VehicleAiScannerModal({
     } catch {
       setCameraStreamActive(false);
       setCameraError(
-        'Live camera is unavailable or permission was denied. Use Photo Upload or 1-Click Sample Cars below.',
+        'Live camera is unavailable or permission was denied. Please use Photo Upload above.',
       );
     }
   };
@@ -111,10 +107,7 @@ export default function VehicleAiScannerModal({
 
   if (!open) return null;
 
-  const runVisionAnalysis = async (
-    dataUrl: string,
-    hints?: { plate?: string; brand?: string; model?: string; color?: string },
-  ) => {
+  const runVisionAnalysis = async (dataUrl: string) => {
     setPreviewDataUrl(dataUrl);
     setIsScanning(true);
     setScanError(null);
@@ -126,10 +119,6 @@ export default function VehicleAiScannerModal({
         const res = await scanVehicleWithVision(token, {
           imageBase64: dataUrl,
           mimeType: 'image/jpeg',
-          clientHintPlate: hints?.plate,
-          clientHintBrand: hints?.brand,
-          clientHintModel: hints?.model,
-          clientHintColor: hints?.color,
         });
         setOnboardingResult(res);
       } else {
@@ -138,10 +127,6 @@ export default function VehicleAiScannerModal({
           expectedPlate,
           imageBase64: dataUrl,
           mimeType: 'image/jpeg',
-          clientHintPlate: hints?.plate,
-          clientHintBrand: hints?.brand,
-          clientHintModel: hints?.model,
-          clientHintColor: hints?.color,
         });
         setBarrierResult(res);
       }
@@ -179,57 +164,7 @@ export default function VehicleAiScannerModal({
     }
   };
 
-  const handleSelectPreset = (preset: DemoCarPreset) => {
-    const dataUrl = renderSyntheticCarDataUrl(preset);
-    void runVisionAnalysis(dataUrl, {
-      plate: preset.plate,
-      brand: preset.brand,
-      model: preset.model,
-      color: preset.color,
-    });
-  };
-
   const activeBoundingBox = onboardingResult?.boundingBox ?? barrierResult?.boundingBox ?? null;
-
-  // Build barrier-specific presets so the user can test both Exact Match and Fraud/Mismatch in 1 click
-  const barrierPresets: DemoCarPreset[] =
-    mode === 'barrier' && expectedPlate
-      ? [
-          {
-            id: 'booked-car',
-            label: `Scan Booked Vehicle (${expectedPlate})`,
-            subtitle: expectedVehicleSummary || 'Registered Commuter Vehicle · Exact Match',
-            plate: expectedPlate,
-            brand: 'Perodua',
-            model: 'Myvi',
-            color: 'Silver',
-            bodyHex: '#cbd5e1',
-            accentHex: '#0284c7',
-          },
-          {
-            id: 'ocr-glare',
-            label: `Simulate Night Glare (${expectedPlate.replace(/8/g, 'B').replace(/0/g, 'O')})`,
-            subtitle: 'Tests Homoglyph OCR Recovery & Tolerance',
-            plate: expectedPlate,
-            brand: 'Perodua',
-            model: 'Myvi',
-            color: 'Silver',
-            bodyHex: '#94a3b8',
-            accentHex: '#d97706',
-          },
-          {
-            id: 'wrong-car',
-            label: 'Simulate Wrong Car (JRT 9999)',
-            subtitle: 'Unauthorized Vehicle · Tests Barrier Block',
-            plate: 'JRT 9999',
-            brand: 'Toyota',
-            model: 'Vios',
-            color: 'Black',
-            bodyHex: '#1e293b',
-            accentHex: '#dc2626',
-          },
-        ]
-      : DEMO_CAR_PRESETS;
 
   return (
     <div
@@ -278,19 +213,7 @@ export default function VehicleAiScannerModal({
         {/* Body */}
         <div className="p-5 overflow-y-auto space-y-4">
           {/* Mode Tabs */}
-          <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-[#f1f3f4] dark:bg-[#1E1E24] p-1 text-[11px] font-semibold">
-            <button
-              type="button"
-              onClick={() => setActiveInputTab('presets')}
-              className={`flex items-center justify-center gap-1.5 rounded-lg py-2 transition cursor-pointer ${
-                activeInputTab === 'presets'
-                  ? 'bg-white dark:bg-[#2A2A32] text-[#007AFF] shadow-xs'
-                  : 'text-[#5f6368] dark:text-[#A1A1AA]'
-              }`}
-            >
-              <Sparkles size={13} />
-              <span>Sample Cars</span>
-            </button>
+          <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-[#f1f3f4] dark:bg-[#1E1E24] p-1 text-[11px] font-semibold">
             <button
               type="button"
               onClick={() => setActiveInputTab('upload')}
@@ -316,48 +239,6 @@ export default function VehicleAiScannerModal({
               <span>Live Camera</span>
             </button>
           </div>
-
-          {/* Input Controls */}
-          {activeInputTab === 'presets' && (
-            <div className="space-y-2">
-              <p className="text-[11px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">
-                {mode === 'onboarding'
-                  ? 'Select a sample Malaysian car below to test real-time ALPR & Make/Model extraction:'
-                  : 'Select a test vehicle snapshot to simulate camera arrival at the IoT bollard:'}
-              </p>
-              <div className="grid grid-cols-1 gap-2">
-                {barrierPresets.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    disabled={isScanning}
-                    onClick={() => handleSelectPreset(preset)}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-[#dadce0] dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] hover:border-[#007AFF] px-3.5 py-2.5 text-left transition cursor-pointer disabled:opacity-50"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span
-                        className="h-7 w-7 rounded-lg shrink-0 border border-black/10 flex items-center justify-center text-white"
-                        style={{ backgroundColor: preset.accentHex }}
-                      >
-                        <Car size={15} />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-[12px] font-bold text-[#111] dark:text-white truncate">
-                          {preset.label}
-                        </p>
-                        <p className="text-[11px] text-[#5f6368] dark:text-[#A1A1AA] truncate">
-                          {preset.subtitle}
-                        </p>
-                      </div>
-                    </div>
-                    <span className="shrink-0 rounded-lg bg-[#e8f0fe] dark:bg-blue-950/60 px-2.5 py-1 text-[11px] font-semibold text-[#007AFF]">
-                      Scan
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {activeInputTab === 'upload' && (
             <div className="rounded-2xl border-2 border-dashed border-[#dadce0] dark:border-white/15 bg-[#f8f9fa] dark:bg-[#18181C] p-5 text-center">

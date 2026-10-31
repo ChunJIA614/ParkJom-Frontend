@@ -10,10 +10,6 @@ export interface PlateBoundingBox {
 export interface VehicleVisionScanRequest {
   imageBase64: string;
   mimeType?: string;
-  clientHintPlate?: string;
-  clientHintBrand?: string;
-  clientHintModel?: string;
-  clientHintColor?: string;
 }
 
 export interface VehicleVisionScanData {
@@ -31,7 +27,9 @@ export interface VehicleVisionScanData {
   engineUsed: string;
 }
 
-export interface BarrierPlateVerifyRequest extends VehicleVisionScanRequest {
+export interface BarrierPlateVerifyRequest {
+  imageBase64: string;
+  mimeType?: string;
   bookingId?: number | null;
   expectedPlate?: string;
 }
@@ -52,138 +50,6 @@ export interface BarrierPlateVerifyData {
   boundingBox: PlateBoundingBox | null;
   engineUsed: string;
   message?: string;
-}
-
-export interface DemoCarPreset {
-  id: string;
-  label: string;
-  subtitle: string;
-  plate: string;
-  brand: string;
-  model: string;
-  color: string;
-  bodyHex: string;
-  accentHex: string;
-}
-
-export const DEMO_CAR_PRESETS: DemoCarPreset[] = [
-  {
-    id: 'myvi',
-    label: 'Perodua Myvi (VEE 8492)',
-    subtitle: 'KL Registration · Metallic Silver',
-    plate: 'VEE 8492',
-    brand: 'Perodua',
-    model: 'Myvi',
-    color: 'Silver',
-    bodyHex: '#cbd5e1',
-    accentHex: '#475569',
-  },
-  {
-    id: 'x50',
-    label: 'Proton X50 (WXY 1234)',
-    subtitle: 'KL Registration · Passion Red',
-    plate: 'WXY 1234',
-    brand: 'Proton',
-    model: 'X50',
-    color: 'Red',
-    bodyHex: '#dc2626',
-    accentHex: '#7f1d1d',
-  },
-  {
-    id: 'atto3',
-    label: 'BYD Atto 3 (BQR 6018)',
-    subtitle: 'Selangor EV · Ski White',
-    plate: 'BQR 6018',
-    brand: 'BYD',
-    model: 'Atto 3',
-    color: 'White',
-    bodyHex: '#f8fafc',
-    accentHex: '#0284c7',
-  },
-];
-
-/**
- * Renders a realistic synthetic car front bumper + JPJ standard license plate onto a canvas
- * so Gemini Multimodal Vision can genuinely read the plate text, vehicle make/model badge,
- * and exterior color from pixels during live presentations.
- */
-export function renderSyntheticCarDataUrl(preset: {
-  plate: string;
-  brand: string;
-  model: string;
-  color: string;
-  bodyHex?: string;
-  accentHex?: string;
-}): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = 800;
-  canvas.height = 520;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-
-  const bodyHex = preset.bodyHex || '#cbd5e1';
-  const accentHex = preset.accentHex || '#334155';
-
-  // Background asphalt & studio lighting
-  const bgGrad = ctx.createLinearGradient(0, 0, 0, 520);
-  bgGrad.addColorStop(0, '#0f172a');
-  bgGrad.addColorStop(0.6, '#1e293b');
-  bgGrad.addColorStop(1, '#090d16');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, 800, 520);
-
-  // Car hood & front bumper silhouette
-  ctx.fillStyle = bodyHex;
-  ctx.beginPath();
-  ctx.roundRect(90, 75, 620, 360, [56, 56, 36, 36]);
-  ctx.fill();
-
-  // Windshield upper dark glass
-  ctx.fillStyle = '#0f172a';
-  ctx.beginPath();
-  ctx.roundRect(150, 90, 500, 85, [28, 28, 8, 8]);
-  ctx.fill();
-
-  // Headlights (left & right LED clusters)
-  ctx.fillStyle = '#e0f2fe';
-  ctx.beginPath();
-  ctx.roundRect(115, 200, 125, 48, 14);
-  ctx.roundRect(560, 200, 125, 48, 14);
-  ctx.fill();
-
-  // Front grille
-  ctx.fillStyle = '#111827';
-  ctx.beginPath();
-  ctx.roundRect(240, 205, 320, 185, 22);
-  ctx.fill();
-
-  // Brand & Model emblem text clearly visible for Vision AI
-  ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 24px Inter, system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(`${preset.brand.toUpperCase()} ${preset.model.toUpperCase()}`, 400, 248);
-
-  ctx.fillStyle = accentHex;
-  ctx.font = '600 13px Inter, system-ui, sans-serif';
-  ctx.fillText(`EXTERIOR COLOR: ${preset.color.toUpperCase()}`, 400, 272);
-
-  // Malaysian JPJ Standard Black License Plate (x: 245..555, y: 298..372 -> normalized y:573..715, x:306..693)
-  ctx.fillStyle = '#050505';
-  ctx.strokeStyle = '#e2e8f0';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.roundRect(245, 298, 310, 74, 8);
-  ctx.fill();
-  ctx.stroke();
-
-  // Crisp White JPJ Font
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 46px "Courier New", monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(preset.plate.toUpperCase(), 400, 337);
-
-  return canvas.toDataURL('image/jpeg', 0.9);
 }
 
 /**
