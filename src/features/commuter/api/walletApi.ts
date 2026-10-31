@@ -6,6 +6,7 @@ import type {
   WalletTopUpResponse,
   WalletTopUpState,
   WalletTopUpStatus,
+  WalletTransactionItem,
 } from '../types';
 
 type WalletTopUpWireResponse = Partial<WalletTopUpResponse> & {

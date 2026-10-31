@@ -70,6 +70,7 @@ import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import CopilotLauncher from '@/features/copilot/components/CopilotLauncher';
 import ProfileDialog from '@/features/profile/components/ProfileDialog';
 import { showConfirm, showAlert } from '@/contexts/ModalContext';
 import {
@@ -3464,6 +3465,9 @@ export default function CommuterDashboard() {
           </PageTransition>
         </main>
       </div>
+
+      {/* AI Transit Copilot — hidden on tabs that have their own composer/forms. */}
+      {!['support', 'wallet', 'profile'].includes(activeTab) && <CopilotLauncher />}
 
       <BottomNav
         items={[

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -119,7 +119,13 @@ export default function ParkingDetail() {
   const { id: routeId } = useParams<{ id: string }>();
   const { user, logout } = useAuth();
   const { state } = useLocation() as {
-    state?: { spot: MockParkingSpot; stationCoords: { lat: number; lon: number } | null; stationName: string };
+    state?: {
+      spot?: MockParkingSpot;
+      stationCoords?: { lat: number; lon: number } | null;
+      stationName?: string;
+      /** Dates proposed by ParkJom Copilot; validated by the normal availability rules below. */
+      copilotPrefill?: { startDate: string; endDate: string };
+    };
   };
 
   const [fetchedSpot, setFetchedSpot] = useState<MockParkingSpot | null>(null);
@@ -218,6 +224,7 @@ export default function ParkingDetail() {
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+  const appliedPrefillRef = useRef<string | null>(null);
   const [reviews, setReviews] = useState(() => spot ? loadCachedParkingReviews(spot.parkingSpotId) : []);
   const [reviewPage, setReviewPage] = useState(1);
   const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
@@ -360,6 +367,19 @@ export default function ParkingDetail() {
     setBookingError(null);
     setCalendarMonth(startOfMonth(addDays(new Date(), 1)));
   }, [spot?.parkingSpotId]);
+
+  // Apply Copilot-proposed dates once, after the reset above has run for this spot.
+  useEffect(() => {
+    const prefill = state?.copilotPrefill;
+    if (!spot || !prefill) return;
+    const key = `${spot.parkingSpotId}:${prefill.startDate}:${prefill.endDate}`;
+    if (appliedPrefillRef.current === key) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(prefill.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(prefill.endDate)) return;
+    appliedPrefillRef.current = key;
+    setStartDate(prefill.startDate);
+    setEndDate(prefill.endDate);
+    setCalendarMonth(startOfMonth(dateFromKey(prefill.startDate)));
+  }, [spot, state?.copilotPrefill]);
 
   useEffect(() => {
     setIsFavorite(Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
