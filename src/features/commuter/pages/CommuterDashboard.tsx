@@ -114,6 +114,7 @@ import { updateReview } from '../api/reviewApi';
 import { getCommuterBookingHistory, type BookingHistoryItem } from '@/features/bookings/api/bookingHistoryApi';
 import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
 import VehicleBrandModelFields from '../components/VehicleBrandModelFields';
+import VehicleAiScannerModal from '../components/VehicleAiScannerModal';
 import SupportWorkspace from '@/features/support/components/SupportWorkspace';
 import { loadFavoriteParking, saveFavoriteParking, setParkingFavorite } from '../lib/favoriteParking';
 import { isNativeApp, watchDeviceLocation } from '@/services/deviceCapabilities';
@@ -274,6 +275,8 @@ export default function CommuterDashboard() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [visionScannerTarget, setVisionScannerTarget] = useState<'add' | 'edit' | null>(null);
+  const [alprVerifiedPlate, setAlprVerifiedPlate] = useState<string | null>(null);
   const supportViewer = useMemo(() => user ? ({
     userId: user.userId,
     name: `${user.firstName} ${user.lastName}`.trim() || user.email,
@@ -1905,10 +1908,10 @@ export default function CommuterDashboard() {
 
   // IoT Bollard unlock flow — command is dispatched by the backend, not simulated.
   const handleUnlockBollard = async () => {
-    if (gpsVerified !== 'verified') {
+    if (gpsVerified !== 'verified' && !alprVerifiedPlate) {
       void showAlert({
-        title: 'GPS Verification Required',
-        message: 'Access Denied. You must arrive and verify your GPS location near the parking spot before unlocking.',
+        title: 'Arrival Verification Required',
+        message: 'Access Denied. Please verify your arrival using GPS or the ALPR Camera Scan before unlocking.',
         variant: 'warning',
       });
       return;
@@ -2695,10 +2698,15 @@ export default function CommuterDashboard() {
                           {bollardAnimationState === 'lowered' ? 'Bollard Lowered' : bollardAnimationState === 'lowering' ? 'Lowering...' : 'Bollard Raised'}
                         </p>
                         <p className="text-[11px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
-                          {gpsVerified === 'verified' ? 'GPS verified — ready to unlock'
-                            : gpsVerified === 'checking' ? 'Checking your location...'
-                            : gpsVerified === 'unverified' ? 'Not at this bay — verify again'
-                            : 'Arrive at spot to unlock'}
+                          {alprVerifiedPlate
+                            ? `ALPR verified (${alprVerifiedPlate}) — ready to unlock`
+                            : gpsVerified === 'verified'
+                            ? 'GPS verified — ready to unlock'
+                            : gpsVerified === 'checking'
+                            ? 'Checking your location...'
+                            : gpsVerified === 'unverified'
+                            ? 'Not at this bay — verify again'
+                            : 'Verify via GPS or ALPR camera to unlock'}
                         </p>
                       </div>
                     </div>
@@ -2710,13 +2718,17 @@ export default function CommuterDashboard() {
                             className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#f0fdf4] dark:bg-emerald-950/60 text-[#16a34a] dark:text-emerald-400' : 'bg-[#f8f9fa] dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#2C2C32] dark:border dark:border-white/10'} disabled:cursor-wait disabled:opacity-60`}>
                             {gpsVerified === 'verified' ? 'GPS Verified' : gpsVerified === 'checking' ? 'Checking...' : 'Verify GPS'}
                           </button>
-                          <button onClick={startQRScanner}
-                            className="w-full px-4 py-2.5 rounded-xl bg-[#f8f9fa] dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] dark:border dark:border-white/10 text-[12px] font-semibold hover:bg-[#f1f3f4] dark:hover:bg-[#2C2C32] transition-colors flex items-center justify-center gap-1.5 cursor-pointer">
-                            <Camera size={14} /> Scan QR
+                          <button onClick={() => setShowQRScanner(true)}
+                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                              alprVerifiedPlate
+                                ? 'bg-[#f0fdf4] dark:bg-emerald-950/60 text-[#16a34a] dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/50'
+                                : 'bg-[#f8f9fa] dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] dark:border dark:border-white/10 hover:bg-[#f1f3f4] dark:hover:bg-[#2C2C32]'
+                            }`}>
+                            <Camera size={14} /> {alprVerifiedPlate ? `ALPR: ${alprVerifiedPlate}` : 'ALPR Camera Scan'}
                           </button>
                           <button onClick={() => void handleUnlockBollard()}
-                            disabled={gpsVerified !== 'verified' || bollardAnimationState === 'lowering'}
-                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 ${gpsVerified === 'verified' && bollardAnimationState !== 'lowering' ? 'bg-[#007AFF] text-white hover:bg-[#0066d6] cursor-pointer' : 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed'}`}>
+                            disabled={(gpsVerified !== 'verified' && !alprVerifiedPlate) || bollardAnimationState === 'lowering'}
+                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 ${(gpsVerified === 'verified' || Boolean(alprVerifiedPlate)) && bollardAnimationState !== 'lowering' ? 'bg-[#007AFF] text-white hover:bg-[#0066d6] cursor-pointer' : 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed'}`}>
                             {bollardAnimationState === 'lowering' && <Loader2 size={14} className="animate-spin" />}
                             {bollardAnimationState === 'lowering' ? 'Releasing...' : 'Unlock Bollard'}
                           </button>
@@ -3185,6 +3197,18 @@ export default function CommuterDashboard() {
                     <button
                       type="button"
                       onClick={() => {
+                        setShowAddVehicle(true);
+                        setVehicleEditDraft(null);
+                        setVehicleFeedback(null);
+                        setVisionScannerTarget('add');
+                      }}
+                      className="flex items-center gap-1 rounded-lg bg-[#e8f0fe] dark:bg-blue-950/60 px-2.5 py-1.5 text-[12px] font-semibold text-[#007AFF] hover:bg-[#dbeafe] dark:hover:bg-blue-900/60 cursor-pointer"
+                    >
+                      <Sparkles size={13} /> Scan with AI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
                         setShowAddVehicle((current) => !current);
                         setVehicleEditDraft(null);
                         setVehicleFeedback(null);
@@ -3273,10 +3297,20 @@ export default function CommuterDashboard() {
                   <form onSubmit={handleModifyVehicle} className="mt-3 space-y-2 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-4">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Edit vehicle</p>
-                      <button type="button" onClick={() => setVehicleEditDraft(null)} disabled={isVehicleUpdating}
-                        className="rounded-lg p-1 text-[#5f6368] dark:text-[#A1A1AA] hover:bg-white dark:hover:bg-[#202025] hover:text-[#111] dark:hover:text-white disabled:opacity-50 cursor-pointer" aria-label="Cancel vehicle edit">
-                        <X size={15} />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setVisionScannerTarget('edit')}
+                          disabled={isVehicleUpdating}
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#e8f0fe] dark:bg-blue-950/60 px-2.5 py-1 text-[11px] font-semibold text-[#007AFF] hover:bg-[#dbeafe] cursor-pointer"
+                        >
+                          <Camera size={12} /> Scan Car / Road Tax
+                        </button>
+                        <button type="button" onClick={() => setVehicleEditDraft(null)} disabled={isVehicleUpdating}
+                          className="rounded-lg p-1 text-[#5f6368] dark:text-[#A1A1AA] hover:bg-white dark:hover:bg-[#202025] hover:text-[#111] dark:hover:text-white disabled:opacity-50 cursor-pointer" aria-label="Cancel vehicle edit">
+                          <X size={15} />
+                        </button>
+                      </div>
                     </div>
                     <label className="block space-y-1">
                       <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Number plate</span>
@@ -3309,6 +3343,17 @@ export default function CommuterDashboard() {
                 )}
                 {showAddVehicle && (
                   <form onSubmit={handleAddVehicle} className="mt-3 p-4 bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between pb-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">New Vehicle Details</span>
+                      <button
+                        type="button"
+                        onClick={() => setVisionScannerTarget('add')}
+                        disabled={isVehicleSaving}
+                        className="inline-flex items-center gap-1 rounded-lg bg-[#e8f0fe] dark:bg-blue-950/60 px-2.5 py-1 text-[11px] font-semibold text-[#007AFF] hover:bg-[#dbeafe] cursor-pointer"
+                      >
+                        <Camera size={12} /> Auto-Fill with Vision AI
+                      </button>
+                    </div>
                     <label className="block space-y-1">
                       <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Number plate</span>
                       <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="WXY1234"
@@ -3626,27 +3671,49 @@ export default function CommuterDashboard() {
         </div>
       )}
 
-      {/* ─── QR Scanner Modal ─── */}
-      {showQRScanner && (
-        <div ref={qrDialogRef} role="dialog" aria-modal="true" aria-labelledby="qr-scanner-title" tabIndex={-1} className="fixed inset-0 z-[1250] bg-black flex flex-col items-center justify-center">
-          <button type="button" aria-label="Close QR scanner" onClick={closeQRScanner} className="absolute top-5 right-5 text-white p-2"><X size={24} /></button>
-          <div className="w-72 h-72 border-2 border-white/30 rounded-2xl relative overflow-hidden">
-            {scannerCameraActive && <video ref={videoRef} autoPlay playsInline className="absolute inset-0 object-cover" />}
-            <div className="absolute inset-0 border-2 border-[#007AFF] rounded-2xl m-4" />
-            {!qrCodeScanned && <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#007AFF] animate-pulse motion-reduce:hidden" style={{ animation: 'scanLine 2s ease-in-out infinite' }} />}
-          </div>
-          <p id="qr-scanner-title" className="text-white text-[13px] mt-4 font-medium">Point camera at IoT bollard QR code</p>
-          <div className="mt-5 flex flex-col items-center gap-2 max-w-xs text-center px-4">
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-3 py-1 text-[11px] font-bold text-amber-300 border border-amber-500/30">
-              <Sparkles className="h-3 w-3" />
-              Camera Auto-Scan Upcoming
-            </span>
-            <p className="text-white/70 text-xs leading-relaxed">
-              Automated camera frame QR recognition is currently in preview. To unlock the bay, please use the <strong>Unlock Barrier</strong> button on your active reservation pass.
-            </p>
-          </div>
-        </div>
-      )}
+      {/* ─── Vision AI Vehicle Onboarding & ALPR Barrier Scanner Modal ─── */}
+      <VehicleAiScannerModal
+        open={visionScannerTarget !== null || showQRScanner}
+        mode={visionScannerTarget !== null ? 'onboarding' : 'barrier'}
+        token={user?.token ?? ''}
+        bookingId={activeBooking?.bookingId}
+        expectedPlate={activeBooking?.vehiclePlate || vehicles.find((v) => v.active)?.plate}
+        expectedVehicleSummary={(() => {
+          const activeVeh = vehicles.find((v) => v.active);
+          return activeVeh ? `${activeVeh.brand} ${activeVeh.model} · ${activeVeh.color}` : undefined;
+        })()}
+        onClose={() => {
+          setVisionScannerTarget(null);
+          closeQRScanner();
+        }}
+        onApplyVehicle={(extracted) => {
+          if (visionScannerTarget === 'edit' && vehicleEditDraft) {
+            setVehicleEditDraft({
+              ...vehicleEditDraft,
+              numberPlate: extracted.numberPlate,
+              vehicleBrand: extracted.brand,
+              vehicleModel: extracted.model,
+              vehicleColor: extracted.color,
+            });
+          } else {
+            setShowAddVehicle(true);
+            setNewPlate(extracted.numberPlate);
+            setNewBrand(extracted.brand);
+            setNewModel(extracted.model);
+            setNewColor(extracted.color);
+          }
+          setVehicleFeedback({
+            tone: 'success',
+            message: `Vision AI populated ${extracted.numberPlate} (${extracted.brand} ${extracted.model} · ${extracted.color}). Click Save to confirm.`,
+          });
+        }}
+        onBarrierVerified={(res) => {
+          setAlprVerifiedPlate(res.formattedDetectedPlate || res.detectedPlate);
+          setGpsVerified('verified');
+          setJourneyStage('arrived');
+          updateJourneyStage('arrived', user?.userId);
+        }}
+      />
 
     </div>
   );
