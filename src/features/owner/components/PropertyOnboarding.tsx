@@ -143,7 +143,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       setOsmId(String(loc.osm_id));
       setMapLat(lat);
       setMapLon(lon);
-      if (!address.trim() && loc.display_name) setAddress(loc.display_name);
+      if (loc.display_name) setAddress(loc.display_name);
 
       // 2. Find the nearest LRT/MRT station
       if (allStops.length === 0) {

@@ -1165,18 +1165,29 @@ html {
 .app-workspace :where(.text-slate-950, .text-slate-900, .text-slate-800),
 .app-workspace [class~="text-[#111]"],
 .app-workspace [class~="text-[#1d1d1f]"],
+.app-workspace [class~="text-[#1D1D1F]"],
+.app-workspace [class*="text-[#1d1d1f]" i],
 .app-workspace [class~="text-[#1E293B]"],
-.app-workspace [class~="text-[#1e293b]"] { color: var(--workspace-text) !important; }
+.app-workspace [class~="text-[#1e293b]"],
+.app-workspace [class*="text-[#1e293b]" i] { color: var(--workspace-text) !important; }
 
 .app-workspace :where(.text-slate-700, .text-slate-600, .text-slate-500),
 .app-workspace [class~="text-[#333]"],
 .app-workspace [class~="text-[#5f6368]"],
 .app-workspace [class~="text-[#6e6e73]"],
-.app-workspace [class~="text-[#64748B]"] { color: var(--workspace-text-secondary) !important; }
+.app-workspace [class~="text-[#6E6E73]"],
+.app-workspace [class*="text-[#6e6e73]" i],
+.app-workspace [class~="text-[#64748B]"],
+.app-workspace [class*="text-[#64748b]" i] { color: var(--workspace-text-secondary) !important; }
 
 .app-workspace :where(.text-slate-400, .text-slate-300),
 .app-workspace [class~="text-[#9ca3af]"],
-.app-workspace [class~="text-[#8e8e93]"] { color: var(--workspace-text-tertiary) !important; }
+.app-workspace [class*="text-[#9ca3af]" i],
+.app-workspace [class~="text-[#8e8e93]"],
+.app-workspace [class*="text-[#8e8e93]" i],
+.app-workspace [class~="text-[#86868B]"],
+.app-workspace [class~="text-[#86868b]"],
+.app-workspace [class*="text-[#86868b]" i] { color: var(--workspace-text-tertiary) !important; }
 
 /* ── Dark workspace surface, card, badge, and input cascading ── */
 .dark .app-workspace :where(.bg-white, [class~="bg-white"], [class*="bg-white/"]) {
@@ -1187,10 +1198,12 @@ html {
   .bg-slate-50, .bg-slate-100, .bg-slate-200,
   [class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-slate-200"],
   [class*="bg-slate-50/"], [class*="bg-slate-100/"], [class*="bg-slate-200/"],
-  [class~="bg-[#f2f2f7]"], [class~="bg-[#f5f5f7]"], [class~="bg-[#f1f3f4]"],
-  [class~="bg-[#f8f9fa]"], [class*="bg-[#f8f9fa]"],
-  [class~="bg-[#eff6ff]"], [class*="bg-[#eff6ff]"],
-  [class~="bg-[#f9fafb]"], [class*="bg-[#f9fafb]"]
+  [class~="bg-[#f2f2f7]"], [class*="bg-[#f2f2f7]" i],
+  [class~="bg-[#f5f5f7]"], [class~="bg-[#F5F5F7]"], [class*="bg-[#f5f5f7]" i],
+  [class~="bg-[#f1f3f4]"], [class*="bg-[#f1f3f4]" i],
+  [class~="bg-[#f8f9fa]"], [class*="bg-[#f8f9fa]" i],
+  [class~="bg-[#eff6ff]"], [class*="bg-[#eff6ff]" i],
+  [class~="bg-[#f9fafb]"], [class*="bg-[#f9fafb]" i]
 ) {
   background-color: rgba(255, 255, 255, 0.05) !important;
 }
@@ -1205,16 +1218,30 @@ html {
 .dark .app-workspace tr:hover,
 .dark .app-workspace tr[class*="hover:bg-slate-50"]:hover,
 .dark .app-workspace [class*="hover:bg-slate-50/50"]:hover,
-.dark .app-workspace [class*="hover:bg-slate-50/70"]:hover {
-  background-color: rgba(255, 255, 255, 0.04) !important;
+.dark .app-workspace [class*="hover:bg-slate-50/70"]:hover,
+.dark .app-workspace [class*="hover:bg-[#f5f5f7]" i]:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
 .dark .app-workspace tr:hover td {
   background-color: transparent !important;
 }
 
-.dark .app-workspace :where(.border-slate-100, .border-slate-200, .border-slate-300, [class*="border-slate-"], [class*="border-black/"]) {
+.dark .app-workspace :where(
+  .border-slate-100, .border-slate-200, .border-slate-300,
+  [class*="border-slate-"],
+  [class*="border-black/"],
+  [class*="border-black\/"]
+) {
   border-color: var(--workspace-border) !important;
+}
+
+.dark .app-workspace :where(
+  [class*="divide-black/"],
+  [class*="divide-black\/"],
+  [class*="divide-slate-"]
+) > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 .dark .app-workspace :where(input, select, textarea):not(.leaflet-popup-content *) {
@@ -1269,10 +1296,27 @@ html {
   border-color: rgba(255, 69, 58, 0.25) !important;
 }
 
-.dark .app-workspace :where(.bg-blue-50, [class~="bg-blue-50"], [class~="bg-indigo-50"]) {
-  background-color: rgba(10, 132, 255, 0.15) !important;
+/* Minimalist dark: blue is reserved for text/icons/primary actions, never for
+   container backgrounds. Tinted blue surfaces resolve to neutral elevation. */
+.dark .app-workspace :where(.bg-blue-50, [class~="bg-blue-50"], [class~="bg-indigo-50"], [class*="bg-blue-50/"], [class*="bg-blue-100"], [class*="bg-sky-50"], [class*="bg-indigo-50/"]) {
+  background-color: rgba(255, 255, 255, 0.06) !important;
   color: #0a84ff !important;
-  border-color: rgba(10, 132, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+.dark .app-workspace :where([class*="bg-gradient-to-"][class*="from-blue-"], [class*="bg-gradient-to-"][class*="from-indigo-"], [class*="bg-gradient-to-"][class*="from-sky-"]) {
+  background-image: none !important;
+}
+
+/* Dark secondary buttons: neutral elevated gray instead of slate/navy. */
+.dark .app-workspace :where(button.bg-slate-900, button.bg-slate-800, button.bg-slate-950, a.bg-slate-900) {
+  background-color: #1c1c1e !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f5f5f7 !important;
+}
+
+.dark .app-workspace :where(button.bg-slate-900:hover, button.bg-slate-800:hover) {
+  background-color: #2c2c2e !important;
 }
 
 .dark .app-workspace table {
@@ -4815,28 +4859,226 @@ html {
   color: #FFFFFF !important;
 }
 
+/* ── Dark Theme Commuter Nearby Bays Sheet ── */
+.dark .nearby-sheet {
+  background: #141417 !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark .nearby-sheet__header {
+  background: #18181C !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .nearby-sheet__header h2 {
+  color: #FFFFFF !important;
+}
+
+.dark .nearby-sheet__header span {
+  color: #A1A1AA !important;
+}
+
+.dark .nearby-sheet__state {
+  color: #A1A1AA !important;
+}
+
+.dark .nearby-sheet__state svg {
+  color: #71717A !important;
+}
+
+.dark .nearby-sheet__state[role="alert"] {
+  color: #f87171 !important;
+}
+
+.dark .nearby-bay + .nearby-bay {
+  border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .nearby-bay:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark .nearby-bay.is-selected {
+  background: rgba(10, 132, 255, 0.18) !important;
+  box-shadow: inset 0 0 0 1px rgba(10, 132, 255, 0.4) !important;
+}
+
+.dark .nearby-bay__mark {
+  background: #059669 !important;
+  color: #FFFFFF !important;
+}
+
+.dark .nearby-bay__content strong {
+  color: #FFFFFF !important;
+}
+
+.dark .nearby-bay__content span {
+  color: #A1A1AA !important;
+}
+
+.dark .nearby-bay__rate {
+  color: #FFFFFF !important;
+}
+
+/* On desktop (PC size), mobile-only transit rail must never leak into grid */
+@media (min-width: 1024px) {
+  .map-lens__rail {
+    display: none !important;
+  }
+}
+
 /* ── Dark Theme Admin Support Dashboard & Operations Hub ── */
-.dark [data-component="admin-support-dashboard"] {
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"], [data-component="admin-command-center"], [data-component="operational-incidents"], [data-component="dispute-register"], [data-component="admin-on-call"], [data-component="admin-audit-logs"]) {
   color: #FFFFFF;
 }
 
-.dark [data-component="admin-support-dashboard"] section.bg-\[\#F5F5F7\],
-.dark [data-component="admin-support-dashboard"] div.bg-\[\#F5F5F7\] {
+/* Primary headings & text */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) :is(h1, h2, h3, h4, h5, h6, strong) {
+  color: #FFFFFF !important;
+}
+
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) :is(
+  .text-\[\#1D1D1F\],
+  .text-\[\#1d1d1f\],
+  [class*="text-[#1D1D1F]"],
+  [class*="text-[#1d1d1f]"]
+) {
+  color: #FFFFFF !important;
+}
+
+/* Secondary descriptions and labels */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) :is(
+  .text-\[\#6E6E73\],
+  .text-\[\#6e6e73\],
+  [class*="text-[#6E6E73]"],
+  [class*="text-[#6e6e73]"]
+) {
+  color: #A1A1AA !important;
+}
+
+/* Tertiary metadata, timestamps, and mono IDs */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) :is(
+  .text-\[\#86868B\],
+  .text-\[\#86868b\],
+  [class*="text-[#86868B]"],
+  [class*="text-[#86868b]"]
+) {
+  color: #8E8E93 !important;
+}
+
+/* Cards & Surface Containers */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) :is(
+  section.bg-white,
+  section[class*="bg-white"],
+  div.bg-white,
+  div[class*="bg-white"],
+  section.bg-\[\#F5F5F7\],
+  section[class*="bg-[#F5F5F7]"],
+  div.bg-\[\#F5F5F7\],
+  div[class*="bg-[#F5F5F7]"]
+):not(.leaflet-popup-content, .leaflet-popup-content *) {
   background-color: #141417 !important;
   border-color: rgba(255, 255, 255, 0.10) !important;
 }
 
-.dark [data-component="admin-support-dashboard"] input,
-.dark [data-component="admin-support-dashboard"] select,
-.dark [data-component="admin-support-dashboard"] textarea {
+/* Subtle inner sub-panels, drawers, and card wells */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) :is(
+  div[class*="bg-[#F5F5F7]/"],
+  div[class*="bg-[#f5f5f7]/"],
+  button[class*="bg-[#F5F5F7]/"],
+  button[class*="bg-[#f5f5f7]/"]
+) {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) :is(
+  div[class*="hover:bg-[#F5F5F7]"]:hover,
+  div[class*="hover:bg-[#f5f5f7]"]:hover,
+  button[class*="hover:bg-[#F5F5F7]"]:hover,
+  button[class*="hover:bg-[#f5f5f7]"]:hover
+) {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Badges, tags, and status pills */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) span.rounded-full:not([class*="bg-[#34C759]"]):not([class*="bg-[#FF3B30]"]):not([class*="bg-[#FF9500]"]):not([class*="bg-[#007AFF]"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-amber"]):not([class*="bg-blue"]) {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #F5F5F7 !important;
+}
+
+/* Selected active items in queue lists (Disputes, Incidents, Tickets) */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button[class*="border-black\/\[0\.12\]"],
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button[class*="border-black/[0.12]"],
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button.bg-\[\#F5F5F7\],
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button[class~="bg-[#F5F5F7]"] {
+  background-color: #242429 !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Secondary action buttons */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button.bg-white,
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button[class~="bg-white"],
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button[class*="hover:bg-[#F5F5F7]"]:not([class*="bg-[#007AFF]"]):not([class*="bg-[#1D1D1F]"]):not([class*="bg-blue"]):not([class*="bg-rose"]):not([class*="bg-emerald"]) {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #FFFFFF !important;
+}
+
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button.bg-white:hover,
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) button[class~="bg-white"]:hover {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  color: #FFFFFF !important;
+}
+
+/* Inputs, Select dropdowns, and Textareas */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) input,
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) select,
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) textarea {
   background-color: #18181C !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
   color: #FFFFFF !important;
 }
 
-.dark [data-component="admin-support-dashboard"] input::placeholder,
-.dark [data-component="admin-support-dashboard"] textarea::placeholder {
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) input::placeholder,
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) textarea::placeholder {
   color: #71717A !important;
+}
+
+/* Tables in Support (e.g. 24/7 On-Call Escalation Matrix) */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) table {
+  color: #FFFFFF !important;
+}
+
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) table th {
+  color: #8E8E93 !important;
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) table td {
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) table td.font-semibold,
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) table td.font-mono {
+  color: #FFFFFF !important;
+}
+
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) table td[class*="text-[#6E6E73]"],
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) table td[class*="text-[#6e6e73]"] {
+  color: #A1A1AA !important;
+}
+
+/* Action menus and modal dialogues */
+.dark :is([data-component="admin-support-dashboard"], [data-component="ticket-workspace"]) div.absolute.z-50.rounded-2xl.bg-white,
+.dark [data-component="admin-support-dashboard"] div[class*="max-w-"][class*="rounded-2xl"][class*="bg-white"] {
+  background-color: #1C1C1E !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7) !important;
 }
 
 /* ── Dark Theme Owner Wallet & Photo Dropzone ── */
@@ -4926,3 +5168,133 @@ html {
   max-width: 36rem !important;
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.25) !important;
 }
+
+/* ── ParkJom Copilot Floating Panel (Apple HIG Regular Liquid Glass Material) ── */
+.copilot-panel {
+  background: rgba(245, 245, 247, 0.86) !important;
+  backdrop-filter: blur(32px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(180%) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow:
+    0 24px 64px -12px rgba(0, 0, 0, 0.18),
+    0 8px 24px -4px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.75) !important;
+}
+
+.dark .copilot-panel {
+  background: rgba(20, 20, 24, 0.88) !important;
+  backdrop-filter: blur(32px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow:
+    0 28px 72px -12px rgba(0, 0, 0, 0.72),
+    0 12px 32px -4px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+.copilot-panel__bar {
+  background: rgba(255, 255, 255, 0.76) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+}
+
+.dark .copilot-panel__bar {
+  background: rgba(28, 28, 34, 0.82) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+}
+
+/* Content layer inside the glass popover uses opaque elevated surfaces (HIG Layer Discipline) */
+.copilot-panel__suggestion,
+.copilot-panel__bubble,
+.copilot-panel__card {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.07) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 120ms ease;
+}
+
+.copilot-panel__suggestion:hover {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 122, 255, 0.45) !important;
+}
+
+.dark .copilot-panel__suggestion,
+.dark .copilot-panel__bubble,
+.dark .copilot-panel__card {
+  background-color: #1c1c21 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.32) !important;
+}
+
+.dark .copilot-panel__suggestion:hover {
+  background-color: #26262d !important;
+  border-color: rgba(10, 132, 255, 0.55) !important;
+}
+
+.copilot-panel__input,
+.copilot-panel__secondary-btn {
+  background-color: #eff0f4 !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+.dark .copilot-panel__input,
+.dark .copilot-panel__secondary-btn {
+  background-color: #26262c !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+.copilot-panel__input:focus {
+  background-color: #ffffff !important;
+  border-color: #007aff !important;
+}
+
+.dark .copilot-panel__input:focus {
+  background-color: #2c2c34 !important;
+  border-color: #0a84ff !important;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .copilot-panel {
+    background: #f5f5f7 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .dark .copilot-panel {
+    background: #141417 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .copilot-panel__bar {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .dark .copilot-panel__bar {
+    background: #1c1c1e !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .copilot-panel {
+    background: #f5f5f7 !important;
+    border-color: rgba(0, 0, 0, 0.4) !important;
+  }
+  .dark .copilot-panel {
+    background: #121214 !important;
+    border-color: rgba(255, 255, 255, 0.45) !important;
+  }
+  .copilot-panel__suggestion,
+  .copilot-panel__bubble,
+  .copilot-panel__card {
+    border-color: rgba(0, 0, 0, 0.35) !important;
+  }
+  .dark .copilot-panel__suggestion,
+  .dark .copilot-panel__bubble,
+  .dark .copilot-panel__card {
+    border-color: rgba(255, 255, 255, 0.4) !important;
+  }
+}
+

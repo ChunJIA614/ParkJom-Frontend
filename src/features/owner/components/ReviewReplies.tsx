@@ -186,7 +186,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
           type="button"
           onClick={() => void loadReviews()}
           disabled={loading || waitingForParking}
-          className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1e2025] px-4 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-[#252830] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1c1c1e] px-4 text-xs font-bold text-slate-700 dark:text-slate-200 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-[#252830] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
           Refresh reviews
@@ -213,18 +213,18 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
       )}
 
       {(waitingForParking || loading) && items.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16171B] p-10 text-center shadow-sm">
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] p-10 text-center shadow-sm">
           <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600 dark:text-blue-400" aria-hidden="true" />
           <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Loading parking reviews...</p>
         </div>
       ) : bays.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16171B] p-10 text-center shadow-sm">
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] p-10 text-center shadow-sm">
           <Building2 className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" aria-hidden="true" />
           <h2 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">No registered parking spots</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Register a parking spot before managing customer reviews.</p>
         </div>
       ) : items.length === 0 && !loadError ? (
-        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16171B] p-10 text-center shadow-sm">
+        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] p-10 text-center shadow-sm">
           <MessageSquare className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" aria-hidden="true" />
           <h2 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">No reviews yet</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">New customer reviews for your parking spots will appear here.</p>
@@ -237,7 +237,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
             const isDeleting = deletingId === review.reviewId;
 
             return (
-              <article key={review.reviewId} className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16171B] p-5 shadow-sm sm:p-6">
+              <article key={review.reviewId} className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] p-5 shadow-sm sm:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -320,7 +320,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                           setReplyError(null);
                         }}
                         disabled={isSaving}
-                        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1e2025] px-4 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#252830] disabled:opacity-60"
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1c1c1e] px-4 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#252830] disabled:opacity-60"
                       >
                         <X className="h-4 w-4" aria-hidden="true" />
                         Cancel
@@ -341,7 +341,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                       type="button"
                       onClick={() => void removeReview(review)}
                       disabled={isDeleting}
-                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-500/20 bg-white dark:bg-[#1e2025] px-4 text-xs font-bold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-500/20 bg-white dark:bg-[#1c1c1e] px-4 text-xs font-bold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
                       Delete review
@@ -350,7 +350,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                       type="button"
                       onClick={() => beginReply(review)}
                       disabled={isDeleting}
-                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-blue-200 dark:border-blue-500/20 bg-white dark:bg-[#1e2025] px-4 text-xs font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-blue-200 dark:border-blue-500/20 bg-white dark:bg-[#1c1c1e] px-4 text-xs font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
                     >
                       {review.ownerReply ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <MessageSquare className="h-4 w-4" aria-hidden="true" />}
                       {review.ownerReply ? 'Edit reply' : 'Reply to review'}

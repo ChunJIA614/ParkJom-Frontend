@@ -21,6 +21,7 @@ import { showAlert } from '@/contexts/ModalContext';
 import { useTheme } from '@/app/theme/ThemeContext';
 import SystemSelect from '@/components/ui/SystemSelect';
 import StationPickerSheet from './StationPickerSheet';
+import { buildFallbackCongestionForecast } from '../api/predictionApi';
 import {
   Search,
   Navigation,
@@ -2571,6 +2572,12 @@ export default function CommuterMap({
         {shouldShowParking && displaySpots.map((spot) => {
           const isThisSelected = selectedSpot?.id === spot.id;
           const spotRoutes = spotConnectingRoutesMap.get(String(spot.id)) || [];
+          const aiForecast = buildFallbackCongestionForecast({
+            parkingSpotId: spot.id,
+            stationName: spot.station || selectedStation,
+            walkDistanceMeters: (spot.distanceToStation || 0.35) * 1000,
+            dailyRate: spot.dailyRate ?? 6.5,
+          });
           return (
             <Marker
               key={spot.id}
@@ -2603,12 +2610,31 @@ export default function CommuterMap({
                     </span>
                     <span className="text-slate-400 dark:text-[#A1A1AA] font-normal text-[9.5px]">
                       {spot.distanceToStation ? spot.distanceToStation.toFixed(1) : (spot.distance / 1000).toFixed(1)}km
-                      {spot.timeToStationInMinutes ? ` · ${spot.timeToStationInMinutes}m` : ''}
+                      {spot.timeToStationInMinutes ? ` · ${spot.timeToStationInMinutes}m` : (spot.distanceToStation ? ` · ${Math.max(1, Math.round(spot.distanceToStation * 12.5))}m` : '')}
                     </span>
                   </div>
                   {spot.address && (
                     <div className="mt-0.5 text-[9.5px] text-slate-400 dark:text-[#A1A1AA] truncate">{formatShortAddress(spot.address)}</div>
                   )}
+
+                  {/* AI Congestion Forecast Pill (AI-2) */}
+                  <div className="mt-1.5 flex items-center justify-between gap-1 rounded-md bg-slate-100/90 dark:bg-[#1E1E24] border border-slate-200/80 dark:border-white/10 px-1.5 py-1 text-[9.5px]">
+                    <span className="inline-flex items-center gap-1 font-semibold text-slate-800 dark:text-slate-200 truncate">
+                      <Sparkles className="w-2.5 h-2.5 text-[#007AFF] dark:text-[#0A84FF] shrink-0" />
+                      AI: {aiForecast.predictedOccupancyPercent}% est. occ
+                    </span>
+                    <span
+                      className={`font-bold px-1 py-0.2 rounded text-[8.5px] shrink-0 ${
+                        aiForecast.riskLevel === 'Critical' || aiForecast.riskLevel === 'High'
+                          ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                          : aiForecast.riskLevel === 'Moderate'
+                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                            : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                      }`}
+                    >
+                      {aiForecast.riskLevel}
+                    </span>
+                  </div>
 
                   {/* Connecting Rapid KL Bus Route to Station */}
                   {spotRoutes.length > 0 && (

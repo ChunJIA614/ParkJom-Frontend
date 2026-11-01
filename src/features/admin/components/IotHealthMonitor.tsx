@@ -30,7 +30,7 @@ export default function IotHealthMonitor({}: IotHealthMonitorProps) {
           "Automated offline heartbeat detection & maintenance work order dispatch",
           "Cryptographic handshake verification for physical Bluetooth / QR unlock commands"
         ]}
-        technicalNote="ESP32 hardware integration requires backend MQTT broker connectivity and /api/admin/iot/devices endpoints currently scheduled in Phase 3."
+        technicalNote="ESP32 hardware integration and broker connectivity are scheduled for upcoming release."
       />
 
       {/* Planned Architecture Specification Card */}

@@ -19,6 +19,7 @@ import {
   CommuterPreference,
   MultimodalPlanResult,
 } from '@/services/multimodalRoutingService';
+import { formatDistance } from '@/services/pedestrianWalkingService';
 import { DrivingRouteResult } from '@/services/drivingRouteService';
 import { formatShortSpotName, formatShortAddress } from '../lib/formatUtils';
 
@@ -118,7 +119,7 @@ export default function LinearJourneyNavigator({
               <span className="text-slate-500 dark:text-[#A1A1AA]">
                 {isDriveTab
                   ? drivingRoute.distanceText
-                  : `${activeItinerary?.totalWalkDistanceMeters || 0}m walk`}
+                  : `${formatDistance(activeItinerary?.totalWalkDistanceMeters || 0)} walk`}
               </span>
             </div>
           </div>
@@ -275,7 +276,7 @@ export default function LinearJourneyNavigator({
               </div>
 
               {/* Driving ETA & Distance Metric */}
-              <div className="flex items-center justify-between p-2.5 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/50 rounded-xl text-xs">
+              <div className="flex items-center justify-between p-2.5 bg-blue-50/80 dark:bg-white/[0.06] border border-blue-200/80 dark:border-white/10 rounded-xl text-xs">
                 <div className="flex items-center gap-2">
                   <Car className="w-4 h-4 text-blue-600 dark:text-[#3894FF]" />
                   <div>
@@ -336,7 +337,7 @@ export default function LinearJourneyNavigator({
                       key={`drive-step-${sIdx}`}
                       className="p-2 bg-white dark:bg-[#18181C] rounded-xl border border-slate-200/80 dark:border-white/10 flex items-start gap-2.5 text-xs text-slate-800 dark:text-white shadow-2xs"
                     >
-                      <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-white/[0.06] text-blue-700 dark:text-blue-300 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                         {sIdx + 1}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -482,7 +483,7 @@ export default function LinearJourneyNavigator({
                     }}
                     className={`p-2 rounded-xl text-left border transition-all relative cursor-pointer ${
                       isSelected
-                        ? 'bg-blue-50/90 dark:bg-[#1E2430] border-blue-400 dark:border-[#0071E3] text-blue-950 dark:text-white shadow-xs ring-1 ring-blue-300 dark:ring-[#0071E3]/30'
+                        ? 'bg-blue-50/90 dark:bg-[#1c1c1e] border-blue-400 dark:border-[#0071E3] text-blue-950 dark:text-white shadow-xs ring-1 ring-blue-300 dark:ring-[#0071E3]/30'
                         : 'bg-white dark:bg-[#141417] border-slate-200 dark:border-white/10 text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-50 dark:hover:bg-[#202025]'
                     }`}
                   >
@@ -503,7 +504,7 @@ export default function LinearJourneyNavigator({
                       ~{it.totalDurationMinutes} min
                     </div>
                     <div className="text-[9px] text-slate-500 dark:text-[#A1A1AA]">
-                      {it.totalWalkDistanceMeters}m walk
+                      {formatDistance(it.totalWalkDistanceMeters)} walk
                     </div>
                     {it.savingsSummary && (
                       <div className="text-[9px] text-emerald-700 dark:text-emerald-400 font-bold mt-0.5 truncate">
@@ -527,7 +528,7 @@ export default function LinearJourneyNavigator({
                   <div className="text-[10px] text-slate-500 dark:text-[#A1A1AA]">{plan.origin.exitName}</div>
                 </div>
               </div>
-              <span className="text-[10px] bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 font-bold px-2 py-0.5 rounded-full">
+              <span className="text-[10px] bg-blue-100 dark:bg-white/[0.06] text-blue-800 dark:text-blue-300 font-bold px-2 py-0.5 rounded-full">
                 Depart
               </span>
             </div>
@@ -542,7 +543,7 @@ export default function LinearJourneyNavigator({
                   key={`leg-${idx}`}
                   className={`rounded-xl border transition-all ${
                     isFocused
-                      ? 'bg-blue-50/40 dark:bg-[#1E2430] border-blue-500 dark:border-[#0071E3] shadow-sm'
+                      ? 'bg-blue-50/40 dark:bg-[#1c1c1e] border-blue-500 dark:border-[#0071E3] shadow-sm'
                       : 'bg-white dark:bg-[#18181C] border-slate-200/80 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'
                   }`}
                 >
@@ -581,7 +582,7 @@ export default function LinearJourneyNavigator({
                           {leg.title}
                         </h4>
                         <span className="text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA] shrink-0">
-                          ~{leg.durationMinutes} min ({leg.distanceMeters}m)
+                          ~{leg.durationMinutes} min ({formatDistance(leg.distanceMeters)})
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-600 dark:text-[#A1A1AA] mt-0.5 leading-snug">

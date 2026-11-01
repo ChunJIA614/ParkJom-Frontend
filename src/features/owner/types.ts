@@ -20,6 +20,8 @@ export interface ParkingBay {
   verificationDocName?: string;
   verificationProgress?: number;
   verificationSubmittedAt?: string;
+  activeBookingCount?: number;
+  hasActiveBookings?: boolean;
 }
 
 export type ParkingAvailabilityStatus = 'Inactive' | 'Available' | 'Reserved' | 'Occupied';
@@ -119,6 +121,11 @@ export interface MyParkingResponse {
   data: Array<{
     parkingSpotId: number;
     propertyId: number;
+    propertyName?: string;
+    stationName?: string;
+    address?: string;
+    distanceToStation?: number;
+    timeToStation?: number;
     ownerId: number;
     parkingLabel: string;
     availabilityStatus: string | number;
@@ -128,6 +135,8 @@ export interface MyParkingResponse {
     isPublished: boolean;
     createdAt: string;
     updatedAt: string;
+    activeBookingCount?: number;
+    hasActiveBookings?: boolean;
   }>;
 }
 
@@ -253,6 +262,8 @@ export interface OwnerSpotBookingDetail {
     referenceNumber: string;
     createdAt: string;
     updatedAt: string;
+    activeBookingCount?: number;
+    hasActiveBookings?: boolean;
   }>;
   createdAt: string;
   updatedAt: string;

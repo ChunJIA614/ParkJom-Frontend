@@ -977,7 +977,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     className={cn(
                       'group relative w-full cursor-pointer rounded-xl border p-3 text-left transition-all',
                       isSelected
-                        ? 'border-[#007AFF] bg-[#F5F5F7] dark:bg-[#1F242D] dark:border-[#0071E3] ring-1 ring-[#007AFF]/15 dark:ring-[#0071E3]/30'
+                        ? 'border-[#007AFF] bg-[#F5F5F7] dark:bg-[#1c1c1e] dark:border-[#0071E3] ring-1 ring-[#007AFF]/15 dark:ring-[#0071E3]/30'
                         : 'border-transparent dark:border-white/[0.06] bg-transparent dark:bg-[#141417] hover:border-black/[0.06] dark:hover:border-white/15 hover:bg-[#F5F5F7]/60 dark:hover:bg-[#1C1C20]'
                     )}
                   >

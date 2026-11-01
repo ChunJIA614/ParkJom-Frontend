@@ -5,6 +5,12 @@ import {
   RapidBusRoute,
   RapidBusStop,
 } from './rapidBusService';
+import {
+  calculateStepDurationSeconds,
+  calculateWalkingMinutes,
+  estimateNetworkWalkingDistanceMeters,
+  formatDistance,
+} from './pedestrianWalkingService';
 import { RealtimeVehicle } from './gtfsRealtimeApi';
 import stationData from '../features/commuter/data/mrt_lrt_stations.json';
 
@@ -284,6 +290,8 @@ function slicePolylineBetween(
 
 /**
  * Fetch true pedestrian foot route via OSRM, with fallback.
+ * Uses calibrated Google Maps & OpenTripPlanner pedestrian speed (4.8 km/h, 1.33 m/s)
+ * with urban turn & crossing delays.
  */
 export async function getPedestrianWalkingRoute(
   start: { lat: number; lng: number; name?: string },
@@ -308,6 +316,9 @@ export async function getPedestrianWalkingRoute(
         );
 
         const steps: JourneyStepInstruction[] = [];
+        let totalStepSeconds = 0;
+        let turnsCount = 0;
+
         if (route.legs && route.legs[0]?.steps) {
           route.legs[0].steps.forEach((s: any) => {
             const maneuverType = s.maneuver?.type || 'turn';
@@ -327,10 +338,17 @@ export async function getPedestrianWalkingRoute(
               text = `Continue ${name}`.trim();
             }
 
+            const isTurn = modifier.includes('left') || modifier.includes('right');
+            if (isTurn) turnsCount++;
+
+            const stepDist = Math.round(s.distance || 0);
+            const stepDurationSec = calculateStepDurationSeconds(stepDist, modifier, maneuverType);
+            totalStepSeconds += stepDurationSec;
+
             steps.push({
               instruction: text,
-              distanceMeters: Math.round(s.distance || 0),
-              durationSeconds: Math.round(s.duration || 0),
+              distanceMeters: stepDist,
+              durationSeconds: stepDurationSec,
               streetName: s.name || '',
               icon: modifier.includes('left')
                 ? 'turn-left'
@@ -341,11 +359,19 @@ export async function getPedestrianWalkingRoute(
           });
         }
 
+        const totalDist = Math.round(route.distance);
+        const durationMinutes = Math.max(
+          1,
+          totalStepSeconds > 0
+            ? Math.round(totalStepSeconds / 60)
+            : calculateWalkingMinutes(totalDist, { turnsCount, isStationDestination: true }),
+        );
+
         return {
-          distanceMeters: Math.round(route.distance),
-          durationMinutes: Math.max(1, Math.round(route.duration / 60)),
+          distanceMeters: totalDist,
+          durationMinutes,
           geometry: geom.length > 0 ? geom : [[start.lat, start.lng], [end.lat, end.lng]],
-          steps: steps.length > 0 ? steps : createFallbackSteps(start, end, directDistance),
+          steps: steps.length > 0 ? steps : createFallbackSteps(start, end, totalDist, durationMinutes),
         };
       }
     }
@@ -353,35 +379,38 @@ export async function getPedestrianWalkingRoute(
     console.debug('[MultimodalRouter] OSRM fetch fallback:', err);
   }
 
-  // Fallback: Average walk speed = 1.3 m/s (~4.7 km/h)
-  const durationMins = Math.max(1, Math.round(directDistance / (1.3 * 60)));
+  // Fallback: Real urban network distance (circuity factor 1.30) & calibrated walking speed 4.8 km/h (1.33 m/s)
+  const networkDistance = estimateNetworkWalkingDistanceMeters(directDistance);
+  const durationMins = calculateWalkingMinutes(networkDistance, { isStationDestination: true });
   return {
-    distanceMeters: Math.round(directDistance),
+    distanceMeters: networkDistance,
     durationMinutes: durationMins,
     geometry: [
       [start.lat, start.lng],
       [end.lat, end.lng],
     ],
-    steps: createFallbackSteps(start, end, directDistance),
+    steps: createFallbackSteps(start, end, networkDistance, durationMins),
   };
 }
 
 function createFallbackSteps(
   start: { name?: string },
   end: { name?: string },
-  distance: number,
+  distanceMeters: number,
+  durationMinutes?: number,
 ): JourneyStepInstruction[] {
+  const totalSeconds = (durationMinutes ?? calculateWalkingMinutes(distanceMeters, { isStationDestination: true })) * 60;
   return [
     {
       instruction: `Walk from ${start.name || 'parking bay'} towards ${end.name || 'destination'}`,
-      distanceMeters: Math.round(distance),
-      durationSeconds: Math.round(distance / 1.3),
+      distanceMeters: Math.round(distanceMeters),
+      durationSeconds: Math.round(totalSeconds * 0.9),
       icon: 'walk',
     },
     {
       instruction: `Arrive at ${end.name || 'destination'} entrance`,
       distanceMeters: 0,
-      durationSeconds: 0,
+      durationSeconds: Math.round(totalSeconds * 0.1),
       icon: 'station-entrance',
     },
   ];
@@ -530,7 +559,7 @@ export async function planMultimodalJourney(
       legIndex: 0,
       mode: 'WALK',
       title: 'Direct Walk',
-      summary: `Walk ${directWalkData.distanceMeters}m directly to ${station.entrance.name}`,
+      summary: `Walk ${formatDistance(directWalkData.distanceMeters)} directly to ${station.entrance.name}`,
       fromName: realOrigin.exitName,
       fromCoords: realOrigin.exitCoords,
       toName: station.entrance.name,
@@ -544,7 +573,7 @@ export async function planMultimodalJourney(
     allItineraries.push({
       id: `itinerary-walk-${station.name.toLowerCase().replace(/\s+/g, '-')}`,
       title: `Walk to ${station.name}`,
-      subtitle: `${directWalkData.distanceMeters}m · ~${directWalkData.durationMinutes} min`,
+      subtitle: `${formatDistance(directWalkData.distanceMeters)} · ~${directWalkData.durationMinutes} min`,
       type: 'direct_walk',
       isRecommended: false,
       totalDurationMinutes: directWalkData.durationMinutes,
@@ -585,7 +614,7 @@ export async function planMultimodalJourney(
           legIndex: 0,
           mode: 'WALK',
           title: 'Walk to Bus Stop',
-          summary: `Walk ${leg1Walk.distanceMeters}m to stop ${boardingStop.stopName}`,
+          summary: `Walk ${formatDistance(leg1Walk.distanceMeters)} to stop ${boardingStop.stopName}`,
           fromName: realOrigin.exitName,
           fromCoords: realOrigin.exitCoords,
           toName: boardingStop.stopName,
@@ -699,7 +728,7 @@ export async function planMultimodalJourney(
           legIndex: 2,
           mode: 'WALK',
           title: 'Walk to Station Entrance',
-          summary: `Walk ${leg3Walk.distanceMeters}m to ${station.entrance.name}`,
+          summary: `Walk ${formatDistance(leg3Walk.distanceMeters)} to ${station.entrance.name}`,
           fromName: alightingStop.stopName,
           fromCoords: { lat: alightingStop.lat, lng: alightingStop.lon },
           toName: station.entrance.name,
@@ -725,7 +754,7 @@ export async function planMultimodalJourney(
         const savedWalkDist = Math.max(0, directWalkData.distanceMeters - totalWalkDist);
         const savingsText =
           savedWalkDist > 250
-            ? `Saves ${(savedWalkDist / 1000).toFixed(1)}km walk`
+            ? `Saves ${formatDistance(savedWalkDist)} walk`
             : undefined;
 
         // Step 4: 计算广义成本 J(r)
@@ -744,7 +773,7 @@ export async function planMultimodalJourney(
         allItineraries.push({
           id: `itinerary-bus-${route.shortName.toLowerCase()}-${station.name.toLowerCase().replace(/\s+/g, '-')}`,
           title: `Bus ${route.shortName} + Walk`,
-          subtitle: `~${totalTransitDuration} min · ${totalWalkDist}m walking`,
+          subtitle: `~${totalTransitDuration} min · ${formatDistance(totalWalkDist)} walking`,
           type: 'transit_feeder',
           isRecommended: false,
           totalDurationMinutes: totalTransitDuration,

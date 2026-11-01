@@ -299,7 +299,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
   };
 
   const executeBypassRefund = () => {
-    triggerToast('Contacting payment gateway API to reverse charge...', 'info');
+    triggerToast('Contacting payment gateway to reverse charge...', 'info');
 
     setTimeout(() => {
       const now = new Date();

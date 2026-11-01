@@ -183,7 +183,7 @@ export default function VehicleAiScannerModal({
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-[#f1f3f4] dark:border-white/10">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e8f0fe] dark:bg-blue-950/60 text-[#007AFF]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e8f0fe] dark:bg-white/[0.06] text-[#007AFF]">
               <Sparkles size={18} />
             </span>
             <div>

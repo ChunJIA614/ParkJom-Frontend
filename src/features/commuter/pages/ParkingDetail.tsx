@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -21,6 +21,9 @@ import {
 } from '@/services/multimodalRoutingService';
 import { Bus, Footprints, Sparkles, Compass, CheckCircle2 } from 'lucide-react';
 import { getPublicParkingSpot } from '../api/parkingApi';
+import { AiCongestionForecastCard } from '../components/AiCongestionForecastCard';
+import { calculateWalkingMinutes } from '@/services/pedestrianWalkingService';
+import { getTransitStops } from '@/services/gtfsApi';
 import {
   confirmBooking,
   createBookingQuote,
@@ -53,7 +56,10 @@ import {
    ================================================================ */
 
 // ── Types ──
+type DetailTab = 'reserve' | 'forecast' | 'route';
 interface MockParkingSpot extends ParkingSpot {
+  stationLatitude?: number | null;
+  stationLongitude?: number | null;
   lon: number;
   photoUrl: string;
   price: number;
@@ -67,6 +73,7 @@ interface WalkingInfo {
   distanceText: string;
   durationText: string;
   rawDistance: number;
+  durationMinutes?: number;
 }
 
 const REVIEW_PAGE_SIZE = 10;
@@ -132,9 +139,48 @@ export default function ParkingDetail() {
   const [isFetchingSpot, setIsFetchingSpot] = useState(false);
   const [fetchSpotError, setFetchSpotError] = useState<string | null>(null);
 
-  const spot = state?.spot ?? fetchedSpot;
-  const stationCoords = state?.stationCoords ?? null;
-  const stationName = state?.stationName ?? (spot ? `${spot.propertyName || spot.address}` : '');
+  const stateSpotMatchesRoute = Boolean(
+    state?.spot && String(state.spot.parkingSpotId ?? state.spot.id) === String(routeId),
+  );
+  const spot = fetchedSpot ?? (stateSpotMatchesRoute ? state?.spot ?? null : null);
+  const [activeTab, setActiveTab] = useState<DetailTab>('reserve');
+  const stateStationCoords = state?.stationCoords ?? null;
+  const [resolvedStationCoords, setResolvedStationCoords] = useState<{ lat: number; lon: number } | null>(stateStationCoords);
+  const rawStateStation = state?.stationName && state.stationName !== 'Your location'
+    ? state.stationName
+    : '';
+  const stationName = (
+    spot?.stationName ||
+    spot?.station ||
+    rawStateStation ||
+    (spot ? `${spot.propertyName || spot.address}` : '')
+  ).trim();
+
+  useEffect(() => {
+    if (stateStationCoords?.lat && stateStationCoords?.lon) {
+      setResolvedStationCoords(stateStationCoords);
+      return;
+    }
+    if (spot?.stationLatitude && spot?.stationLongitude) {
+      setResolvedStationCoords({
+        lat: Number(spot.stationLatitude),
+        lon: Number(spot.stationLongitude),
+      });
+      return;
+    }
+    if (stationName && !resolvedStationCoords) {
+      getTransitStops({ search: stationName })
+        .then((stops) => {
+          if (stops && stops.length > 0) {
+            setResolvedStationCoords({
+              lat: stops[0].latitude,
+              lon: stops[0].longitude,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [stateStationCoords?.lat, stateStationCoords?.lon, spot?.stationLatitude, spot?.stationLongitude, stationName]);
 
   const [walkingInfo, setWalkingInfo] = useState<WalkingInfo | null>(null);
   const [multimodalPlan, setMultimodalPlan] = useState<MultimodalPlanResult | null>(null);
@@ -249,16 +295,29 @@ export default function ParkingDetail() {
     return lat && lng ? { lat, lng } : null;
   })();
 
+  const calculatedWalkMinutes = useMemo(() => {
+    if (walkingInfo?.durationMinutes) {
+      return walkingInfo.durationMinutes;
+    }
+    if (spot && spot.distanceToStation > 0) {
+      return calculateWalkingMinutes(spot.distanceToStation * 1000, { isStationDestination: true });
+    }
+    if (spot?.timeToStationInMinutes && spot.timeToStationInMinutes > 0) {
+      return Math.round(spot.timeToStationInMinutes);
+    }
+    return null;
+  }, [walkingInfo?.durationMinutes, spot?.distanceToStation, spot?.timeToStationInMinutes]);
+
   useEffect(() => {
-    if (!bayCoordinates || !stationCoords) {
+    if (!bayCoordinates || !resolvedStationCoords) {
       setWalkingInfo(null);
       setIsLoadingRoute(false);
       return;
     }
     setIsLoadingRoute(true);
-    getWalkingRoute(bayCoordinates.lat, bayCoordinates.lng, stationCoords.lat, stationCoords.lon)
+    getWalkingRoute(bayCoordinates.lat, bayCoordinates.lng, resolvedStationCoords.lat, resolvedStationCoords.lon)
       .then(setWalkingInfo).finally(() => setIsLoadingRoute(false));
-  }, [bayCoordinates?.lat, bayCoordinates?.lng, stationCoords?.lat, stationCoords?.lon]);
+  }, [bayCoordinates?.lat, bayCoordinates?.lng, resolvedStationCoords?.lat, resolvedStationCoords?.lon]);
 
   useEffect(() => {
     if (!spot || !bayCoordinates) {
@@ -273,8 +332,8 @@ export default function ParkingDetail() {
         lng: bayCoordinates.lng,
         address: spot.address,
       },
-      stationCoords
-        ? { name: stationName || 'Transit Station', lat: stationCoords.lat, lng: stationCoords.lon }
+      resolvedStationCoords
+        ? { name: stationName || 'Transit Station', lat: resolvedStationCoords.lat, lng: resolvedStationCoords.lon }
         : null,
       undefined,
       preference,
@@ -282,7 +341,7 @@ export default function ParkingDetail() {
       setMultimodalPlan(plan);
       setActiveItineraryId(plan.recommendedItinerary.id);
     });
-  }, [spot?.parkingSpotId, bayCoordinates?.lat, bayCoordinates?.lng, stationCoords?.lat, stationCoords?.lon, stationName, preference]);
+  }, [spot?.parkingSpotId, bayCoordinates?.lat, bayCoordinates?.lng, resolvedStationCoords?.lat, resolvedStationCoords?.lon, stationName, preference]);
 
   useEffect(() => {
     if (!user?.userId) return;
@@ -679,6 +738,15 @@ export default function ParkingDetail() {
     setEndDate('');
   };
 
+  const handleBottomAction = () => {
+    if (activeTab !== 'reserve') {
+      setActiveTab('reserve');
+      window.scrollTo({ top: 320, behavior: 'smooth' });
+      return;
+    }
+    void handleBook();
+  };
+
   const handleBook = async () => {
     if (!user?.token || invalidDates || isBookingLoading) return;
     setBookingError(null);
@@ -801,10 +869,17 @@ export default function ParkingDetail() {
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h1 className="text-xl md:text-2xl font-bold text-[#111] dark:text-white tracking-[-0.01em] leading-tight">{spot.address}</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-[#111] dark:text-white tracking-[-0.01em] leading-tight">
+                  {spot.propertyName || spot.name || spot.address}
+                </h1>
+                {spot.address && spot.address !== (spot.propertyName || spot.name) && (
+                  <p className="mt-1 text-[13px] text-[#5f6368] dark:text-[#A1A1AA] leading-snug">
+                    {spot.address}
+                  </p>
+                )}
                 <div className="flex items-center gap-1.5 mt-2 text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
                   <MapPin size={14} className="text-[#007AFF] shrink-0" />
-                  <span>{stationName ? `${stationName} area` : 'Klang Valley'}</span>
+                  <span>{stationName ? `Near ${stationName}` : 'Klang Valley'}</span>
                 </div>
               </div>
               <button type="button" onClick={() => void handleToggleFavorite()} disabled={isFavoriteLoading || isFavoriteUpdating}
@@ -816,7 +891,7 @@ export default function ParkingDetail() {
 
             {/* Key Information Chips (Arranged by commuter necessity) */}
             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 font-bold text-blue-700 border border-blue-100">
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-[#1E1E22] px-2.5 py-1 font-bold text-blue-700 dark:text-[#3894FF] border border-blue-100 dark:border-white/10">
                 RM {displayedRate.toFixed(2)} <span className="font-normal text-blue-600">/ day</span>
               </span>
               {spot.parkingLabel && (
@@ -824,14 +899,72 @@ export default function ParkingDetail() {
                   <Car size={13} className="text-slate-500 dark:text-[#A1A1AA]" /> Bay {spot.parkingLabel}
                 </span>
               )}
-              {walkingInfo && (
-                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 font-medium text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/60">
-                  <Footprints size={13} className="text-emerald-600 dark:text-emerald-400" /> {walkingInfo.durationText} walk ({walkingInfo.distanceText})
-                </span>
+              {calculatedWalkMinutes !== null && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('route')}
+                  title="Click to view walking & transit route to station"
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 font-medium text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/60 hover:bg-emerald-100/70 dark:hover:bg-emerald-900/50 transition cursor-pointer"
+                >
+                  <Footprints size={13} className="text-emerald-600 dark:text-emerald-400" />
+                  <span>~{calculatedWalkMinutes} mins walk ({spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(2)} km` : walkingInfo?.distanceText || 'to station'})</span>
+                </button>
               )}
               <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 dark:bg-[#1E1E22] px-2.5 py-1 text-slate-600 dark:text-[#D4D4D8] border border-slate-200 dark:border-white/10">
                 <Wifi size={13} className="text-[#007AFF] dark:text-[#0A84FF]" /> Smart bollard access
               </span>
+            </div>
+
+            {/* ── Segmented Navigation Control (Minimal Initial Mobile Disclosure) ── */}
+            <div className="pt-2">
+              <div
+                role="tablist"
+                aria-label="Parking detail views"
+                className="grid grid-cols-3 p-1 bg-slate-100 dark:bg-[#1C1C20] rounded-xl border border-slate-200/80 dark:border-white/10 text-xs font-semibold select-none shadow-xs"
+              >
+                <button
+                  role="tab"
+                  aria-selected={activeTab === 'reserve'}
+                  type="button"
+                  onClick={() => setActiveTab('reserve')}
+                  className={`py-2 px-2 sm:px-3 rounded-lg flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                    activeTab === 'reserve'
+                      ? 'bg-white dark:bg-[#28282E] text-slate-900 dark:text-white shadow-xs font-bold'
+                      : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
+                  }`}
+                >
+                  <Calendar size={14} className={activeTab === 'reserve' ? 'text-[#007AFF] dark:text-[#0A84FF]' : ''} />
+                  <span className="truncate">Reserve Bay</span>
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={activeTab === 'forecast'}
+                  type="button"
+                  onClick={() => setActiveTab('forecast')}
+                  className={`py-2 px-2 sm:px-3 rounded-lg flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                    activeTab === 'forecast'
+                      ? 'bg-white dark:bg-[#28282E] text-slate-900 dark:text-white shadow-xs font-bold'
+                      : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
+                  }`}
+                >
+                  <Sparkles size={14} className={activeTab === 'forecast' ? 'text-blue-600 dark:text-[#3894FF]' : ''} />
+                  <span className="truncate">AI Forecast</span>
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={activeTab === 'route'}
+                  type="button"
+                  onClick={() => setActiveTab('route')}
+                  className={`py-2 px-2 sm:px-3 rounded-lg flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                    activeTab === 'route'
+                      ? 'bg-white dark:bg-[#28282E] text-slate-900 dark:text-white shadow-xs font-bold'
+                      : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
+                  }`}
+                >
+                  <Compass size={14} className={activeTab === 'route' ? 'text-[#007AFF] dark:text-[#0A84FF]' : ''} />
+                  <span className="truncate">Station Route</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -842,8 +975,9 @@ export default function ParkingDetail() {
             </div>
           )}
 
-          <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
-
+          {/* ════════ TAB 1: RESERVE BAY (Default Minimal View) ════════ */}
+          {activeTab === 'reserve' && (
+            <div className="space-y-6">
 {/* Booking dates */}
           <div>
             <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider mb-4 flex items-center gap-1.5">
@@ -1044,9 +1178,222 @@ export default function ParkingDetail() {
             </p>
           </div>
 
-          <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
 
-                    {/* 3. Station Connection & Distance (Continuous Route, moved lower based on user perspective) */}
+              {/* Quick Intelligence Teasers / Direct links to Forecast and Route */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('forecast');
+                    window.scrollTo({ top: 300, behavior: 'smooth' });
+                  }}
+                  className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] hover:bg-blue-50/50 dark:hover:bg-[#1E1E24] text-left transition cursor-pointer group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-white/[0.06] flex items-center justify-center shrink-0 text-blue-600 dark:text-[#3894FF]">
+                    <Sparkles size={16} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-white">AI Congestion Forecast</span>
+                      <ChevronRight size={14} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5 line-clamp-1">
+                      Off-peak arrival insights & occupancy predictions
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('route');
+                    window.scrollTo({ top: 300, behavior: 'smooth' });
+                  }}
+                  className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] hover:bg-emerald-50/50 dark:hover:bg-[#1E1E24] text-left transition cursor-pointer group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-white/[0.06] flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-400">
+                    <Compass size={16} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-white">Continuous Station Route</span>
+                      <ChevronRight size={14} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5 line-clamp-1">
+                      {calculatedWalkMinutes ? `~${calculatedWalkMinutes} min walk` : 'Walking'} & transit options to station
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
+
+
+{/* Reviews */}
+          <section aria-labelledby="parking-reviews-title">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">Verified stays</p>
+                <h2 id="parking-reviews-title" className="mt-1 text-[17px] font-bold text-[#111] dark:text-white">Commuter reviews</h2>
+              </div>
+              <div className="text-right">
+                <div className="flex items-center justify-end gap-1 text-[#ff9500]"><Star size={16} fill="currentColor" /><strong className="text-[15px] text-[#111] dark:text-white">{averageRating.toFixed(1)}</strong></div>
+                <p className="mt-0.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewMeta?.totalCount ?? reviews.length} verified reviews</p>
+              </div>
+            </div>
+
+            {reviewsLoadError && (
+              <p role="alert" className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewsLoadError}</p>
+            )}
+            {reviewDeleteError && (
+              <p role="alert" className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewDeleteError}</p>
+            )}
+
+            <div className="mt-4 space-y-3">
+              {isReviewsLoading && reviews.length === 0 && (
+                <div className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] p-8 text-center" role="status"><Loader2 size={24} className="mx-auto animate-spin text-[#007AFF] dark:text-[#0A84FF]" /><p className="mt-3 text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">Loading reviews…</p></div>
+              )}
+              {!isReviewsLoading && reviews.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-[#d2d2d7] dark:border-white/12 bg-[#f8f9fa]/50 dark:bg-[#18181C]/50 p-8 text-center"><Star size={25} className="mx-auto text-[#d2d2d7] dark:text-[#71717A]" /><p className="mt-3 text-[12px] font-semibold text-[#5f6368] dark:text-white">No reviews yet</p><p className="mt-1 text-[11px] text-[#8e8e93] dark:text-[#A1A1AA]">Completed commuters can be the first to review this parking spot.</p></div>
+              )}
+              {reviews.map((review) => {
+                const isEditing = reviewEditDraft?.reviewId === review.reviewId;
+                const isOwnReview = review.reviewerId !== 0 && review.reviewerId === user?.userId;
+                return (
+                  <article key={review.reviewId} className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/[0.06] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f0fe] dark:bg-blue-950/50 text-[11px] font-bold text-[#007AFF] dark:text-[#3894FF]">{review.reviewerName.charAt(0)}</span>
+                        <div><p className="text-[12px] font-semibold text-[#111] dark:text-white">{review.reviewerName}</p><p className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">Verified booking · {new Date(review.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}</p></div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="mr-1 flex gap-0.5 text-[#ff9500]" aria-label={`${review.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill={index < review.rating ? 'currentColor' : 'none'} className={index < review.rating ? '' : 'text-[#d2d2d7]'} />)}</div>
+                        {isOwnReview && !isEditing && (
+                          <>
+                            <button type="button" aria-label="Edit your review" title="Edit your review" onClick={() => startReviewEdit(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#e8f0fe] dark:hover:bg-white/[0.08] hover:text-[#007AFF] dark:hover:text-white cursor-pointer"><Pencil size={14} /></button>
+                            <button type="button" disabled={reviewDeletingId !== null} aria-label="Delete your review" title="Delete your review" onClick={() => void handleDeleteReview(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#fff2f1] dark:hover:bg-rose-950/40 hover:text-[#d92d20] dark:hover:text-rose-400 disabled:cursor-wait disabled:opacity-60 cursor-pointer">{reviewDeletingId === review.reviewId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {isEditing && reviewEditDraft ? (
+                      <div className="mt-4 space-y-3 rounded-xl bg-white dark:bg-[#121214] p-3 ring-1 ring-black/[0.06] dark:ring-white/10">
+                        <fieldset>
+                          <legend className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Rating</legend>
+                          <div className="mt-2 flex gap-1 text-[#ff9500]">
+                            {Array.from({ length: 5 }, (_, index) => {
+                              const value = index + 1;
+                              return <button key={value} type="button" disabled={isReviewUpdating} aria-label={`Set rating to ${value} star${value === 1 ? '' : 's'}`} onClick={() => { setReviewEditDraft({ ...reviewEditDraft, rating: value }); setReviewUpdateError(null); }} className="rounded-md p-1 transition hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:cursor-wait"><Star size={21} fill={value <= reviewEditDraft.rating ? 'currentColor' : 'none'} className={value <= reviewEditDraft.rating ? '' : 'text-[#d2d2d7] dark:text-[#52525B]'} /></button>;
+                            })}
+                          </div>
+                        </fieldset>
+                        <div>
+                          <div className="flex items-center justify-between"><label htmlFor={`review-edit-${review.reviewId}`} className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Comment</label><span className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewEditDraft.comment.length}/500</span></div>
+                          <textarea id={`review-edit-${review.reviewId}`} value={reviewEditDraft.comment} maxLength={500} rows={4} disabled={isReviewUpdating} onChange={(event) => { setReviewEditDraft({ ...reviewEditDraft, comment: event.target.value }); setReviewUpdateError(null); }} className="mt-2 w-full resize-none rounded-xl border border-[#d2d2d7] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#111] dark:text-white p-3 text-[12px] leading-5 outline-none transition focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10 disabled:cursor-wait disabled:opacity-70" />
+                        </div>
+                        {reviewUpdateError && <p role="alert" className="rounded-lg bg-[#fff2f1] dark:bg-rose-950/40 px-3 py-2 text-[11px] font-medium text-[#d92d20] dark:text-rose-400">{reviewUpdateError}</p>}
+                        <div className="flex justify-end gap-2">
+                          <button type="button" disabled={isReviewUpdating} onClick={() => { setReviewEditDraft(null); setReviewUpdateError(null); }} className="min-h-9 rounded-lg px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#242429] disabled:cursor-wait disabled:opacity-70 cursor-pointer">Cancel</button>
+                          <button type="button" disabled={isReviewUpdating} onClick={() => void handleUpdateReview()} className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-3 text-[11px] font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] disabled:cursor-wait disabled:opacity-70 cursor-pointer">{isReviewUpdating && <Loader2 size={13} className="animate-spin" />}{isReviewUpdating ? 'Saving…' : 'Save changes'}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="review-comment-text mt-3 whitespace-pre-line text-[12px] leading-5 text-[#333] dark:text-[#D4D4D8]">{review.comment || 'No written comment.'}</p>
+                    )}
+
+                    {review.ownerReply && (
+                      <div className="review-owner-reply-box mt-3 rounded-xl p-3 bg-slate-100/70 dark:bg-[#121214] border border-slate-200 dark:border-white/[0.08]">
+                        <p className="review-owner-reply-title flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]"><MessageSquare size={11} /> Owner reply</p>
+                        <p className="review-owner-reply-text mt-1 text-[11px] leading-4 text-slate-700 dark:text-[#D4D4D8]">{review.ownerReply}</p>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+            {reviewMeta && reviewMeta.totalPages > 1 && (
+              <nav aria-label="Review pages" className="mt-4 flex items-center justify-between gap-3">
+                <button type="button" disabled={reviewPage <= 1 || isReviewsLoading} onClick={() => setReviewPage((current) => Math.max(1, current - 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Previous</button>
+                <span className="text-[11px] font-medium text-[#8e8e93] dark:text-[#A1A1AA]">Page {reviewPage} of {reviewMeta.totalPages}</span>
+                <button type="button" disabled={reviewPage >= reviewMeta.totalPages || isReviewsLoading} onClick={() => setReviewPage((current) => Math.min(reviewMeta.totalPages, current + 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Next</button>
+              </nav>
+            )}
+            <p className="mt-3 flex items-center gap-1.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
+          </section>
+            </div>
+          )}
+
+
+          {/* ════════ TAB 2: AI CONGESTION & AVAILABILITY FORECAST ════════ */}
+          {activeTab === 'forecast' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-1">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Sparkles size={16} className="text-blue-600 dark:text-[#3894FF]" /> AI Congestion & Demand Forecast
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-[#A1A1AA] mt-0.5">
+                    Predictive hourly occupancy trends and arrival advice
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('reserve')}
+                  className="text-xs font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline cursor-pointer"
+                >
+                  ← Back to Reserve
+                </button>
+              </div>
+
+              <AiCongestionForecastCard
+                parkingSpotId={spot.parkingSpotId}
+                stationName={stationName || undefined}
+                targetName={spot.propertyName || spot.address}
+                walkDistanceMeters={walkingInfo?.rawDistance ?? Math.round((spot.distanceToStation || 0.35) * 1000)}
+                dailyRate={displayedRate}
+              />
+
+              <div className="pt-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('reserve');
+                    window.scrollTo({ top: 320, behavior: 'smooth' });
+                  }}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-[#1E1E24] hover:bg-slate-200 dark:hover:bg-[#282830] text-slate-700 dark:text-white font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <Calendar size={14} className="text-[#007AFF]" />
+                  <span>Ready to Book? Return to Booking Dates</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+
+
+          {/* ════════ TAB 3: CONTINUOUS ROUTE & MULTIMODAL JOURNEY ════════ */}
+          {activeTab === 'route' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-1">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Compass size={16} className="text-[#007AFF] dark:text-[#0A84FF]" /> Continuous Route: Parking ➔ Station
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-[#A1A1AA] mt-0.5">
+                    Walking and transit options from parking bay to {stationName ? `${stationName} Station` : 'the station entrance'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('reserve')}
+                  className="text-xs font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline cursor-pointer"
+                >
+                  ← Back to Reserve
+                </button>
+              </div>
+
+              {/* 3. Station Connection & Distance (Continuous Route, moved lower based on user perspective) */}
           <div className="space-y-3">
             <div>
               <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider flex items-center gap-1.5">
@@ -1202,100 +1549,23 @@ export default function ParkingDetail() {
           )}
           </div>
 
-          <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
-
-          {/* Reviews */}
-          <section aria-labelledby="parking-reviews-title">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">Verified stays</p>
-                <h2 id="parking-reviews-title" className="mt-1 text-[17px] font-bold text-[#111] dark:text-white">Commuter reviews</h2>
-              </div>
-              <div className="text-right">
-                <div className="flex items-center justify-end gap-1 text-[#ff9500]"><Star size={16} fill="currentColor" /><strong className="text-[15px] text-[#111] dark:text-white">{averageRating.toFixed(1)}</strong></div>
-                <p className="mt-0.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewMeta?.totalCount ?? reviews.length} verified reviews</p>
+              <div className="pt-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('reserve');
+                    window.scrollTo({ top: 320, behavior: 'smooth' });
+                  }}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-[#1E1E24] hover:bg-slate-200 dark:hover:bg-[#282830] text-slate-700 dark:text-white font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <Calendar size={14} className="text-[#007AFF]" />
+                  <span>Ready to Book? Return to Booking Dates</span>
+                </button>
               </div>
             </div>
+          )}
 
-            {reviewsLoadError && (
-              <p role="alert" className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewsLoadError}</p>
-            )}
-            {reviewDeleteError && (
-              <p role="alert" className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewDeleteError}</p>
-            )}
 
-            <div className="mt-4 space-y-3">
-              {isReviewsLoading && reviews.length === 0 && (
-                <div className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] p-8 text-center" role="status"><Loader2 size={24} className="mx-auto animate-spin text-[#007AFF] dark:text-[#0A84FF]" /><p className="mt-3 text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">Loading reviews…</p></div>
-              )}
-              {!isReviewsLoading && reviews.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-[#d2d2d7] dark:border-white/12 bg-[#f8f9fa]/50 dark:bg-[#18181C]/50 p-8 text-center"><Star size={25} className="mx-auto text-[#d2d2d7] dark:text-[#71717A]" /><p className="mt-3 text-[12px] font-semibold text-[#5f6368] dark:text-white">No reviews yet</p><p className="mt-1 text-[11px] text-[#8e8e93] dark:text-[#A1A1AA]">Completed commuters can be the first to review this parking spot.</p></div>
-              )}
-              {reviews.map((review) => {
-                const isEditing = reviewEditDraft?.reviewId === review.reviewId;
-                const isOwnReview = review.reviewerId !== 0 && review.reviewerId === user?.userId;
-                return (
-                  <article key={review.reviewId} className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/[0.06] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f0fe] dark:bg-blue-950/50 text-[11px] font-bold text-[#007AFF] dark:text-[#3894FF]">{review.reviewerName.charAt(0)}</span>
-                        <div><p className="text-[12px] font-semibold text-[#111] dark:text-white">{review.reviewerName}</p><p className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">Verified booking · {new Date(review.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}</p></div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="mr-1 flex gap-0.5 text-[#ff9500]" aria-label={`${review.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill={index < review.rating ? 'currentColor' : 'none'} className={index < review.rating ? '' : 'text-[#d2d2d7]'} />)}</div>
-                        {isOwnReview && !isEditing && (
-                          <>
-                            <button type="button" aria-label="Edit your review" title="Edit your review" onClick={() => startReviewEdit(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#e8f0fe] dark:hover:bg-white/[0.08] hover:text-[#007AFF] dark:hover:text-white cursor-pointer"><Pencil size={14} /></button>
-                            <button type="button" disabled={reviewDeletingId !== null} aria-label="Delete your review" title="Delete your review" onClick={() => void handleDeleteReview(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#fff2f1] dark:hover:bg-rose-950/40 hover:text-[#d92d20] dark:hover:text-rose-400 disabled:cursor-wait disabled:opacity-60 cursor-pointer">{reviewDeletingId === review.reviewId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}</button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {isEditing && reviewEditDraft ? (
-                      <div className="mt-4 space-y-3 rounded-xl bg-white dark:bg-[#121214] p-3 ring-1 ring-black/[0.06] dark:ring-white/10">
-                        <fieldset>
-                          <legend className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Rating</legend>
-                          <div className="mt-2 flex gap-1 text-[#ff9500]">
-                            {Array.from({ length: 5 }, (_, index) => {
-                              const value = index + 1;
-                              return <button key={value} type="button" disabled={isReviewUpdating} aria-label={`Set rating to ${value} star${value === 1 ? '' : 's'}`} onClick={() => { setReviewEditDraft({ ...reviewEditDraft, rating: value }); setReviewUpdateError(null); }} className="rounded-md p-1 transition hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:cursor-wait"><Star size={21} fill={value <= reviewEditDraft.rating ? 'currentColor' : 'none'} className={value <= reviewEditDraft.rating ? '' : 'text-[#d2d2d7] dark:text-[#52525B]'} /></button>;
-                            })}
-                          </div>
-                        </fieldset>
-                        <div>
-                          <div className="flex items-center justify-between"><label htmlFor={`review-edit-${review.reviewId}`} className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Comment</label><span className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewEditDraft.comment.length}/500</span></div>
-                          <textarea id={`review-edit-${review.reviewId}`} value={reviewEditDraft.comment} maxLength={500} rows={4} disabled={isReviewUpdating} onChange={(event) => { setReviewEditDraft({ ...reviewEditDraft, comment: event.target.value }); setReviewUpdateError(null); }} className="mt-2 w-full resize-none rounded-xl border border-[#d2d2d7] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#111] dark:text-white p-3 text-[12px] leading-5 outline-none transition focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10 disabled:cursor-wait disabled:opacity-70" />
-                        </div>
-                        {reviewUpdateError && <p role="alert" className="rounded-lg bg-[#fff2f1] dark:bg-rose-950/40 px-3 py-2 text-[11px] font-medium text-[#d92d20] dark:text-rose-400">{reviewUpdateError}</p>}
-                        <div className="flex justify-end gap-2">
-                          <button type="button" disabled={isReviewUpdating} onClick={() => { setReviewEditDraft(null); setReviewUpdateError(null); }} className="min-h-9 rounded-lg px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#242429] disabled:cursor-wait disabled:opacity-70 cursor-pointer">Cancel</button>
-                          <button type="button" disabled={isReviewUpdating} onClick={() => void handleUpdateReview()} className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-3 text-[11px] font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] disabled:cursor-wait disabled:opacity-70 cursor-pointer">{isReviewUpdating && <Loader2 size={13} className="animate-spin" />}{isReviewUpdating ? 'Saving…' : 'Save changes'}</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="review-comment-text mt-3 whitespace-pre-line text-[12px] leading-5 text-[#333] dark:text-[#D4D4D8]">{review.comment || 'No written comment.'}</p>
-                    )}
-
-                    {review.ownerReply && (
-                      <div className="review-owner-reply-box mt-3 rounded-xl p-3 bg-slate-100/70 dark:bg-[#121214] border border-slate-200 dark:border-white/[0.08]">
-                        <p className="review-owner-reply-title flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]"><MessageSquare size={11} /> Owner reply</p>
-                        <p className="review-owner-reply-text mt-1 text-[11px] leading-4 text-slate-700 dark:text-[#D4D4D8]">{review.ownerReply}</p>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-            {reviewMeta && reviewMeta.totalPages > 1 && (
-              <nav aria-label="Review pages" className="mt-4 flex items-center justify-between gap-3">
-                <button type="button" disabled={reviewPage <= 1 || isReviewsLoading} onClick={() => setReviewPage((current) => Math.max(1, current - 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Previous</button>
-                <span className="text-[11px] font-medium text-[#8e8e93] dark:text-[#A1A1AA]">Page {reviewPage} of {reviewMeta.totalPages}</span>
-                <button type="button" disabled={reviewPage >= reviewMeta.totalPages || isReviewsLoading} onClick={() => setReviewPage((current) => Math.min(reviewMeta.totalPages, current + 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Next</button>
-              </nav>
-            )}
-            <p className="mt-3 flex items-center gap-1.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
-          </section>
         </div>
       </div>
 
@@ -1306,14 +1576,31 @@ export default function ParkingDetail() {
             <p className="font-bold text-[#111] dark:text-white text-[15px]">{displayedRate > 0 ? `RM ${displayedRate.toFixed(2)}` : 'Daily rate'} <span className="text-[13px] font-normal text-[#5f6368] dark:text-[#A1A1AA]">/ day</span></p>
             <p className="text-[11px] text-[#9ca3af] dark:text-[#A1A1AA]">{quote ? `${quote.bookedDays} ${quote.bookedDays === 1 ? 'day' : 'days'} · RM ${quote.renterTotal.toFixed(2)} total (incl. RM ${quote.platformFee.toFixed(2)} platform fee)` : 'Request a quote for exact pricing'}</p>
           </div>
-          <button onClick={handleBook} disabled={invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId)}
+          <button
+            onClick={handleBottomAction}
+            disabled={activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))}
             className={`font-semibold text-[13px] px-8 py-3 rounded-xl transition flex items-center gap-2 ${
-              invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId) 
-                ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] dark:border dark:border-white/10 cursor-not-allowed' 
+              activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))
+                ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] dark:border dark:border-white/10 cursor-not-allowed'
                 : 'bg-[#007AFF] dark:bg-[#0071E3] text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] active:scale-[0.98] cursor-pointer shadow-sm'
-            }`}>
-            {isBookingLoading ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-            {isBookingLoading ? (quote ? 'Confirming…' : 'Creating quote…') : quote ? `Confirm & Pay · RM ${quote.renterTotal.toFixed(2)}` : 'Get Booking Quote'}
+            }`}
+          >
+            {activeTab !== 'reserve' ? (
+              <>
+                <Calendar size={16} />
+                <span>Return to Reserve Bay</span>
+              </>
+            ) : isBookingLoading ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>{quote ? 'Confirming…' : 'Creating quote…'}</span>
+              </>
+            ) : (
+              <>
+                <CreditCard size={16} />
+                <span>{quote ? `Confirm & Pay · RM ${quote.renterTotal.toFixed(2)}` : 'Get Booking Quote'}</span>
+              </>
+            )}
           </button>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, Clock, Footprints, MapPin, ShieldCheck, TrainFront } from 'lucide-react';
+import { CalendarCheck, Clock, Footprints, MapPin, ShieldCheck, Sparkles, TrainFront } from 'lucide-react';
 import type {
   CopilotBookingProposalCardData,
   CopilotCard,
@@ -14,7 +14,7 @@ const formatDate = (key: string) =>
   new Date(`${key}T00:00:00`).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' });
 
 const cardShell =
-  'rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#18181C] p-3 shadow-sm';
+  'copilot-panel__card rounded-2xl p-3 shadow-sm';
 
 function ParkingCard({ data }: { data: CopilotParkingCardData }) {
   const navigate = useNavigate();
@@ -45,6 +45,11 @@ function ParkingCard({ data }: { data: CopilotParkingCardData }) {
             {data.hasSmartBollard && (
               <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
                 <ShieldCheck size={12} /> Smart bollard
+              </span>
+            )}
+            {data.predictedOccupancyPercent != null && (
+              <span className="inline-flex items-center gap-1 text-[#007AFF] dark:text-[#0A84FF] font-medium">
+                <Sparkles size={11} /> AI: {data.predictedOccupancyPercent}% est. occ ({data.riskLevel || 'Moderate'})
               </span>
             )}
           </div>

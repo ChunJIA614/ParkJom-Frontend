@@ -120,7 +120,7 @@ export default function ParkingReview() {
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#007AFF]"><Check size={14} /> Parking completed</div>
             <h1 className="mt-3 text-2xl font-bold tracking-[-0.035em] md:text-3xl dark:text-white">How was your parking?</h1>
             <div className="mt-4 flex items-start gap-3 rounded-2xl bg-white dark:bg-[#121214] border border-black/[0.06] dark:border-white/10 p-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f0fe] dark:bg-blue-950/50 text-[#007AFF] dark:text-[#3894FF]"><MapPin size={19} /></div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f0fe] dark:bg-white/[0.06] text-[#007AFF] dark:text-[#3894FF]"><MapPin size={19} /></div>
               <div><p className="text-[13px] font-semibold text-[#111] dark:text-white">{booking.spot.name}</p><p className="mt-0.5 text-[12px] text-[#6e6e73] dark:text-[#A1A1AA]">{booking.spot.address} · {booking.spot.station}</p></div>
             </div>
           </div>
@@ -139,7 +139,7 @@ export default function ParkingReview() {
 
             <div>
               <p className="text-[13px] font-semibold dark:text-white">What stood out?</p>
-              <div className="mt-3 flex flex-wrap gap-2">{highlights.map((highlight) => <button key={highlight} type="button" aria-pressed={selectedHighlights.includes(highlight)} onClick={() => toggleHighlight(highlight)} className={`min-h-10 rounded-full border px-4 text-[12px] font-medium transition cursor-pointer ${selectedHighlights.includes(highlight) ? 'border-[#007AFF] dark:border-[#0071E3] bg-[#e8f0fe] dark:bg-blue-950/50 text-[#0066d6] dark:text-blue-300' : 'border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#1E1E22] text-[#5f6368] dark:text-[#A1A1AA] hover:border-[#8e8e93] dark:hover:border-white/20'}`}>{selectedHighlights.includes(highlight) && <Check size={13} className="mr-1.5 inline" />}{highlight}</button>)}</div>
+              <div className="mt-3 flex flex-wrap gap-2">{highlights.map((highlight) => <button key={highlight} type="button" aria-pressed={selectedHighlights.includes(highlight)} onClick={() => toggleHighlight(highlight)} className={`min-h-10 rounded-full border px-4 text-[12px] font-medium transition cursor-pointer ${selectedHighlights.includes(highlight) ? 'border-[#007AFF] dark:border-[#0071E3] bg-[#e8f0fe] dark:bg-white/[0.06] text-[#0066d6] dark:text-blue-300' : 'border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#1E1E22] text-[#5f6368] dark:text-[#A1A1AA] hover:border-[#8e8e93] dark:hover:border-white/20'}`}>{selectedHighlights.includes(highlight) && <Check size={13} className="mr-1.5 inline" />}{highlight}</button>)}</div>
             </div>
 
             <div>

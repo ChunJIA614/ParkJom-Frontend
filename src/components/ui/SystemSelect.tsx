@@ -223,7 +223,7 @@ export default function SystemSelect({
                     opt.disabled
                       ? 'cursor-not-allowed opacity-40 text-[#8e8e93] dark:text-[#71717A]'
                       : isSelected
-                      ? 'bg-[#e8f2ff] dark:bg-[#1E2430] font-semibold text-[#007aff] dark:text-[#3894FF]'
+                      ? 'bg-[#e8f2ff] dark:bg-[#1c1c1e] font-semibold text-[#007aff] dark:text-[#3894FF]'
                       : 'font-medium text-[#1d1d1f] dark:text-white hover:bg-black/[0.045] dark:hover:bg-white/[0.06]'
                   }`}
                 >

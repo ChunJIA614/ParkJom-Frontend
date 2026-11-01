@@ -14,6 +14,7 @@ import {
   fetchVerificationDocument,
   listVerificationRequests,
   submitVerificationDecision as postVerificationDecision,
+  deleteAdminParkingSpot,
 } from '../api/verificationApi';
 import { getAccessLogs } from '../api/accessLogApi';
 import { getAllVehicles } from '../api/vehicleApi';
@@ -509,6 +510,27 @@ export default function AdminDashboard() {
   const handleRejectListing = (id: string, reason: string) =>
     submitVerificationDecision(id, 'rejected', reason);
 
+  const handleDeleteListingSpot = async (parkingSpotId: number): Promise<ParkingVerificationDecisionResult> => {
+    try {
+      if (!token) return { success: false, message: 'Your admin session is missing an authorization token.' };
+      const res = await deleteAdminParkingSpot(token, parkingSpotId);
+      const data = await res.json().catch(() => null) as { success?: boolean; message?: string } | null;
+      if (res.ok && data?.success !== false) {
+        await fetchListings();
+        const message = data?.message || `Parking spot #${parkingSpotId} removed successfully.`;
+        addActivityLog('governance', message, 'Admin');
+        return { success: true, message };
+      }
+      const message = data?.message || `Cannot remove parking spot #${parkingSpotId}. Active or upcoming bookings may exist.`;
+      addActivityLog('governance', message, 'Admin');
+      return { success: false, message };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Unable to remove parking spot #${parkingSpotId}.`;
+      addActivityLog('governance', message, 'Admin');
+      return { success: false, message };
+    }
+  };
+
   const adminSidebarGroups = [
     {
       items: [{ id: 'home', label: 'Platform Dashboard', icon: TrendingUp }],
@@ -567,6 +589,7 @@ export default function AdminDashboard() {
             onViewDocument={fetchPrivateDocument}
             onApprove={handleApproveListing} 
             onReject={handleRejectListing}
+            onDeleteSpot={handleDeleteListingSpot}
             onSuspend={async (email) => (await suspendAccount(token, email)).data}
             onReintegrate={async (email) => (await reintegrateAccount(token, email)).data}
             onLoadSuspensions={loadSuspendedAccounts}

@@ -723,7 +723,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 onClick={() => handleSelectTemplate(tpl)}
                 className={`text-left rounded-xl border p-3.5 transition flex flex-col justify-between gap-2.5 cursor-pointer ${
                   isSelected
-                    ? 'border-[#007AFF] bg-white ring-1 ring-[#007AFF]/20 shadow-[0_2px_8px_rgba(0,122,255,0.06)] dark:bg-[#1E2430] dark:border-[#0071E3] dark:ring-[#0071E3]/30'
+                    ? 'border-[#007AFF] bg-white ring-1 ring-[#007AFF]/20 shadow-[0_2px_8px_rgba(0,122,255,0.06)] dark:bg-[#1c1c1e] dark:border-[#0071E3] dark:ring-[#0071E3]/30'
                     : 'border-black/[0.06] bg-[#F5F5F7]/60 hover:bg-[#F5F5F7] hover:border-black/[0.12] dark:bg-[#18181C] dark:border-white/[0.08] dark:hover:bg-[#202025] dark:hover:border-white/15'
                 }`}
               >

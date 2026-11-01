@@ -975,7 +975,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
             </button>
             <div className="inline-flex items-center gap-2 rounded-xl border border-black/[0.06] bg-white px-3.5 py-2 text-xs font-medium text-[#1D1D1F] dark:border-white/10 dark:bg-[#18181C] dark:text-white">
               <span className="h-2 w-2 rounded-full bg-[#34C759]" />
-              <span>Live API Synced</span>
+              <span>Live Synced</span>
             </div>
           </div>
         </div>
@@ -1303,8 +1303,8 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     className={cn(
                       'w-full cursor-pointer rounded-xl border p-3 text-left transition-all relative',
                       isSelected
-                        ? 'border-black/[0.12] bg-[#F5F5F7] shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
-                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/60'
+                        ? 'border-black/[0.12] bg-[#F5F5F7] shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:border-white/20 dark:bg-[#242429] dark:shadow-none'
+                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/60 dark:hover:border-white/10 dark:hover:bg-white/[0.06]'
                     )}
                   >
                     <div className="flex items-center justify-between gap-1.5">
@@ -2224,8 +2224,8 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
                     className={cn(
                       'w-full cursor-pointer rounded-xl border p-3 text-left transition-all relative',
                       isSelected
-                        ? 'border-black/[0.12] bg-[#F5F5F7] shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
-                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/60'
+                        ? 'border-black/[0.12] bg-[#F5F5F7] shadow-[0_1px_2px_rgba(0,0,0,0.03)] dark:border-white/20 dark:bg-[#242429] dark:shadow-none'
+                        : 'border-transparent hover:border-black/[0.06] hover:bg-[#F5F5F7]/60 dark:hover:border-white/10 dark:hover:bg-white/[0.06]'
                     )}
                   >
                     <div className="flex items-center justify-between gap-1.5">

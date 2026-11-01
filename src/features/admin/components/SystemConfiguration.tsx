@@ -414,7 +414,7 @@ export default function SystemConfiguration({
             </div>
             <div className="flex justify-between gap-3">
               <span className="text-slate-500 shrink-0">Source</span>
-              <span className="font-semibold text-slate-700 text-right font-mono">api/admin/system-config</span>
+              <span className="font-semibold text-slate-700 text-right">System Configuration Service</span>
             </div>
           </div>
         </div>

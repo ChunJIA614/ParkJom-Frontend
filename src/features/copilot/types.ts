@@ -17,6 +17,10 @@ export interface CopilotParkingCardData {
   stopId: string;
   lineName: string | null;
   primaryImageUrl: string | null;
+  predictedOccupancyPercent?: number | null;
+  probabilityFull?: number | null;
+  riskLevel?: string | null;
+  recommendedArriveBefore?: string | null;
 }
 
 export interface CopilotDeparture {

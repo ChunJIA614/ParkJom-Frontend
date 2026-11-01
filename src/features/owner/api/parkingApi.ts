@@ -236,3 +236,13 @@ export function updateParkingPublication(
     headers: authorizationHeaders(token),
   });
 }
+
+export function deleteParkingSpot(
+  token: string,
+  parkingSpotId: number,
+): Promise<Response> {
+  return apiRequest(`/owner/parking/${parkingSpotId}`, {
+    method: 'DELETE',
+    headers: authorizationHeaders(token),
+  });
+}

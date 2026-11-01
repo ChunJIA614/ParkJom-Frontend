@@ -27,7 +27,7 @@ export default function ServiceUpcoming({
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-[#0A84FF] ring-1 ring-blue-100 dark:ring-blue-900/30">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 dark:bg-white/[0.06] text-blue-600 dark:text-[#0A84FF] ring-1 ring-blue-100 dark:ring-blue-900/30">
             <Icon className="h-6 w-6" aria-hidden="true" />
           </div>
           <div>
@@ -62,7 +62,7 @@ export default function ServiceUpcoming({
       )}
 
       {technicalNote && (
-        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-slate-200/60 dark:border-white/[0.06] bg-white dark:bg-[#17171B] p-3.5 text-xs text-slate-500 dark:text-[#8E8E93]">
+        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-slate-200/60 dark:border-white/[0.06] bg-white dark:bg-[#141417] p-3.5 text-xs text-slate-500 dark:text-[#8E8E93]">
           <AlertCircle className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500 mt-0.5" />
           <div className="text-[11px] leading-relaxed">
             <strong className="font-semibold text-slate-700 dark:text-slate-300">Engineering Status: </strong>

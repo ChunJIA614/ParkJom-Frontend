@@ -164,6 +164,8 @@ export interface PublicParkingSpotDetail {
   longitude?: number | null;
   /** Nearest transit station, when the backend resolves one. */
   stationName?: string | null;
+  stationLatitude?: number | null;
+  stationLongitude?: number | null;
   distanceToStationMeters?: number | null;
   timeToStationInMinutes?: number | null;
 }

@@ -15,6 +15,7 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Trash2,
   UserRound,
   Users,
   Wallet,
@@ -23,6 +24,7 @@ import {
 import { showAlert, showConfirm } from '@/contexts/ModalContext';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { adminUpdateUser, getAdminUserDetail, getAdminUsers } from '@/features/profile/api/profileApi';
+import { deleteAdminParkingSpot } from '../api/verificationApi';
 import { mergeProfileIntoSession } from '@/features/profile/lib/session';
 import {
   ACCOUNT_STATUSES,
@@ -62,7 +64,7 @@ const statusTone = (status: string) => {
 
 const roleTone: Record<BackendUserType, string> = {
   1: 'bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-400 ring-violet-200 dark:ring-violet-800/60',
-  2: 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 ring-blue-200 dark:ring-blue-800/60',
+  2: 'bg-blue-50 dark:bg-white/[0.06] text-blue-700 dark:text-blue-400 ring-blue-200 dark:ring-blue-800/60',
   3: 'bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-400 ring-teal-200 dark:ring-teal-800/60',
 };
 
@@ -74,7 +76,7 @@ function Avatar({ user, size = 'h-9 w-9' }: { user: Pick<UserProfile, 'profilePi
     return <img src={user.profilePictureURL} alt="" onError={() => setFailed(true)} className={`${size} shrink-0 rounded-full object-cover ring-1 ring-slate-200 dark:ring-white/10`} />;
   }
   return (
-    <span className={`${size} flex shrink-0 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950/50 text-xs font-bold text-blue-600 dark:text-[#0A84FF] ring-1 ring-slate-200 dark:ring-white/10`}>
+    <span className={`${size} flex shrink-0 items-center justify-center rounded-full bg-blue-50 dark:bg-white/[0.06] text-xs font-bold text-blue-600 dark:text-[#0A84FF] ring-1 ring-slate-200 dark:ring-white/10`}>
       {(user.firstName?.charAt(0) || user.email.charAt(0) || '?').toUpperCase()}
     </span>
   );
@@ -483,7 +485,7 @@ function UserDetailPanel({ token, userId, isSelf, onClose, onUpdated }: UserDeta
               <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 shadow-sm">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]">Edit profile</h4>
                 {isSelf && (
-                  <p className="rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 px-3 py-2 text-[11px] text-blue-700 dark:text-blue-300">This is your own account. Account status is locked to prevent self-lockout.</p>
+                  <p className="rounded-xl bg-blue-50 dark:bg-white/[0.06] border border-blue-100 dark:border-white/10 px-3 py-2 text-[11px] text-blue-700 dark:text-blue-300">This is your own account. Account status is locked to prevent self-lockout.</p>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1"><span className="text-[11px] font-semibold text-slate-600 dark:text-[#A1A1AA]">First name</span>
@@ -543,13 +545,63 @@ function UserDetailPanel({ token, userId, isSelf, onClose, onUpdated }: UserDeta
                 <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]"><Building2 className="h-3.5 w-3.5" /> Owned parking spots ({detail.ownedParkingSpots.length})</h4>
                 {detail.ownedParkingSpots.length === 0 ? <p className="mt-2 text-[11px] text-slate-400 dark:text-[#71717A]">No owned parking spots.</p> : (
                   <ul className="mt-2 divide-y divide-slate-100 dark:divide-white/[0.06]">
-                    {detail.ownedParkingSpots.map((spot) => (
-                      <li key={spot.parkingSpotId || spot.name} className="flex items-start justify-between gap-3 py-2 text-[11px]">
+                    {detail.ownedParkingSpots.filter((spot) => spot.status !== 'Deleted').map((spot) => (
+                      <li key={spot.parkingSpotId || spot.name} className="flex items-center justify-between gap-3 py-2 text-[11px]">
                         <div className="min-w-0">
-                          <p className="truncate font-semibold text-slate-700 dark:text-white">{spot.name}</p>
+                          <p className="truncate font-semibold text-slate-700 dark:text-white">{spot.name} <span className="font-mono text-[10px] text-slate-400">#{spot.parkingSpotId}</span></p>
                           {spot.address && spot.address !== spot.name && <p className="truncate text-slate-400 dark:text-[#A1A1AA]">{spot.address}</p>}
                         </div>
-                        {spot.status && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusTone(spot.status === 'Available' ? 'active' : spot.status)}`}>{spot.status}</span>}
+                        <div className="flex shrink-0 items-center gap-2">
+                          {spot.status && <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusTone(spot.status === 'Available' ? 'active' : spot.status)}`}>{spot.status}</span>}
+                          {spot.parkingSpotId > 0 && (
+                            <button
+                              type="button"
+                              disabled={isSaving || spot.status === 'Occupied' || spot.status === 'Reserved'}
+                              title={spot.status === 'Occupied' || spot.status === 'Reserved' ? 'Cannot remove parking spot while an active or upcoming booking exists' : 'Remove parking spot'}
+                              onClick={async () => {
+                                const confirmed = await showConfirm({
+                                  title: 'Remove parking spot?',
+                                  message: `Are you sure you want to remove "${spot.name}" (Spot #${spot.parkingSpotId})? The system will validate that no active or upcoming commuter booking exists.`,
+                                  confirmText: 'Remove spot',
+                                  cancelText: 'Cancel',
+                                  variant: 'danger',
+                                  icon: 'warning',
+                                });
+                                if (!confirmed) return;
+                                try {
+                                  const res = await deleteAdminParkingSpot(token, spot.parkingSpotId);
+                                  const body = await res.json().catch(() => null) as { success?: boolean; message?: string } | null;
+                                  if (!res.ok || body?.success === false) {
+                                    void showAlert({
+                                      title: 'Cannot remove parking spot',
+                                      message: body?.message || 'Unable to remove parking spot due to active or upcoming bookings.',
+                                      variant: 'danger',
+                                      icon: 'danger',
+                                    });
+                                    return;
+                                  }
+                                  void showAlert({
+                                    title: 'Parking spot removed',
+                                    message: body?.message || `Parking spot #${spot.parkingSpotId} was removed.`,
+                                    variant: 'success',
+                                    icon: 'success',
+                                  });
+                                  void load();
+                                } catch (err) {
+                                  void showAlert({
+                                    title: 'Cannot remove parking spot',
+                                    message: err instanceof Error ? err.message : 'Unable to remove parking spot.',
+                                    variant: 'danger',
+                                    icon: 'danger',
+                                  });
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                            >
+                              <Trash2 className="h-3 w-3" /> Remove
+                            </button>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>

@@ -491,7 +491,7 @@ export default function ReviewModeration({ token, parkingSpots, onModerated }: R
             <AlertDialogMedia className="bg-rose-50 text-rose-600"><AlertTriangle /></AlertDialogMedia>
             <AlertDialogTitle>Remove this review?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes the review through the admin review API. Select a reason for the activity log.
+              This permanently deletes the review. Select a reason for the activity log.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <label className="text-xs font-semibold text-slate-700">

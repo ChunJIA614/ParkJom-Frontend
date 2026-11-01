@@ -3,8 +3,9 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertOctagon, CheckCircle, XCircle, Search, Eye, BadgeAlert,
-  RefreshCw, Clock3, FileText, Download, ChevronLeft, ChevronRight
+  RefreshCw, Clock3, FileText, Download, ChevronLeft, ChevronRight, Trash2
 } from 'lucide-react';
+import { showConfirm } from '@/contexts/ModalContext';
 import {
   ListingRequest,
   ParkingVerificationDecisionResult,
@@ -27,6 +28,7 @@ interface ListingGovernanceProps {
   onViewDocument: (document: ParkingVerificationDocumentDto) => Promise<Blob>;
   onApprove: (id: string) => Promise<ParkingVerificationDecisionResult>;
   onReject: (id: string, reason: string) => Promise<ParkingVerificationDecisionResult>;
+  onDeleteSpot?: (parkingSpotId: number) => Promise<ParkingVerificationDecisionResult>;
   onSuspend: (email: string) => Promise<SuspendedAccount>;
   onReintegrate: (email: string) => Promise<SuspendedAccount>;
   onLoadSuspensions: () => Promise<SuspendedAccount[]>;
@@ -46,6 +48,7 @@ export default function ListingGovernance({
   onViewDocument,
   onApprove, 
   onReject,
+  onDeleteSpot,
   onSuspend,
   onReintegrate,
   onLoadSuspensions,
@@ -171,6 +174,25 @@ export default function ListingGovernance({
     setDecisionLoadingId(listing.id);
     setDecisionFeedback(null);
     const result = await onApprove(listing.id);
+    setDecisionLoadingId(null);
+    setDecisionFeedback(result);
+    if (result.success && selectedListing?.id === listing.id) closeSelectedListing();
+  };
+
+  const handleDeleteSpotClick = async (listing: ListingRequest) => {
+    if (!onDeleteSpot) return;
+    const confirmed = await showConfirm({
+      title: 'Remove parking spot?',
+      message: `Are you sure you want to remove "${listing.propertyName} · Bay ${listing.parkingLabel}" (Spot #${listing.parkingSpotId})? The system will validate that no active or upcoming commuter booking exists before removing it.`,
+      confirmText: 'Remove spot',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      icon: 'warning',
+    });
+    if (!confirmed) return;
+    setDecisionLoadingId(listing.id);
+    setDecisionFeedback(null);
+    const result = await onDeleteSpot(listing.parkingSpotId);
     setDecisionLoadingId(null);
     setDecisionFeedback(result);
     if (result.success && selectedListing?.id === listing.id) closeSelectedListing();
@@ -457,6 +479,16 @@ export default function ListingGovernance({
                         >
                           <Eye className="w-3.5 h-3.5" /> Details
                         </button>
+                        {onDeleteSpot && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSpotClick(listing)}
+                            disabled={decisionLoadingId !== null}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 rounded-lg text-xs font-semibold text-rose-700 dark:text-rose-400 transition disabled:opacity-50 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Remove
+                          </button>
+                        )}
 
                         {listing.status === 'pending' && (
                           <>
@@ -555,6 +587,18 @@ export default function ListingGovernance({
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
+                              {onDeleteSpot && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSpotClick(listing)}
+                                  disabled={decisionLoadingId !== null}
+                                  className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-500/15 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                                  title="Remove parking spot (validates no active bookings)"
+                                  aria-label={`Remove parking spot ${listing.parkingSpotId}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
 
                               {listing.status === 'pending' && (
                                 <>
@@ -795,7 +839,6 @@ export default function ListingGovernance({
                 <div>
                   <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Verification Status:</span>
                   <p className="text-slate-700 dark:text-[#f5f5f7] font-semibold">{selectedListing.verificationStatusLabel}</p>
-                  <p className="mt-0.5 font-mono text-[10px] text-slate-400 dark:text-[#8e8e93]">API value: {selectedListing.verificationStatus}</p>
                 </div>
                 <div>
                   <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Submitted By User ID:</span>
@@ -900,24 +943,36 @@ export default function ListingGovernance({
               </section>
 
               {/* Action bar inside modal */}
-              {selectedListing.status === 'pending' && (
-                <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
-                  <button 
-                    onClick={() => openRejectDialog(selectedListing.id)}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-4 border-t border-slate-100 dark:border-white/[0.08]">
+                {onDeleteSpot ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSpotClick(selectedListing)}
                     disabled={decisionLoadingId !== null}
-                    className="px-4 py-2 bg-rose-50 text-rose-700 font-semibold rounded-lg text-xs hover:bg-rose-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-rose-200 dark:border-rose-500/30 bg-rose-50/80 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 font-semibold rounded-lg text-xs hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                   >
-                    Reject Application
+                    <Trash2 className="w-3.5 h-3.5" /> Remove Parking Spot
                   </button>
-                  <button 
-                    onClick={() => handleApproveClick(selectedListing)}
-                    disabled={decisionLoadingId !== null}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {decisionLoadingId === selectedListing.id ? 'Submitting…' : 'Approve Verification'}
-                  </button>
-                </div>
-              )}
+                ) : <span />}
+                {selectedListing.status === 'pending' && (
+                  <div className="flex justify-end gap-2.5">
+                    <button 
+                      onClick={() => openRejectDialog(selectedListing.id)}
+                      disabled={decisionLoadingId !== null}
+                      className="px-4 py-2 bg-rose-50 text-rose-700 font-semibold rounded-lg text-xs hover:bg-rose-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Reject Application
+                    </button>
+                    <button 
+                      onClick={() => handleApproveClick(selectedListing)}
+                      disabled={decisionLoadingId !== null}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {decisionLoadingId === selectedListing.id ? 'Submitting…' : 'Approve Verification'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </motion.div>
           </div>
         )}

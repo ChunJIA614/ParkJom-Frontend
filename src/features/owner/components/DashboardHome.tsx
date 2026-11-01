@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowRight,
@@ -9,13 +9,24 @@ import {
   LockKeyhole,
   RefreshCw,
   Settings2,
+  Sparkles,
+  TrendingUp,
 } from 'lucide-react';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import {
   Booking,
   ParkingActionResult,
   ParkingAvailabilityStatus,
   ParkingBay,
 } from '../types';
+import {
+  applyAiSpotPricing,
+  computeClientSpotRecommendation,
+  getOwnerPortfolioPricing,
+  OwnerPortfolioPricingResponse,
+  SpotPricingRecommendation,
+} from '../api/dynamicPricingApi';
+import AiPricingAdvisorCard from './AiPricingAdvisorCard';
 import { getOwnerParkingWorkspace, localDateKey } from './AvailabilityScheduler';
 
 /**
@@ -41,6 +52,9 @@ export interface DashboardHomeProps {
   onUpdatePublication?: (
     parkingSpotId: number,
     isPublished: boolean,
+  ) => Promise<ParkingActionResult>;
+  onDeleteParking?: (
+    parkingSpotId: number,
   ) => Promise<ParkingActionResult>;
 }
 
@@ -176,7 +190,7 @@ function scheduleStatus(
   if (availability === 'inactive' || availability === 'unavailable') {
     return {
       label: 'Not available',
-      detail: 'Current status from Get My Parking',
+      detail: 'Spot is temporarily marked unavailable',
       tone: 'amber',
       locked: false,
     };
@@ -185,7 +199,7 @@ function scheduleStatus(
   if (availability === 'available') {
     return {
       label: 'Available for booking',
-      detail: 'Current status from Get My Parking',
+      detail: 'Spot is active and open for commuters',
       tone: 'green',
       locked: false,
     };
@@ -239,7 +253,92 @@ export default function DashboardHome({
   onRefreshBays,
   onConfigureParking,
   onOpenTimetable,
+  onDeleteParking,
 }: DashboardHomeProps) {
+  const { user } = useAuth();
+  const [portfolioPricing, setPortfolioPricing] = useState<OwnerPortfolioPricingResponse | null>(null);
+  const [applyingSpotId, setApplyingSpotId] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (bays.length === 0) {
+      setPortfolioPricing(null);
+      return;
+    }
+    void getOwnerPortfolioPricing(user?.token, bays).then((result) => {
+      if (!cancelled) {
+        setPortfolioPricing(result);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bays, user?.token]);
+
+  const recommendationMap = useMemo(() => {
+    const map = new Map<number, SpotPricingRecommendation>();
+    bays.forEach((bay) => {
+      map.set(bay.parkingSpotId, computeClientSpotRecommendation(bay));
+    });
+    portfolioPricing?.recommendations?.forEach((rec) => {
+      map.set(rec.parkingSpotId, rec);
+    });
+    return map;
+  }, [bays, portfolioPricing]);
+
+  const portfolioSummary = useMemo(() => {
+    if (portfolioPricing) return portfolioPricing;
+    const recommendations = Array.from(recommendationMap.values());
+    const totalCurrentMonthlyRevenueRm = Number(
+      recommendations.reduce((sum, s) => sum + s.currentMonthlyNetRevenueRm, 0).toFixed(2),
+    );
+    const totalProjectedMonthlyRevenueRm = Number(
+      recommendations.reduce((sum, s) => sum + s.projectedMonthlyNetRevenueRm, 0).toFixed(2),
+    );
+    const totalExtraMonthlyRevenueRm = Number(
+      Math.max(0, totalProjectedMonthlyRevenueRm - totalCurrentMonthlyRevenueRm).toFixed(2),
+    );
+    return {
+      totalBaysCount: recommendations.length,
+      optimizableBaysCount: recommendations.length,
+      totalCurrentMonthlyRevenueRm,
+      totalProjectedMonthlyRevenueRm,
+      totalExtraMonthlyRevenueRm,
+      averageOccupancyBoostPercent: 25,
+      portfolioHeadline: '',
+      recommendations,
+    };
+  }, [portfolioPricing, recommendationMap]);
+
+  const handleApplyAiRate = async (
+    parkingSpotId: number,
+    dailyRateRm: number,
+    monthlyRateRm: number,
+  ) => {
+    if (!user?.token) {
+      onConfigureParking?.(parkingSpotId);
+      return;
+    }
+    setApplyingSpotId(parkingSpotId);
+    try {
+      const result = await applyAiSpotPricing(
+        user.token,
+        parkingSpotId,
+        dailyRateRm,
+        monthlyRateRm,
+      );
+      if (result.success && onRefreshBays) {
+        await onRefreshBays();
+      } else if (!result.success) {
+        onConfigureParking?.(parkingSpotId);
+      }
+    } catch {
+      onConfigureParking?.(parkingSpotId);
+    } finally {
+      setApplyingSpotId(null);
+    }
+  };
+
   const today = new Intl.DateTimeFormat('en-MY', {
     weekday: 'long',
     day: 'numeric',
@@ -294,6 +393,47 @@ export default function DashboardHome({
           </div>
         </div>
 
+        {bays.length > 0 && portfolioSummary.totalBaysCount > 0 && (
+          <div className="rounded-xl border border-blue-200/80 bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-emerald-50/60 p-3.5 dark:border-white/10 dark:bg-none dark:bg-black">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-extrabold text-slate-900">
+                      AI Smart Dynamic Pricing Portfolio
+                    </span>
+                    {portfolioSummary.totalExtraMonthlyRevenueRm > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-[#30d158]/15 dark:text-[#30d158]">
+                        <TrendingUp className="h-3 w-3" />
+                        +RM {portfolioSummary.totalExtraMonthlyRevenueRm.toFixed(0)}/month upside
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-slate-600">
+                    Elasticity model benchmarks station walk distance, off-peak (11 AM – 4 PM) slack, and transit hub demand.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 border-t border-blue-100 pt-2.5 sm:border-t-0 sm:pt-0 dark:border-white/10">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Current Est.</p>
+                  <p className="text-sm font-bold text-slate-700">
+                    RM {portfolioSummary.totalCurrentMonthlyRevenueRm.toFixed(0)}/mo
+                  </p>
+                </div>
+                <div className="border-l border-blue-200 pl-4 dark:border-white/10">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-blue-600 dark:text-[#0a84ff]">AI Optimized</p>
+                  <p className="text-sm font-black text-emerald-700 dark:text-[#30d158]">
+                    RM {portfolioSummary.totalProjectedMonthlyRevenueRm.toFixed(0)}/mo
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {baysError && (
@@ -334,6 +474,12 @@ export default function DashboardHome({
             const statusClasses = toneClasses[schedule.tone];
             const canConfigure = Boolean(onConfigureParking);
             const canOpenTimetable = Boolean(onOpenTimetable);
+            const activeSpotBookings = bookings.filter(
+              (item) =>
+                isBookingForBay(item, bay) &&
+                (item.status === 'Active' || item.status === 'Upcoming'),
+            );
+            const hasActiveBooking = schedule.locked || activeSpotBookings.length > 0;
 
             return (
               <article key={bay.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
@@ -344,23 +490,18 @@ export default function DashboardHome({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <h3 className="truncate text-sm font-bold text-slate-900">{bay.propertyName || `Property #${bay.propertyId}`}</h3>
-                        <p className="mt-0.5 text-[11px] text-slate-500">{bay.bayNumber || bay.parkingLabel} · Spot #{bay.parkingSpotId}</p>
+                        <h3 className="truncate text-sm font-bold text-slate-900 dark:text-white">
+                          {bay.propertyName || `Property #${bay.propertyId}`}
+                        </h3>
+                        <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                          {bay.bayNumber || bay.parkingLabel} · Spot #{bay.parkingSpotId}
+                          {bay.stationName && bay.stationName !== '—' ? ` · Near ${bay.stationName}` : ''}
+                        </p>
                       </div>
                       <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${statusClasses.chip} ${statusClasses.text}`}>
                         {schedule.locked ? <LockKeyhole className="h-3 w-3" aria-hidden="true" /> : <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
                         {schedule.label}
                       </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className={`mt-4 rounded-xl border px-3 py-2.5 ${statusClasses.chip}`}>
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className={`h-4 w-4 ${statusClasses.text}`} aria-hidden="true" />
-                    <div className="min-w-0">
-                      <p className={`text-[11px] font-bold ${statusClasses.text}`}>Today's timetable: {schedule.label}</p>
-                      <p className="mt-0.5 truncate text-[10px] text-slate-600">{schedule.detail}</p>
                     </div>
                   </div>
                 </div>
@@ -377,6 +518,22 @@ export default function DashboardHome({
                     </span>
                   </div>
                 </div>
+
+                {recommendationMap.get(bay.parkingSpotId) && (
+                  <div className="mt-3">
+                    <AiPricingAdvisorCard
+                      variant="compact"
+                      recommendation={recommendationMap.get(bay.parkingSpotId)!}
+                      isApplying={applyingSpotId === bay.parkingSpotId}
+                      onApplyRates={(daily, monthly) =>
+                        void handleApplyAiRate(bay.parkingSpotId, daily, monthly)
+                      }
+                      onOpenSetup={
+                        canConfigure ? () => onConfigureParking?.(bay.parkingSpotId) : undefined
+                      }
+                    />
+                  </div>
+                )}
 
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                   <button

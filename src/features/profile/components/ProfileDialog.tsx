@@ -302,7 +302,7 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                 <p className="truncate text-[17px] font-semibold text-[#1d1d1f] dark:text-white">{displayName}</p>
                 <p className="truncate text-[12px] text-[#6e6e73] dark:text-[#A1A1AA]">{profile?.email ?? user.email}</p>
                 <div className="mt-2 flex flex-wrap justify-center gap-1.5 sm:justify-start">
-                  <span className="rounded-full bg-[#e8f0fe] dark:bg-blue-950/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#007AFF] dark:text-[#3894FF]">
+                  <span className="rounded-full bg-[#e8f0fe] dark:bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#007AFF] dark:text-[#3894FF]">
                     {profile?.roleName || USER_TYPE_LABELS[userType]}
                   </span>
                   <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${

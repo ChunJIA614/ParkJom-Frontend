@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { showConfirm } from '@/contexts/ModalContext';
+import { showAlert, showConfirm } from '@/contexts/ModalContext';
 import {
   closeParkingAvailabilityDates,
   createParkingAvailabilityRules,
@@ -40,6 +40,8 @@ import {
   uploadParkingImages,
 } from '../api/parkingApi';
 import type {
+  Booking,
+  ParkingActionResult,
   ParkingBay,
   ParkingAvailabilityCalendarHours,
   ParkingAvailabilityCalendarResponse,
@@ -49,6 +51,8 @@ import type {
   ParkingSpotImage,
   OwnerAvailabilityDayPattern,
 } from '../types';
+import { computeClientSpotRecommendation } from '../api/dynamicPricingApi';
+import AiPricingAdvisorCard from './AiPricingAdvisorCard';
 
 /**
  * Local owner parking workspace storage.  The shape is deliberately JSON
@@ -100,6 +104,8 @@ export interface AvailabilitySchedulerProps {
   initialParkingSpotId?: number;
   initialSection?: 'setup' | 'timetable';
   onScheduleChange?: () => void;
+  bookings?: Booking[];
+  onDeleteParking?: (parkingSpotId: number) => Promise<ParkingActionResult>;
 }
 
 const MAX_PHOTOS = 6;
@@ -463,6 +469,8 @@ export default function AvailabilityScheduler({
   initialParkingSpotId,
   initialSection = 'setup',
   onScheduleChange,
+  bookings = [],
+  onDeleteParking,
 }: AvailabilitySchedulerProps) {
   const { user } = useAuth();
   const todayKey = localDateKey();
@@ -511,6 +519,7 @@ export default function AvailabilityScheduler({
   const [daySaving, setDaySaving] = useState(false);
   const [dayMessage, setDayMessage] = useState<string | null>(null);
   const [dayError, setDayError] = useState<string | null>(null);
+  const [deletingSpot, setDeletingSpot] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const pendingImageFilesRef = useRef<Map<string, File>>(new Map());
@@ -521,6 +530,14 @@ export default function AvailabilityScheduler({
   const activeSpotId = activeBay ? String(activeBay.parkingSpotId) : '';
   const activeSpot = activeSpotId ? workspace.spots[activeSpotId] : undefined;
   const activeSetup = setupFromSpot(activeSpot, activeBay);
+  const aiPricingRecommendation = useMemo(() => {
+    if (!activeBay) return null;
+    const candidateDaily = setupForm.dailyRate ? Number(setupForm.dailyRate) : null;
+    return computeClientSpotRecommendation(
+      activeBay,
+      candidateDaily && Number.isFinite(candidateDaily) && candidateDaily > 0 ? candidateDaily : null,
+    );
+  }, [activeBay, setupForm.dailyRate]);
   const displayedMonth = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`;
   const setupBusy = setupSaving
     || imagesUploading
@@ -1479,6 +1496,60 @@ export default function AvailabilityScheduler({
                 {bays.map((bay) => <option key={bay.id || bay.parkingSpotId} value={String(bay.parkingSpotId)}>{bayLabel(bay)}</option>)}
               </SystemSelect>
             </label>
+            {onDeleteParking && activeBay && (() => {
+              const activeCount = activeBay.activeBookingCount ?? 0;
+              const hasActiveBooking = Boolean(
+                activeBay.hasActiveBookings ||
+                activeCount > 0 ||
+                activeBay.availabilityStatus === 'Reserved' ||
+                activeBay.availabilityStatus === 'Occupied' ||
+                bookings.some((b) => (String(b.bayId) === String(activeBay.parkingSpotId) || String(b.bayId) === String(activeBay.id)) && ['Pending', 'Confirmed', 'Active', 'Upcoming'].includes(b.status))
+              );
+              return (
+                <button
+                  type="button"
+                  disabled={deletingSpot || setupBusy || hasActiveBooking}
+                  onClick={async () => {
+                    if (hasActiveBooking) return;
+                    const confirmed = await showConfirm({
+                      title: 'Remove parking spot?',
+                      message: `Are you sure you want to permanently remove "${bayLabel(activeBay)}" (Spot #${activeBay.parkingSpotId})? This spot will be unpublished and permanently removed from commuter search.`,
+                      confirmText: 'Remove spot',
+                      cancelText: 'Cancel',
+                      variant: 'danger',
+                      icon: 'warning',
+                    });
+                    if (!confirmed) return;
+                    setDeletingSpot(true);
+                    try {
+                      const res = await onDeleteParking(activeBay.parkingSpotId);
+                      if (!res.success) {
+                        setSetupError(res.message);
+                      } else {
+                        await showAlert({
+                          title: 'Parking Spot Removed',
+                          message: res.message || `"${bayLabel(activeBay)}" (Spot #${activeBay.parkingSpotId}) has been removed successfully.`,
+                          variant: 'success',
+                          icon: 'success',
+                          buttonText: 'Done',
+                        });
+                      }
+                    } finally {
+                      setDeletingSpot(false);
+                    }
+                  }}
+                  title={hasActiveBooking ? `Cannot remove parking spot while an active or upcoming booking exists (${activeCount > 0 ? `${activeCount} booking(s)` : 'active reservation'})` : 'Remove this parking spot'}
+                  className={`inline-flex h-10 sm:h-11 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-colors ${
+                    hasActiveBooking
+                      ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-500 cursor-not-allowed opacity-60'
+                      : 'border-rose-200 dark:border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 cursor-pointer'
+                  }`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{deletingSpot ? 'Removing…' : 'Remove'}</span>
+                </button>
+              );
+            })()}
             <div role="tablist" aria-label="Configure parking sections" className="grid h-10 grid-cols-2 gap-1 rounded-xl bg-slate-200/65 p-1 sm:h-11 sm:min-w-[250px]">
               <button id="parking-setup-tab" type="button" role="tab" aria-selected={section === 'setup'} aria-controls="parking-setup-panel" onClick={() => setSection('setup')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'setup' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" aria-hidden="true" /> Setup</span></button>
               <button id="parking-timetable-tab" type="button" role="tab" aria-selected={section === 'timetable'} aria-controls="parking-timetable-panel" onClick={() => setSection('timetable')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'timetable' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><CalendarRange className="h-3.5 w-3.5" aria-hidden="true" /> Timetable</span></button>
@@ -1615,6 +1686,19 @@ export default function AvailabilityScheduler({
                   <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Set your rates</h3>
                   <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">Add one or both prices. Leave a rate empty if you do not offer it.</p>
                 </div>
+                {aiPricingRecommendation && (
+                  <AiPricingAdvisorCard
+                    variant="detailed"
+                    recommendation={aiPricingRecommendation}
+                    onApplyRates={(daily, monthly) => {
+                      replaceRate('dailyRate', String(daily));
+                      replaceRate('monthlyRate', String(monthly));
+                      setSetupMessage(
+                        `Applied AI optimal pricing: RM ${daily.toFixed(2)}/day & RM ${monthly.toFixed(2)}/month.`,
+                      );
+                    }}
+                  />
+                )}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="min-w-0 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-3 shadow-sm sm:p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -1622,7 +1706,7 @@ export default function AvailabilityScheduler({
                       <span className="rounded-md bg-slate-100 dark:bg-white/10 px-2 py-1 text-[9px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Optional</span>
                     </div>
                     <div className="mt-3 flex min-h-14 min-w-0 w-full items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-1.5 focus-within:border-blue-400 focus-within:bg-white dark:focus-within:bg-[#18181C] focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40">
-                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 dark:bg-blue-950/40 px-3 text-sm font-bold text-blue-700 dark:text-blue-400">RM</span>
+                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 dark:bg-white/[0.06] px-3 text-sm font-bold text-blue-700 dark:text-blue-400">RM</span>
                       <input id="owner-daily-rate" type="text" size={1} inputMode="decimal" value={setupForm.dailyRate} onChange={(event) => replaceRate('dailyRate', event.target.value)} placeholder="0" aria-describedby="owner-daily-rate-unit" className="min-w-0 w-full flex-1 border-0 !border-0 bg-transparent !bg-transparent px-3 text-2xl font-bold text-slate-950 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:ring-0 focus:border-0 !shadow-none" />
                       <div className="flex shrink-0 gap-1">
                         <button type="button" onClick={() => adjustRate('dailyRate', -1)} disabled={!setupForm.dailyRate || Number(setupForm.dailyRate) <= 1 || setupBusy} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#2C2C31] text-slate-600 dark:text-slate-300 hover:border-blue-200 hover:text-blue-700 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-35" aria-label="Decrease daily rate by RM 1" title="Decrease by RM 1"><Minus className="h-4 w-4" aria-hidden="true" /></button>
@@ -1638,7 +1722,7 @@ export default function AvailabilityScheduler({
                       <span className="rounded-md bg-slate-100 dark:bg-white/10 px-2 py-1 text-[9px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Optional</span>
                     </div>
                     <div className="mt-3 flex min-h-14 min-w-0 w-full items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-1.5 focus-within:border-blue-400 focus-within:bg-white dark:focus-within:bg-[#18181C] focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40">
-                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 dark:bg-blue-950/40 px-3 text-sm font-bold text-blue-700 dark:text-blue-400">RM</span>
+                      <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 dark:bg-white/[0.06] px-3 text-sm font-bold text-blue-700 dark:text-blue-400">RM</span>
                       <input id="owner-monthly-rate" type="text" size={1} inputMode="decimal" value={setupForm.monthlyRate} onChange={(event) => replaceRate('monthlyRate', event.target.value)} placeholder="0" aria-describedby="owner-monthly-rate-unit" className="min-w-0 w-full flex-1 border-0 !border-0 bg-transparent !bg-transparent px-3 text-2xl font-bold text-slate-950 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:ring-0 focus:border-0 !shadow-none" />
                       <div className="flex shrink-0 gap-1">
                         <button type="button" onClick={() => adjustRate('monthlyRate', -1)} disabled={!setupForm.monthlyRate || Number(setupForm.monthlyRate) <= 1 || setupBusy} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#2C2C31] text-slate-600 dark:text-slate-300 hover:border-blue-200 hover:text-blue-700 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-35" aria-label="Decrease monthly rate by RM 1" title="Decrease by RM 1"><Minus className="h-4 w-4" aria-hidden="true" /></button>
@@ -1681,7 +1765,7 @@ export default function AvailabilityScheduler({
 
             {setupStep === 5 && (
               <motion.div key="publish-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 text-center sm:space-y-5">
-                <div className={`mx-auto grid h-16 w-16 place-items-center rounded-full ${activeSetup.published ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' : 'bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'}`}>{activeSetup.published ? <CheckCircle2 className="h-8 w-8" aria-hidden="true" /> : <ShieldCheck className="h-8 w-8" aria-hidden="true" />}</div>
+                <div className={`mx-auto grid h-16 w-16 place-items-center rounded-full ${activeSetup.published ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' : 'bg-blue-100 dark:bg-white/[0.06] text-blue-600 dark:text-blue-400'}`}>{activeSetup.published ? <CheckCircle2 className="h-8 w-8" aria-hidden="true" /> : <ShieldCheck className="h-8 w-8" aria-hidden="true" />}</div>
                 <div><h3 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">{activeSetup.published ? 'Your parking is live' : 'Ready to publish'}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500 dark:text-[#A1A1AA]">{activeSetup.published ? 'Commuters can now see this listing. Open bookable dates in the availability timetable.' : 'Publishing makes this listing visible. Dates remain closed until you open them in the timetable.'}</p></div>
                 <div className="mx-auto grid max-w-md grid-cols-3 gap-2"><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><ImagePlus className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">{setupPhotos.length} photos</p></div><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><FileText className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Details ready</p></div><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><Car className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Rates set</p></div></div>
                 <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
@@ -1695,6 +1779,16 @@ export default function AvailabilityScheduler({
         </motion.section>
       ) : (
         <motion.section id="parking-timetable-panel" role="tabpanel" aria-labelledby="parking-timetable-tab" key="timetable" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition} className="space-y-5">
+          {aiPricingRecommendation && (
+            <AiPricingAdvisorCard
+              variant="compact"
+              recommendation={aiPricingRecommendation}
+              onOpenSetup={() => {
+                setSection('setup');
+                setSetupStep(3);
+              }}
+            />
+          )}
        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div><h2 className="text-base font-bold text-slate-900">Availability timetable</h2><p className="mt-1 text-xs leading-relaxed text-slate-500">Select a day to inspect it, then explicitly open or close it. Future dates start closed; booked dates stay locked.</p></div>

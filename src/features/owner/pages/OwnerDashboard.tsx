@@ -10,7 +10,9 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { apiRequest } from '@/services/apiClient';
 import {
+  deleteParkingSpot,
   getMyParking,
   updateParkingAvailability,
   updateParkingPublication,
@@ -211,15 +213,45 @@ export default function OwnerDashboard() {
         throw new Error('The parking response did not contain a data list.');
       }
 
+      // Preload property lookup map from /api/property to ensure real building/condo names
+      const propertyMap = new Map<number, { name: string; station: string }>();
+      try {
+        const propRes = await apiRequest('/property');
+        if (propRes.ok) {
+          const propList = (await propRes.json().catch(() => null)) as any[];
+          if (Array.isArray(propList)) {
+            propList.forEach((p) => {
+              if (p?.propertyId) {
+                propertyMap.set(p.propertyId, {
+                  name: p.propertyName || p.address || `Property #${p.propertyId}`,
+                  station: p.stationName || '—',
+                });
+              }
+            });
+          }
+        }
+      } catch {
+        // Non-blocking fallback
+      }
+
       const mapped: ParkingBay[] = body.data.map((ps) => {
         const [labelBay = '', labelLevel = ''] = String(ps.parkingLabel ?? '').split('/', 2);
+        const propInfo = propertyMap.get(ps.propertyId);
+        const resolvedPropName =
+          ps.propertyName && !ps.propertyName.startsWith('Property #')
+            ? ps.propertyName
+            : propInfo?.name || ps.propertyName || `Property #${ps.propertyId}`;
+        const resolvedStationName =
+          ps.stationName && ps.stationName !== '—'
+            ? ps.stationName
+            : propInfo?.station || '—';
 
         return {
           ...ps,
           availabilityStatus: normalizeParkingAvailability(ps.availabilityStatus),
           id: `b-${ps.parkingSpotId}`,
-          propertyName: `Property #${ps.propertyId}`,
-          stationName: '—',
+          propertyName: resolvedPropName,
+          stationName: resolvedStationName,
           bayNumber: labelBay || ps.parkingLabel || `Spot #${ps.parkingSpotId}`,
           level: labelLevel ? `Level ${labelLevel}` : 'Level —',
           status: deriveParkingStatus(ps.verificationStatus, ps.isPublished),
@@ -285,7 +317,7 @@ export default function OwnerDashboard() {
   );
 
   useEffect(() => {
-    if (activeView !== 'dashboard') return;
+    if (activeView !== 'dashboard' && activeView !== 'availability') return;
 
     const token = user?.token ?? '';
     const spotIds = spotIdsKey ? spotIdsKey.split(',').map(Number) : [];
@@ -422,6 +454,80 @@ export default function OwnerDashboard() {
     }
   };
 
+  const handleDeleteParkingSpot = async (
+    parkingSpotId: number,
+  ): Promise<ParkingActionResult> => {
+    const token = user?.token ?? '';
+    if (!token) return { success: false, message: 'Authentication required. Please log in again.' };
+
+    const targetBay = bays.find((b) => b.parkingSpotId === parkingSpotId);
+    const activeSpotBookings = bookings.filter((b) => {
+      const matchesSpot =
+        b.bayId === String(parkingSpotId) ||
+        b.bayId === `b-${parkingSpotId}` ||
+        (targetBay && b.bayId === targetBay.id);
+      return matchesSpot && (b.status === 'Active' || b.status === 'Upcoming');
+    });
+
+    if (
+      activeSpotBookings.length > 0 ||
+      targetBay?.hasActiveBookings ||
+      (targetBay?.activeBookingCount && targetBay.activeBookingCount > 0) ||
+      targetBay?.availabilityStatus === 'Reserved' ||
+      targetBay?.availabilityStatus === 'Occupied'
+    ) {
+      const count = activeSpotBookings.length || targetBay?.activeBookingCount || 1;
+      return {
+        success: false,
+        message: `Cannot remove this parking spot because it currently has ${count} active or upcoming booking(s). Please wait until all bookings are completed or cancelled.`,
+      };
+    }
+
+    try {
+      const res = await deleteParkingSpot(token, parkingSpotId);
+      const data = (await res.json().catch(() => null)) as {
+        code?: number;
+        success?: boolean;
+        message?: string;
+      } | null;
+
+      if (!res.ok || data?.success !== true) {
+        return {
+          success: false,
+          message:
+            data?.message ||
+            `Unable to remove parking spot #${parkingSpotId} (${res.status}).`,
+        };
+      }
+
+      setBays((current) => current.filter((b) => b.parkingSpotId !== parkingSpotId));
+      setNotifications((current) => [
+        {
+          id: `n-${Date.now()}`,
+          title: 'Parking Spot Removed',
+          message:
+            data.message ||
+            `${targetBay?.propertyName || 'Property'} (${targetBay?.bayNumber || `Spot #${parkingSpotId}`}) was removed.`,
+          time: 'Just now',
+          unread: true,
+          type: 'system',
+        },
+        ...current,
+      ]);
+
+      return {
+        success: true,
+        message: data.message || `Parking spot #${parkingSpotId} removed successfully.`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Unable to remove this parking spot.',
+      };
+    }
+  };
+
   // Register New Parking Spot Near Transit Stations
   // Parking creation is handled by POST /api/parking/create-parking in PropertyOnboarding.
   const handleOnboardProperty = (property: {
@@ -540,6 +646,7 @@ export default function OwnerDashboard() {
                 onRefreshBays={fetchMyParking}
                 onUpdateAvailability={handleUpdateParkingAvailability}
                 onUpdatePublication={handleUpdateParkingPublication}
+
                 onConfigureParking={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'setup')}
                 onOpenTimetable={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'timetable')}
               />
@@ -572,9 +679,11 @@ export default function OwnerDashboard() {
                 {baysError && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700"><span className="inline-flex items-center gap-2"><AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />{baysError}</span><button type="button" onClick={() => void fetchMyParking()} className="font-semibold underline">Retry</button></div>}
                 <AvailabilityScheduler
                   bays={bays}
+                  bookings={bookings}
                   initialParkingSpotId={configureParkingSpotId}
                   initialSection={configureParkingSection}
                   onScheduleChange={() => { void fetchMyParking(); }}
+                  onDeleteParking={handleDeleteParkingSpot}
                 />
               </div>
             )

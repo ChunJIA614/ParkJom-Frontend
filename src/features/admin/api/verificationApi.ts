@@ -46,3 +46,13 @@ export function submitVerificationDecision(
     body: JSON.stringify({ decision, review_notes: reviewNotes }),
   });
 }
+
+export function deleteAdminParkingSpot(
+  token: string,
+  parkingSpotId: string | number,
+): Promise<Response> {
+  return apiRequest(`/parking/admin/spots/${parkingSpotId}`, {
+    method: 'DELETE',
+    headers: authorizationHeaders(token, 'application/json'),
+  });
+}

@@ -82,7 +82,7 @@ export default function FinanceSettlement({
           "One-click streaming export of financial journals (.CSV and .XLSX) with tax breakdowns",
           "Automated reconciliation between Stripe commuter receipts and owner bank payouts"
         ]}
-        technicalNote="Admin settlement endpoints (GET /api/admin/payouts, POST /api/admin/payouts/{id}/process, and /api/admin/settlement/export) are scheduled in Phase 3."
+        technicalNote="Disbursement clearing and regulatory export services are scheduled for upcoming release."
       />
     </div>
   );

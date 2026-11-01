@@ -29,6 +29,7 @@ import {
   RAPID_KL_LINE_COLORS,
 } from '@/services/gtfsApi';
 import { ParkingSpot } from '../types';
+import { calculateWalkingMinutes, formatDistance } from '@/services/pedestrianWalkingService';
 
 interface TransitHubSheetProps {
   userLocation: { lat: number; lng: number } | null;
@@ -259,7 +260,7 @@ export default function TransitHubSheet({
     longitude: activeStop?.longitude || 0,
     stationName: stop.stopName,
     distanceToStation: spot.distanceMeters / 1000,
-    timeToStationInMinutes: spot.walkingTimeMinutes,
+    timeToStationInMinutes: spot.walkingTimeMinutes || calculateWalkingMinutes(spot.distanceMeters),
     availabilityStatus: spot.availabilityStatus,
     monthlyRate: spot.monthlyRate,
     dailyRate: spot.dailyRate,
@@ -425,10 +426,8 @@ export default function TransitHubSheet({
                       {activeStop.distanceMeters != null && (
                         <span className="flex items-center gap-1 text-blue-600 font-medium">
                           <Navigation className="w-3 h-3" />
-                          {activeStop.distanceMeters > 1000
-                            ? `${(activeStop.distanceMeters / 1000).toFixed(1)} km`
-                            : `${Math.round(activeStop.distanceMeters)} m`}{' '}
-                          ({activeStop.walkingTimeMinutes} min walk)
+                          {formatDistance(activeStop.distanceMeters)}{' '}
+                          ({calculateWalkingMinutes(activeStop.distanceMeters)} min walk)
                         </span>
                       )}
                     </div>
@@ -677,7 +676,7 @@ export default function TransitHubSheet({
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 font-bold text-[10px] flex items-center justify-center shrink-0">
+                            <span className="w-5 h-5 rounded bg-blue-50 dark:bg-white/[0.06] text-blue-700 dark:text-blue-400 font-bold text-[10px] flex items-center justify-center shrink-0">
                               P
                             </span>
                             <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
@@ -685,7 +684,7 @@ export default function TransitHubSheet({
                             </span>
                           </div>
                           <p className="text-[10px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">
-                            Bay {spot.parkingLabel} · {spot.walkingTimeMinutes} min walk ({spot.distanceMeters}m)
+                            Bay {spot.parkingLabel} · {calculateWalkingMinutes(spot.distanceMeters)} min walk ({formatDistance(spot.distanceMeters)})
                           </p>
                         </div>
 
@@ -759,7 +758,7 @@ export default function TransitHubSheet({
                           </span>
                         </div>
                         <span className="text-[10px] font-mono font-medium text-slate-500 dark:text-[#A1A1AA] shrink-0 ml-1">
-                          {station.walkingTimeMinutes}m
+                          {station.distanceMeters ? `${calculateWalkingMinutes(station.distanceMeters)}m` : (station.walkingTimeMinutes ? `${station.walkingTimeMinutes}m` : '')}
                         </span>
                       </button>
                     );

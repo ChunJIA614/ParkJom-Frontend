@@ -9,7 +9,7 @@ export default function LoginPage() {
   const { isDark, toggleTheme } = useTheme();
 
   return (
-    <main className="relative min-h-screen w-full flex items-center justify-center p-3 sm:p-6 overflow-hidden select-none bg-[var(--bg-surface,#f5f5f7)] dark:bg-[#090a0f] transition-colors duration-500">
+    <main className="relative min-h-screen w-full flex items-center justify-center p-3 sm:p-6 overflow-hidden select-none bg-[var(--bg-surface,#f5f5f7)] dark:bg-[#000000] transition-colors duration-500">
       {/* 1. ParkJom 3D Interactive Transit Matrix Background (Parking, LRT Stations, Commuter Cars) */}
       <DotWaveBackground
         gap={32}

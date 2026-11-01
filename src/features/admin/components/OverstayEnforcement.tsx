@@ -80,7 +80,7 @@ export default function OverstayEnforcement({
           "Automated ledger debiting of calculated overstay penalty tariffs",
           "Operator audit portal for manual dispute review, penalty waivers, and security releases"
         ]}
-        technicalNote="Requires the background worker service and /api/admin/overstays endpoints to be integrated into the .NET host application."
+        technicalNote="Background worker enforcement service is scheduled for upcoming release."
       />
     </div>
   );

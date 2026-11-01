@@ -482,7 +482,7 @@ export default function DashboardHome({
               </div>
             </div>
             <p className="text-[10px] leading-relaxed text-slate-400">
-              Signal strength and broker status are not exposed by the API yet, so they are not shown here.
+              Telemetry updates automatically as devices report their status.
             </p>
           </div>
         </div>
