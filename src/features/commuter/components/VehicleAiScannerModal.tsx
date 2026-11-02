@@ -179,7 +179,7 @@ export default function VehicleAiScannerModal({
         aria-hidden="true"
       />
 
-      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[#e8eaed] dark:border-white/10 bg-white dark:bg-[#141417] shadow-2xl overflow-hidden max-h-[90dvh] flex flex-col">
+      <div className="relative z-10 w-full max-w-lg rounded-3xl border border-[#e8eaed] dark:border-white/10 bg-white dark:bg-[#141417] shadow-2xl overflow-hidden max-h-[90dvh] flex flex-col">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-[#f1f3f4] dark:border-white/10">
           <div className="flex items-center gap-2.5">
@@ -204,7 +204,7 @@ export default function VehicleAiScannerModal({
             onClick={onClose}
             disabled={isScanning}
             aria-label="Close Vision AI scanner"
-            className="rounded-lg p-1.5 text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#202025] cursor-pointer"
+            className="rounded-full p-1.5 text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#202025] cursor-pointer"
           >
             <X size={18} />
           </button>

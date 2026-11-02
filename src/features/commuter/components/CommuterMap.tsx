@@ -66,7 +66,6 @@ import {
   DrivingRouteResult,
 } from '@/services/drivingRouteService';
 import { formatShortSpotName, formatShortAddress } from '../lib/formatUtils';
-import StationFeedersWidget from './StationFeedersWidget';
 import LinearJourneyNavigator from './LinearJourneyNavigator';
 
 // ---- GTFS GeoJSON types ----
@@ -1449,10 +1448,6 @@ export default function CommuterMap({
     return activeStationPopup ? [activeStationPopup.lat, activeStationPopup.lng] : null;
   }, [activeStationPopup?.lat, activeStationPopup?.lng]);
 
-  const popupCoords = useMemo(() => {
-    return activeStationPopup ? { lat: activeStationPopup.lat, lng: activeStationPopup.lng } : null;
-  }, [activeStationPopup?.lat, activeStationPopup?.lng]);
-
   const selectedStationFeature = useMemo(() => {
     if (!selectedStationKey) return null;
     return stationFeatures.find((f: any) => getStationKeys(f).includes(selectedStationKey)) || null;
@@ -2435,16 +2430,6 @@ export default function CommuterMap({
                   ≤ {distanceRadius < 1000 ? `${distanceRadius}m` : `${distanceRadius / 1000}km`}
                 </span>
               </div>
-
-              {/* Connecting MRT Feeder Buses Widget with Selective Route Filter */}
-              <StationFeedersWidget
-                compact={true}
-                stopId={activeStationPopup.code}
-                stationName={activeStationPopup.name}
-                coordinates={popupCoords}
-                selectedRoute={effectiveBusRoute}
-                onSelectRoute={handleSelectRoute}
-              />
 
               {/* Action Button: Navigate / View Nearby Parking Bays */}
               {spots.length > 0 ? (

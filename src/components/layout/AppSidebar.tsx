@@ -131,7 +131,7 @@ function SidebarNavigation({
                             onNavigate(item.id);
                             setOpenMobile(false);
                           }}
-                          className="h-9 rounded-none px-2.5 text-[13px] text-sidebar-foreground/70 data-active:bg-sidebar-accent data-active:font-semibold data-active:text-sidebar-accent-foreground data-active:[&_svg]:text-sidebar-primary"
+                          className="h-9 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/70 data-active:bg-sidebar-accent data-active:font-semibold data-active:text-sidebar-accent-foreground data-active:[&_svg]:text-sidebar-primary"
                         >
                           <Icon aria-hidden="true" />
                           <span>{item.label}</span>

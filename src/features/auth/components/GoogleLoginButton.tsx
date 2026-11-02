@@ -332,7 +332,7 @@ export default function GoogleLoginButton() {
           type="button"
           disabled
           aria-busy="true"
-          className="flex min-h-11 w-full max-w-[320px] cursor-wait items-center justify-center gap-2.5 rounded-full border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white shadow-sm opacity-80"
+          className="flex min-h-11 w-full max-w-[320px] cursor-wait items-center justify-center gap-2.5 rounded-xl border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white shadow-sm opacity-80"
         >
           <Loader2 size={17} aria-hidden="true" className="animate-spin text-[#007AFF]" />
           <span aria-live="polite">Signing you in…</span>
@@ -342,7 +342,7 @@ export default function GoogleLoginButton() {
           type="button"
           whileTap={{ scale: 0.97 }}
           onClick={handleNativeGoogleLogin}
-          className="flex min-h-11 w-full max-w-[320px] items-center justify-center gap-3 rounded-full border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white hover:dark:bg-[#1F1F24] shadow-sm"
+          className="flex min-h-11 w-full max-w-[320px] items-center justify-center gap-3 rounded-xl border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white hover:dark:bg-[#1F1F24] shadow-sm"
         >
           <span aria-hidden="true" className="text-[17px] font-bold text-[#4285f4]">G</span>
           Continue with Google
@@ -368,7 +368,7 @@ export default function GoogleLoginButton() {
               // In dark mode use filled_black to instruct Google GIS to render a dark pill
               theme={isDark ? 'filled_black' : 'outline'}
               size="large"
-              shape="pill"
+              shape="rectangular"
               text="continue_with"
               width={380}
               containerProps={{ className: 'google-signin-shell flex justify-center' }}

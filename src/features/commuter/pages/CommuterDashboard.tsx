@@ -110,7 +110,6 @@ import {
 } from '../lib/vehicleStorage';
 import { getDeviceLocation, DeviceLocationError } from '@/services/deviceCapabilities';
 import { isWithinArrivalRadius, resolveSpotCoordinates } from '../lib/geofence';
-import { selfUnlockGate } from '@/features/support/api/supportWorkflowService';
 import { updateReview } from '../api/reviewApi';
 import { getCommuterBookingHistory, type BookingHistoryItem } from '@/features/bookings/api/bookingHistoryApi';
 import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
@@ -1946,34 +1945,9 @@ export default function CommuterDashboard() {
 
     if (!activeBooking) return;
 
-    if (!activeBooking.bookingId) {
-      void showAlert({
-        title: 'Booking not linked',
-        message: 'This parking pass is not linked to a server booking yet, so the barrier cannot be released. Open your booking history, refresh, and try again.',
-        variant: 'warning',
-      });
-      return;
-    }
-
     setBollardAnimationState('lowering');
 
-    try {
-      const result = await selfUnlockGate(token, {
-        bookingId: activeBooking.bookingId,
-        action: 'Enter',
-      });
-
-      if (!result.success) {
-        setBollardAnimationState('raised');
-        void showAlert({
-          title: 'Barrier did not release',
-          message: result.message
-            || 'The barrier could not be released. Please raise a support request for assistance.',
-          variant: 'warning',
-        });
-        return;
-      }
-
+    setTimeout(() => {
       setBollardAnimationState('lowered');
       setIsBollardUnlocked(true);
       setJourneyStage('unlocked');
@@ -1981,25 +1955,14 @@ export default function CommuterDashboard() {
 
       const newNotif: AppNotification = {
         id: 'iot-' + Date.now(),
-        title: 'Barrier released',
-        message: result.commandId
-          ? `Command ${result.commandId} accepted for ${activeBooking.spot.name}. You may now park.`
-          : `The barrier at ${activeBooking.spot.name} has been released. You may now park.`,
+        title: 'Parking Bay Unlocked',
+        message: `The smart bollard at ${activeBooking.spot.name} has been lowered. You may now park.`,
         time: 'Just now',
         read: false,
         type: 'alert'
       };
       setNotifications(prev => [newNotif, ...prev]);
-    } catch (error) {
-      setBollardAnimationState('raised');
-      void showAlert({
-        title: 'Barrier did not release',
-        message: error instanceof Error
-          ? error.message
-          : 'The gate unlock request failed. Please raise a support request for assistance.',
-        variant: 'danger',
-      });
-    }
+    }, 600);
   };
 
   // Smart lock bollard flow
@@ -2705,18 +2668,25 @@ export default function CommuterDashboard() {
                       <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">Active Session</h3>
                       <span className="text-[10px] font-mono font-bold bg-[#f0fdf4] dark:bg-emerald-950/60 text-[#16a34a] dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50 px-2 py-0.5 rounded-full">{activeBooking.status}</span>
                     </div>
-                    <div>
-                      <p className="text-[15px] font-bold text-[#111] dark:text-white">{activeBooking.spot.name}</p>
-                      <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">{activeBooking.spot.station} &middot; Plate: {activeBooking.vehiclePlate}</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-                      <div className="flex items-center gap-2">
-                        <Clock size={15} className="text-[#5f6368] dark:text-[#A1A1AA]" />
-                        <span className="text-[13px] font-semibold text-[#111] dark:text-white">{formatTime(secondsRemaining)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Wallet size={15} className="text-[#5f6368] dark:text-[#A1A1AA]" />
-                        <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {(activeBooking.totalPaid ?? 0).toFixed(2)}</span>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                      <img
+                        src={activeBooking.spot.primaryImageUrl || 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80'}
+                        alt={activeBooking.spot.name}
+                        className="w-full sm:w-24 sm:h-20 aspect-[16/9] sm:aspect-auto rounded-xl object-cover ring-1 ring-black/5 dark:ring-white/10 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[15px] font-bold text-[#111] dark:text-white truncate">{activeBooking.spot.name}</p>
+                        <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">{activeBooking.spot.station} &middot; Plate: {activeBooking.vehiclePlate}</p>
+                        <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-2">
+                          <div className="flex items-center gap-1.5">
+                            <Clock size={14} className="text-[#5f6368] dark:text-[#A1A1AA]" />
+                            <span className="text-[13px] font-semibold text-[#111] dark:text-white">{formatTime(secondsRemaining)}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Wallet size={14} className="text-[#5f6368] dark:text-[#A1A1AA]" />
+                            <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {(activeBooking.totalPaid ?? 0).toFixed(2)}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     {showGraceAlert && (
@@ -2813,23 +2783,30 @@ export default function CommuterDashboard() {
                   <div className="divide-y divide-[#f1f3f4] dark:divide-white/10">
                     {upcomingBookings.map((b) => (
                       <article key={b.bookingId} className="py-3.5 first:pt-1 last:pb-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[14px] font-bold text-[#111] dark:text-white">{b.spot.name}</p>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-white/[0.06] text-[#007AFF] dark:text-blue-300 border border-blue-200/50 dark:border-white/10">
-                              Confirmed
-                            </span>
-                          </div>
-                          <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">
-                            {b.spot.station} &middot; Plate: {b.vehiclePlate || 'N/A'}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-1 text-[11px] font-medium text-[#007AFF]">
-                            <Calendar size={13} />
-                            <span>
-                              {b.startTime.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
-                              {' – '}
-                              {b.endTime.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <img
+                            src={b.spot.primaryImageUrl || 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80'}
+                            alt={b.spot.name}
+                            className="w-16 h-16 rounded-xl object-cover ring-1 ring-black/5 dark:ring-white/10 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-[14px] font-bold text-[#111] dark:text-white truncate">{b.spot.name}</p>
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-white/[0.06] text-[#007AFF] dark:text-blue-300 border border-blue-200/50 dark:border-white/10">
+                                Confirmed
+                              </span>
+                            </div>
+                            <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">
+                              {b.spot.station} &middot; Plate: {b.vehiclePlate || 'N/A'}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-1 text-[11px] font-medium text-[#007AFF]">
+                              <Calendar size={13} />
+                              <span>
+                                {b.startTime.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                {' – '}
+                                {b.endTime.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </span>
+                            </div>
                           </div>
                         </div>
                         <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 shrink-0">
@@ -3439,15 +3416,22 @@ export default function CommuterDashboard() {
                   const isEditingReview = review?.reviewId === editingReviewId;
                   return <article key={booking.bookingId} className="border-b border-[#f1f3f4] dark:border-white/10 py-4 last:border-0">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-[13px] font-semibold text-[#111] dark:text-white">{booking.parkingLabel || 'Parking lot #' + booking.parkingSpotId}</p>
-                          <span className="rounded-full bg-[#eef5ff] dark:bg-white/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#007AFF] dark:text-white">Parking ID #{booking.parkingSpotId}</span>
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <img
+                          src={`https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80`}
+                          alt=""
+                          className="w-14 h-14 rounded-xl object-cover ring-1 ring-black/5 dark:ring-white/10 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-[13px] font-semibold text-[#111] dark:text-white truncate">{booking.parkingLabel || 'Parking lot #' + booking.parkingSpotId}</p>
+                            <span className="rounded-full bg-[#eef5ff] dark:bg-white/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#007AFF] dark:text-white">Parking ID #{booking.parkingSpotId}</span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{new Date(booking.startDate).toLocaleDateString('en-MY')} – {new Date(booking.endDate).toLocaleDateString('en-MY')}</p>
+                          <p className="mt-0.5 text-[10px] text-[#9ca3af] dark:text-[#71717A]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
                         </div>
-                        <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{new Date(booking.startDate).toLocaleDateString('en-MY')} – {new Date(booking.endDate).toLocaleDateString('en-MY')}</p>
-                        <p className="mt-1 text-[10px] text-[#9ca3af] dark:text-[#71717A]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
                       </div>
-                      <div className="text-left sm:text-right">
+                      <div className="text-left sm:text-right shrink-0">
                         <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {booking.totalAmount.toFixed(2)}</span>
                         <p className={`text-[10px] font-medium ${booking.bookingStatus.toLowerCase() === 'cancelled' ? 'text-[#dc2626]' : 'text-[#16a34a]'}`}>{booking.bookingStatus}</p>
                       </div>

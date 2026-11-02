@@ -34,21 +34,6 @@ export interface QuickIssueTemplate {
   role?: string;
 }
 
-export interface SelfUnlockGateInput {
-  bookingId?: number | null;
-  action?: 'Enter' | 'Exit';
-}
-
-export interface SelfUnlockGateResult {
-  success: boolean;
-  message: string;
-  commandId?: string | null;
-  bookingId?: number | null;
-  action?: 'Enter' | 'Exit' | string;
-  suggestUrgentTicket?: boolean;
-  executedAt?: string;
-}
-
 export interface TicketRefundSummary {
   disputeId?: number;
   disputeReference?: string;
@@ -299,7 +284,6 @@ export interface SupportContextData {
   userType?: string;
   userRole?: string;
   walletBalance?: number;
-  canSelfUnlockGate?: boolean;
   quickIssueTemplates?: QuickIssueTemplate[];
   activeBooking?: SupportBookingContext | null;
   recentBookings?: SupportBookingContext[];

@@ -71,11 +71,11 @@ const framePath = (index, set) =>
 const isReady = (img) => Boolean(img && img.complete && img.naturalWidth > 0);
 
 const btnPrimary =
-  'inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#0071e3] px-7 text-[16px] font-medium tracking-[-0.016em] text-white shadow-[0_8px_24px_rgba(0,113,227,0.38)] transition-all duration-200 hover:bg-[#0077ed]';
+  'inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#0071e3] px-7 text-[16px] font-medium tracking-[-0.016em] text-white shadow-[0_8px_24px_rgba(0,113,227,0.38)] transition-all duration-200 hover:bg-[#0077ed]';
 const btnSecondary =
-  'inline-flex min-h-12 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/30 px-7 text-[16px] font-medium tracking-[-0.016em] text-white transition-all duration-200';
+  'inline-flex min-h-12 items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/30 px-7 text-[16px] font-medium tracking-[-0.016em] text-white transition-all duration-200';
 const stepCard =
-  'rounded-[24px] bg-slate-950/45 backdrop-blur-xl border border-white/15 p-6 text-[#f5f5f7] shadow-2xl md:p-7';
+  'rounded-3xl bg-slate-950/45 backdrop-blur-xl border border-white/15 p-6 text-[#f5f5f7] shadow-2xl md:p-7';
 
 /**
  * `totalFrames` is optional — it defaults to the active set's own count, which is what every

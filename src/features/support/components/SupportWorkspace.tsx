@@ -6,6 +6,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Clock,
   Download,
@@ -329,6 +330,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
   const [selectedTicketId, setSelectedTicketId] = useState<string | number | null>(null);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<SupportTicket | null>(null);
   const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
+  const [userChatOpen, setUserChatOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -407,7 +409,9 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       setSelectedTicketId((current) =>
         current && result.some((ticket) => String(ticket.ticketId) === String(current))
           ? current
-          : result[0]?.ticketId ?? null
+          : mode === 'admin'
+          ? result[0]?.ticketId ?? null
+          : null
       );
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load support tickets.');
@@ -475,11 +479,25 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       if (created?.ticketId) {
         setSelectedTicketId(created.ticketId);
         setSelectedTicketDetail(created);
+        setUserChatOpen(true);
+        setMobileConversationOpen(true);
+      }
+    };
+    const handleSelectTicket = (e: Event) => {
+      const customEvent = e as CustomEvent<string | number | undefined>;
+      const id = customEvent.detail;
+      if (id) {
+        setSelectedTicketId(id);
+        setUserChatOpen(true);
         setMobileConversationOpen(true);
       }
     };
     window.addEventListener('support:ticket-created', handleTicketCreated);
-    return () => window.removeEventListener('support:ticket-created', handleTicketCreated);
+    window.addEventListener('support:select-ticket', handleSelectTicket);
+    return () => {
+      window.removeEventListener('support:ticket-created', handleTicketCreated);
+      window.removeEventListener('support:select-ticket', handleSelectTicket);
+    };
   }, [loadTickets]);
 
   useEffect(() => {
@@ -753,6 +771,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       setCreateOpen(false);
       setSelectedTicketId(ticket.ticketId);
       setSelectedTicketDetail(ticket);
+      setUserChatOpen(true);
       setMobileConversationOpen(true);
       await loadTickets(true);
     } catch (createError) {
@@ -783,9 +802,22 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
   return (
     <div className="space-y-4" data-component="ticket-workspace">
       {/* ── Top Bar / Header ── */}
-      <section className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] px-5 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none">
+      <section className="rounded-3xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] px-5 py-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none">
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
+            {mode === 'user' && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('support:back-to-overview'));
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#F5F5F7] dark:bg-white/[0.08] hover:bg-[#E8E8ED] dark:hover:bg-white/[0.12] text-[#1D1D1F] dark:text-white border border-black/[0.06] dark:border-white/10 transition cursor-pointer shrink-0"
+                title="Return to Support Overview"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-[#86868B] dark:text-[#A1A1AA]" />
+                <span className="hidden sm:inline">Support</span>
+              </button>
+            )}
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white border border-black/[0.04] dark:border-white/10">
               <LifeBuoy className="h-4 w-4" />
             </span>
@@ -839,10 +871,18 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
         </div>
       )}
 
-      {/* ── Main Split View (Locked to Screen Height) ── */}
-      <section className="overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none lg:grid lg:h-[calc(100vh-175px)] lg:min-h-[580px] lg:grid-cols-[330px_minmax(0,1fr)]">
+      {/* ── Main View (Layered: Ticket Queue on Outer Page, Chat on Dedicated Inner Page) ── */}
+      <section className={cn(
+        "overflow-hidden rounded-3xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417] shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none min-h-[580px]",
+        mode === 'admin' ? "lg:grid lg:h-[calc(100vh-175px)] lg:grid-cols-[330px_minmax(0,1fr)]" : "h-[calc(100vh-175px)] flex flex-col"
+      )}>
         {/* Left Pane: Ticket Queue & Filters */}
-        <div className={cn('h-full flex-col min-h-0 border-r border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#141417]', mobileConversationOpen ? 'hidden lg:flex' : 'flex')}>
+        <div className={cn(
+          'h-full flex-col min-h-0 bg-white dark:bg-[#141417]',
+          mode === 'admin'
+            ? (mobileConversationOpen ? 'hidden lg:flex border-r border-black/[0.06] dark:border-white/10' : 'flex border-r border-black/[0.06] dark:border-white/10')
+            : (userChatOpen ? 'hidden' : 'flex w-full')
+        )}>
           {/* Status filter dropdown & Search */}
           <div className="shrink-0 border-b border-black/[0.06] dark:border-white/10 p-3 space-y-2">
             <div className="relative">
@@ -972,47 +1012,54 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                     type="button"
                     onClick={() => {
                       setSelectedTicketId(ticket.ticketId);
+                      setUserChatOpen(true);
                       setMobileConversationOpen(true);
                     }}
                     className={cn(
-                      'group relative w-full cursor-pointer rounded-xl border p-3 text-left transition-all',
+                      'group relative w-full cursor-pointer rounded-2xl border p-3.5 text-left transition-all',
                       isSelected
                         ? 'border-[#007AFF] bg-[#F5F5F7] dark:bg-[#1c1c1e] dark:border-[#0071E3] ring-1 ring-[#007AFF]/15 dark:ring-[#0071E3]/30'
-                        : 'border-transparent dark:border-white/[0.06] bg-transparent dark:bg-[#141417] hover:border-black/[0.06] dark:hover:border-white/15 hover:bg-[#F5F5F7]/60 dark:hover:bg-[#1C1C20]'
+                        : 'border-black/[0.06] dark:border-white/[0.06] bg-white dark:bg-[#141417] hover:border-black/[0.12] dark:hover:border-white/15 hover:bg-[#F5F5F7]/60 dark:hover:bg-[#1C1C20] shadow-2xs'
                     )}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-[10px] font-semibold tracking-tight text-[#007AFF]">
-                        {ticket.ticketReference}
-                      </span>
-                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold', meta.badge)}>
-                        <span className={cn('h-1.5 w-1.5 rounded-full', meta.dot)} />
-                        {badgeLabel}
-                      </span>
-                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[10px] font-semibold tracking-tight text-[#007AFF]">
+                            {ticket.ticketReference}
+                          </span>
+                          <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold', meta.badge)}>
+                            <span className={cn('h-1.5 w-1.5 rounded-full', meta.dot)} />
+                            {badgeLabel}
+                          </span>
+                        </div>
 
-                    <p className="mt-1.5 line-clamp-1 text-xs font-semibold text-[#1D1D1F] dark:text-white">
-                      {cleanSupportText(ticket.subject)}
-                    </p>
+                        <p className="mt-1.5 line-clamp-1 text-xs font-semibold text-[#1D1D1F] dark:text-white">
+                          {cleanSupportText(ticket.subject)}
+                        </p>
 
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">
-                      <span className="font-medium text-[#1D1D1F] dark:text-[#D4D4D8] truncate">{ticket.customerName}</span>
-                      <span>·</span>
-                      <span className="rounded-md bg-white dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-1.5 py-0.2 text-[9px] font-medium text-[#6E6E73] dark:text-[#A1A1AA]">
-                        {ticket.issueCode || ticket.category}
-                      </span>
-                      {ticket.priority && (
-                        <span className="rounded-md bg-white dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-1.5 py-0.2 text-[9px] font-semibold text-[#1D1D1F] dark:text-white">
-                          {ticket.priority}
-                        </span>
-                      )}
-                    </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[#6E6E73] dark:text-[#A1A1AA]">
+                          <span className="font-medium text-[#1D1D1F] dark:text-[#D4D4D8] truncate">{ticket.customerName}</span>
+                          <span>·</span>
+                          <span className="rounded-md bg-white dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-1.5 py-0.2 text-[9px] font-medium text-[#6E6E73] dark:text-[#A1A1AA]">
+                            {ticket.issueCode || ticket.category}
+                          </span>
+                          {ticket.priority && (
+                            <span className="rounded-md bg-white dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-1.5 py-0.2 text-[9px] font-semibold text-[#1D1D1F] dark:text-white">
+                              {ticket.priority}
+                            </span>
+                          )}
+                        </div>
 
-                    <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-[#86868B] dark:text-[#A1A1AA]">
-                      <p className="line-clamp-1 flex-1">
-                        {cleanSupportText(lastMessage?.message || lastMessage?.body || ticket.description || 'Support ticket logged')}
-                      </p>
-                      <span className="shrink-0 text-[9px] font-medium text-[#86868B] dark:text-[#71717A]">{formatDate(ticket.updatedAt)}</span>
+                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-[#86868B] dark:text-[#A1A1AA]">
+                          <p className="line-clamp-1 flex-1">
+                            {cleanSupportText(lastMessage?.message || lastMessage?.body || ticket.description || 'Support ticket logged')}
+                          </p>
+                          <span className="shrink-0 text-[9px] font-medium text-[#86868B] dark:text-[#71717A]">{formatDate(ticket.updatedAt)}</span>
+                        </div>
+                      </div>
+
+                      <ChevronRight className="h-4 w-4 text-[#86868B] dark:text-[#71717A] group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-all shrink-0" />
                     </div>
                   </button>
                 );
@@ -1021,15 +1068,20 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
           </div>
         </div>
 
-        {/* Right Pane: Conversation & Message Stream */}
-        <div className={cn('h-full flex-col min-h-0 bg-[#F5F5F7]/40 dark:bg-[#0E0E11] overflow-hidden', mobileConversationOpen ? 'flex' : 'hidden lg:flex')}>
+        {/* Right Pane: Conversation & Message Stream (Dedicated Inner Page in User Mode) */}
+        <div className={cn(
+          'h-full flex-col min-h-0 bg-[#F5F5F7]/40 dark:bg-[#0E0E11] overflow-hidden',
+          mode === 'admin'
+            ? (mobileConversationOpen ? 'flex' : 'hidden lg:flex')
+            : (userChatOpen ? 'flex w-full' : 'hidden')
+        )}>
           {!selectedTicketDetail ? (
             <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white dark:bg-[#18181C] border border-black/[0.06] dark:border-white/10 text-[#86868B] dark:text-[#A1A1AA]">
                 <MessageSquare className="h-6 w-6 text-[#1D1D1F] dark:text-white" />
               </div>
-              <h3 className="mt-3 text-sm font-bold text-[#1D1D1F]">No Ticket Selected</h3>
-              <p className="mt-1 text-xs text-[#6E6E73] max-w-xs">
+              <h3 className="mt-3 text-sm font-bold text-[#1D1D1F] dark:text-white">No Ticket Selected</h3>
+              <p className="mt-1 text-xs text-[#6E6E73] dark:text-[#A1A1AA] max-w-xs">
                 Select a ticket from the left panel to review discussion history, attachments, and respond in real-time.
               </p>
             </div>
@@ -1042,11 +1094,18 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   <div className="flex min-w-0 items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setMobileConversationOpen(false)}
-                      className="cursor-pointer rounded-lg p-1.5 text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] lg:hidden min-h-[32px] min-w-[32px] flex items-center justify-center shrink-0 border border-black/[0.08] dark:border-white/10"
+                      onClick={() => {
+                        setMobileConversationOpen(false);
+                        setUserChatOpen(false);
+                      }}
+                      className={cn(
+                        "cursor-pointer rounded-xl px-3 py-1.5 text-[#1D1D1F] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#202025] min-h-[32px] flex items-center gap-1.5 shrink-0 border border-black/[0.08] dark:border-white/10 text-xs font-semibold transition",
+                        mode === 'admin' ? "lg:hidden" : "flex"
+                      )}
                       aria-label="Back to ticket list"
                     >
                       <ArrowLeft className="h-4 w-4" />
+                      <span className="hidden sm:inline">Back to all tickets</span>
                     </button>
 
                     <span className="font-mono text-xs font-semibold text-[#007AFF] shrink-0">
@@ -1652,7 +1711,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
           role="dialog"
           aria-modal="true"
         >
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white dark:bg-[#141417] shadow-2xl sm:rounded-2xl border border-black/[0.08] dark:border-white/10">
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white dark:bg-[#141417] shadow-2xl sm:rounded-3xl border border-black/[0.08] dark:border-white/10">
             <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5F5F7] dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white">
@@ -1825,7 +1884,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
                   maxLength={2000}
                   required
                   placeholder="Explain the issue in detail..."
-                  className="w-full resize-none rounded-xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] p-3 text-xs leading-relaxed text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
+                  className="w-full resize-none rounded-2xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7]/60 dark:bg-[#18181C] p-3 text-xs leading-relaxed text-[#1D1D1F] dark:text-white outline-none focus:border-[#007AFF] focus:bg-white dark:focus:bg-[#18181C]"
                 />
               </label>
 
@@ -1983,7 +2042,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Reassign Modal (Admin) ── */}
       {reassignOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#141417] p-6 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
@@ -2047,7 +2106,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Status Transition Modal (Admin) ── */}
       {transitionOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#141417] p-6 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <RefreshCw className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
@@ -2127,7 +2186,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Close Ticket Modal (User & Admin) ── */}
       {closeModalOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#141417] p-6 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
@@ -2184,7 +2243,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Reopen Ticket Modal (Customer) ── */}
       {reopenModalOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#141417] p-6 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <RotateCcw className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
@@ -2233,7 +2292,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Link Incident Modal (Admin) ── */}
       {linkIncidentOpen && selectedTicketDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#141417] p-6 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <Siren className="h-4 w-4 text-[#1D1D1F] dark:text-white" />
@@ -2293,7 +2352,7 @@ function TicketWorkspace({ mode, viewer }: SupportWorkspaceProps) {
       {/* ── Link Support Ticket to Dispute Modal ── */}
       {linkDisputeOpen && selectedTicketDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#141417] p-5 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#141417] p-6 shadow-2xl border border-black/[0.08] dark:border-white/10 space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4 text-[#1D1D1F] dark:text-white" />

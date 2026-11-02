@@ -331,7 +331,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
   return (
     <div className="space-y-6">
       {/* Top Banner & Tab Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div>
           <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest font-mono flex items-center gap-1.5 mb-1">
             <Radio className="w-3.5 h-3.5 animate-pulse" /> Systematic Compliance Hub
@@ -379,7 +379,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
           
           {/* Left Column: Disputes Register List (3/12 span) */}
           <div className="lg:col-span-3 space-y-4">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                 <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Disputes Register</h3>
                 <button 
@@ -406,7 +406,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                     >
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] font-bold text-slate-400 font-mono">{ticket.id}</span>
-                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded tracking-wide uppercase
+                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full tracking-wide uppercase
                           ${ticket.status === 'UNDER REVIEW' ? 'bg-rose-50 text-rose-600' : ''}
                           ${ticket.status === 'AWAITING ACTION' ? 'bg-amber-50 text-amber-600' : ''}
                           ${ticket.status === 'RESOLVED' ? 'bg-emerald-50 text-emerald-600' : ''}
@@ -425,7 +425,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
 
                       <div className="flex justify-between items-center pt-1">
                         <span className="text-[9px] text-slate-400 font-medium">Applicant: {ticket.applicantName}</span>
-                        <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 border border-blue-100/30 px-1.5 py-0.5 rounded tracking-wider uppercase">
+                        <span className="text-[9px] font-extrabold text-blue-600 bg-blue-50 border border-blue-100/30 px-2 py-0.5 rounded-full tracking-wider uppercase">
                           {ticket.category}
                         </span>
                       </div>
@@ -450,7 +450,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
           </div>
 
           {/* Middle Column: Official Reconciliation Detail (6/12 span) */}
-          <div className={`${isCommuter ? 'lg:col-span-9' : 'lg:col-span-6'} bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6`}>
+          <div className={`${isCommuter ? 'lg:col-span-9' : 'lg:col-span-6'} bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6`}>
             
             {/* Detail Title Header */}
             <div className="flex justify-between items-start gap-4 border-b border-slate-100 pb-4">
@@ -458,7 +458,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">OFFICIAL RECONCILIATION FILE</span>
                 <h2 className="text-base font-black text-slate-900 mt-0.5 leading-snug">{selectedTicket.subject}</h2>
               </div>
-              <span className="bg-blue-600 text-white font-mono text-[9px] font-black px-3 py-1 rounded tracking-widest uppercase shadow-sm">
+              <span className="bg-blue-600 text-white font-mono text-[9px] font-black px-3 py-1 rounded-full tracking-widest uppercase shadow-sm">
                 {selectedTicket.category}
               </span>
             </div>
@@ -579,7 +579,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
           </div>
 
           {/* Right Column: Administrative Bypass Controls (3/12 span) */}
-          {!isCommuter && <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          {!isCommuter && <div className="lg:col-span-3 bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6">
             <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
               <Settings className="w-4 h-4 text-slate-500" />
               <h3 className="font-black text-slate-950 text-xs uppercase tracking-wider">Administrative Bypass</h3>
@@ -632,12 +632,12 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
         </div>
       ) : (
         /* Submit Ticket Application Form View */
-        <div className="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="max-w-3xl mx-auto bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Header Banner */}
           <div className="bg-[#0f172a] text-white p-6 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
             <div className="relative z-10">
-              <span className="bg-blue-500 text-white font-mono text-[9px] font-extrabold px-2.5 py-1 rounded uppercase tracking-wider">
+              <span className="bg-blue-500 text-white font-mono text-[9px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
                 COMPLIANCE DOCUMENT FORM
               </span>
               <h2 className="text-lg font-black tracking-tight mt-2 flex items-center gap-2">
@@ -666,7 +666,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                     type="text"
                     value={formApplicantName}
                     onChange={(e) => setFormApplicantName(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-semibold"
+                    className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-semibold"
                     required
                   />
                 </div>
@@ -676,7 +676,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                     type="email"
                     value={formEmail}
                     onChange={(e) => setFormEmail(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-semibold"
+                    className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-semibold"
                     required
                   />
                 </div>
@@ -690,7 +690,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                 <SystemSelect
                   value={formCategory}
                   onChange={(e) => setFormCategory(e.target.value as any)}
-                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                  className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
                   required
                 >
                   <option value="HARDWARE">HARDWARE (Smart Lock, Barrier Jammed, Faulty Sensors)</option>
@@ -705,7 +705,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                 <SystemSelect
                   value={formHardwareNode}
                   onChange={(e) => setFormHardwareNode(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                  className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
                   required
                 >
                   <option value="BLD-SS15-01 (SS15 Bay 12)">BLD-SS15-01 (SS15 Bay 12)</option>
@@ -725,7 +725,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                   placeholder="e.g. BKG-2026-1201"
                   value={formBookingRef}
                   onChange={(e) => setFormBookingRef(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-mono"
+                  className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-mono"
                 />
               </div>
 
@@ -736,7 +736,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                   placeholder="e.g. Ultrasonic sensor fails to detect car parking"
                   value={formSubject}
                   onChange={(e) => setFormSubject(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-semibold"
+                  className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 font-semibold"
                   required
                 />
               </div>
@@ -750,7 +750,7 @@ export default function SupportTickets({ audience = 'owner', user = null }: Supp
                 placeholder="Describe the issue you experienced. Please specify exactly what happened, driver plates if relevant, and error blinking lights observed on the ESP32 hardware device..."
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
-                className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 leading-relaxed font-medium"
+                className="w-full text-xs border border-slate-200 rounded-2xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 leading-relaxed font-medium"
                 required
               ></textarea>
             </div>

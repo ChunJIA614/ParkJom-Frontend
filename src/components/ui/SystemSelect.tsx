@@ -207,7 +207,7 @@ export default function SystemSelect({
             role="listbox"
             aria-labelledby={ariaLabelledBy || selectId}
             style={menuStyle}
-            className="system-select-popover workspace-popover max-h-64 overflow-y-auto no-scrollbar rounded-[14px] border border-black/[0.08] dark:border-white/10 bg-white/98 dark:bg-[#18181C] p-1 shadow-[0_12px_34px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] dark:shadow-[0_16px_36px_rgba(0,0,0,0.6)] backdrop-blur-xl"
+            className="system-select-popover workspace-popover max-h-64 overflow-y-auto no-scrollbar rounded-2xl border border-black/[0.08] dark:border-white/10 bg-white/98 dark:bg-[#18181C] p-1 shadow-[0_12px_34px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] dark:shadow-[0_16px_36px_rgba(0,0,0,0.6)] backdrop-blur-xl"
           >
             {options.map((opt) => {
               const isSelected = opt.value === normalizedValue;
@@ -219,7 +219,7 @@ export default function SystemSelect({
                   aria-selected={isSelected}
                   disabled={opt.disabled}
                   onClick={() => handleSelect(opt)}
-                  className={`system-select-option flex w-full items-center justify-between gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-xs transition-colors ${
+                  className={`system-select-option flex w-full items-center justify-between gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition-colors ${
                     opt.disabled
                       ? 'cursor-not-allowed opacity-40 text-[#8e8e93] dark:text-[#71717A]'
                       : isSelected

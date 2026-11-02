@@ -7,9 +7,6 @@ export const SUPPORT_API = {
     // Get role-specific quick issue templates (Commuter vs PropertyOwner)
     GET_TEMPLATES: '/api/support/templates', // GET
 
-    // Emergency self-service gate unlock (immediate self-rescue without ticket)
-    SELF_UNLOCK_GATE: '/api/support/gate-unlock', // POST { bookingId?: number, action?: 'Enter' | 'Exit' }
-
     // My support tickets list (supports filtering: Processing, ActionRequired, Resolved, Closed)
     GET_MY_TICKETS: '/api/support/tickets/mine', // GET ?status=&search=
 

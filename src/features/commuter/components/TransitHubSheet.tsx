@@ -288,7 +288,7 @@ export default function TransitHubSheet({
 
   return (
     <div
-      className={`transit-hub-panel flex flex-col h-full bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200/80 dark:border-white/[0.12] shadow-xs overflow-hidden ${className}`}
+      className={`transit-hub-panel flex flex-col h-full bg-white dark:bg-[#1c1c1e] rounded-3xl border border-slate-200/80 dark:border-white/[0.12] shadow-xs overflow-hidden ${className}`}
       role="region"
       aria-label="Transit Stations and Live Departures"
     >
@@ -325,7 +325,7 @@ export default function TransitHubSheet({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search station (e.g. Chow Kit, KLCC, TRX)..."
-            className="w-full h-8 pl-8 pr-7 bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/[0.12] rounded-lg text-xs font-normal text-slate-900 dark:text-[#f5f5f7] placeholder-slate-400 dark:placeholder-[#8e8e93] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+            className="w-full h-8 pl-8 pr-7 bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/[0.12] rounded-xl text-xs font-normal text-slate-900 dark:text-[#f5f5f7] placeholder-slate-400 dark:placeholder-[#8e8e93] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
           />
           {searchQuery && (
             <button
@@ -344,7 +344,7 @@ export default function TransitHubSheet({
           <button
             type="button"
             onClick={() => setSelectedLineFilter('ALL')}
-            className={`h-6 px-2.5 rounded-md text-[11px] font-semibold whitespace-nowrap transition-colors ${
+            className={`h-6 px-2.5 rounded-full text-[11px] font-semibold whitespace-nowrap transition-colors ${
               selectedLineFilter === 'ALL'
                 ? 'bg-slate-900 dark:bg-[#0a84ff] text-white'
                 : 'bg-white dark:bg-white/[0.08] text-slate-600 dark:text-[#a1a1a6] border border-slate-200/80 dark:border-white/[0.12] hover:bg-slate-100 dark:hover:bg-white/[0.14]'
@@ -360,7 +360,7 @@ export default function TransitHubSheet({
                 key={route.routeId}
                 type="button"
                 onClick={() => setSelectedLineFilter(route.routeId)}
-                className={`h-6 px-2 rounded-md text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap transition-all border ${
+                className={`h-6 px-2 rounded-full text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap transition-all border ${
                   isSelected
                     ? 'bg-slate-900 dark:bg-[#0a84ff] text-white border-slate-900 dark:border-[#0a84ff] font-semibold'
                     : 'bg-white dark:bg-white/[0.08] text-slate-700 dark:text-[#f5f5f7] border border-slate-200/80 dark:border-white/[0.12] hover:bg-slate-50 dark:hover:bg-white/[0.14]'
@@ -446,11 +446,11 @@ export default function TransitHubSheet({
             </div>
 
             {/* Segmented Sub-tabs: Departures vs Feeder Buses vs Parking Bays */}
-            <div className="flex bg-slate-100 dark:bg-white/[0.06] p-0.5 rounded-lg text-xs font-semibold">
+            <div className="flex bg-slate-100 dark:bg-white/[0.06] p-1 rounded-xl text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setStationTab('departures')}
-                className={`flex-1 py-1 px-2 rounded-md transition-all ${
+                className={`flex-1 py-1 px-2 rounded-lg transition-all ${
                   stationTab === 'departures'
                     ? 'bg-white dark:bg-[#2c2c2e] text-slate-900 dark:text-[#f5f5f7] shadow-xs'
                     : 'text-slate-500 dark:text-[#a1a1a6] hover:text-slate-800 dark:hover:text-[#f5f5f7]'
@@ -461,7 +461,7 @@ export default function TransitHubSheet({
               <button
                 type="button"
                 onClick={() => setStationTab('feeders')}
-                className={`flex-1 py-1 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
+                className={`flex-1 py-1 px-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
                   stationTab === 'feeders'
                     ? 'bg-white dark:bg-[#2c2c2e] text-emerald-800 dark:text-emerald-400 shadow-xs'
                     : 'text-slate-500 dark:text-[#a1a1a6] hover:text-slate-800 dark:hover:text-[#f5f5f7]'
@@ -473,7 +473,7 @@ export default function TransitHubSheet({
               <button
                 type="button"
                 onClick={() => setStationTab('bays')}
-                className={`flex-1 py-1 px-2 rounded-md transition-all flex items-center justify-center gap-1 ${
+                className={`flex-1 py-1 px-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
                   stationTab === 'bays'
                     ? 'bg-white dark:bg-[#2c2c2e] text-slate-900 dark:text-[#f5f5f7] shadow-xs'
                     : 'text-slate-500 dark:text-[#a1a1a6] hover:text-slate-800 dark:hover:text-[#f5f5f7]'

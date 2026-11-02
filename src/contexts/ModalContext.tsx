@@ -215,14 +215,14 @@ export function ModalProvider({ children }: { children: ReactNode }) {
           onClick={handleCancel}
         >
           <div
-            className="w-full max-w-sm sm:max-w-md rounded-lg border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-[#1c1c1e] p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm sm:max-w-md rounded-3xl border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-[#1c1c1e] p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header: Icon + Title + Close Button */}
             <div className="flex items-start gap-3.5">
               <span
                 className={cn(
-                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-md border',
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border',
                   getIconBadgeClass()
                 )}
               >
@@ -239,7 +239,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
                 type="button"
                 onClick={handleCancel}
                 aria-label="Close dialog"
-                className="cursor-pointer -mr-1 -mt-1 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-[#f5f5f7] rounded-md transition hover:bg-slate-100 dark:hover:bg-white/[0.08]"
+                className="cursor-pointer -mr-1 -mt-1 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-[#f5f5f7] rounded-full transition hover:bg-slate-100 dark:hover:bg-white/[0.08]"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -256,7 +256,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="cursor-pointer rounded-md border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-white/[0.08] px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-[#f5f5f7] shadow-2xs hover:bg-slate-50 dark:hover:bg-white/[0.12] transition active:scale-[0.98]"
+                  className="cursor-pointer rounded-xl border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-white/[0.08] px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-[#f5f5f7] shadow-2xs hover:bg-slate-50 dark:hover:bg-white/[0.12] transition active:scale-[0.98]"
                 >
                   {modal.cancelText}
                 </button>
@@ -267,7 +267,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
                 onClick={handleConfirm}
                 autoFocus
                 className={cn(
-                  'cursor-pointer rounded-md px-4 py-1.5 text-xs font-semibold shadow-xs transition active:scale-[0.98] focus:outline-none focus:ring-2',
+                  'cursor-pointer rounded-xl px-4 py-1.5 text-xs font-semibold shadow-xs transition active:scale-[0.98] focus:outline-none focus:ring-2',
                   getConfirmButtonClass()
                 )}
               >

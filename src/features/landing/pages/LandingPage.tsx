@@ -66,7 +66,7 @@ type LineFilter = (typeof lineFilters)[number];
 /* ── Primitives ─────────────────────────────────────────────────────────────── */
 
 const btnPrimary =
-  'inline-flex min-h-11 items-center justify-center rounded-full bg-[#0071e3] px-[22px] text-[17px] tracking-[-0.022em] text-white transition-colors duration-200 hover:bg-[#0077ed]';
+  'inline-flex min-h-11 items-center justify-center rounded-xl bg-[#0071e3] px-[22px] text-[17px] tracking-[-0.022em] text-white transition-colors duration-200 hover:bg-[#0077ed]';
 
 function TextLink({ href, children, dark = false }: { href: string; children: React.ReactNode; dark?: boolean }) {
   return (
@@ -205,7 +205,7 @@ function LocalNav() {
 
           <a
             href="/login?role=Commuter"
-            className="inline-flex min-h-7 items-center rounded-full bg-[#0071e3] px-[11px] text-[12px] tracking-[-0.01em] text-white transition-colors hover:bg-[#0077ed]"
+            className="inline-flex min-h-7 items-center rounded-xl bg-[#0071e3] px-[11px] text-[12px] tracking-[-0.01em] text-white transition-colors hover:bg-[#0077ed]"
           >
             Find parking
           </a>
@@ -251,7 +251,7 @@ function HowItWorks() {
             const Icon = step.icon;
             return (
               <li key={step.title} className="h-full">
-                <Reveal delay={index * 0.1} className="flex h-full flex-col rounded-[28px] bg-[#f5f5f7] p-8 md:p-10">
+                <Reveal delay={index * 0.1} className="flex h-full flex-col rounded-3xl bg-[#f5f5f7] p-8 md:p-10">
                   <Icon size={40} strokeWidth={1.5} className="text-[#0071e3]" aria-hidden="true" />
                   <p className="mt-10 text-[14px] font-semibold tracking-[-0.016em] text-[#6e6e73]">{step.eyebrow}</p>
                   <h3 className="mt-1 text-[28px] font-semibold leading-[1.14] tracking-[0.007em] text-[#1d1d1f]">{step.title}</h3>
@@ -264,7 +264,7 @@ function HowItWorks() {
 
         {/* Owner bento tile */}
         <Reveal className="mt-5">
-          <div className="grid overflow-hidden rounded-[28px] bg-black text-[#f5f5f7] md:grid-cols-[1.1fr_1fr]">
+          <div className="grid overflow-hidden rounded-3xl bg-black text-[#f5f5f7] md:grid-cols-[1.1fr_1fr]">
             <div className="p-8 md:p-14">
               <p className="text-[17px] font-semibold tracking-[-0.022em] text-[#30d158]">For owners</p>
               <h3 className="mt-2 text-[36px] font-semibold leading-[1.1] tracking-[-0.01em] md:text-[48px]">
@@ -326,7 +326,7 @@ function PopularStations() {
 
         {/* Segmented control */}
         <div className="mt-12 flex justify-center md:justify-start">
-          <div className="inline-flex rounded-full bg-[#e8e8ed] p-1" role="group" aria-label="Filter by line">
+          <div className="inline-flex rounded-xl bg-[#e8e8ed] p-1" role="group" aria-label="Filter by line">
             {lineFilters.map((option) => {
               const active = filter === option;
               return (
@@ -335,7 +335,7 @@ function PopularStations() {
                   type="button"
                   aria-pressed={active}
                   onClick={() => setFilter(option)}
-                  className={`rounded-full px-4 py-1.5 text-[14px] tracking-[-0.016em] transition-all duration-300 md:px-5 ${
+                  className={`rounded-lg px-4 py-1.5 text-[14px] tracking-[-0.016em] transition-all duration-300 md:px-5 ${
                     active ? 'bg-white text-[#1d1d1f] shadow-[0_1px_4px_rgba(0,0,0,0.12)]' : 'text-[#6e6e73] hover:text-[#1d1d1f]'
                   }`}
                 >
@@ -353,11 +353,11 @@ function PopularStations() {
               <li key={item.station}>
                 <a
                   href="/login?role=Commuter"
-                  className="group flex h-full flex-col rounded-[18px] bg-white p-6 transition-shadow duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)]"
+                  className="group flex h-full flex-col rounded-2xl bg-white p-6 transition-shadow duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)]"
                 >
                   <span className="inline-flex items-center gap-2 text-[12px] tracking-[-0.01em] text-[#6e6e73]">
                     <span
-                      className="grid h-5 min-w-7 place-items-center rounded-[5px] px-1 text-[10px] font-semibold"
+                      className="grid h-5 min-w-7 place-items-center rounded-md px-1 text-[10px] font-semibold"
                       style={{ backgroundColor: line.color, color: readableTextOn(line.color) }}
                     >
                       {line.short}

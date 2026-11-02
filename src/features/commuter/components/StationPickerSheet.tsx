@@ -207,7 +207,7 @@ export default function StationPickerSheet({
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Search stations or lines"
             aria-label="Search stations"
-            className="h-11 w-full rounded-[10px] bg-[rgba(118,118,128,0.12)] dark:bg-[rgba(118,118,128,0.24)] pl-9 pr-11 text-[17px] leading-none text-[#1d1d1f] dark:text-[#f2f2f7] placeholder:text-[#6e6e73] dark:placeholder:text-[#8e8e93] focus:outline-none focus:ring-2 focus:ring-[#007aff]/40"
+            className="h-11 w-full rounded-xl bg-[rgba(118,118,128,0.12)] dark:bg-[rgba(118,118,128,0.24)] pl-9 pr-11 text-[17px] leading-none text-[#1d1d1f] dark:text-[#f2f2f7] placeholder:text-[#6e6e73] dark:placeholder:text-[#8e8e93] focus:outline-none focus:ring-2 focus:ring-[#007aff]/40"
           />
           {query && (
             <button
@@ -295,7 +295,7 @@ export default function StationPickerSheet({
             <button
               type="button"
               onClick={() => onQueryChange('')}
-              className="mt-4 inline-flex h-10 items-center rounded-full bg-[#007aff] px-4 text-[15px] font-semibold text-white active:bg-[#0066d6]"
+              className="mt-4 inline-flex h-10 items-center rounded-xl bg-[#007aff] px-4 text-[15px] font-semibold text-white active:bg-[#0066d6]"
             >
               Clear search
             </button>

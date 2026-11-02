@@ -1460,7 +1460,7 @@ export default function AvailabilityScheduler({
 
   if (!activeBay) {
     return (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+      <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
         <CalendarDays className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
         <h2 className="mt-3 text-sm font-bold text-slate-800">No parking spots to configure</h2>
         <p className="mt-1 text-xs text-slate-500">Register a parking spot first, then return here to add setup details and a timetable.</p>
@@ -1482,10 +1482,10 @@ export default function AvailabilityScheduler({
 
   return (
     <div className="space-y-3 sm:space-y-5 md:space-y-6">
-      <div className="rounded-2xl border border-white/80 dark:border-white/10 bg-white/90 dark:bg-[#141417] p-2 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.38)] md:p-3">
+      <div className="rounded-3xl border border-white/80 dark:border-white/10 bg-white/90 dark:bg-[#141417] p-2 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.38)] md:p-3">
         <div className="flex flex-col gap-1.5 sm:gap-2.5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-2 px-1 sm:gap-3 sm:px-2 sm:py-1">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-blue-600 text-white shadow-sm sm:h-10 sm:w-10 sm:rounded-xl"><CalendarDays className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" /></div>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm sm:h-10 sm:w-10 sm:rounded-xl"><CalendarDays className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" /></div>
              <div className="min-w-0"><p className="hidden text-xs font-semibold text-blue-600 sm:block">Owner workspace</p><h1 className="truncate text-base font-extrabold tracking-tight text-slate-950 sm:text-lg">Configure parking</h1><p className="hidden truncate text-xs text-slate-500 md:block">Set up your listing, then choose when commuters can book it.</p></div>
           </div>
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
@@ -1561,7 +1561,7 @@ export default function AvailabilityScheduler({
       <AnimatePresence mode="wait" initial={false}>
       {section === 'setup' ? (
         <motion.section id="parking-setup-panel" role="tabpanel" aria-labelledby="parking-setup-tab" key="setup" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition}>
-          <div className="space-y-3 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/90 dark:bg-[#141417] p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] sm:space-y-5 sm:p-4 md:p-6 overflow-hidden">
+          <div className="space-y-3 rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white/90 dark:bg-[#141417] p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] sm:space-y-5 sm:p-4 md:p-6 overflow-hidden">
             <div className="hidden flex-col gap-2 sm:flex sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">Parking setup</h2>
@@ -1657,7 +1657,7 @@ export default function AvailabilityScheduler({
                 )}
                 {pendingPhotoCount > 0 && <p className="text-[11px] font-medium text-blue-600">Preparing photo preview…</p>}
                 <div className="border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => void continueFromPhotos()} disabled={pendingPhotoCount > 0 || setupBusy} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{imagesUploading ? 'Uploading photos…' : 'Continue'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                  <button type="button" onClick={() => void continueFromPhotos()} disabled={pendingPhotoCount > 0 || setupBusy} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{imagesUploading ? 'Uploading photos…' : 'Continue'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
             )}
@@ -1674,8 +1674,8 @@ export default function AvailabilityScheduler({
                   <span className="mt-1.5 block text-right text-[11px] tabular-nums text-slate-400 dark:text-slate-500">{setupForm.description.length}/500</span>
                 </label>
                 <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(1)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
-                  <button type="button" onClick={continueFromDescription} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                  <button type="button" onClick={() => setSetupStep(1)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
+                  <button type="button" onClick={continueFromDescription} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
             )}
@@ -1733,8 +1733,8 @@ export default function AvailabilityScheduler({
                   </div>
                 </div>
                 <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(2)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
-                  <button type="button" onClick={() => void continueFromPricing()} disabled={setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{setupSaving ? 'Saving…' : 'Save & review'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                  <button type="button" onClick={() => setSetupStep(2)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
+                  <button type="button" onClick={() => void continueFromPricing()} disabled={setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{setupSaving ? 'Saving…' : 'Save & review'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
             )}
@@ -1757,8 +1757,8 @@ export default function AvailabilityScheduler({
                   </div>
                 </div>
                 <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(3)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Edit</button>
-                  <button type="button" onClick={continueToPublish} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                  <button type="button" onClick={() => setSetupStep(3)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Edit</button>
+                  <button type="button" onClick={continueToPublish} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
             )}
@@ -1769,8 +1769,8 @@ export default function AvailabilityScheduler({
                 <div><h3 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">{activeSetup.published ? 'Your parking is live' : 'Ready to publish'}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500 dark:text-[#A1A1AA]">{activeSetup.published ? 'Commuters can now see this listing. Open bookable dates in the availability timetable.' : 'Publishing makes this listing visible. Dates remain closed until you open them in the timetable.'}</p></div>
                 <div className="mx-auto grid max-w-md grid-cols-3 gap-2"><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><ImagePlus className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">{setupPhotos.length} photos</p></div><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><FileText className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Details ready</p></div><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><Car className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Rates set</p></div></div>
                 <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  {!activeSetup.published && <button type="button" onClick={() => setSetupStep(4)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>}
-                  {activeSetup.published ? <button type="button" onClick={() => setSection('timetable')} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700"><CalendarRange className="h-4 w-4" aria-hidden="true" /> Set availability</button> : <button type="button" onClick={() => void handlePublish()} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" aria-hidden="true" /> {publishing ? 'Publishing…' : 'Publish listing'}</button>}
+                  {!activeSetup.published && <button type="button" onClick={() => setSetupStep(4)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>}
+                  {activeSetup.published ? <button type="button" onClick={() => setSection('timetable')} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700"><CalendarRange className="h-4 w-4" aria-hidden="true" /> Set availability</button> : <button type="button" onClick={() => void handlePublish()} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" aria-hidden="true" /> {publishing ? 'Publishing…' : 'Publish listing'}</button>}
                 </div>
               </motion.div>
             )}
@@ -1789,7 +1789,7 @@ export default function AvailabilityScheduler({
               }}
             />
           )}
-       <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
+       <div className="rounded-3xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div><h2 className="text-base font-bold text-slate-900">Availability timetable</h2><p className="mt-1 text-xs leading-relaxed text-slate-500">Select a day to inspect it, then explicitly open or close it. Future dates start closed; booked dates stay locked.</p></div>
               <div className="flex flex-wrap gap-2" aria-label="Availability legend">
@@ -1849,7 +1849,7 @@ export default function AvailabilityScheduler({
             </aside>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
+          <div className="rounded-3xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">

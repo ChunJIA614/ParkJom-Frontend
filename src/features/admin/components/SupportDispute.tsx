@@ -193,7 +193,7 @@ export default function SupportDispute({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-[72vh]">
         
         {/* Left: Tickets Queue List (1 col) */}
-        <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between overflow-hidden">
           <div className="space-y-3 flex-1 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Disputes Register</h3>
@@ -269,7 +269,7 @@ export default function SupportDispute({
                MODE: CREATE NEW SYSTEMATIC DISPUTE APPLICATION FORM (OWNER)
                ========================================================== */
             <>
-              <div className="md:col-span-2 bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm flex flex-col justify-between h-full overflow-hidden">
+              <div className="md:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col justify-between h-full overflow-hidden">
                 <div className="flex flex-col h-full justify-between overflow-hidden">
                   
                   {/* Header */}
@@ -296,7 +296,7 @@ export default function SupportDispute({
                             placeholder="e.g. Tan Kah Seng"
                             value={newUserName}
                             onChange={(e) => setNewUserName(e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
+                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
                           />
                         </div>
                         <div className="space-y-1">
@@ -307,7 +307,7 @@ export default function SupportDispute({
                             placeholder="e.g. tan.ks@gmail.com"
                             value={newUserEmail}
                             onChange={(e) => setNewUserEmail(e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
+                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
                           />
                         </div>
                       </div>
@@ -324,7 +324,7 @@ export default function SupportDispute({
                             placeholder="e.g. BKG-2026-1024"
                             value={newBookingId}
                             onChange={(e) => setNewBookingId(e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
+                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
                           />
                         </div>
                         <div className="space-y-1">
@@ -332,7 +332,7 @@ export default function SupportDispute({
                           <SystemSelect 
                             value={newCategory}
                             onChange={(e) => setNewCategory(e.target.value as any)}
-                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
+                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
                           >
                             <option value="hardware">Hardware / Bluetooth Bollard Malfunction</option>
                             <option value="payment">Billing / Refund / Double Charging</option>
@@ -355,7 +355,7 @@ export default function SupportDispute({
                             placeholder="e.g. Subang SS15 Bay 12 Bluetooth Synced command failed"
                             value={newSubject}
                             onChange={(e) => setNewSubject(e.target.value)}
-                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
+                            className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden"
                           />
                         </div>
                         <div className="space-y-1">
@@ -366,7 +366,7 @@ export default function SupportDispute({
                             placeholder="Provide a precise systematic sequence of what occurred, including local physical observations on site..."
                             value={newDescription}
                             onChange={(e) => setNewDescription(e.target.value)}
-                            className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden resize-none leading-relaxed"
+                            className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-2xl text-slate-700 focus:ring-1 focus:ring-[#2563EB] focus:outline-hidden resize-none leading-relaxed"
                           />
                         </div>
                       </div>
@@ -410,7 +410,7 @@ export default function SupportDispute({
                     <button 
                       type="submit"
                       disabled={!newSubject.trim() || !newDescription.trim() || !newUserName.trim() || !newUserEmail.trim() || !newDecl1 || !newDecl2 || !newDecl3}
-                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <CheckSquare className="w-4 h-4" /> Certify & Submit Application Form
                     </button>
@@ -419,7 +419,7 @@ export default function SupportDispute({
               </div>
 
               {/* Guide sidebar on Right */}
-              <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm h-full flex flex-col justify-between overflow-hidden">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm h-full flex flex-col justify-between overflow-hidden">
                 <div className="space-y-4">
                   <div className="flex items-center gap-1.5 border-b border-slate-100 pb-2">
                     <Info className="w-4 h-4 text-slate-500" />
@@ -448,7 +448,7 @@ export default function SupportDispute({
 
                 <button 
                   onClick={() => setIsCreatingTicket(false)}
-                  className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                  className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel & Return
                 </button>
@@ -460,7 +460,7 @@ export default function SupportDispute({
                ========================================================== */
             <>
               {/* Main Systematic Form Viewer (takes 2 of the 3 cols) */}
-              <div className="md:col-span-2 bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between h-full overflow-hidden">
+              <div className="md:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between h-full overflow-hidden">
                 {selectedTicket ? (
                   <div className="flex flex-col h-full justify-between overflow-hidden">
                     {/* Header: Official Document style */}
@@ -573,11 +573,11 @@ export default function SupportDispute({
                             placeholder="Add compliance assessment notes, physical inspection details, or instructions..." 
                             value={chatMessage}
                             onChange={(e) => setChatMessage(e.target.value)}
-                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-[#2563EB]"
+                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-1 focus:ring-[#2563EB]"
                           />
                           <button 
                             type="submit"
-                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
                           >
                             <Send className="w-3.5 h-3.5" /> Commit Note
                           </button>
@@ -598,7 +598,7 @@ export default function SupportDispute({
               </div>
 
               {/* Right: Quick Action Controls (takes 1 col) */}
-              <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between h-full overflow-hidden">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex flex-col justify-between h-full overflow-hidden">
                 {selectedTicket ? (
                   <div className="space-y-4 flex-1 flex flex-col justify-between">
                     <div className="space-y-4">
@@ -619,7 +619,7 @@ export default function SupportDispute({
                           <button 
                             onClick={() => handleRemoteOverrideBypass(selectedTicket)}
                             disabled={selectedTicket.status === 'resolved'}
-                            className="w-full py-2.5 bg-[#2563EB]/5 hover:bg-[#2563EB]/10 text-[#2563EB] text-xs font-semibold rounded-lg border border-[#2563EB]/10 text-left px-3 flex items-center justify-between disabled:opacity-50 cursor-pointer"
+                            className="w-full py-2.5 bg-[#2563EB]/5 hover:bg-[#2563EB]/10 text-[#2563EB] text-xs font-semibold rounded-xl border border-[#2563EB]/10 text-left px-3 flex items-center justify-between disabled:opacity-50 cursor-pointer"
                           >
                             <span>Lower Bollard SS15-01</span>
                             <ArrowRight className="w-3.5 h-3.5" />
@@ -633,7 +633,7 @@ export default function SupportDispute({
                             <button 
                               onClick={() => handleIssueRefund(selectedTicket)}
                               disabled={refundProcessing || selectedTicket.status === 'resolved'}
-                              className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-lg border border-rose-100/60 text-left px-3 flex items-center justify-between disabled:opacity-50 cursor-pointer"
+                              className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-xl border border-rose-100/60 text-left px-3 flex items-center justify-between disabled:opacity-50 cursor-pointer"
                             >
                               {refundProcessing ? (
                                 <span>Refunding...</span>
@@ -653,7 +653,7 @@ export default function SupportDispute({
                     {selectedTicket.status !== 'resolved' && (
                       <button 
                         onClick={() => handleResolveTicket(selectedTicket.id)}
-                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <CheckCircle2 className="w-4 h-4" /> Close Application (Resolve)
                       </button>

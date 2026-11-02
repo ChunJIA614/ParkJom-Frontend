@@ -1241,7 +1241,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] lg:grid lg:min-h-[620px] lg:grid-cols-[340px_minmax(0,1fr)]">
+      <section className="overflow-hidden rounded-3xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] lg:grid lg:min-h-[620px] lg:grid-cols-[340px_minmax(0,1fr)]">
         {/* Left: Incident Queue */}
         <div className={cn('flex flex-col border-b border-black/[0.06] lg:border-b-0 lg:border-r bg-white', mobileIncidentDetailOpen ? 'hidden lg:flex' : 'flex')}>
           <div className="p-3.5 border-b border-black/[0.06] space-y-2">
@@ -1688,7 +1688,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Create Operational Incident Modal ── */}
       {createIncidentOpen && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <Siren className="h-4 w-4 text-[#1D1D1F]" />
@@ -1828,7 +1828,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Assign Incident Responder Modal ── */}
       {assignIncidentOpen && selectedIncidentDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-[#1D1D1F]" />
@@ -1897,7 +1897,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Remote Gate Access Override Modal ── */}
       {overrideModalOpen && selectedIncidentDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <KeyRound className="h-4 w-4 text-[#1D1D1F]" />
@@ -2000,7 +2000,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Transition Incident Status Modal ── */}
       {transitionIncidentOpen && selectedIncidentDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-[#1D1D1F]" />
@@ -2068,7 +2068,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Link Support Ticket to Incident Modal ── */}
       {linkTicketOpen && selectedIncidentDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <Link2 className="h-4 w-4 text-[#1D1D1F]" />
@@ -2159,7 +2159,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       </div>
 
       {/* Main Split Section */}
-      <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] lg:grid lg:min-h-[620px] lg:grid-cols-[340px_minmax(0,1fr)]">
+      <section className="overflow-hidden rounded-3xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] lg:grid lg:min-h-[620px] lg:grid-cols-[340px_minmax(0,1fr)]">
         {/* Left: Dispute Queue List */}
         <div className={cn('flex flex-col border-b border-black/[0.06] lg:border-b-0 lg:border-r bg-white', mobileDisputeDetailOpen ? 'hidden lg:flex' : 'flex')}>
           <div className="p-3.5 border-b border-black/[0.06] space-y-2">
@@ -2624,7 +2624,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Assign Dispute Modal ── */}
       {assignDisputeOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-[#1D1D1F]" />
@@ -2705,7 +2705,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Request Customer Evidence Modal ── */}
       {requestEvidenceOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <Send className="h-4 w-4 text-[#1D1D1F]" />
@@ -2784,7 +2784,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Admin Upload Evidence Modal ── */}
       {uploadDisputeEvidenceOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <UploadCloud className="h-4 w-4 text-[#1D1D1F]" />
@@ -2862,7 +2862,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Finalize Dispute Decision Modal ── */}
       {decisionDisputeOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-[#1D1D1F]" />
@@ -2944,7 +2944,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
       {/* ── Link Ticket to Dispute Modal ── */}
       {linkTicketDisputeOpen && selectedDisputeDetail && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <Link2 className="h-4 w-4 text-[#1D1D1F]" />
@@ -3315,7 +3315,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         {/* ── Test Alert Notification Modal ── */}
         {testAlertOpen && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4">
+            <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4">
               <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
                 <div className="flex items-center gap-2">
                   <Bell className="h-4 w-4 text-[#1D1D1F]" />
@@ -3406,7 +3406,7 @@ export default function AdminSupportDashboard({ viewer, ticketWorkspace }: Admin
         {/* ── Configure Escalation Policy Modal ── */}
         {editPolicyOpen && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl border border-black/[0.08] space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-black/[0.08] space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
                 <div className="flex items-center gap-2">
                   <Sliders className="h-4 w-4 text-[#1D1D1F]" />

@@ -1,12 +1,13 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Navigation, ShieldCheck,
   Car, Wifi, CreditCard,
   Loader2, Calendar, AlertTriangle,
-  Heart,
+  Heart, Copy, Check,
   ChevronLeft, ChevronRight, MessageSquare, Pencil, Star, Trash2,
+  Share2,
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -144,6 +145,14 @@ export default function ParkingDetail() {
   );
   const spot = fetchedSpot ?? (stateSpotMatchesRoute ? state?.spot ?? null : null);
   const [activeTab, setActiveTab] = useState<DetailTab>('reserve');
+  const [isLinkCopied, setIsLinkCopied] = useState(false);
+  const handleShare = () => {
+    if (navigator?.clipboard) {
+      void navigator.clipboard.writeText(window.location.href);
+      setIsLinkCopied(true);
+      setTimeout(() => setIsLinkCopied(false), 2200);
+    }
+  };
   const stateStationCoords = state?.stationCoords ?? null;
   const [resolvedStationCoords, setResolvedStationCoords] = useState<{ lat: number; lon: number } | null>(stateStationCoords);
   const rawStateStation = state?.stationName && state.stationName !== 'Your location'
@@ -265,6 +274,7 @@ export default function ParkingDetail() {
   const [isBookingLoading, setIsBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [reservationReady, setReservationReady] = useState(false);
+  const [copiedRef, setCopiedRef] = useState(false);
   const [isFavorite, setIsFavorite] = useState(() => Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
   const [isFavoriteLoading, setIsFavoriteLoading] = useState(false);
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
@@ -667,23 +677,63 @@ export default function ParkingDetail() {
 
   const isDateAvailable = (dateKey: string) => dateKey >= minimumBookingDate && Boolean(getAvailabilityForDate(dateKey));
 
-  const isRangeAvailable = (fromDate: string, toDate: string) => {
-    if (!fromDate || !toDate || toDate < fromDate) return false;
-
+  const getDatesBetween = (fromDate: string, toDate: string) => {
+    if (!fromDate || !toDate || toDate < fromDate) return [];
+    const dates: string[] = [];
     let cursor = dateFromKey(fromDate);
     const lastDate = dateFromKey(toDate);
     while (cursor <= lastDate) {
-      if (!isDateAvailable(toDateInput(cursor))) return false;
+      dates.push(toDateInput(cursor));
       cursor = addDays(cursor, 1);
     }
-    return true;
+    return dates;
   };
+
+  const getOpenDatesInRange = (fromDate: string, toDate: string) => {
+    return getDatesBetween(fromDate, toDate).filter((dateKey) => isDateAvailable(dateKey));
+  };
+
+  const getNextAvailableDate = (fromDateKey: string): string | null => {
+    let cursor = dateFromKey(fromDateKey);
+    for (let i = 1; i <= 31; i++) {
+      cursor = addDays(cursor, 1);
+      const candidate = toDateInput(cursor);
+      if (isDateAvailable(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
+  const getPreviousAvailableDate = (fromDateKey: string): string | null => {
+    let cursor = dateFromKey(fromDateKey);
+    for (let i = 1; i <= 31; i++) {
+      cursor = addDays(cursor, -1);
+      const candidate = toDateInput(cursor);
+      if (candidate < minimumBookingDate) break;
+      if (isDateAvailable(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
+  const openDaysInRange = useMemo(() => {
+    if (!startDate || !endDate || endDate < startDate) return [];
+    return getOpenDatesInRange(startDate, endDate);
+  }, [startDate, endDate, availabilityByMonth]);
+
+  const closedDaysInRangeCount = useMemo(() => {
+    if (!startDate || !endDate || endDate < startDate) return 0;
+    const totalDays = getDatesBetween(startDate, endDate).length;
+    return Math.max(0, totalDays - openDaysInRange.length);
+  }, [startDate, endDate, openDaysInRange]);
 
   const invalidDates = !startDate
     || !endDate
     || endDate < startDate
     || startDate < minimumBookingDate
-    || !isRangeAvailable(startDate, endDate);
+    || openDaysInRange.length === 0;
   const displayedRate = quote?.ratePerDay ?? spot.dailyRate ?? 0;
   const displayedTotal = quote?.rentalSubtotal ?? 0;
 
@@ -692,49 +742,64 @@ export default function ParkingDetail() {
       ? 'Choose an end date on or after the start date.'
       : startDate < minimumBookingDate
         ? `Bookings open from ${formatDateKey(minimumBookingDate)}.`
-        : !isRangeAvailable(startDate, endDate)
-          ? 'Choose a continuous range where every day is available.'
+        : openDaysInRange.length === 0
+          ? 'No open booking dates are available within this range.'
           : null
     : null;
 
-  const handleDateSelection = (dateKey: string) => {
-    if (!isDateAvailable(dateKey)) return;
+  const handleDateSelection = (rawDateKey: string) => {
+    if (isAvailabilityLoading) return;
+    if (rawDateKey < minimumBookingDate) {
+      setDateSelectionError(`Bookings open from ${formatDateKey(minimumBookingDate)}.`);
+      return;
+    }
 
     setQuote(null);
     setBookingError(null);
     setDateSelectionError(null);
     idempotencyKeyRef.current = null;
 
+    let targetDateKey = rawDateKey;
+
+    // If the clicked date is closed (e.g. weekend is closed):
+    if (!isDateAvailable(targetDateKey)) {
+      // Automatically ignore the closed date and continue with next week's open date
+      const nextOpen = getNextAvailableDate(targetDateKey);
+      if (nextOpen) {
+        targetDateKey = nextOpen;
+      } else {
+        const prevOpen = getPreviousAvailableDate(targetDateKey);
+        if (prevOpen && (!startDate || prevOpen >= startDate)) {
+          targetDateKey = prevOpen;
+        } else {
+          setDateSelectionError(`${formatDateKey(rawDateKey)} is not open for booking.`);
+          return;
+        }
+      }
+    }
+
     if (!startDate) {
-      setStartDate(dateKey);
+      setStartDate(targetDateKey);
       setEndDate('');
       return;
     }
 
     if (!endDate) {
-      if (dateKey >= startDate) {
-        if (!isRangeAvailable(startDate, dateKey)) {
-          setDateSelectionError('Choose a continuous range where every day is available.');
-          return;
-        }
-        setEndDate(dateKey);
+      if (targetDateKey >= startDate) {
+        setEndDate(targetDateKey);
         return;
       }
-      setStartDate(dateKey);
+      setStartDate(targetDateKey);
       setEndDate('');
       return;
     }
 
-    if (startDate === endDate && dateKey > startDate) {
-      if (!isRangeAvailable(startDate, dateKey)) {
-        setDateSelectionError('Choose a continuous range where every day is available.');
-        return;
-      }
-      setEndDate(dateKey);
+    if (startDate === endDate && targetDateKey > startDate) {
+      setEndDate(targetDateKey);
       return;
     }
 
-    setStartDate(dateKey);
+    setStartDate(targetDateKey);
     setEndDate('');
   };
 
@@ -806,6 +871,7 @@ export default function ParkingDetail() {
   };
 
   if (reservationReady) {
+    const spotPhoto = spot.primaryImageUrl || spot.photoUrl || 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80';
     return (
       <div className="page-shell text-[#1d1d1f] dark:text-white">
         <DashboardHeader
@@ -814,31 +880,158 @@ export default function ParkingDetail() {
           onSignOut={() => { logout(); navigate('/'); }}
           onBrandClick={() => navigate('/commuter', { replace: true, state: { activeTab: 'home' } })}
         />
-        <main className="max-w-xl mx-auto px-4 py-10 md:py-16">
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 overflow-hidden shadow-2xl">
-            <div className="bg-[#18181C] text-white p-6 md:p-8 border-b border-black/[0.08] dark:border-white/10">
-              <div className="w-12 h-12 rounded-2xl bg-[#34c759] dark:bg-[#30D158] flex items-center justify-center mb-6 shadow-sm">
-                <ShieldCheck size={26} className="text-white" />
+        <main className="max-w-xl mx-auto px-4 py-8 md:py-12">
+          {/* Back link */}
+          <button
+            type="button"
+            onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })}
+            className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white cursor-pointer transition"
+          >
+            <ArrowLeft size={15} /> Back to dashboard
+          </button>
+
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 overflow-hidden shadow-xl">
+            {/* Minimalist Hero Image Card (Airbnb Style) */}
+            <div className="relative aspect-[16/9] w-full overflow-hidden bg-slate-100 dark:bg-white/5 border-b border-black/[0.06] dark:border-white/10">
+              <img
+                src={spotPhoto}
+                alt={spot.propertyName || spot.name || 'Parking bay'}
+                className="h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+              <div className="absolute top-4 left-4">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500 text-white shadow-sm backdrop-blur-md">
+                  <CheckCircle2 size={13} /> Booking Confirmed
+                </span>
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-[-0.03em] text-white">Parking Pass ready</h1>
-              <p className="text-[#6e6e73] dark:text-[#A1A1AA] text-[13px] mt-2 leading-relaxed">Your selected bay and booking time are collected in one pass for arrival and access.</p>
+              <div className="absolute bottom-4 left-4 right-4 text-white">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-white/20 backdrop-blur-md mb-1.5">
+                  Bay {spot.parkingLabel}
+                </span>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight drop-shadow-xs">
+                  {spot.propertyName || spot.name || spot.address}
+                </h1>
+                <p className="text-xs text-white/80 flex items-center gap-1 mt-0.5">
+                  <MapPin size={12} className="shrink-0" />
+                  <span>{stationName ? `Near ${stationName}` : spot.station || 'Klang Valley'}</span>
+                  {spot.distanceToStation > 0 && <span>· {(spot.distanceToStation / 1000).toFixed(2)} km</span>}
+                </p>
+              </div>
             </div>
-            <div className="p-6 md:p-8 space-y-5 bg-white dark:bg-[#1C1C1E]">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73] dark:text-[#A1A1AA]">Bay {spot.parkingLabel}</p>
-                <p className="font-bold text-base mt-1 text-[#111] dark:text-white">{spot.address}</p>
-                <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] mt-1">{stationName || 'Klang Valley transit area'}</p>
+
+            <div className="p-6 md:p-8 space-y-6">
+              {/* Airbnb Signature Twin-Box (Dates & Times) */}
+              <div className="grid grid-cols-2 rounded-2xl border border-black/[0.08] dark:border-white/10 divide-x divide-black/[0.08] dark:divide-white/10 bg-[#F9F9FB] dark:bg-white/[0.03] overflow-hidden">
+                <div className="p-4">
+                  <span className="block text-[10px] font-bold text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider">
+                    Check-in Date
+                  </span>
+                  <span className="block text-sm sm:text-base font-bold text-[#111] dark:text-white mt-1">
+                    {quote?.startDate}
+                  </span>
+                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] mt-0.5">
+                    From 12:00 AM (Full Day)
+                  </span>
+                </div>
+                <div className="p-4">
+                  <span className="block text-[10px] font-bold text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider">
+                    Check-out Date
+                  </span>
+                  <span className="block text-sm sm:text-base font-bold text-[#111] dark:text-white mt-1">
+                    {quote?.endDate}
+                  </span>
+                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] mt-0.5">
+                    {quote?.bookedDays} Day{quote?.bookedDays === 1 ? '' : 's'} Total
+                  </span>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-4 py-4 border-y border-black/[0.08] dark:border-white/10">
-                <div><p className="text-[11px] text-[#6e6e73]">Booking dates</p><p className="text-[13px] font-semibold mt-1">{quote?.startDate === quote?.endDate ? quote?.startDate : `${quote?.startDate} to ${quote?.endDate}`}</p></div>
-                <div><p className="text-[11px] font-semibold uppercase tracking-wider text-[#6e6e73] dark:text-[#A1A1AA]">Duration</p><p className="text-[13px] font-bold mt-1 text-[#111] dark:text-white">{quote?.bookedDays} day{quote?.bookedDays === 1 ? '' : 's'}</p></div>
+
+              {/* Access & Smart Gate Instructions */}
+              <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-[#F5F5F7]/80 dark:bg-[#18181C] p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-2 rounded-xl bg-white dark:bg-white/[0.08] text-[#007AFF] shadow-2xs">
+                      <Wifi size={16} />
+                    </span>
+                    <div>
+                      <h3 className="text-xs font-bold text-[#111] dark:text-white">Smart Barrier Access</h3>
+                      <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Automatic IoT gate release upon arrival</p>
+                    </div>
+                  </div>
+                  {vehicles.find(v => v.vehicleId === selectedVehicleId)?.plate && (
+                    <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-white/10 border border-black/[0.06] dark:border-white/10 text-[#111] dark:text-white">
+                      {vehicles.find(v => v.vehicleId === selectedVehicleId)?.plate}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] leading-relaxed">
+                  Drive up to the bay bollard. Use your Parking Pass or ALPR camera scanner to unlock in 1 tap.
+                </p>
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${spot.lat || spot.latitude},${spot.lng || spot.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-full items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold border border-black/[0.08] dark:border-white/14 bg-white dark:bg-[#242429] text-[#111] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#2C2C32] transition"
+                >
+                  <Navigation size={14} className="text-[#007AFF]" />
+                  Open Navigation (Google Maps)
+                </a>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] text-[#6e6e73] dark:text-[#A1A1AA]">Paid total</span>
-                <strong className="text-lg font-bold text-[#111] dark:text-white">RM {quote?.renterTotal.toFixed(2)}</strong>
+
+              {/* Price Breakdown Receipt */}
+              <div className="space-y-2.5 pt-2">
+                <div className="flex items-center justify-between text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
+                  <span>RM {quote?.ratePerDay.toFixed(2)} × {quote?.bookedDays} days</span>
+                  <span className="font-medium text-[#111] dark:text-white">RM {quote?.renterTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
+                  <span>ParkJom Service & Smart Access Fee</span>
+                  <span className="text-[#34C759] font-medium">Included</span>
+                </div>
+                <div className="border-t border-black/[0.08] dark:border-white/10 pt-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-[#111] dark:text-white">Total Paid</span>
+                  <span className="text-xl font-bold text-[#111] dark:text-white">RM {quote?.renterTotal.toFixed(2)}</span>
+                </div>
               </div>
-              <p className="text-[11px] font-mono text-[#6e6e73] dark:text-[#8E8E93] leading-relaxed">Booking reference: {confirmedBooking?.bookingReference}</p>
-              <button type="button" onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })} className="w-full min-h-12 rounded-xl bg-[#007AFF] dark:bg-[#0071E3] hover:bg-[#0066d6] dark:hover:bg-[#0077ED] text-white text-[13px] font-semibold transition-all shadow-md active:scale-[0.99] cursor-pointer">Continue to my parking pass</button>
+
+              {/* Booking Reference Pill */}
+              <div className="flex items-center justify-between rounded-xl bg-[#F5F5F7] dark:bg-[#18181C] px-3.5 py-2.5 border border-black/[0.06] dark:border-white/10 text-xs">
+                <div>
+                  <span className="block text-[10px] text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider font-semibold">Booking Reference</span>
+                  <span className="font-mono font-bold text-xs text-[#111] dark:text-white">{confirmedBooking?.bookingReference}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirmedBooking?.bookingReference) {
+                      navigator.clipboard.writeText(confirmedBooking.bookingReference);
+                      setCopiedRef(true);
+                      setTimeout(() => setCopiedRef(false), 2000);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:underline cursor-pointer"
+                >
+                  {copiedRef ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
+                </button>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })}
+                  className="w-full min-h-12 rounded-xl bg-[#007AFF] dark:bg-[#0071E3] hover:bg-[#0066d6] dark:hover:bg-[#0077ED] text-white text-[13px] font-semibold transition-all shadow-md active:scale-[0.99] cursor-pointer"
+                >
+                  Continue to my parking pass
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/commuter', { state: { activeTab: 'home' } })}
+                  className="w-full min-h-10 rounded-xl bg-transparent hover:bg-[#F5F5F7] dark:hover:bg-white/[0.06] text-[#6e6e73] dark:text-[#A1A1AA] text-xs font-semibold transition cursor-pointer"
+                >
+                  Return to Dashboard
+                </button>
+              </div>
             </div>
           </div>
         </main>
@@ -847,7 +1040,7 @@ export default function ParkingDetail() {
   }
 
   return (
-    <div className="page-shell text-[#1d1d1f] dark:text-white pb-24">
+    <div className="page-shell text-[#1d1d1f] dark:text-white min-h-screen pb-24 lg:pb-16">
       <DashboardHeader
         role="commuter"
         user={user}
@@ -855,750 +1048,1017 @@ export default function ParkingDetail() {
         onBrandClick={() => navigate('/commuter', { replace: true, state: { activeTab: 'home' } })}
       />
 
-      <div className="max-w-3xl mx-auto px-4 md:px-6 pt-6 md:pt-10">
-        <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-[13px] font-medium text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#1d1d1f] dark:hover:text-white transition-colors cursor-pointer">
-          <ArrowLeft size={17} /> Back to map
-        </button>
-      </div>
+      <main className="w-[92vw] max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 pt-4 pb-12">
+        {/* Top Navigation & Breadcrumb */}
+        <div className="flex items-center justify-between pb-3 shrink-0">
+          <button
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={16} /> Back to map
+          </button>
+          <span className="text-xs font-semibold text-[#8e8e93] dark:text-[#71717A] hidden sm:inline-flex items-center gap-1.5">
+            <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay · Instant Reservation
+          </span>
+        </div>
 
-      {/* ── Content card ── */}
-      <div className="max-w-3xl mx-auto px-4 md:px-6 mt-5 relative z-10">
-        <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-6 md:p-8 space-y-6 shadow-sm">
+        {/* ── Title & Header Info Bar (Airbnb Style) ── */}
+        <div className="space-y-1.5 pt-1 pb-4">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#111] dark:text-white tracking-[-0.02em] leading-tight break-words">
+            {spot.propertyName || spot.name || spot.address}
+          </h1>
 
-          {/* Title & Quick Overview */}
-          <div className="space-y-3">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h1 className="text-xl md:text-2xl font-bold text-[#111] dark:text-white tracking-[-0.01em] leading-tight">
-                  {spot.propertyName || spot.name || spot.address}
-                </h1>
-                {spot.address && spot.address !== (spot.propertyName || spot.name) && (
-                  <p className="mt-1 text-[13px] text-[#5f6368] dark:text-[#A1A1AA] leading-snug">
-                    {spot.address}
-                  </p>
-                )}
-                <div className="flex items-center gap-1.5 mt-2 text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
-                  <MapPin size={14} className="text-[#007AFF] shrink-0" />
-                  <span>{stationName ? `Near ${stationName}` : 'Klang Valley'}</span>
-                </div>
-              </div>
-              <button type="button" onClick={() => void handleToggleFavorite()} disabled={isFavoriteLoading || isFavoriteUpdating}
-                aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={isFavorite}
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition cursor-pointer disabled:cursor-wait disabled:opacity-70 ${isFavorite ? 'border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400' : 'border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#1E1E22] text-[#5f6368] dark:text-[#A1A1AA] hover:text-rose-500 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800'}`}>
-                {isFavoriteLoading || isFavoriteUpdating ? <Loader2 size={18} className="animate-spin text-[#007AFF]" /> : <Heart size={18} fill={isFavorite ? 'currentColor' : 'none'} />}
-              </button>
-            </div>
-
-            {/* Key Information Chips (Arranged by commuter necessity) */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-[#1E1E22] px-2.5 py-1 font-bold text-blue-700 dark:text-[#3894FF] border border-blue-100 dark:border-white/10">
-                RM {displayedRate.toFixed(2)} <span className="font-normal text-blue-600">/ day</span>
-              </span>
-              {spot.parkingLabel && (
-                <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-[#1E1E22] px-2.5 py-1 font-semibold text-slate-700 dark:text-[#E4E4E7] border border-transparent dark:border-white/10">
-                  <Car size={13} className="text-slate-500 dark:text-[#A1A1AA]" /> Bay {spot.parkingLabel}
-                </span>
-              )}
-              {calculatedWalkMinutes !== null && (
+          <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-4 text-xs sm:text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 font-bold text-[#111] dark:text-white">
+                <Star size={14} className="text-[#ff9500] fill-[#ff9500]" />
+                <span>{averageRating.toFixed(1)}</span>
+                <span className="font-normal text-[#5f6368] dark:text-[#A1A1AA]">·</span>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('route')}
-                  title="Click to view walking & transit route to station"
-                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 font-medium text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/60 hover:bg-emerald-100/70 dark:hover:bg-emerald-900/50 transition cursor-pointer"
+                  onClick={() => document.getElementById('commuter-reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="font-normal underline hover:text-[#111] dark:hover:text-white cursor-pointer"
                 >
-                  <Footprints size={13} className="text-emerald-600 dark:text-emerald-400" />
-                  <span>~{calculatedWalkMinutes} mins walk ({spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(2)} km` : walkingInfo?.distanceText || 'to station'})</span>
+                  {reviewMeta?.totalCount ?? reviews.length} reviews
                 </button>
-              )}
-              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-50 dark:bg-[#1E1E22] px-2.5 py-1 text-slate-600 dark:text-[#D4D4D8] border border-slate-200 dark:border-white/10">
-                <Wifi size={13} className="text-[#007AFF] dark:text-[#0A84FF]" /> Smart bollard access
+              </span>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1">
+                <MapPin size={14} className="text-[#007AFF] shrink-0" />
+                <span>{stationName ? `Near ${stationName}` : 'Klang Valley'}</span>
+                {spot.address && spot.address !== (spot.propertyName || spot.name) && (
+                  <span className="hidden md:inline text-[#8e8e93] dark:text-[#71717A]">({spot.address})</span>
+                )}
               </span>
             </div>
 
-            {/* ── Segmented Navigation Control (Minimal Initial Mobile Disclosure) ── */}
-            <div className="pt-2">
+            {/* Share & Save Buttons (Airbnb Top Right) */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleShare}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dadce0] dark:border-white/10 hover:bg-[#F5F5F7] dark:hover:bg-white/[0.06] text-xs font-semibold text-[#111] dark:text-white transition cursor-pointer"
+              >
+                {isLinkCopied ? (
+                  <>
+                    <Check size={14} className="text-[#34C759]" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 size={14} />
+                    <span>Share</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleToggleFavorite()}
+                disabled={isFavoriteLoading || isFavoriteUpdating}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition cursor-pointer text-xs font-semibold ${
+                  isFavorite
+                    ? 'border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400'
+                    : 'border-[#dadce0] dark:border-white/10 hover:bg-[#F5F5F7] dark:hover:bg-white/[0.06] text-[#111] dark:text-white'
+                }`}
+              >
+                {isFavoriteLoading || isFavoriteUpdating ? (
+                  <Loader2 size={14} className="animate-spin text-[#007AFF]" />
+                ) : (
+                  <Heart size={14} fill={isFavorite ? 'currentColor' : 'none'} className={isFavorite ? 'text-rose-500' : ''} />
+                )}
+                <span>{isFavorite ? 'Saved' : 'Save'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Full-Width Top Hero Banner (Airbnb listing hero spanning full container width) ── */}
+        <div className="relative aspect-[21/9] sm:aspect-[24/9] md:aspect-[2.6/1] w-full min-h-[260px] max-h-[460px] overflow-hidden rounded-2xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm mb-10">
+          <img
+            src={spot.primaryImageUrl || spot.photoUrl || 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=1200&auto=format&fit=crop&q=80'}
+            alt={spot.name || 'Parking bay'}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+          <div className="absolute top-4 left-4 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15">
+              <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
+            </span>
+          </div>
+          {spot.parkingLabel && (
+            <div className="absolute bottom-4 right-4 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15">
+                Bay {spot.parkingLabel}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {favoriteError && (
+          <div role="alert" className="mb-6 flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs text-rose-700 dark:text-rose-300">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <span>{favoriteError}</span>
+          </div>
+        )}
+
+        {/* ── Two-Column Layout Below Hero (65% Unboxed Left Column, 35% Sticky Right Booking Card) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] xl:grid-cols-[1fr_420px] gap-10 lg:gap-14 xl:gap-16 items-start">
+
+          {/* ════════ LEFT COLUMN (65% Width) - Completely Unboxed, Sits on page background ════════ */}
+          <div className="w-full space-y-8">
+            {/* 1. Property Summary & Metadata Pills */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-1">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-[#111] dark:text-white">
+                    Private parking bay · Hosted by verified owner
+                  </h2>
+                  <p className="mt-1 text-xs sm:text-sm text-[#5f6368] dark:text-[#A1A1AA]">
+                    1 dedicated bay {spot.parkingLabel ? `(${spot.parkingLabel})` : ''} · Smart IoT bollard · Transit-connected
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-full bg-[#007AFF]/10 dark:bg-[#0071E3]/20 flex items-center justify-center shrink-0 text-[#007AFF] font-bold text-base">
+                  <Car size={22} />
+                </div>
+              </div>
+
+              {/* Metadata Pills */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-1 text-xs">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-[#1E1E22] px-3.5 py-1.5 font-bold text-blue-700 dark:text-[#3894FF] border border-blue-100 dark:border-white/10">
+                  RM {displayedRate.toFixed(2)} <span className="font-normal text-blue-600">/ day</span>
+                </span>
+                {spot.parkingLabel && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-[#1E1E22] px-3.5 py-1.5 font-semibold text-slate-700 dark:text-[#E4E4E7] border border-transparent dark:border-white/10">
+                    <Car size={14} className="text-slate-500 dark:text-[#A1A1AA]" /> Bay {spot.parkingLabel}
+                  </span>
+                )}
+                {calculatedWalkMinutes !== null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('route');
+                      document.getElementById('booking-calendar-section')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    title="Click to view walking & transit route to station"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-3.5 py-1.5 font-medium text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/60 hover:bg-emerald-100/70 dark:hover:bg-emerald-900/50 transition cursor-pointer"
+                  >
+                    <Footprints size={14} className="text-emerald-600 dark:text-emerald-400" />
+                    <span>~{calculatedWalkMinutes} mins walk ({spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(2)} km` : walkingInfo?.distanceText || 'to station'})</span>
+                  </button>
+                )}
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 dark:bg-[#1E1E22] px-3.5 py-1.5 text-slate-600 dark:text-[#D4D4D8] border border-slate-200 dark:border-white/10">
+                  <Wifi size={14} className="text-[#007AFF] dark:text-[#0A84FF]" /> Smart bollard access
+                </span>
+              </div>
+
+              {/* Airbnb Signature Highlight Rows */}
+              <div className="space-y-4 pt-4">
+                <div className="flex items-start gap-4">
+                  <Wifi size={22} className="text-[#007AFF] shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-bold text-[#111] dark:text-white">Self check-in via smart bollard</h3>
+                    <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
+                      Check yourself in with the ParkJom 1-tap Bluetooth or IoT barrier pass upon arrival.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <MapPin size={22} className="text-[#007AFF] shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-bold text-[#111] dark:text-white">Great commuter location</h3>
+                    <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
+                      100% of recent commuters rated the proximity to {stationName || 'the transit station'} 5 stars.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <ShieldCheck size={22} className="text-[#34C759] shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-bold text-[#111] dark:text-white">ParkJom Verified Guarantee</h3>
+                    <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
+                      Physical spot dimensions and automated barrier hardware are verified by ParkJom specialists.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-[#e8eaed] dark:bg-white/10" />
+
+            {/* 2. PARKING SPACE DETAILS */}
+            <div className="space-y-3">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">
+                PARKING SPACE DETAILS
+              </h2>
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                {[
+                  { icon: Car, label: 'Private dedicated bay', desc: 'Reserved exclusively for your booked dates' },
+                  { icon: Wifi, label: 'Smart bollard access', desc: 'Automated entry and exit via ParkJom pass' },
+                  { icon: Navigation, label: 'Transit-adjacent', desc: 'Direct walking connectivity to train station' },
+                  { icon: ShieldCheck, label: 'Secure automated access', desc: 'Continuous sensor monitoring and protection' },
+                ].map(({ icon: Icon, label, desc }) => (
+                  <div key={label} className="p-3.5 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-[#F9F9FB] dark:bg-white/[0.03]">
+                    <div className="flex items-center gap-2">
+                      <Icon size={16} className="text-[#007AFF] shrink-0" />
+                      <span className="text-xs font-bold text-[#111] dark:text-white">{label}</span>
+                    </div>
+                    <p className="text-[11px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="h-px bg-[#e8eaed] dark:bg-white/10" />
+
+            {/* 3. ABOUT THIS SPACE */}
+            <div className="space-y-3">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">
+                ABOUT THIS SPACE
+              </h2>
+              <p className="text-sm text-[#333] dark:text-[#D4D4D8] leading-relaxed">
+                Welcome to {spot.propertyName || spot.name || 'this premier commuter parking space'}. Strategically located near {stationName || 'the transit interchange'}, this private parking bay offers commuters seamless park-and-ride accessibility.
+              </p>
+              <p className="text-sm text-[#5f6368] dark:text-[#A1A1AA] leading-relaxed">
+                ParkJom coordinates reservation confirmation, calendar synchronization, and automated IoT barrier clearance so your bay is guaranteed and ready when you arrive.
+              </p>
+            </div>
+
+            <div className="h-px bg-[#e8eaed] dark:bg-white/10" />
+
+            {/* 4. Tabs & Interactive Calendar / AI Forecast / Station Route */}
+            <div id="booking-calendar-section" className="space-y-5 pt-1 scroll-mt-20">
+              {/* Apple Segmented Control */}
               <div
                 role="tablist"
                 aria-label="Parking detail views"
-                className="grid grid-cols-3 p-1 bg-slate-100 dark:bg-[#1C1C20] rounded-xl border border-slate-200/80 dark:border-white/10 text-xs font-semibold select-none shadow-xs"
+                className="grid grid-cols-3 p-1 bg-slate-100 dark:bg-[#1C1C20] rounded-2xl border border-slate-200/80 dark:border-white/10 text-xs font-semibold select-none shadow-xs"
               >
                 <button
                   role="tab"
                   aria-selected={activeTab === 'reserve'}
                   type="button"
                   onClick={() => setActiveTab('reserve')}
-                  className={`py-2 px-2 sm:px-3 rounded-lg flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     activeTab === 'reserve'
                       ? 'bg-white dark:bg-[#28282E] text-slate-900 dark:text-white shadow-xs font-bold'
                       : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
-                  <Calendar size={14} className={activeTab === 'reserve' ? 'text-[#007AFF] dark:text-[#0A84FF]' : ''} />
-                  <span className="truncate">Reserve Bay</span>
+                  <Calendar size={15} className={activeTab === 'reserve' ? 'text-[#007AFF] dark:text-[#0A84FF]' : ''} />
+                  <span>Reserve Bay</span>
                 </button>
                 <button
                   role="tab"
                   aria-selected={activeTab === 'forecast'}
                   type="button"
                   onClick={() => setActiveTab('forecast')}
-                  className={`py-2 px-2 sm:px-3 rounded-lg flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     activeTab === 'forecast'
                       ? 'bg-white dark:bg-[#28282E] text-slate-900 dark:text-white shadow-xs font-bold'
                       : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
-                  <Sparkles size={14} className={activeTab === 'forecast' ? 'text-blue-600 dark:text-[#3894FF]' : ''} />
-                  <span className="truncate">AI Forecast</span>
+                  <Sparkles size={15} className={activeTab === 'forecast' ? 'text-blue-600 dark:text-[#3894FF]' : ''} />
+                  <span>AI Forecast</span>
                 </button>
                 <button
                   role="tab"
                   aria-selected={activeTab === 'route'}
                   type="button"
                   onClick={() => setActiveTab('route')}
-                  className={`py-2 px-2 sm:px-3 rounded-lg flex items-center justify-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     activeTab === 'route'
                       ? 'bg-white dark:bg-[#28282E] text-slate-900 dark:text-white shadow-xs font-bold'
                       : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
-                  <Compass size={14} className={activeTab === 'route' ? 'text-[#007AFF] dark:text-[#0A84FF]' : ''} />
-                  <span className="truncate">Station Route</span>
+                  <Compass size={15} className={activeTab === 'route' ? 'text-[#007AFF] dark:text-[#0A84FF]' : ''} />
+                  <span>Station Route</span>
                 </button>
               </div>
-            </div>
-          </div>
 
-          {favoriteError && (
-            <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3 text-[12px] text-rose-700 dark:text-rose-300">
-              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-              <span>{favoriteError}</span>
-            </div>
-          )}
+              {/* ── TAB 1: RESERVE BAY & UNBOXED CALENDAR ── */}
+              {activeTab === 'reserve' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base sm:text-lg font-bold text-[#111] dark:text-white">
+                        Select Booking Dates
+                      </h3>
+                      <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA]">
+                        {isAvailabilityLoading
+                          ? 'Checking spot availability…'
+                          : currentMonthAvailability
+                            ? `${currentMonthAvailability.totalAvailableDates} available days published for this period`
+                            : 'Choose dates to reserve your bay'}
+                      </p>
+                    </div>
 
-          {/* ════════ TAB 1: RESERVE BAY (Default Minimal View) ════════ */}
-          {activeTab === 'reserve' && (
-            <div className="space-y-6">
-{/* Booking dates */}
-          <div>
-            <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider mb-4 flex items-center gap-1.5">
-              <Calendar size={14} className="text-[#007AFF]" /> Select Booking Dates
-            </h3>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        aria-label="Previous month"
+                        disabled={isAvailabilityLoading || calendarMonth <= minimumCalendarMonth}
+                        onClick={() => setCalendarMonth((current) => addMonths(current, -1))}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#007AFF] hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                      >
+                        <ChevronLeft size={18} />
+                      </button>
+                      <span className="text-xs font-bold text-[#111] dark:text-white px-2">
+                        {calendarMonth.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Next month"
+                        disabled={isAvailabilityLoading}
+                        onClick={() => setCalendarMonth((current) => addMonths(current, 1))}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#007AFF] hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                      >
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
+                  </div>
 
-            <div className="rounded-2xl border border-[#e8eaed] dark:border-white/10 bg-[#fbfcfe] dark:bg-[#18181C] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[13px] font-semibold text-[#111] dark:text-white">{calendarMonth.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })}</p>
-                  <p className="mt-0.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">
-                    {isAvailabilityLoading
-                      ? 'Loading available days…'
-                      : currentMonthAvailability
-                        ? `${currentMonthAvailability.totalAvailableDates} available day${currentMonthAvailability.totalAvailableDates === 1 ? '' : 's'}`
-                        : 'Choose a month to see available days'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button type="button" aria-label="Previous month" disabled={isAvailabilityLoading || calendarMonth <= minimumCalendarMonth} onClick={() => setCalendarMonth((current) => addMonths(current, -1))} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#007AFF] hover:text-[#007AFF] dark:hover:border-[#0071E3] dark:hover:text-[#0071E3] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronLeft size={16} /></button>
-                  <button type="button" aria-label="Next month" disabled={isAvailabilityLoading} onClick={() => setCalendarMonth((current) => addMonths(current, 1))} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#007AFF] hover:text-[#007AFF] dark:hover:border-[#0071E3] dark:hover:text-[#0071E3] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronRight size={16} /></button>
-                </div>
-              </div>
+                  {/* Unboxed Calendar Grid */}
+                  <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-[#FBFBFC] dark:bg-white/[0.02] p-4 sm:p-5">
+                    <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#71717A] pb-2 border-b border-black/[0.04] dark:border-white/[0.06]" aria-hidden="true">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
+                    </div>
 
-              <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#9ca3af] dark:text-[#71717A]" aria-hidden="true">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
-              </div>
+                    <div className="mt-3 grid grid-cols-7 gap-1.5">
+                      {calendarDateKeys.map((dateKey, index) => {
+                        if (!dateKey) return <span key={`empty-${index}`} className="min-h-10 sm:min-h-11" aria-hidden="true" />;
 
-              <div className="mt-2 grid grid-cols-7 gap-1">
-                {calendarDateKeys.map((dateKey, index) => {
-                  if (!dateKey) return <span key={`empty-${index}`} className="min-h-10" aria-hidden="true" />;
+                        const isAvailable = isDateAvailable(dateKey);
+                        const isStart = dateKey === startDate;
+                        const isEnd = dateKey === endDate;
+                        const isEndpoint = isStart || isEnd;
+                        const isInCalendarSpan = Boolean(startDate && endDate && dateKey > startDate && dateKey < endDate);
+                        const isInRangeOpen = isInCalendarSpan && isAvailable;
+                        const isInRangeClosed = isInCalendarSpan && !isAvailable;
+                        const isPast = dateKey < minimumBookingDate;
+                        const isToday = dateKey === toDateInput(today);
+                        return (
+                          <button
+                            key={dateKey}
+                            type="button"
+                            disabled={isPast || isAvailabilityLoading}
+                            title={
+                              isEndpoint
+                                ? `${formatDateKey(dateKey)} (${isStart ? 'Booking Start' : 'Booking End'})`
+                                : isInRangeOpen
+                                  ? `${formatDateKey(dateKey)} (Available · Included in booking)`
+                                  : isInRangeClosed
+                                    ? `${formatDateKey(dateKey)} (Closed · Excluded from booking)`
+                                    : isAvailable
+                                      ? `${formatDateKey(dateKey)} (Available)`
+                                      : `${formatDateKey(dateKey)} (Closed · Click to continue to next open date)`
+                            }
+                            aria-label={`${formatDateKey(dateKey)}${isAvailable ? ', available' : ', closed'}${isEndpoint ? ', selected' : isInRangeOpen ? ', in booking range' : isInRangeClosed ? ', closed and excluded' : ''}`}
+                            aria-pressed={isEndpoint}
+                            onClick={() => handleDateSelection(dateKey)}
+                            className={`relative flex min-h-10 sm:min-h-11 items-center justify-center rounded-xl text-xs sm:text-[13px] font-semibold transition cursor-pointer select-none ${
+                              isEndpoint
+                                ? 'bg-[#007AFF] dark:bg-[#0071E3] text-white shadow-sm font-bold'
+                                : isInRangeOpen
+                                  ? 'bg-[#e8f0fe] dark:bg-blue-950/60 text-[#0066d6] dark:text-blue-200 font-semibold'
+                                  : isInRangeClosed
+                                    ? 'bg-slate-100/70 dark:bg-white/[0.04] text-[#8e8e93] dark:text-[#71717A] border border-dashed border-slate-300/80 dark:border-white/10 line-through decoration-slate-400 dark:decoration-white/30'
+                                    : isAvailable
+                                      ? 'bg-white dark:bg-[#1E1E22] text-[#111] dark:text-white ring-1 ring-[#e8eaed] dark:ring-white/10 hover:bg-[#e8f0fe] dark:hover:bg-[#2C2C32] hover:text-[#0066d6] dark:hover:text-white'
+                                      : isPast
+                                        ? 'cursor-not-allowed bg-transparent text-[#c7c7cc] dark:text-[#3F3F46]'
+                                        : 'bg-transparent text-[#8e8e93] dark:text-[#71717A] hover:bg-slate-100 dark:hover:bg-white/[0.05]'
+                            } ${isToday && !isEndpoint ? 'ring-2 ring-[#007AFF]/30 dark:ring-[#0071E3]/50' : ''}`}
+                          >
+                            {dateFromKey(dateKey).getDate()}
+                            {isAvailable && !isEndpoint && (
+                              <span className="absolute bottom-1 h-1 w-1 rounded-full bg-[#34c759] dark:bg-[#30D158]" aria-hidden="true" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                  const isAvailable = isDateAvailable(dateKey);
-                  const isStart = dateKey === startDate;
-                  const isEnd = dateKey === endDate;
-                  const isInRange = Boolean(startDate && endDate && dateKey > startDate && dateKey < endDate);
-                  const isToday = dateKey === toDateInput(today);
-                  return (
+                    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] pt-3 border-t border-black/[0.04] dark:border-white/[0.06]">
+                      <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#34c759] dark:bg-[#30D158]" /> Available</span>
+                      <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3]" /> Selected</span>
+                      <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#c7c7cc] dark:bg-[#52525B]" /> Unavailable / Closed</span>
+                      <span className="inline-flex items-center gap-1.5 text-slate-400 dark:text-[#71717A]"><span className="line-through decoration-slate-400">12</span> Excluded</span>
+                    </div>
+                  </div>
+
+                  {/* Range selection notices */}
+                  {startDate && !endDate && !dateSelectionError && (
+                    <div className="flex items-center justify-between gap-3 rounded-xl bg-[#f0f7ff] dark:bg-blue-950/30 p-3 border border-[#007AFF]/20 dark:border-blue-500/30">
+                      <p className="text-xs font-medium text-[#007AFF] dark:text-[#3894FF]">Choose an end date, or reserve for 1 day.</p>
+                      <button
+                        type="button"
+                        onClick={() => handleDateSelection(startDate)}
+                        className="shrink-0 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] transition active:scale-95 cursor-pointer shadow-xs"
+                      >
+                        Book 1 day ({formatDateKey(startDate)})
+                      </button>
+                    </div>
+                  )}
+
+                  {startDate && endDate && startDate === endDate && !dateSelectionError && (
+                    <p className="text-xs font-medium text-[#16a34a]">
+                      ✓ 1-day booking selected for {formatDateKey(startDate)}. Click any later date on the calendar to extend your reservation.
+                    </p>
+                  )}
+
+                  {startDate && endDate && startDate !== endDate && !dateSelectionError && !dateValidationError && (
+                    <div className="rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/40 p-3 text-xs text-emerald-800 dark:text-emerald-300">
+                      <div className="flex items-center gap-1.5 font-semibold">
+                        <span>✓</span>
+                        <span>{openDaysInRange.length} open day{openDaysInRange.length === 1 ? '' : 's'} selected ({formatDateKey(startDate)} – {formatDateKey(endDate)})</span>
+                      </div>
+                      {closedDaysInRangeCount > 0 && (
+                        <p className="mt-0.5 text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+                          {closedDaysInRangeCount} closed date{closedDaysInRangeCount === 1 ? '' : 's'} automatically excluded from pricing.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {selectedStartAvailability?.timeRanges.length ? (
+                    <p className="text-xs text-[#6e6e73] dark:text-[#A1A1AA]">Hours on {formatDateKey(startDate)}: {selectedStartAvailability.timeRanges.map((range) => `${range.from}–${range.to}`).join(', ')}</p>
+                  ) : null}
+
+                  {(dateSelectionError || dateValidationError) && (
+                    <div className="flex items-start gap-2 text-xs text-[#dc2626] dark:text-rose-400 bg-[#fef2f2] dark:bg-rose-950/30 border border-[#fecaca] dark:border-rose-900/40 rounded-xl p-3">
+                      <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                      <span>{dateSelectionError || dateValidationError}</span>
+                    </div>
+                  )}
+
+                  {/* Teasers to AI Forecast & Continuous Route */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                     <button
-                      key={dateKey}
                       type="button"
-                      disabled={!isAvailable || isAvailabilityLoading}
-                      aria-label={`${formatDateKey(dateKey)}${isAvailable ? ', available' : ', unavailable'}`}
-                      aria-pressed={isStart || isEnd}
-                      onClick={() => handleDateSelection(dateKey)}
-                      className={`relative flex min-h-10 items-center justify-center rounded-xl text-[12px] font-semibold transition cursor-pointer ${
-                        isStart || isEnd
-                          ? 'bg-[#007AFF] dark:bg-[#0071E3] text-white shadow-sm font-bold'
-                          : isInRange
-                            ? 'bg-[#e8f0fe] dark:bg-blue-950/60 text-[#0066d6] dark:text-blue-200'
-                            : isAvailable
-                              ? 'bg-white dark:bg-[#1E1E22] text-[#111] dark:text-white ring-1 ring-[#e8eaed] dark:ring-white/10 hover:bg-[#e8f0fe] dark:hover:bg-[#2C2C32] hover:text-[#0066d6] dark:hover:text-white'
-                              : 'cursor-not-allowed bg-transparent text-[#c7c7cc] dark:text-[#3F3F46]'
-                      } ${isToday && !isStart && !isEnd ? 'ring-2 ring-[#007AFF]/30 dark:ring-[#0071E3]/50' : ''}`}
+                      onClick={() => setActiveTab('forecast')}
+                      className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#18181C] hover:bg-blue-50/40 dark:hover:bg-[#1E1E24] text-left transition cursor-pointer group shadow-2xs"
                     >
-                      {dateFromKey(dateKey).getDate()}
-                      {isAvailable && !isStart && !isEnd && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-[#34c759] dark:bg-[#30D158]" aria-hidden="true" />}
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-white/[0.06] flex items-center justify-center shrink-0 text-blue-600 dark:text-[#3894FF]">
+                        <Sparkles size={16} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800 dark:text-white">AI Congestion Forecast</span>
+                          <ChevronRight size={14} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">
+                          Hourly occupancy trends and off-peak advice
+                        </p>
+                      </div>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('route')}
+                      className="flex items-start gap-3 p-3.5 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#18181C] hover:bg-emerald-50/40 dark:hover:bg-[#1E1E24] text-left transition cursor-pointer group shadow-2xs"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-white/[0.06] flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-400">
+                        <Compass size={16} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-800 dark:text-white">Continuous Station Route</span>
+                          <ChevronRight size={14} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">
+                          {calculatedWalkMinutes ? `~${calculatedWalkMinutes} min walk` : 'Walking options'} & transit to station
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── TAB 2: AI CONGESTION & AVAILABILITY FORECAST ── */}
+              {activeTab === 'forecast' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-1">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <Sparkles size={16} className="text-blue-600 dark:text-[#3894FF]" /> AI Congestion & Demand Forecast
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-[#A1A1AA] mt-0.5">
+                        Predictive hourly occupancy trends and arrival advice
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('reserve')}
+                      className="text-xs font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline cursor-pointer"
+                    >
+                      ← Back to Reserve
+                    </button>
+                  </div>
+
+                  <AiCongestionForecastCard
+                    parkingSpotId={spot.parkingSpotId}
+                    stationName={stationName || undefined}
+                    targetName={spot.propertyName || spot.address}
+                    walkDistanceMeters={walkingInfo?.rawDistance ?? Math.round((spot.distanceToStation || 0.35) * 1000)}
+                    dailyRate={displayedRate}
+                  />
+
+                  <div className="pt-2 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('reserve')}
+                      className="px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-[#1E1E24] hover:bg-slate-200 dark:hover:bg-[#282830] text-slate-700 dark:text-white font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                    >
+                      <Calendar size={14} className="text-[#007AFF]" />
+                      <span>Ready to Book? Return to Booking Dates</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── TAB 3: CONTINUOUS ROUTE & MULTIMODAL JOURNEY ── */}
+              {activeTab === 'route' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-1">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <Compass size={16} className="text-[#007AFF] dark:text-[#0A84FF]" /> Continuous Route: Parking ➔ Station
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-[#A1A1AA] mt-0.5">
+                        Walking and transit options from parking bay to {stationName ? `${stationName} Station` : 'the station entrance'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('reserve')}
+                      className="text-xs font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline cursor-pointer"
+                    >
+                      ← Back to Reserve
+                    </button>
+                  </div>
+
+                  {multimodalPlan ? (
+                    <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 space-y-3 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Compass className="w-4 h-4 text-blue-600 dark:text-[#0A84FF]" />
+                          <h4 className="font-bold text-slate-900 dark:text-white text-xs">
+                            Continuous Route: Parking ➔ Station Entrance
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#121214] p-0.5 rounded-lg text-[10px] font-semibold border border-transparent dark:border-white/[0.06]">
+                          {(['balanced', 'less_walk', 'fastest'] as CommuterPreference[]).map((pref) => (
+                            <button
+                              key={pref}
+                              type="button"
+                              onClick={() => setPreference(pref)}
+                              className={`px-2 py-0.5 rounded capitalize transition cursor-pointer ${
+                                preference === pref
+                                  ? 'bg-white dark:bg-[#2C2C31] text-slate-900 dark:text-white font-bold shadow-xs'
+                                  : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
+                              }`}
+                            >
+                              {pref.replace('_', ' ')}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Itinerary Options */}
+                      {multimodalPlan.allItineraries.length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {multimodalPlan.allItineraries.map((it) => {
+                            const isSelected = it.id === (activeItineraryId || multimodalPlan.recommendedItinerary.id);
+                            return (
+                              <div
+                                key={it.id}
+                                onClick={() => setActiveItineraryId(it.id)}
+                                className={`p-2.5 rounded-xl border transition cursor-pointer relative ${
+                                  isSelected
+                                    ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 dark:border-[#0071E3]/60 text-blue-950 dark:text-blue-100 shadow-xs'
+                                    : 'bg-slate-50 dark:bg-[#141417] border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#D4D4D8] hover:bg-slate-100 dark:hover:bg-[#1E1E22]'
+                                }`}
+                              >
+                                {it.isRecommended && (
+                                  <span className="absolute -top-2 right-2 bg-emerald-600 dark:bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider flex items-center gap-0.5 shadow-xs">
+                                    <Sparkles size={8} />
+                                    Optimal
+                                  </span>
+                                )}
+                                <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900 dark:text-white">
+                                  {it.type === 'transit_feeder' ? (
+                                    <Bus size={13} className="text-emerald-600 dark:text-emerald-400" />
+                                  ) : (
+                                    <Footprints size={13} className="text-blue-600 dark:text-[#0A84FF]" />
+                                  )}
+                                  <span>{it.title}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 dark:text-[#A1A1AA] mt-1 flex items-center gap-2">
+                                  <strong className="text-slate-900 dark:text-white font-semibold">~{it.totalDurationMinutes} mins</strong>
+                                  <span>·</span>
+                                  <span>{(it.totalWalkDistanceMeters >= 1000 ? (it.totalWalkDistanceMeters / 1000).toFixed(1) + " km" : it.totalWalkDistanceMeters + "m")} walk</span>
+                                </div>
+                                {it.savingsSummary && (
+                                  <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold mt-1">
+                                    ✓ {it.savingsSummary}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Turn-by-turn Linear Journey */}
+                      {(() => {
+                        const activeIt =
+                          multimodalPlan.allItineraries.find((i) => i.id === activeItineraryId) ||
+                          multimodalPlan.recommendedItinerary;
+                        return (
+                          <div className="space-y-1.5 pt-1.5 border-t border-slate-100 dark:border-white/[0.08] text-xs">
+                            <div className="text-[10px] font-bold text-slate-400 dark:text-[#A1A1AA] uppercase tracking-wider">
+                              Turn-by-turn Linear Journey
+                            </div>
+                            {activeIt.legs.map((leg, lIdx) => (
+                              <div key={lIdx} className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 dark:bg-[#141417] border border-slate-100 dark:border-white/[0.06]">
+                                <div className="w-5 h-5 rounded-full bg-blue-600 dark:bg-[#0071E3] text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                                  {lIdx + 1}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-slate-800 dark:text-white text-[11px]">{leg.title}</div>
+                                  <p className="text-[10px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">{leg.summary}</p>
+                                  {leg.transitDetails && (
+                                    <div className="mt-1 text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded font-medium border border-emerald-200 dark:border-emerald-800/60">
+                                      Ride {leg.transitDetails.routeShortName} ({leg.transitDetails.numStops} stops) ➔ {leg.transitDetails.alightingStopName}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400 dark:text-[#8E8E93] shrink-0 font-medium">
+                                  ~{leg.durationMinutes} min
+                                </span>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-950 dark:text-emerald-200 font-semibold text-xs">
+                              <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              <span>Arrive at {activeIt.targetStationEntranceName}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : isLoadingRoute ? (
+                    <div className="bg-[#f8f9fa] dark:bg-[#18181C] border border-[#e8eaed] dark:border-white/10 rounded-xl p-4 flex items-center gap-3 text-[12px] text-[#5f6368] dark:text-[#A1A1AA]">
+                      <Loader2 size={15} className="animate-spin text-[#007AFF] shrink-0" />
+                      Calculating multimodal route via OTP engine...
+                    </div>
+                  ) : walkingInfo ? (
+                    <div className="bg-[#f0fdf4] dark:bg-emerald-950/40 border border-[#bbf7d0] dark:border-emerald-800/60 rounded-xl p-3.5 flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-[#dcfce7] flex items-center justify-center shrink-0">
+                        <Navigation size={18} className="text-[#16a34a]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-semibold text-[#15803d] dark:text-emerald-300">
+                          {walkingInfo.distanceText} &middot; {walkingInfo.durationText}
+                        </p>
+                        <p className="text-[11px] text-[#16a34a] dark:text-emerald-400">
+                          Walking distance to {stationName || 'station'}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-semibold bg-[#bbf7d0] text-[#15803d] px-2 py-0.5 rounded-full shrink-0">
+                        OSRM Verified
+                      </span>
+                    </div>
+                  ) : bayCoordinates ? (
+                    <div className="bg-[#fefce8] dark:bg-amber-950/30 border border-[#fde68a] dark:border-amber-800/40 rounded-xl p-3 text-[12px] text-[#a16207] dark:text-amber-300 flex items-center gap-2.5">
+                      <MapPin size={15} className="shrink-0" />
+                      Select a station on the map to calculate multimodal route.
+                    </div>
+                  ) : (
+                    <div className="bg-[#f8f9fa] dark:bg-[#18181C] border border-[#e8eaed] dark:border-white/10 rounded-xl p-3 text-[12px] text-[#5f6368] dark:text-[#A1A1AA] flex items-center gap-2.5">
+                      <MapPin size={15} className="shrink-0" />
+                      Route preview unavailable — this bay has no location data yet.
+                    </div>
+                  )}
+
+                  <div className="pt-2 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('reserve')}
+                      className="px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-[#1E1E24] hover:bg-slate-200 dark:hover:bg-[#282830] text-slate-700 dark:text-white font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                    >
+                      <Calendar size={14} className="text-[#007AFF]" />
+                      <span>Ready to Book? Return to Booking Dates</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="h-px bg-[#e8eaed] dark:bg-white/10" />
+
+            {/* 5. COMMUTER REVIEWS (Airbnb Style) */}
+            <section id="commuter-reviews-section" aria-labelledby="parking-reviews-title" className="space-y-4 scroll-mt-20">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">Verified stays</p>
+                  <h2 id="parking-reviews-title" className="mt-1 text-lg sm:text-xl font-bold text-[#111] dark:text-white flex items-center gap-2">
+                    <Star size={18} className="text-[#ff9500] fill-[#ff9500]" />
+                    <span>{averageRating.toFixed(1)} · {reviewMeta?.totalCount ?? reviews.length} reviews</span>
+                  </h2>
+                </div>
+              </div>
+
+              {/* Airbnb Review Category Pillars */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 border-y border-black/[0.04] dark:border-white/[0.06]">
+                <div>
+                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Overall rating</span>
+                  <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">{averageRating.toFixed(1)} / 5.0</span>
+                </div>
+                <div>
+                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Gate access</span>
+                  <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">5.0</span>
+                </div>
+                <div>
+                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Station transit</span>
+                  <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">4.9</span>
+                </div>
+                <div>
+                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Value</span>
+                  <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">5.0</span>
+                </div>
+              </div>
+
+              {reviewsLoadError && (
+                <p role="alert" className="rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-3 py-2.5 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewsLoadError}</p>
+              )}
+              {reviewDeleteError && (
+                <p role="alert" className="rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-3 py-2.5 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewDeleteError}</p>
+              )}
+
+              <div className="space-y-4 pt-1">
+                {isReviewsLoading && reviews.length === 0 && (
+                  <div className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] p-8 text-center" role="status">
+                    <Loader2 size={22} className="mx-auto animate-spin text-[#007AFF] dark:text-[#0A84FF]" />
+                    <p className="mt-2 text-xs font-medium text-[#5f6368] dark:text-[#A1A1AA]">Loading reviews…</p>
+                  </div>
+                )}
+                {!isReviewsLoading && reviews.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-[#d2d2d7] dark:border-white/12 bg-[#f8f9fa]/50 dark:bg-[#18181C]/50 p-8 text-center">
+                    <Star size={24} className="mx-auto text-[#d2d2d7] dark:text-[#71717A]" />
+                    <p className="mt-2 text-sm font-semibold text-[#5f6368] dark:text-white">No reviews yet</p>
+                    <p className="mt-0.5 text-xs text-[#8e8e93] dark:text-[#A1A1AA]">Completed commuters can be the first to review this parking spot.</p>
+                  </div>
+                )}
+                {reviews.map((review) => {
+                  const isEditing = reviewEditDraft?.reviewId === review.reviewId;
+                  const isOwnReview = review.reviewerId !== 0 && review.reviewerId === user?.userId;
+                  return (
+                    <article key={review.reviewId} className="rounded-2xl bg-[#F9F9FB] dark:bg-[#18181C]/60 border border-black/[0.04] dark:border-white/[0.06] p-4 sm:p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f0fe] dark:bg-blue-950/50 text-xs font-bold text-[#007AFF] dark:text-[#3894FF]">
+                            {review.reviewerName.charAt(0)}
+                          </span>
+                          <div>
+                            <p className="text-xs sm:text-sm font-semibold text-[#111] dark:text-white">{review.reviewerName}</p>
+                            <p className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">Verified booking · {new Date(review.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="mr-1 flex gap-0.5 text-[#ff9500]" aria-label={`${review.rating} out of 5 stars`}>
+                            {Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill={index < review.rating ? 'currentColor' : 'none'} className={index < review.rating ? '' : 'text-[#d2d2d7]'} />)}
+                          </div>
+                          {isOwnReview && !isEditing && (
+                            <>
+                              <button type="button" aria-label="Edit your review" title="Edit your review" onClick={() => startReviewEdit(review)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#e8f0fe] dark:hover:bg-white/[0.08] hover:text-[#007AFF] dark:hover:text-white cursor-pointer"><Pencil size={13} /></button>
+                              <button type="button" disabled={reviewDeletingId !== null} aria-label="Delete your review" title="Delete your review" onClick={() => void handleDeleteReview(review)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#fff2f1] dark:hover:bg-rose-950/40 hover:text-[#d92d20] dark:hover:text-rose-400 disabled:cursor-wait disabled:opacity-60 cursor-pointer">{reviewDeletingId === review.reviewId ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {isEditing && reviewEditDraft ? (
+                        <div className="mt-3 space-y-3 rounded-xl bg-white dark:bg-[#121214] p-3 ring-1 ring-black/[0.06] dark:ring-white/10">
+                          <fieldset>
+                            <legend className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Rating</legend>
+                            <div className="mt-1.5 flex gap-1 text-[#ff9500]">
+                              {Array.from({ length: 5 }, (_, index) => {
+                                const value = index + 1;
+                                return (
+                                  <button key={value} type="button" disabled={isReviewUpdating} aria-label={`Set rating to ${value} star${value === 1 ? '' : 's'}`} onClick={() => { setReviewEditDraft({ ...reviewEditDraft, rating: value }); setReviewUpdateError(null); }} className="rounded-md p-1 transition hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:cursor-wait">
+                                    <Star size={18} fill={value <= reviewEditDraft.rating ? 'currentColor' : 'none'} className={value <= reviewEditDraft.rating ? '' : 'text-[#d2d2d7] dark:text-[#52525B]'} />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <label htmlFor={`review-edit-${review.reviewId}`} className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Comment</label>
+                              <span className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewEditDraft.comment.length}/500</span>
+                            </div>
+                            <textarea id={`review-edit-${review.reviewId}`} value={reviewEditDraft.comment} maxLength={500} rows={3} disabled={isReviewUpdating} onChange={(event) => { setReviewEditDraft({ ...reviewEditDraft, comment: event.target.value }); setReviewUpdateError(null); }} className="mt-1.5 w-full resize-none rounded-2xl border border-[#d2d2d7] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#111] dark:text-white p-2.5 text-[12px] leading-5 outline-none transition focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10 disabled:cursor-wait disabled:opacity-70" />
+                          </div>
+                          {reviewUpdateError && <p role="alert" className="rounded-lg bg-[#fff2f1] dark:bg-rose-950/40 px-3 py-2 text-[11px] font-medium text-[#d92d20] dark:text-rose-400">{reviewUpdateError}</p>}
+                          <div className="flex justify-end gap-2">
+                            <button type="button" disabled={isReviewUpdating} onClick={() => { setReviewEditDraft(null); setReviewUpdateError(null); }} className="min-h-8 rounded-xl px-2.5 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#242429] disabled:cursor-wait disabled:opacity-70 cursor-pointer">Cancel</button>
+                            <button type="button" disabled={isReviewUpdating} onClick={() => void handleUpdateReview()} className="flex min-h-8 items-center gap-1.5 rounded-xl bg-[#007AFF] dark:bg-[#0071E3] px-3 text-[11px] font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] disabled:cursor-wait disabled:opacity-70 cursor-pointer">{isReviewUpdating && <Loader2 size={12} className="animate-spin" />}{isReviewUpdating ? 'Saving…' : 'Save changes'}</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="review-comment-text mt-2.5 whitespace-pre-line text-xs sm:text-[13px] leading-5 text-[#333] dark:text-[#D4D4D8]">{review.comment || 'No written comment.'}</p>
+                      )}
+
+                      {review.ownerReply && (
+                        <div className="review-owner-reply-box mt-3 rounded-xl p-3 bg-slate-100/70 dark:bg-[#121214] border border-slate-200 dark:border-white/[0.08]">
+                          <p className="review-owner-reply-title flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]"><MessageSquare size={11} /> Owner reply</p>
+                          <p className="review-owner-reply-text mt-1 text-[11px] leading-4 text-slate-700 dark:text-[#D4D4D8]">{review.ownerReply}</p>
+                        </div>
+                      )}
+                    </article>
                   );
                 })}
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-[#6e6e73] dark:text-[#A1A1AA]">
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#34c759] dark:bg-[#30D158]" /> Available</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3]" /> Selected</span>
-                <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#c7c7cc] dark:bg-[#52525B]" /> Unavailable</span>
-              </div>
-            </div>
+              {reviewMeta && reviewMeta.totalPages > 1 && (
+                <nav aria-label="Review pages" className="pt-2 flex items-center justify-between gap-3">
+                  <button type="button" disabled={reviewPage <= 1 || isReviewsLoading} onClick={() => setReviewPage((current) => Math.max(1, current - 1))} className="min-h-8 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Previous</button>
+                  <span className="text-xs font-medium text-[#8e8e93] dark:text-[#A1A1AA]">Page {reviewPage} of {reviewMeta.totalPages}</span>
+                  <button type="button" disabled={reviewPage >= reviewMeta.totalPages || isReviewsLoading} onClick={() => setReviewPage((current) => Math.min(reviewMeta.totalPages, current + 1))} className="min-h-8 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Next</button>
+                </nav>
+              )}
+              <p className="pt-1 flex items-center gap-1.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
+            </section>
+          </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/10 px-3 py-2.5">
-                <p className="text-[10px] font-medium text-[#8e8e93] dark:text-[#A1A1AA]">Start date</p>
-                <p className="mt-1 text-[12px] font-bold text-[#111] dark:text-white">{startDate ? formatDateKey(startDate) : 'Choose a date'}</p>
+          {/* ════════ RIGHT COLUMN (35% Width) - Sticky Floating Booking Card ════════ */}
+          <div className="w-full lg:sticky lg:top-8">
+            <div className="bg-white dark:bg-[#141417] rounded-3xl border border-black/[0.08] dark:border-white/10 shadow-xl lg:shadow-2xl p-6 sm:p-7 space-y-5 backdrop-blur-xl">
+              {/* Card Header: Price per day & rating snippet */}
+              <div className="flex items-baseline justify-between gap-3 pb-1 border-b border-black/[0.06] dark:border-white/[0.08]">
+                <div>
+                  <span className="text-2xl sm:text-3xl font-black text-[#111] dark:text-white">
+                    RM {displayedRate.toFixed(2)}
+                  </span>
+                  <span className="text-sm font-normal text-[#5f6368] dark:text-[#A1A1AA] ml-1">
+                    / day
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-bold text-[#111] dark:text-white">
+                  <Star size={13} className="text-[#ff9500] fill-[#ff9500]" />
+                  <span>{averageRating.toFixed(1)}</span>
+                  <span className="font-normal text-[#8e8e93] dark:text-[#71717A]">·</span>
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('commuter-reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="font-normal underline text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white cursor-pointer"
+                  >
+                    {reviewMeta?.totalCount ?? reviews.length} reviews
+                  </button>
+                </div>
               </div>
+
+              {/* Airbnb Signature Reservation Twin-Box */}
               <div
-                className={`rounded-xl px-3 py-2.5 transition border ${
-                  startDate && !endDate 
-                    ? 'cursor-pointer border-[#007AFF]/40 dark:border-[#0071E3]/50 bg-[#f0f7ff] dark:bg-blue-950/30 hover:bg-[#e4efff] dark:hover:bg-blue-950/50' 
-                    : 'bg-[#f8f9fa] dark:bg-[#18181C] border-transparent dark:border-white/10'
-                }`}
                 onClick={() => {
-                  if (startDate && !endDate) handleDateSelection(startDate);
+                  setActiveTab('reserve');
+                  document.getElementById('booking-calendar-section')?.scrollIntoView({ behavior: 'smooth' });
                 }}
+                className="grid grid-cols-2 rounded-2xl border border-black/[0.12] dark:border-white/15 divide-x divide-black/[0.12] dark:divide-white/15 overflow-hidden cursor-pointer hover:border-[#007AFF] transition bg-white dark:bg-white/[0.02]"
               >
-                <p className="text-[10px] font-medium text-[#8e8e93] dark:text-[#A1A1AA]">End date</p>
-                <p className={`mt-1 text-[12px] font-bold ${startDate && !endDate ? 'text-[#007AFF] dark:text-[#3894FF]' : 'text-[#111] dark:text-white'}`}>
-                  {endDate
-                    ? `${formatDateKey(endDate)}${startDate === endDate ? ' (1 day)' : ''}`
-                    : startDate
-                      ? 'Click for 1 day'
-                      : 'Choose a date'}
-                </p>
-              </div>
-            </div>
-
-            {isAvailabilityLoading && (
-              <p role="status" className="mt-3 flex items-center gap-2 text-[11px] font-medium text-[#5f6368] dark:text-[#A1A1AA]"><Loader2 size={13} className="animate-spin text-[#007AFF]" /> Checking this month’s availability…</p>
-            )}
-            {availabilityError && (
-              <div role="alert" className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3 text-[12px] text-rose-700 dark:text-rose-300">
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                <span>{availabilityError}</span>
-              </div>
-            )}
-            {!isAvailabilityLoading && currentMonthAvailability && currentMonthAvailability.totalAvailableDates === 0 && (
-              <p className="mt-3 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/[0.06] p-3 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">No bookable dates are published for this month. Use the arrows to check another month.</p>
-            )}
-            {startDate && !endDate && !dateSelectionError && (
-              <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-[#f0f7ff] dark:bg-blue-950/30 p-2.5 border border-[#007AFF]/20 dark:border-blue-500/30">
-                <p className="text-[11px] font-medium text-[#007AFF] dark:text-[#3894FF]">Choose an end date, or book for just 1 day.</p>
-                <button
-                  type="button"
-                  onClick={() => handleDateSelection(startDate)}
-                  className="shrink-0 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] transition active:scale-95 cursor-pointer shadow-xs"
-                >
-                  Book 1 day ({formatDateKey(startDate)})
-                </button>
-              </div>
-            )}
-            {startDate && endDate && startDate === endDate && !dateSelectionError && (
-              <p className="mt-3 text-[11px] font-medium text-[#16a34a]">
-                ✓ 1-day booking selected for {formatDateKey(startDate)}. Select a later date to extend.
-              </p>
-            )}
-            {selectedStartAvailability?.timeRanges.length ? (
-              <p className="mt-3 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Available hours on {formatDateKey(startDate)}: {selectedStartAvailability.timeRanges.map((range) => `${range.from}–${range.to}`).join(', ')}</p>
-            ) : null}
-
-            {(dateSelectionError || dateValidationError) && (
-              <div className="mt-3 flex items-start gap-2 text-[12px] text-[#dc2626] dark:text-rose-400 bg-[#fef2f2] dark:bg-rose-950/30 border border-[#fecaca] dark:border-rose-900/40 rounded-xl p-3">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                <span>{dateSelectionError || dateValidationError}</span>
-              </div>
-            )}
-
-            <div className="mt-4 space-y-1">
-              <label className="text-[11px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">Vehicle</label>
-              <SystemSelect value={selectedVehicleId ?? ''} onChange={(event) => setSelectedVehicleId(Number(event.target.value) || null)}
-                disabled={isVehiclesLoading || vehicles.length === 0}
-                className="w-full px-3 py-2.5 rounded-xl text-[12px] border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#121214] text-[#111] dark:text-white focus:outline-none focus:border-[#007AFF]">
-                {vehicles.length === 0 && <option value="">{isVehiclesLoading ? 'Loading vehicles…' : 'No vehicles available'}</option>}
-                {vehicles.map((vehicle) => (
-                  <option key={vehicle.vehicleId} value={vehicle.vehicleId}>{vehicle.plate} · {vehicle.brand} {vehicle.model}</option>
-                ))}
-              </SystemSelect>
-            </div>
-
-            {bookingError && (
-              <div className="mt-3 flex items-start gap-2 text-[12px] text-[#dc2626] dark:text-rose-400 bg-[#fef2f2] dark:bg-rose-950/30 border border-[#fecaca] dark:border-rose-900/40 rounded-xl p-3">
-                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                <span>{bookingError}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Price breakdown */}
-          {quote && (
-            <div className="space-y-2 text-[13px]">
-              <div className="flex justify-between">
-                <span className="text-[#5f6368] dark:text-[#A1A1AA]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} day{quote.bookedDays === 1 ? '' : 's'}</span>
-                <span className="font-semibold text-[#111] dark:text-white">RM {quote.rentalSubtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#5f6368] dark:text-[#A1A1AA]">10% platform fee (included)</span>
-                <span className="font-semibold text-[#111] dark:text-white">RM {quote.platformFee.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-[15px] text-[#111] dark:text-white">
-                <span>Total</span>
-                <span>RM {quote.renterTotal.toFixed(2)}</span>
-              </div>
-              <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">Quote expires {new Date(quote.expiresAt).toLocaleString('en-MY')}.</p>
-            </div>
-          )}
-
-          <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
-
-          {/* Amenities */}
-          <div>
-            <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider mb-3">Parking Space Details</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {[
-                { icon: Car, label: 'Private parking bay' },
-                { icon: Wifi, label: 'Smart bollard access' },
-                { icon: Navigation, label: 'Transit-adjacent' },
-              ].map(({ icon: Icon, label }) => (
-                <div key={label} className="flex items-center gap-2 text-[13px] text-[#5f6368] dark:text-[#D4D4D8] bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/[0.06] rounded-xl p-3">
-                  <Icon size={15} className="text-[#007AFF] shrink-0" /> {label}
+                <div className="p-3">
+                  <span className="block text-[10px] font-bold text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider">
+                    CHECK-IN
+                  </span>
+                  <span className="block text-xs sm:text-[13px] font-bold text-[#111] dark:text-white mt-0.5 truncate">
+                    {startDate ? formatDateKey(startDate) : 'Add date'}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* About */}
-          <div>
-            <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider mb-2">About This Space</h3>
-            <p className="text-[13px] text-[#5f6368] dark:text-[#D4D4D8] leading-relaxed">
-              A private parking bay offered near {stationName || 'an LRT/MRT station'}. ParkJom coordinates the reservation and smart-bollard access flow for the parking session.
-            </p>
-          </div>
-
-
-              {/* Quick Intelligence Teasers / Direct links to Forecast and Route */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('forecast');
-                    window.scrollTo({ top: 300, behavior: 'smooth' });
-                  }}
-                  className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] hover:bg-blue-50/50 dark:hover:bg-[#1E1E24] text-left transition cursor-pointer group"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-white/[0.06] flex items-center justify-center shrink-0 text-blue-600 dark:text-[#3894FF]">
-                    <Sparkles size={16} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 dark:text-white">AI Congestion Forecast</span>
-                      <ChevronRight size={14} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5 line-clamp-1">
-                      Off-peak arrival insights & occupancy predictions
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('route');
-                    window.scrollTo({ top: 300, behavior: 'smooth' });
-                  }}
-                  className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200/80 dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] hover:bg-emerald-50/50 dark:hover:bg-[#1E1E24] text-left transition cursor-pointer group"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-white/[0.06] flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-400">
-                    <Compass size={16} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 dark:text-white">Continuous Station Route</span>
-                      <ChevronRight size={14} className="text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5 line-clamp-1">
-                      {calculatedWalkMinutes ? `~${calculatedWalkMinutes} min walk` : 'Walking'} & transit options to station
-                    </p>
-                  </div>
-                </button>
-              </div>
-
-              <div className="h-px bg-[#e8eaed] dark:bg-white/[0.08]" />
-
-
-{/* Reviews */}
-          <section aria-labelledby="parking-reviews-title">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">Verified stays</p>
-                <h2 id="parking-reviews-title" className="mt-1 text-[17px] font-bold text-[#111] dark:text-white">Commuter reviews</h2>
-              </div>
-              <div className="text-right">
-                <div className="flex items-center justify-end gap-1 text-[#ff9500]"><Star size={16} fill="currentColor" /><strong className="text-[15px] text-[#111] dark:text-white">{averageRating.toFixed(1)}</strong></div>
-                <p className="mt-0.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewMeta?.totalCount ?? reviews.length} verified reviews</p>
-              </div>
-            </div>
-
-            {reviewsLoadError && (
-              <p role="alert" className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewsLoadError}</p>
-            )}
-            {reviewDeleteError && (
-              <p role="alert" className="mt-4 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewDeleteError}</p>
-            )}
-
-            <div className="mt-4 space-y-3">
-              {isReviewsLoading && reviews.length === 0 && (
-                <div className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] p-8 text-center" role="status"><Loader2 size={24} className="mx-auto animate-spin text-[#007AFF] dark:text-[#0A84FF]" /><p className="mt-3 text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">Loading reviews…</p></div>
-              )}
-              {!isReviewsLoading && reviews.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-[#d2d2d7] dark:border-white/12 bg-[#f8f9fa]/50 dark:bg-[#18181C]/50 p-8 text-center"><Star size={25} className="mx-auto text-[#d2d2d7] dark:text-[#71717A]" /><p className="mt-3 text-[12px] font-semibold text-[#5f6368] dark:text-white">No reviews yet</p><p className="mt-1 text-[11px] text-[#8e8e93] dark:text-[#A1A1AA]">Completed commuters can be the first to review this parking spot.</p></div>
-              )}
-              {reviews.map((review) => {
-                const isEditing = reviewEditDraft?.reviewId === review.reviewId;
-                const isOwnReview = review.reviewerId !== 0 && review.reviewerId === user?.userId;
-                return (
-                  <article key={review.reviewId} className="rounded-2xl bg-[#f8f9fa] dark:bg-[#18181C] border border-transparent dark:border-white/[0.06] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#e8f0fe] dark:bg-blue-950/50 text-[11px] font-bold text-[#007AFF] dark:text-[#3894FF]">{review.reviewerName.charAt(0)}</span>
-                        <div><p className="text-[12px] font-semibold text-[#111] dark:text-white">{review.reviewerName}</p><p className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">Verified booking · {new Date(review.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}</p></div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="mr-1 flex gap-0.5 text-[#ff9500]" aria-label={`${review.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} size={12} fill={index < review.rating ? 'currentColor' : 'none'} className={index < review.rating ? '' : 'text-[#d2d2d7]'} />)}</div>
-                        {isOwnReview && !isEditing && (
-                          <>
-                            <button type="button" aria-label="Edit your review" title="Edit your review" onClick={() => startReviewEdit(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#e8f0fe] dark:hover:bg-white/[0.08] hover:text-[#007AFF] dark:hover:text-white cursor-pointer"><Pencil size={14} /></button>
-                            <button type="button" disabled={reviewDeletingId !== null} aria-label="Delete your review" title="Delete your review" onClick={() => void handleDeleteReview(review)} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#fff2f1] dark:hover:bg-rose-950/40 hover:text-[#d92d20] dark:hover:text-rose-400 disabled:cursor-wait disabled:opacity-60 cursor-pointer">{reviewDeletingId === review.reviewId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}</button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {isEditing && reviewEditDraft ? (
-                      <div className="mt-4 space-y-3 rounded-xl bg-white dark:bg-[#121214] p-3 ring-1 ring-black/[0.06] dark:ring-white/10">
-                        <fieldset>
-                          <legend className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Rating</legend>
-                          <div className="mt-2 flex gap-1 text-[#ff9500]">
-                            {Array.from({ length: 5 }, (_, index) => {
-                              const value = index + 1;
-                              return <button key={value} type="button" disabled={isReviewUpdating} aria-label={`Set rating to ${value} star${value === 1 ? '' : 's'}`} onClick={() => { setReviewEditDraft({ ...reviewEditDraft, rating: value }); setReviewUpdateError(null); }} className="rounded-md p-1 transition hover:bg-amber-50 dark:hover:bg-amber-950/30 disabled:cursor-wait"><Star size={21} fill={value <= reviewEditDraft.rating ? 'currentColor' : 'none'} className={value <= reviewEditDraft.rating ? '' : 'text-[#d2d2d7] dark:text-[#52525B]'} /></button>;
-                            })}
-                          </div>
-                        </fieldset>
-                        <div>
-                          <div className="flex items-center justify-between"><label htmlFor={`review-edit-${review.reviewId}`} className="text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]">Comment</label><span className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">{reviewEditDraft.comment.length}/500</span></div>
-                          <textarea id={`review-edit-${review.reviewId}`} value={reviewEditDraft.comment} maxLength={500} rows={4} disabled={isReviewUpdating} onChange={(event) => { setReviewEditDraft({ ...reviewEditDraft, comment: event.target.value }); setReviewUpdateError(null); }} className="mt-2 w-full resize-none rounded-xl border border-[#d2d2d7] dark:border-white/10 bg-white dark:bg-[#18181C] text-[#111] dark:text-white p-3 text-[12px] leading-5 outline-none transition focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10 disabled:cursor-wait disabled:opacity-70" />
-                        </div>
-                        {reviewUpdateError && <p role="alert" className="rounded-lg bg-[#fff2f1] dark:bg-rose-950/40 px-3 py-2 text-[11px] font-medium text-[#d92d20] dark:text-rose-400">{reviewUpdateError}</p>}
-                        <div className="flex justify-end gap-2">
-                          <button type="button" disabled={isReviewUpdating} onClick={() => { setReviewEditDraft(null); setReviewUpdateError(null); }} className="min-h-9 rounded-lg px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#242429] disabled:cursor-wait disabled:opacity-70 cursor-pointer">Cancel</button>
-                          <button type="button" disabled={isReviewUpdating} onClick={() => void handleUpdateReview()} className="flex min-h-9 items-center gap-1.5 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-3 text-[11px] font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] disabled:cursor-wait disabled:opacity-70 cursor-pointer">{isReviewUpdating && <Loader2 size={13} className="animate-spin" />}{isReviewUpdating ? 'Saving…' : 'Save changes'}</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="review-comment-text mt-3 whitespace-pre-line text-[12px] leading-5 text-[#333] dark:text-[#D4D4D8]">{review.comment || 'No written comment.'}</p>
-                    )}
-
-                    {review.ownerReply && (
-                      <div className="review-owner-reply-box mt-3 rounded-xl p-3 bg-slate-100/70 dark:bg-[#121214] border border-slate-200 dark:border-white/[0.08]">
-                        <p className="review-owner-reply-title flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]"><MessageSquare size={11} /> Owner reply</p>
-                        <p className="review-owner-reply-text mt-1 text-[11px] leading-4 text-slate-700 dark:text-[#D4D4D8]">{review.ownerReply}</p>
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-            {reviewMeta && reviewMeta.totalPages > 1 && (
-              <nav aria-label="Review pages" className="mt-4 flex items-center justify-between gap-3">
-                <button type="button" disabled={reviewPage <= 1 || isReviewsLoading} onClick={() => setReviewPage((current) => Math.max(1, current - 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Previous</button>
-                <span className="text-[11px] font-medium text-[#8e8e93] dark:text-[#A1A1AA]">Page {reviewPage} of {reviewMeta.totalPages}</span>
-                <button type="button" disabled={reviewPage >= reviewMeta.totalPages || isReviewsLoading} onClick={() => setReviewPage((current) => Math.min(reviewMeta.totalPages, current + 1))} className="min-h-9 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Next</button>
-              </nav>
-            )}
-            <p className="mt-3 flex items-center gap-1.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
-          </section>
-            </div>
-          )}
-
-
-          {/* ════════ TAB 2: AI CONGESTION & AVAILABILITY FORECAST ════════ */}
-          {activeTab === 'forecast' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-1">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <Sparkles size={16} className="text-blue-600 dark:text-[#3894FF]" /> AI Congestion & Demand Forecast
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-[#A1A1AA] mt-0.5">
-                    Predictive hourly occupancy trends and arrival advice
-                  </p>
+                <div className="p-3">
+                  <span className="block text-[10px] font-bold text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider">
+                    CHECKOUT
+                  </span>
+                  <span className="block text-xs sm:text-[13px] font-bold text-[#111] dark:text-white mt-0.5 truncate">
+                    {endDate ? formatDateKey(endDate) : 'Add date'}
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('reserve')}
-                  className="text-xs font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline cursor-pointer"
-                >
-                  ← Back to Reserve
-                </button>
               </div>
 
-              <AiCongestionForecastCard
-                parkingSpotId={spot.parkingSpotId}
-                stationName={stationName || undefined}
-                targetName={spot.propertyName || spot.address}
-                walkDistanceMeters={walkingInfo?.rawDistance ?? Math.round((spot.distanceToStation || 0.35) * 1000)}
-                dailyRate={displayedRate}
-              />
-
-              <div className="pt-2 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('reserve');
-                    window.scrollTo({ top: 320, behavior: 'smooth' });
-                  }}
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-[#1E1E24] hover:bg-slate-200 dark:hover:bg-[#282830] text-slate-700 dark:text-white font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+              {/* Vehicle Dropdown */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider">
+                  VEHICLE
+                </label>
+                <SystemSelect
+                  value={selectedVehicleId ?? ''}
+                  onChange={(event) => setSelectedVehicleId(Number(event.target.value) || null)}
+                  disabled={isVehiclesLoading || vehicles.length === 0}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-black/[0.12] dark:border-white/15 bg-white dark:bg-[#18181C] text-[#111] dark:text-white focus:outline-none focus:border-[#007AFF]"
                 >
-                  <Calendar size={14} className="text-[#007AFF]" />
-                  <span>Ready to Book? Return to Booking Dates</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-
-
-          {/* ════════ TAB 3: CONTINUOUS ROUTE & MULTIMODAL JOURNEY ════════ */}
-          {activeTab === 'route' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-1">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <Compass size={16} className="text-[#007AFF] dark:text-[#0A84FF]" /> Continuous Route: Parking ➔ Station
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-[#A1A1AA] mt-0.5">
-                    Walking and transit options from parking bay to {stationName ? `${stationName} Station` : 'the station entrance'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('reserve')}
-                  className="text-xs font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:underline cursor-pointer"
-                >
-                  ← Back to Reserve
-                </button>
-              </div>
-
-              {/* 3. Station Connection & Distance (Continuous Route, moved lower based on user perspective) */}
-          <div className="space-y-3">
-            <div>
-              <h3 className="text-[11px] font-semibold text-[#9ca3af] dark:text-[#A1A1AA] uppercase tracking-wider flex items-center gap-1.5">
-                <Compass size={14} className="text-[#007AFF] dark:text-[#0A84FF]" /> Station Connection & Distance
-              </h3>
-              <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
-                Walking and transit options from parking bay to {stationName ? `${stationName} Station` : 'the station entrance'}
-              </p>
-            </div>
-
-{/* OpenTripPlanner Multimodal Continuous Journey (OTP Model) */}
-          {multimodalPlan ? (
-            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 space-y-3 shadow-xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Compass className="w-4 h-4 text-blue-600 dark:text-[#0A84FF]" />
-                  <h3 className="font-bold text-slate-900 dark:text-white text-sm">
-                    Continuous Route: Parking ➔ Station Entrance
-                  </h3>
-                </div>
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#121214] p-0.5 rounded-lg text-[10px] font-semibold border border-transparent dark:border-white/[0.06]">
-                  {(['balanced', 'less_walk', 'fastest'] as CommuterPreference[]).map((pref) => (
-                    <button
-                      key={pref}
-                      type="button"
-                      onClick={() => setPreference(pref)}
-                      className={`px-2 py-0.5 rounded capitalize transition cursor-pointer ${
-                        preference === pref
-                          ? 'bg-white dark:bg-[#2C2C31] text-slate-900 dark:text-white font-bold shadow-xs'
-                          : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
-                      }`}
-                    >
-                      {pref.replace('_', ' ')}
-                    </button>
+                  {vehicles.length === 0 && <option value="">{isVehiclesLoading ? 'Loading vehicles…' : 'No vehicles available'}</option>}
+                  {vehicles.map((vehicle) => (
+                    <option key={vehicle.vehicleId} value={vehicle.vehicleId}>{vehicle.plate} · {vehicle.brand} {vehicle.model}</option>
                   ))}
-                </div>
+                </SystemSelect>
               </div>
 
-              {/* Itinerary Options (Ranked by Generalized Cost J(r)) */}
-              {multimodalPlan.allItineraries.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {multimodalPlan.allItineraries.map((it) => {
-                    const isSelected = it.id === (activeItineraryId || multimodalPlan.recommendedItinerary.id);
-                    return (
-                      <div
-                        key={it.id}
-                        onClick={() => setActiveItineraryId(it.id)}
-                        className={`p-3 rounded-xl border transition cursor-pointer relative ${
-                          isSelected
-                            ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 dark:border-[#0071E3]/60 text-blue-950 dark:text-blue-100 shadow-xs'
-                            : 'bg-slate-50 dark:bg-[#141417] border-slate-200 dark:border-white/10 text-slate-700 dark:text-[#D4D4D8] hover:bg-slate-100 dark:hover:bg-[#1E1E22]'
-                        }`}
-                      >
-                        {it.isRecommended && (
-                          <span className="absolute -top-2 right-2 bg-emerald-600 dark:bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase tracking-wider flex items-center gap-0.5 shadow-xs">
-                            <Sparkles size={8} />
-                            Optimal J(r)
-                          </span>
-                        )}
-                        <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900 dark:text-white">
-                          {it.type === 'transit_feeder' ? (
-                            <Bus size={14} className="text-emerald-600 dark:text-emerald-400" />
-                          ) : (
-                            <Footprints size={14} className="text-blue-600 dark:text-[#0A84FF]" />
-                          )}
-                          <span>{it.title}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-1 flex items-center gap-2">
-                          <strong className="text-slate-900 dark:text-white font-semibold">~{it.totalDurationMinutes} mins</strong>
-                          <span>·</span>
-                          <span>{(it.totalWalkDistanceMeters >= 1000 ? (it.totalWalkDistanceMeters / 1000).toFixed(1) + " km" : it.totalWalkDistanceMeters + "m")} walk</span>
-                        </div>
-                        {it.savingsSummary && (
-                          <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold mt-1">
-                            ✓ {it.savingsSummary}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+              {/* Price Quote Breakdown */}
+              {quote && (
+                <div className="space-y-2 pt-2 text-xs border-t border-black/[0.06] dark:border-white/[0.08]">
+                  <div className="flex justify-between">
+                    <span className="text-[#5f6368] dark:text-[#A1A1AA]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} open day{quote.bookedDays === 1 ? '' : 's'}</span>
+                    <span className="font-semibold text-[#111] dark:text-white">RM {quote.rentalSubtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#5f6368] dark:text-[#A1A1AA]">10% platform fee</span>
+                    <span className="font-semibold text-[#111] dark:text-white">RM {quote.platformFee.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-sm text-[#111] dark:text-white pt-2 border-t border-black/[0.06] dark:border-white/10">
+                    <span>Total</span>
+                    <span className="text-[#007AFF] dark:text-[#3894FF]">RM {quote.renterTotal.toFixed(2)}</span>
+                  </div>
+                  <p className="text-[10px] text-[#9ca3af] dark:text-[#71717A] pt-0.5">Quote expires {new Date(quote.expiresAt).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}.</p>
                 </div>
               )}
 
-              {/* Step-by-Step Linear Guidance */}
-              {(() => {
-                const activeIt =
-                  multimodalPlan.allItineraries.find((i) => i.id === activeItineraryId) ||
-                  multimodalPlan.recommendedItinerary;
-                return (
-                  <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-white/[0.08] text-xs">
-                    <div className="text-[10px] font-bold text-slate-400 dark:text-[#A1A1AA] uppercase tracking-wider">
-                      Turn-by-turn Linear Journey
-                    </div>
-                    {activeIt.legs.map((leg, lIdx) => (
-                      <div key={lIdx} className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-50 dark:bg-[#141417] border border-slate-100 dark:border-white/[0.06]">
-                        <div className="w-5 h-5 rounded-full bg-blue-600 dark:bg-[#0071E3] text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
-                          {lIdx + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-slate-800 dark:text-white text-[11px]">{leg.title}</div>
-                          <p className="text-[10px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">{leg.summary}</p>
-                          {leg.transitDetails && (
-                            <div className="mt-1 text-[10px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 px-2 py-1 rounded font-medium border border-emerald-200 dark:border-emerald-800/60">
-                              Ride {leg.transitDetails.routeShortName} ({leg.transitDetails.numStops} stops) ➔ {leg.transitDetails.alightingStopName}
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-[10px] font-mono text-slate-400 dark:text-[#8E8E93] shrink-0 font-medium">
-                          ~{leg.durationMinutes} min
-                        </span>
-                      </div>
-                    ))}
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-950 dark:text-emerald-200 font-semibold text-xs">
-                      <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      <span>Arrive at {activeIt.targetStationEntranceName}</span>
-                    </div>
-                  </div>
-                );
-              })()}
+              {bookingError && (
+                <div className="flex items-start gap-2 text-xs text-[#dc2626] dark:text-rose-400 bg-[#fef2f2] dark:bg-rose-950/30 border border-[#fecaca] dark:border-rose-900/40 rounded-xl p-2.5">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                  <span>{bookingError}</span>
+                </div>
+              )}
+
+              {/* Primary Action Button */}
+              <button
+                onClick={handleBottomAction}
+                disabled={activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))}
+                className={`w-full min-h-12 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
+                  activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))
+                    ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed shadow-none'
+                    : 'bg-[#007AFF] hover:bg-[#0066d6] dark:bg-[#0071E3] dark:hover:bg-[#0077ED] text-white active:scale-[0.98]'
+                }`}
+              >
+                {activeTab !== 'reserve' ? (
+                  <>
+                    <Calendar size={16} />
+                    <span>Return to Reserve Bay</span>
+                  </>
+                ) : isBookingLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>{quote ? 'Confirming…' : 'Creating quote…'}</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={16} />
+                    <span>{quote ? `Confirm & Pay · RM ${quote.renterTotal.toFixed(2)}` : 'Get Booking Quote'}</span>
+                  </>
+                )}
+              </button>
+
+              <p className="text-center text-[11px] text-[#8e8e93] dark:text-[#71717A]">
+                {quote ? 'Instant confirmation upon payment' : "You won't be charged yet"}
+              </p>
             </div>
-          ) : isLoadingRoute ? (
-            <div className="bg-[#f8f9fa] dark:bg-[#18181C] border border-[#e8eaed] dark:border-white/10 rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
-              <Loader2 size={16} className="animate-spin text-[#007AFF] shrink-0" />
-              Calculating multimodal route via OTP engine...
-            </div>
-          ) : walkingInfo ? (
-            <div className="bg-[#f0fdf4] dark:bg-emerald-950/40 border border-[#bbf7d0] dark:border-emerald-800/60 rounded-xl p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-[#dcfce7] flex items-center justify-center shrink-0">
-                <Navigation size={20} className="text-[#16a34a]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[13px] font-semibold text-[#15803d] dark:text-emerald-300">
-                  {walkingInfo.distanceText} &middot; {walkingInfo.durationText}
-                </p>
-                <p className="text-[12px] text-[#16a34a] dark:text-emerald-400">
-                  Walking distance to {stationName || 'station'}
-                </p>
-              </div>
-              <span className="text-[10px] font-semibold bg-[#bbf7d0] text-[#15803d] px-2 py-0.5 rounded-full">
-                OSRM Verified
-              </span>
-            </div>
-          ) : bayCoordinates ? (
-            <div className="bg-[#fefce8] dark:bg-amber-950/30 border border-[#fde68a] dark:border-amber-800/40 rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#a16207] dark:text-amber-300">
-              <MapPin size={16} className="shrink-0" />
-              Select a station on the map to calculate multimodal route.
-            </div>
-          ) : (
-            <div className="bg-[#f8f9fa] dark:bg-[#18181C] border border-[#e8eaed] dark:border-white/10 rounded-xl p-4 flex items-center gap-3 text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
-              <MapPin size={16} className="shrink-0" />
-              Route preview unavailable — this bay has no location data yet.
-            </div>
-          )}
           </div>
-
-              <div className="pt-2 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('reserve');
-                    window.scrollTo({ top: 320, behavior: 'smooth' });
-                  }}
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-[#1E1E24] hover:bg-slate-200 dark:hover:bg-[#282830] text-slate-700 dark:text-white font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
-                >
-                  <Calendar size={14} className="text-[#007AFF]" />
-                  <span>Ready to Book? Return to Booking Dates</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-
         </div>
-      </div>
+      </main>
 
-      {/* ── Bottom fixed booking bar ── */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-[#141417]/95 border-t border-[#e8eaed] dark:border-white/10 px-4 md:px-6 py-4 z-40 backdrop-blur-md">
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
-          <div>
-            <p className="font-bold text-[#111] dark:text-white text-[15px]">{displayedRate > 0 ? `RM ${displayedRate.toFixed(2)}` : 'Daily rate'} <span className="text-[13px] font-normal text-[#5f6368] dark:text-[#A1A1AA]">/ day</span></p>
-            <p className="text-[11px] text-[#9ca3af] dark:text-[#A1A1AA]">{quote ? `${quote.bookedDays} ${quote.bookedDays === 1 ? 'day' : 'days'} · RM ${quote.renterTotal.toFixed(2)} total (incl. RM ${quote.platformFee.toFixed(2)} platform fee)` : 'Request a quote for exact pricing'}</p>
+      {/* ── Mobile bottom fixed booking bar (Hidden on desktop screens) ── */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#141417]/95 border-t border-[#e8eaed] dark:border-white/10 px-4 py-3 z-40 backdrop-blur-md">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-bold text-[#111] dark:text-white text-sm">{displayedRate > 0 ? `RM ${displayedRate.toFixed(2)}` : 'Daily rate'} <span className="text-xs font-normal text-[#5f6368] dark:text-[#A1A1AA]">/ day</span></p>
+            <p className="text-[10px] text-[#9ca3af] dark:text-[#A1A1AA] truncate">{quote ? `${quote.bookedDays} ${quote.bookedDays === 1 ? 'day' : 'days'} · RM ${quote.renterTotal.toFixed(2)}` : 'Request a quote'}</p>
           </div>
           <button
             onClick={handleBottomAction}
             disabled={activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))}
-            className={`font-semibold text-[13px] px-8 py-3 rounded-xl transition flex items-center gap-2 ${
+            className={`font-semibold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-1.5 shrink-0 ${
               activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))
-                ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] dark:border dark:border-white/10 cursor-not-allowed'
+                ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed'
                 : 'bg-[#007AFF] dark:bg-[#0071E3] text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] active:scale-[0.98] cursor-pointer shadow-sm'
             }`}
           >
             {activeTab !== 'reserve' ? (
               <>
-                <Calendar size={16} />
-                <span>Return to Reserve Bay</span>
+                <Calendar size={14} />
+                <span>Return</span>
               </>
             ) : isBookingLoading ? (
               <>
-                <Loader2 size={16} className="animate-spin" />
-                <span>{quote ? 'Confirming…' : 'Creating quote…'}</span>
+                <Loader2 size={14} className="animate-spin" />
+                <span>{quote ? 'Confirming…' : 'Creating…'}</span>
               </>
             ) : (
               <>
-                <CreditCard size={16} />
-                <span>{quote ? `Confirm & Pay · RM ${quote.renterTotal.toFixed(2)}` : 'Get Booking Quote'}</span>
+                <CreditCard size={14} />
+                <span>{quote ? `Pay · RM ${quote.renterTotal.toFixed(2)}` : 'Get Quote'}</span>
               </>
             )}
           </button>

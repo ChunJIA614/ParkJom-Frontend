@@ -25,10 +25,15 @@
   --color-border: rgba(0, 0, 0, 0.06);
   --color-border-strong: #d2d2d7;
   --color-sidebar: #0f1115;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 24px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --radius-4xl: 32px;
+  --radius-full: 9999px;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
@@ -335,7 +340,7 @@ html {
   gap: 8px;
   padding: 0 20px;
   border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 999px;
+  border-radius: 12px;
   color: #07111d;
   background: rgba(255, 248, 237, 0.94);
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
@@ -582,7 +587,7 @@ html {
   gap: 12px;
   margin-top: 28px;
   padding: 0 28px;
-  border-radius: 999px;
+  border-radius: 12px;
   color: #07111d;
   background: #fff8ed;
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
@@ -629,7 +634,7 @@ html {
   overflow: hidden;
   padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.64);
-  border-radius: 26px;
+  border-radius: 24px;
   color: #07111d;
   background: rgba(255, 248, 237, 0.96);
   box-shadow: 0 18px 52px rgba(2, 47, 64, 0.18);
@@ -665,7 +670,7 @@ html {
   width: 58px;
   height: 58px;
   place-items: center;
-  border-radius: 18px;
+  border-radius: 16px;
   color: #fff;
   background: #1687ff;
   box-shadow: 0 12px 24px rgba(0, 122, 255, 0.24);
@@ -900,7 +905,7 @@ html {
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.875rem;
+  --radius: 0.75rem;
   --sidebar: rgba(246, 246, 248, 0.96);
   --sidebar-foreground: #1d1d1f;
   --sidebar-primary: #48484a;
@@ -1002,7 +1007,7 @@ html {
 .ios-card {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-sm);
   transition: border-color 0.25s var(--ease-spring), box-shadow 0.25s var(--ease-spring), transform 0.2s var(--ease-ios);
 }
@@ -1026,7 +1031,7 @@ html {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-xl);
   background: var(--accent-blue);
   color: white;
   font-size: 0.875rem;
@@ -1047,13 +1052,13 @@ html {
 .ios-segmented {
   display: inline-flex;
   background: #f1f3f4;
-  border-radius: 9999px;
+  border-radius: var(--radius-xl);
   padding: 3px;
   gap: 2px;
 }
 
 .ios-segmented button {
-  border-radius: 9999px;
+  border-radius: var(--radius-lg);
   padding: 0.5rem 1.25rem;
   font-size: 13px;
   font-weight: 600;
@@ -1711,7 +1716,15 @@ html {
 }
 
 .app-workspace main .rounded-2xl {
-  border-radius: 0.875rem;
+  border-radius: 1rem;
+}
+
+.app-workspace main .rounded-3xl {
+  border-radius: 1.5rem;
+}
+
+.app-workspace main .rounded-xl {
+  border-radius: 0.75rem;
 }
 
 .app-workspace main :where(.border):not([class*="border-emerald"]):not([class*="border-blue"]):not([class*="border-rose"]):not([class*="border-amber"]):not([class*="border-red"]):not([class*="border-green"]):not([class*="border-teal"]):not([class*="border-slate-3"]),
@@ -1726,7 +1739,7 @@ html {
 /* ── Compact Apple-HIG Map Popovers (Leaflet Popup Overrides) ── */
 .leaflet-container .leaflet-popup-content-wrapper {
   padding: 0 !important;
-  border-radius: 13px !important;
+  border-radius: 16px !important;
   background: rgba(255, 255, 255, 0.97) !important;
   backdrop-filter: blur(16px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
@@ -1897,7 +1910,7 @@ html {
   height: 100%;
   min-width: 0;
   overflow: hidden;
-  border-radius: 1rem;
+  border-radius: 1.5rem;
 }
 
 .map-lens__map {
@@ -1908,7 +1921,7 @@ html {
   min-height: 28rem;
   overflow: hidden;
   border: 1px solid var(--workspace-border);
-  border-radius: 1rem;
+  border-radius: 1.5rem;
   background: var(--workspace-surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.025), 0 8px 28px rgba(28, 28, 30, 0.035);
 }
@@ -1943,7 +1956,7 @@ html {
 .nearby-sheet {
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 1rem;
+  border-radius: 1.5rem;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.025), 0 8px 28px rgba(28, 28, 30, 0.035);
 }
@@ -4574,9 +4587,11 @@ html {
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --radius-4xl: 32px;
 }
 
 .dark {

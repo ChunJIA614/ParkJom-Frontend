@@ -146,7 +146,7 @@ export default function DashboardHome({
           type="button"
           onClick={onRefresh}
           disabled={isLoading}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-black/[0.08] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#3c4043] transition hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#3c4043] transition hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw size={12} className={isLoading ? 'animate-spin' : undefined} />
           {isLoading ? 'Refreshing…' : 'Refresh'}
@@ -176,7 +176,7 @@ export default function DashboardHome({
             transition={prefersReducedMotion
               ? { duration: 0.12, ease: 'linear' }
               : { type: 'spring', bounce: 0, duration: 0.34, delay: i * 0.03 }}
-            className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs hover:shadow-sm hover:border-slate-300 transition-all duration-200 group relative overflow-hidden"
+            className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-sm hover:border-slate-300 transition-all duration-200 group relative overflow-hidden"
           >
             <div className="flex justify-between items-start">
               <div className="space-y-1">
@@ -196,7 +196,7 @@ export default function DashboardHome({
       {stats && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {attentionItems.map((item) => (
-            <div key={item.label} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <div key={item.label} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">{item.label}</p>
               <p className={`mt-1 text-xl font-bold ${item.value > 0 ? item.tone : 'text-slate-400'}`}>
                 {item.value}
@@ -208,7 +208,7 @@ export default function DashboardHome({
 
       {/* Primary Analytics - Revenue Area Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-md font-semibold text-slate-800">Revenue &amp; Booking Volume — last 7 days</h3>
@@ -257,7 +257,7 @@ export default function DashboardHome({
         </div>
 
         {/* Booking Status Pie Chart */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <Percent className="w-4 h-4 text-[#2563EB]" />
@@ -319,7 +319,7 @@ export default function DashboardHome({
 
       {/* Charts Row 2: Station Performance & Hourly Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-[#2563EB]" />
@@ -346,7 +346,7 @@ export default function DashboardHome({
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-[#2563EB]" />
@@ -383,7 +383,7 @@ export default function DashboardHome({
 
       {/* Charts Row 3: User Growth & Revenue by Bay Type */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-[#2563EB]" />
@@ -410,7 +410,7 @@ export default function DashboardHome({
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <Building className="w-4 h-4 text-[#2563EB]" />
@@ -452,7 +452,7 @@ export default function DashboardHome({
 
       {/* Bottom section: IoT Diagnostics & Logs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4">
           <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
             <Radio className="w-4 h-4 text-emerald-500" />
             Bollard Fleet Health
@@ -487,7 +487,7 @@ export default function DashboardHome({
           </div>
         </div>
 
-        <div className="md:col-span-2 bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm space-y-3">
+        <div className="md:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-3">
           <div className="flex items-center justify-between pb-1 border-b border-slate-100">
             <h3 className="text-sm font-semibold text-slate-800">Actions taken in this session</h3>
             <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-mono font-bold">Local audit trail</span>

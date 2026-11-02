@@ -59,7 +59,15 @@ export default function ParkingPass({
         {spot ? (
           <>
             <div className="parking-pass__bay">
-              <span className="parking-pass__bay-code">P</span>
+              {spot.primaryImageUrl ? (
+                <img
+                  src={spot.primaryImageUrl}
+                  alt=""
+                  className="w-10 h-10 rounded-lg object-cover ring-1 ring-black/5 dark:ring-white/10 shrink-0"
+                />
+              ) : (
+                <span className="parking-pass__bay-code">P</span>
+              )}
               <div className="min-w-0">
                 <strong>{formatShortSpotName(spot.name)}</strong>
                 <span><MapPin size={12} /> Bay {spot.parkingLabel} · {spot.station}</span>

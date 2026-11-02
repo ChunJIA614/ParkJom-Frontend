@@ -22,7 +22,7 @@ const CHINESE_TEXT_MAP: Array<[RegExp, string]> = [
   [/客服求助工单\s*(\(Support Request\))?/g, 'Support Request'],
 
   // Issue descriptions
-  [/到达车场道闸未抬杆或扫码[\/|、]车牌识别失败（支持一键自助抬杆或转紧急人工）。?/g, 'Barrier failed to open or license plate was not recognized upon arrival. Emergency self-unlock or human agent available.'],
+  [/到达车场道闸未抬杆或扫码[\/|、]车牌识别失败（支持一键自助抬杆或转紧急人工）。?/g, 'Barrier failed to open or license plate was not recognized upon arrival.'],
   [/到达车位发现被其他车辆停占，请附上现场照片以便立即为您调配或全额退款。?/g, 'Reserved spot is occupied by an unauthorized vehicle. Attach a photo for immediate relocation or full refund.'],
   [/因故未能入场、设备故障导致无法停车或申请退还订单费用。?/g, 'Unable to park, facility malfunction, or requesting refund assistance for a booking charge.'],
   [/同一订单被扣款两次、支付成功未生成订单或超时费计算异议。?/g, 'Charged twice for the same booking, incorrect amount, or disputing overstay charges.'],
@@ -59,6 +59,10 @@ export function cleanSupportText(text?: string | null): string {
   for (const [pattern, replacement] of CHINESE_TEXT_MAP) {
     cleaned = cleaned.replace(pattern, replacement);
   }
+  cleaned = cleaned
+    .replace(/\.?\s*Emergency self-unlock or human agent available\.?/gi, '.')
+    .replace(/Instant barrier gate self-unlock,?\s*/gi, '')
+    .replace(/Immediate self-unlock \/ 24\/7 urgent dispatch/gi, 'Within 15 minutes');
   return cleaned;
 }
 
