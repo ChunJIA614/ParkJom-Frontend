@@ -5,6 +5,7 @@ import {
   ShieldAlert, Lock, Menu, Car, Bell, Users
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
+import { NotificationBell } from '@/features/notifications';
 import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
@@ -37,8 +38,9 @@ import SystemAudit from '../components/SystemAudit';
 import SystemConfiguration from '../components/SystemConfiguration';
 import VehicleManagement from '../components/VehicleManagement';
 import UserManagement from '../components/UserManagement';
+import AdminNotificationBroadcast from '../components/AdminNotificationBroadcast';
 
-type ActiveView = 'home' | 'governance' | 'users' | 'vehicles' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system';
+type ActiveView = 'home' | 'governance' | 'users' | 'vehicles' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system' | 'broadcast';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -65,7 +67,7 @@ export default function AdminDashboard() {
   // App core states — all data fetched from backend
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     const saved = localStorage.getItem('parkjom_admin_view');
-    const validViews: ActiveView[] = ['home', 'governance', 'users', 'vehicles', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system'];
+    const validViews: ActiveView[] = ['home', 'governance', 'users', 'vehicles', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system', 'broadcast'];
     return saved && validViews.includes(saved as ActiveView) ? saved as ActiveView : 'home';
   });
 
@@ -555,6 +557,7 @@ export default function AdminDashboard() {
     {
       label: 'System',
       items: [
+        { id: 'broadcast', label: 'Broadcast & Alerts', icon: Radio },
         { id: 'audit', label: 'System Audit', icon: ShieldAlert },
         { id: 'system', label: 'System Configuration', icon: Lock },
       ],
@@ -656,6 +659,8 @@ export default function AdminDashboard() {
             onRefresh={fetchAdminVehicles}
           />
         );
+      case 'broadcast':
+        return <AdminNotificationBroadcast />;
       case 'system':
         return (
           <SystemConfiguration 
@@ -678,6 +683,7 @@ export default function AdminDashboard() {
     enforcement: { title: 'Overstay enforcement', description: 'Resolve sessions that exceeded their confirmed parking window.' },
     support: { title: 'Disputes and support', description: 'Keep commuter and owner issues moving toward a clear resolution.' },
     audit: { title: 'System audit', description: 'Review operational actions and changes across the platform.' },
+    broadcast: { title: 'Broadcast & notifications', description: 'Publish system alerts and audit delivery channels.' },
     system: { title: 'System configuration', description: 'Manage the controls that affect platform-wide behavior.' },
   };
   const currentViewMeta = viewMeta[activeView];
@@ -700,36 +706,11 @@ export default function AdminDashboard() {
       : null,
   ].filter((message): message is string => Boolean(message));
   const adminNotificationActions = (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setShowAdminNotifications((current) => !current)}
-        aria-label="Notifications"
-        aria-expanded={showAdminNotifications}
-        aria-controls="admin-notifications"
-        className="relative rounded-xl p-2 text-[#5f6368] transition-colors hover:bg-black/[0.04] hover:text-[#111]"
-      >
-        <Bell size={18} strokeWidth={2} />
-        {adminNotifications.length > 0 && (
-          <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ff3b30] px-1 text-[9px] font-bold leading-none text-white">
-            {adminNotifications.length}
-          </span>
-        )}
-      </button>
-      {showAdminNotifications && (
-        <>
-          <button type="button" aria-label="Close notifications" className="fixed inset-0 z-40 cursor-default" onClick={() => setShowAdminNotifications(false)} />
-          <div id="admin-notifications" role="dialog" aria-label="Admin notifications" className="workspace-popover absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-[#1c1c1e] py-2 shadow-2xl">
-            <div className="border-b border-[#f1f3f4] dark:border-white/[0.08] px-4 py-2.5 text-[13px] font-semibold text-[#111] dark:text-[#f5f5f7]">Notifications</div>
-            {adminNotifications.length > 0 ? adminNotifications.map((message) => (
-              <p key={message} className="border-b border-[#f8f9fa] dark:border-white/[0.04] px-4 py-3 text-[11px] leading-relaxed text-[#5f6368] dark:text-[#a1a1a6] last:border-0">{message}</p>
-            )) : (
-              <p className="px-4 py-5 text-center text-[11px] text-[#8e8e93]">No new operational alerts.</p>
-            )}
-          </div>
-        </>
-      )}
-    </div>
+    <NotificationBell
+      onNavigate={(url) => {
+        navigate(url);
+      }}
+    />
   );
 
   return (

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { NotificationBell } from '@/features/notifications';
 import {
   MapPin,
   Search,
@@ -2160,19 +2161,11 @@ export default function CommuterDashboard() {
   })));
 
   const notificationActions = (
-    <button
-      type="button"
-      onClick={() => setShowNotificationsDrawer(true)}
-      aria-label="Notifications"
-      className="relative p-2 text-[#5f6368] hover:text-[#111] hover:bg-black/[0.04] active:bg-black/[0.06] rounded-xl transition-colors"
-    >
-      <Bell size={18} strokeWidth={2} />
-      {unreadCount > 0 && (
-        <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 bg-[#ff3b30] text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
-          {unreadCount > 9 ? '9+' : unreadCount}
-        </span>
-      )}
-    </button>
+    <NotificationBell
+      onNavigate={(url) => {
+        navigate(url);
+      }}
+    />
   );
 
   return (

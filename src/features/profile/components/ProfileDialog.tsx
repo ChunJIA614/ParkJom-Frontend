@@ -33,6 +33,7 @@ import {
 } from '../api/profileApi';
 import { mergeProfileIntoSession } from '../lib/session';
 import { USER_TYPE_LABELS, type UserProfile, type UserProfileResult } from '../types';
+import { NotificationPreferences } from '@/features/notifications';
 
 interface ProfileDialogProps {
   open: boolean;
@@ -439,6 +440,11 @@ export default function ProfileDialog({ open, onClose }: ProfileDialogProps) {
                 ? `Following this device — currently ${resolved === 'dark' ? 'dark' : 'light'}.`
                 : `${preference === 'dark' ? 'Dark' : 'Light'} appearance is always on.`}
             </p>
+          </div>
+
+          {/* Notification preferences */}
+          <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181C] p-4 sm:p-5">
+            <NotificationPreferences embedded />
           </div>
 
           {/* Danger zone */}

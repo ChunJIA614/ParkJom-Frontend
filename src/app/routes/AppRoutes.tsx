@@ -12,6 +12,7 @@ const ParkingDetail = lazy(() => import('@/features/commuter/pages/ParkingDetail
 const ParkingReview = lazy(() => import('@/features/commuter/pages/ParkingReview'));
 const LandingPage = lazy(() => import('@/features/landing/pages/LandingPage'));
 const OwnerDashboard = lazy(() => import('@/features/owner/pages/OwnerDashboard'));
+const NotificationCenterPage = lazy(() => import('@/features/notifications/pages/NotificationCenterPage'));
 
 function RouteLoadingFallback() {
   return (
@@ -63,6 +64,7 @@ export function AppRoutes() {
           <Route path="/landing" element={<Navigate to={dashboardPath} replace />} />
           <Route path="/admin" element={<RequireRole role="Admin"><AdminDashboard /></RequireRole>} />
           <Route path="/owner" element={<RequireRole role="Owner"><OwnerDashboard /></RequireRole>} />
+          <Route path="/notifications" element={<NotificationCenterPage />} />
           <Route path="/commuter" element={<RequireRole role="Commuter"><CommuterDashboard /></RequireRole>} />
           <Route path="/commuter/parking/:id" element={<RequireRole role="Commuter"><ParkingDetail /></RequireRole>} />
           <Route path="/commuter/parking/:id/review" element={<RequireRole role="Commuter"><ParkingReview /></RequireRole>} />

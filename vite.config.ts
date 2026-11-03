@@ -24,6 +24,12 @@ export default defineConfig(({ command, mode }) => {
           changeOrigin: true,
           secure: !apiProxyTarget.includes('localhost') && !apiProxyTarget.includes('127.0.0.1'),
         },
+        '/hubs': {
+          target: apiProxyTarget,
+          changeOrigin: true,
+          ws: true,
+          secure: !apiProxyTarget.includes('localhost') && !apiProxyTarget.includes('127.0.0.1'),
+        },
       },
     },
     build: {
