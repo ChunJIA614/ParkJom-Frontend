@@ -862,13 +862,13 @@ export default function CommuterDashboard() {
   // Filter spots — flexible match stripping LRT/MRT to handle GeoJSON name differences
   const filteredSpots = searchSpots.filter(spot => {
     if (spotTypeFilter !== 'all' && spot.type !== spotTypeFilter) return false;
-    if (activeBooking && activeBooking.spot.id === spot.id) return false;
+    if (activeBooking && (activeBooking.spot.id === spot.id || activeBooking.spot.parkingSpotId === spot.parkingSpotId)) return false;
     return spot.available;
   });
 
   const locationSuggestedSpots = suggestedSpots.filter((spot) => {
     if (spotTypeFilter !== 'all' && spot.type !== spotTypeFilter) return false;
-    if (activeBooking && activeBooking.spot.id === spot.id) return false;
+    if (activeBooking && (activeBooking.spot.id === spot.id || activeBooking.spot.parkingSpotId === spot.parkingSpotId)) return false;
     return spot.available;
   });
 
@@ -910,7 +910,7 @@ export default function CommuterDashboard() {
     if (amenityFilters.covered && !spot.isCovered) return false;
     if (amenityFilters.oku && !spot.isHandicapAccessible) return false;
     if (amenityFilters.cctv && !spot.hasCctv) return false;
-    if (activeBooking && activeBooking.spot.id === spot.id) return false;
+    if (activeBooking && (activeBooking.spot.id === spot.id || activeBooking.spot.parkingSpotId === spot.parkingSpotId)) return false;
     return spot.available;
   });
 
@@ -1225,11 +1225,12 @@ export default function CommuterDashboard() {
     origin: StationCoordinates | null = selectedStationCoords,
     originName = selectedStation || spot.station,
   ) => {
-    navigate(`/commuter/parking/${spot.id}`, {
+    const spotId = spot.parkingSpotId || String(spot.id).replace(/^spot-/, '');
+    navigate(`/commuter/parking/${spotId}`, {
       state: {
         spot: {
           ...spot,
-          id: spot.id,
+          id: String(spot.parkingSpotId || spot.id),
           lat: spot.lat,
           lon: spot.lng,
           address: spot.address,
@@ -3432,7 +3433,11 @@ export default function CommuterDashboard() {
                   <button
                     onClick={handleCompleteBooking}
                     disabled={journeyStage !== 'parked' || bollardAnimationState !== 'raised'}
-                    className={`w-full py-3 rounded-xl text-[13px] font-bold transition-colors flex items-center justify-center gap-2 ${journeyStage === 'parked' && bollardAnimationState === 'raised' ? 'bg-[#007AFF] text-white hover:bg-[#0066d6]' : 'bg-[#e8eaed] text-[#8e8e93] cursor-not-allowed'}`}
+                    className={`w-full py-3 rounded-xl text-[13px] font-bold transition-all flex items-center justify-center gap-2 ${
+                      journeyStage === 'parked' && bollardAnimationState === 'raised'
+                        ? 'bg-[#007AFF] hover:bg-[#0071E3] text-white shadow-sm active:scale-[0.99] cursor-pointer'
+                        : 'bg-black/[0.05] dark:bg-white/[0.06] text-[#86868b] dark:text-[#8E8E93] border border-black/[0.06] dark:border-white/[0.08] cursor-not-allowed'
+                    }`}
                   >
                     <CheckCircle2 size={17} /> {journeyStage === 'parked' ? 'Complete Booking' : 'Unlock and re-secure the bay to complete'}
                   </button>

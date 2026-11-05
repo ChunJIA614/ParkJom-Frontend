@@ -5330,3 +5330,63 @@ html {
   }
 }
 
+/* ── Apple-style Smooth Driving Landscape Animations ── */
+@keyframes drive-landscape-slow {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+@keyframes drive-landscape-fast {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+@keyframes drive-road-stripes {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-40px, 0, 0); }
+}
+
+@keyframes car-subtle-bounce {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -1px, 0); }
+}
+
+.animate-drive-skyline {
+  display: flex;
+  width: max-content;
+  animation: drive-landscape-slow 24s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-drive-trees {
+  display: flex;
+  width: max-content;
+  animation: drive-landscape-fast 9s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-road-stripes {
+  animation: drive-road-stripes 0.65s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.animate-car-bounce {
+  animation: car-subtle-bounce 0.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-drive-skyline,
+  .animate-drive-trees,
+  .animate-road-stripes,
+  .animate-car-bounce {
+    animation: none !important;
+  }
+}
+

@@ -313,7 +313,7 @@ export interface ActiveBookingResponse {
 
 export function normalizeActiveBooking(data: ActiveBookingData): Booking {
   const spot: ParkingSpot = {
-    id: `spot-${data.spot.parkingSpotId}`,
+    id: String(data.spot.parkingSpotId),
     parkingSpotId: data.spot.parkingSpotId,
     parkingLabel: data.spot.parkingLabel || 'Bay',
     propertyId: data.spot.propertyId,

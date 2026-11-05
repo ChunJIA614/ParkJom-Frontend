@@ -7,14 +7,29 @@ import type { Booking } from '../types';
 import { createReview } from '../api/reviewApi';
 import { saveParkingReview } from '../lib/parkingReviews';
 
-const ratingCopy = ['Select a rating', 'Very disappointing', 'Could be better', 'Good overall', 'Great parking', 'Excellent experience'];
-const highlights = ['Easy to find', 'Close to transit', 'Felt secure', 'Clean space', 'Easy access'];
+const ratingCopy = [
+  'Select a rating',
+  'Very disappointing',
+  'Could be better',
+  'Good overall',
+  'Great parking',
+  'Excellent experience',
+];
+
+const highlights = [
+  'Easy to find',
+  'Close to transit',
+  'Felt secure',
+  'Clean space',
+  'Easy access',
+];
 
 export default function ParkingReview() {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { booking?: Booking } };
   const { user, logout } = useAuth();
   const booking = location.state?.booking;
+
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -25,9 +40,11 @@ export default function ParkingReview() {
   const [error, setError] = useState('');
 
   const toggleHighlight = (highlight: string) => {
-    setSelectedHighlights((current) => current.includes(highlight)
-      ? current.filter((item) => item !== highlight)
-      : [...current, highlight]);
+    setSelectedHighlights((current) =>
+      current.includes(highlight)
+        ? current.filter((item) => item !== highlight)
+        : [...current, highlight]
+    );
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,14 +84,19 @@ export default function ParkingReview() {
     if (!rating) return setError('Choose a star rating before submitting.');
 
     const parsedBookingId = Number(booking.id);
-    const bookingId = booking.bookingId
-      ?? (Number.isInteger(parsedBookingId) && parsedBookingId > 0 ? parsedBookingId : null);
+    const bookingId =
+      booking.bookingId ??
+      (Number.isInteger(parsedBookingId) && parsedBookingId > 0 ? parsedBookingId : null);
     if (!bookingId) {
       return setError('This booking is missing its server booking ID and cannot be reviewed yet.');
     }
 
-    const detail = [comment.trim(), selectedHighlights.length ? `Highlights: ${selectedHighlights.join(', ')}.` : '']
-      .filter(Boolean).join('\n\n');
+    const detail = [
+      comment.trim(),
+      selectedHighlights.length ? `Highlights: ${selectedHighlights.join(', ')}.` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     setIsSubmitting(true);
     setError('');
@@ -90,9 +112,10 @@ export default function ParkingReview() {
         bookingId: String(bookingId),
         parkingSpotId: result.data.parkingSpotId,
         reviewerId: user.userId,
-        reviewerName: result.data.reviewerDisplayName
-          || `${user.firstName || ''} ${user.lastName || ''}`.trim()
-          || 'ParkJom commuter',
+        reviewerName:
+          result.data.reviewerDisplayName ||
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+          'ParkJom commuter',
         rating: result.data.rating,
         comment: result.data.comment,
         photos: result.data.photos || photos,
@@ -113,13 +136,32 @@ export default function ParkingReview() {
 
   if (!booking) {
     return (
-      <div className="page-shell min-h-screen text-[#1d1d1f] dark:text-white">
-        <DashboardHeader role="commuter" user={user} onSignOut={() => { logout(); navigate('/'); }} onBrandClick={() => navigate('/commuter')} />
-        <main className="mx-auto flex max-w-lg flex-col items-center px-6 py-24 text-center">
-          <ShieldCheck size={38} className="text-[#8e8e93]" />
-          <h1 className="mt-5 text-xl font-semibold">Complete a booking first</h1>
-          <p className="mt-2 text-[13px] leading-5 text-[#6e6e73]">Reviews are linked to completed stays so other commuters can trust what they read.</p>
-          <button onClick={() => navigate('/commuter')} className="mt-6 rounded-xl bg-[#007AFF] px-5 py-3 text-[13px] font-semibold text-white">Back to parking</button>
+      <div className="page-shell min-h-screen text-[#1d1d1f] dark:text-white flex flex-col">
+        <DashboardHeader
+          role="commuter"
+          user={user}
+          onSignOut={() => {
+            logout();
+            navigate('/');
+          }}
+          onBrandClick={() => navigate('/commuter')}
+        />
+        <main className="flex-1 flex flex-col justify-center items-center px-4 py-12 text-center">
+          <div className="w-full max-w-md rounded-3xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#161618] p-8 shadow-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#007AFF]/10 text-[#007AFF]">
+              <ShieldCheck size={26} strokeWidth={2} />
+            </div>
+            <h1 className="mt-4 text-xl font-bold text-[#111] dark:text-white">Complete a booking first</h1>
+            <p className="mt-2 text-xs text-[#86868b] leading-relaxed">
+              Reviews are verified and linked to completed stays so commuters can trust what they read.
+            </p>
+            <button
+              onClick={() => navigate('/commuter')}
+              className="mt-6 w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0071E3] active:scale-[0.98] text-xs font-semibold text-white transition cursor-pointer"
+            >
+              Back to Parking
+            </button>
+          </div>
         </main>
       </div>
     );
@@ -127,16 +169,37 @@ export default function ParkingReview() {
 
   if (submitted) {
     return (
-      <div className="page-shell min-h-screen text-[#1d1d1f]">
-        <DashboardHeader role="commuter" user={user} onSignOut={() => { logout(); navigate('/'); }} onBrandClick={() => navigate('/commuter')} />
-        <main className="mx-auto max-w-lg px-4 py-12 md:py-20">
-          <section className="rounded-3xl border border-black/[0.07] dark:border-white/10 bg-white dark:bg-[#141417] p-7 text-center shadow-[0_20px_60px_rgba(0,0,0,0.06)] md:p-10">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#ecfdf3] dark:bg-emerald-950/50 text-[#16a34a] dark:text-emerald-400"><CheckCircle2 size={28} /></div>
-            <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#16a34a]">Review published</p>
-            <h1 className="mt-2 text-2xl font-bold tracking-[-0.03em] dark:text-white">Thanks for helping commuters</h1>
-            <p className="mx-auto mt-3 max-w-sm text-[13px] leading-5 text-[#6e6e73] dark:text-[#A1A1AA]">Your verified review is now part of this parking spot’s reputation.</p>
-            <div className="mt-5 flex justify-center gap-1 text-[#ff9500]">{Array.from({ length: 5 }, (_, i) => <Star key={i} size={22} fill={i < rating ? 'currentColor' : 'none'} />)}</div>
-            <button onClick={() => navigate('/commuter', { state: { activeTab: 'home' } })} className="mt-8 w-full rounded-xl bg-[#007AFF] dark:bg-[#0071E3] hover:bg-[#0066d6] dark:hover:bg-[#0077ED] px-5 py-3 text-[13px] font-semibold text-white transition-colors cursor-pointer">Find my next parking spot</button>
+      <div className="page-shell min-h-screen text-[#1d1d1f] dark:text-white flex flex-col">
+        <DashboardHeader
+          role="commuter"
+          user={user}
+          onSignOut={() => {
+            logout();
+            navigate('/');
+          }}
+          onBrandClick={() => navigate('/commuter')}
+        />
+        <main className="flex-1 flex flex-col justify-center items-center px-4 py-12">
+          <section className="w-full max-w-md rounded-3xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#161618] p-8 text-center shadow-[0_20px_50px_rgba(0,0,0,0.06)] dark:shadow-[0_24px_64px_rgba(0,0,0,0.5)]">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#34C759]/10 text-[#34C759]">
+              <CheckCircle2 size={30} strokeWidth={2.2} />
+            </div>
+            <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#34C759]">Review Published</p>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-[#111] dark:text-white">Thanks for helping commuters</h1>
+            <p className="mx-auto mt-2 max-w-xs text-xs text-[#86868b] leading-relaxed">
+              Your verified review is now live and helps fellow commuters find safe, seamless parking.
+            </p>
+            <div className="mt-5 flex justify-center gap-1.5 text-[#ff9500]">
+              {Array.from({ length: 5 }, (_, i) => (
+                <Star key={i} size={22} strokeWidth={1.5} fill={i < rating ? 'currentColor' : 'none'} />
+              ))}
+            </div>
+            <button
+              onClick={() => navigate('/commuter', { state: { activeTab: 'home' } })}
+              className="mt-7 w-full h-11 rounded-xl bg-[#007AFF] hover:bg-[#0071E3] active:scale-[0.98] text-xs font-semibold text-white transition-all cursor-pointer shadow-sm"
+            >
+              Back to Commuter Dashboard
+            </button>
           </section>
         </main>
       </div>
@@ -144,90 +207,247 @@ export default function ParkingReview() {
   }
 
   const activeRating = hoveredRating || rating;
+
   return (
-    <div className="page-shell min-h-screen pb-10 text-[#1d1d1f] dark:text-white">
-      <DashboardHeader role="commuter" user={user} onSignOut={() => { logout(); navigate('/'); }} onBrandClick={() => navigate('/commuter')} />
-      <main className="mx-auto max-w-2xl px-4 py-6 md:px-6 md:py-10">
-        <button onClick={() => navigate('/commuter')} className="inline-flex min-h-11 items-center gap-2 text-[13px] font-medium text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white transition-colors cursor-pointer"><ArrowLeft size={17} /> Skip for now</button>
+    <div className="page-shell min-h-screen text-[#1d1d1f] dark:text-white flex flex-col">
+      <DashboardHeader
+        role="commuter"
+        user={user}
+        onSignOut={() => {
+          logout();
+          navigate('/');
+        }}
+        onBrandClick={() => navigate('/commuter')}
+      />
 
-        <section className="mt-3 overflow-hidden rounded-3xl border border-black/[0.07] dark:border-white/10 bg-white dark:bg-[#141417] shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
-          <div className="border-b border-black/[0.06] dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] p-6 md:p-8">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#007AFF]"><Check size={14} /> Parking completed</div>
-            <h1 className="mt-3 text-2xl font-bold tracking-[-0.035em] md:text-3xl dark:text-white">How was your parking?</h1>
-            <div className="mt-4 flex items-start gap-3 rounded-2xl bg-white dark:bg-[#121214] border border-black/[0.06] dark:border-white/10 p-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8f0fe] dark:bg-white/[0.06] text-[#007AFF] dark:text-[#3894FF]"><MapPin size={19} /></div>
-              <div><p className="text-[13px] font-semibold text-[#111] dark:text-white">{booking.spot.name}</p><p className="mt-0.5 text-[12px] text-[#6e6e73] dark:text-[#A1A1AA]">{booking.spot.address} · {booking.spot.station}</p></div>
-            </div>
+      <main className="flex-1 flex flex-col justify-center px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-5xl w-full mx-auto">
+        {/* Top Navigation Row: Skip For Now & Verified Badge */}
+        <div className="mb-2 sm:mb-3 flex items-center justify-between">
+          <button
+            onClick={() => navigate('/commuter')}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#86868b] hover:text-[#111] dark:hover:text-white transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={15} />
+            <span>Skip for now</span>
+          </button>
+
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#86868b]">
+            <ShieldCheck size={13} className="text-[#007AFF]" />
+            <span>Verified Stay</span>
           </div>
+        </div>
 
-          <div className="space-y-8 p-6 md:p-8">
-            <fieldset className="text-center">
-              <legend className="w-full text-[13px] font-semibold dark:text-white">Your overall rating</legend>
-              <div className="mt-4 flex justify-center gap-2" onMouseLeave={() => setHoveredRating(0)}>
-                {Array.from({ length: 5 }, (_, index) => {
-                  const value = index + 1;
-                  return <button key={value} type="button" aria-label={`${value} star${value > 1 ? 's' : ''}`} onMouseEnter={() => setHoveredRating(value)} onFocus={() => setHoveredRating(value)} onBlur={() => setHoveredRating(0)} onClick={() => { setRating(value); setError(''); }} className={`rounded-xl p-1.5 transition hover:scale-110 focus-visible:outline-2 focus-visible:outline-[#007AFF] ${value <= activeRating ? 'text-[#ff9500]' : 'text-[#d2d2d7] dark:text-[#52525B]'}`}><Star size={35} fill={value <= activeRating ? 'currentColor' : 'none'} /></button>;
-                })}
-              </div>
-              <p className={`mt-2 min-h-5 text-[12px] font-medium ${activeRating ? 'text-[#a15c00] dark:text-amber-400' : 'text-[#8e8e93] dark:text-[#71717A]'}`}>{ratingCopy[activeRating]}</p>
-            </fieldset>
+        {/* ── Wide Horizontal 2-Column Card Across the Page ── */}
+        <section className="rounded-3xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#161618] shadow-[0_20px_50px_rgba(0,0,0,0.06)] dark:shadow-[0_24px_64px_rgba(0,0,0,0.4)] overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-black/[0.06] dark:divide-white/[0.08] w-full">
+            
+            {/* ── LEFT COLUMN: Spot Context & Ratings (50% Width) ── */}
+            <div className="w-full p-6 sm:p-7 lg:p-8 flex flex-col justify-between space-y-5">
+              {/* Header & Spot Info */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#007AFF]">
+                  <Check size={13} strokeWidth={2.5} />
+                  <span>Parking Completed</span>
+                </div>
 
-            <div>
-              <p className="text-[13px] font-semibold dark:text-white">What stood out?</p>
-              <div className="mt-3 flex flex-wrap gap-2">{highlights.map((highlight) => <button key={highlight} type="button" aria-pressed={selectedHighlights.includes(highlight)} onClick={() => toggleHighlight(highlight)} className={`min-h-10 rounded-full border px-4 text-[12px] font-medium transition cursor-pointer ${selectedHighlights.includes(highlight) ? 'border-[#007AFF] dark:border-[#0071E3] bg-[#e8f0fe] dark:bg-white/[0.06] text-[#0066d6] dark:text-blue-300' : 'border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#1E1E22] text-[#5f6368] dark:text-[#A1A1AA] hover:border-[#8e8e93] dark:hover:border-white/20'}`}>{selectedHighlights.includes(highlight) && <Check size={13} className="mr-1.5 inline" />}{highlight}</button>)}</div>
-            </div>
+                <h1 className="text-2xl sm:text-[26px] font-bold tracking-tight text-[#111] dark:text-white leading-tight">
+                  How was your parking?
+                </h1>
 
-            <div>
-              <div className="flex items-center justify-between"><label htmlFor="review-comment" className="text-[13px] font-semibold dark:text-white">Share helpful details</label><span className="text-[11px] text-[#8e8e93] dark:text-[#71717A]">{comment.length}/500</span></div>
-              <p className="mt-1 text-[11px] text-[#8e8e93] dark:text-[#A1A1AA]">Mention access, safety, cleanliness or the walk to transit.</p>
-              <textarea id="review-comment" value={comment} maxLength={500} rows={5} onChange={(event) => { setComment(event.target.value); setError(''); }} placeholder="The bay was easy to locate and the walk to the station…" className="mt-3 w-full resize-none rounded-2xl border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] p-4 text-[13px] text-[#111] dark:text-white leading-5 outline-none transition placeholder:text-[#aeaeb2] dark:placeholder:text-[#71717A] focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10" />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between">
-                <label className="text-[13px] font-semibold dark:text-white">Bay Condition & Clearance Height Photos</label>
-                <span className="text-[11px] text-[#8e8e93] dark:text-[#71717A]">{photos.length}/3 photos</span>
-              </div>
-              <p className="mt-1 text-[11px] text-[#8e8e93] dark:text-[#A1A1AA]">
-                Upload photos showing bay condition, clearance height signage, or entrance access.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                {photos.map((photo, idx) => (
-                  <div key={idx} className="relative h-20 w-20 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 group">
-                    <img src={photo} alt={`Bay photo ${idx + 1}`} className="h-full w-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removePhoto(idx)}
-                      className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity"
-                      aria-label="Remove photo"
-                    >
-                      <X size={12} />
-                    </button>
+                {/* Parking Spot Details Card */}
+                <div className="flex items-start gap-3 rounded-2xl bg-[#f8f9fa] dark:bg-[#1c1c1e] p-3.5 border border-black/[0.04] dark:border-white/[0.06]">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#007AFF]/10 text-[#007AFF] dark:text-[#3894FF]">
+                    <MapPin size={18} strokeWidth={2.2} />
                   </div>
-                ))}
-                {photos.length < 3 && (
-                  <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#d2d2d7] dark:border-white/20 text-[#8e8e93] hover:border-[#007AFF] hover:text-[#007AFF] transition-colors">
-                    <Camera size={20} />
-                    <span className="mt-1 text-[10px] font-medium">Add Photo</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
-                  </label>
-                )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold text-[#111] dark:text-white truncate">
+                      {booking.spot.name}
+                    </p>
+                    <p className="text-[11px] text-[#86868b] truncate mt-0.5">
+                      {booking.spot.address} · {booking.spot.station}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Overall Star Rating */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider block">
+                  Your overall rating
+                </span>
+                <div
+                  className="flex items-center gap-2.5 pt-0.5"
+                  onMouseLeave={() => setHoveredRating(0)}
+                >
+                  {Array.from({ length: 5 }, (_, index) => {
+                    const value = index + 1;
+                    const isLit = value <= activeRating;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-label={`${value} star${value > 1 ? 's' : ''}`}
+                        onMouseEnter={() => setHoveredRating(value)}
+                        onFocus={() => setHoveredRating(value)}
+                        onBlur={() => setHoveredRating(0)}
+                        onClick={() => {
+                          setRating(value);
+                          setError('');
+                        }}
+                        className={`rounded-xl p-1 transition-all duration-150 hover:scale-115 active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-[#007AFF] ${
+                          isLit ? 'text-[#ff9500]' : 'text-[#d2d2d7] dark:text-[#3a3a3c]'
+                        }`}
+                      >
+                        <Star
+                          size={32}
+                          strokeWidth={1.5}
+                          fill={isLit ? 'currentColor' : 'none'}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+                <p
+                  className={`text-xs font-semibold min-h-4 transition-colors ${
+                    activeRating ? 'text-[#ff9500]' : 'text-[#86868b]'
+                  }`}
+                >
+                  {ratingCopy[activeRating]}
+                </p>
+              </div>
+
+              {/* What Stood Out? (Highlights) */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider block">
+                  What stood out?
+                </span>
+                <div className="flex flex-wrap gap-2 pt-0.5">
+                  {highlights.map((highlight) => {
+                    const isSelected = selectedHighlights.includes(highlight);
+                    return (
+                      <button
+                        key={highlight}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => toggleHighlight(highlight)}
+                        className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-150 cursor-pointer flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-[#007AFF]/15 text-[#007AFF] dark:text-[#3894FF] border border-[#007AFF]/35 shadow-sm'
+                            : 'bg-[#f5f5f7] dark:bg-[#1c1c1e] text-[#6e6e73] dark:text-[#a1a1aa] border border-black/[0.04] dark:border-white/[0.06] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        {isSelected && <Check size={12} strokeWidth={2.5} />}
+                        <span>{highlight}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {error && <p role="alert" className="rounded-xl bg-[#fff2f1] px-4 py-3 text-[12px] font-medium text-[#d92d20]">{error}</p>}
-            <div>
-              <button onClick={() => void submitReview()} disabled={isSubmitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] dark:bg-[#0071E3] hover:bg-[#0066d6] dark:hover:bg-[#0077ED] px-5 py-3.5 text-[13px] font-semibold text-white transition active:scale-[0.99] disabled:cursor-wait disabled:opacity-70 cursor-pointer">
-                {isSubmitting && <Loader2 size={16} className="animate-spin" />}
-                {isSubmitting ? 'Publishing…' : 'Publish review'}
-              </button>
-              <p className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-[#8e8e93]"><ShieldCheck size={12} /> Verified booking · Your vehicle and payment details stay private</p>
+            {/* ── RIGHT COLUMN: Feedback Text, Photos & Publish (50% Width) ── */}
+            <div className="w-full p-6 sm:p-7 lg:p-8 flex flex-col justify-between space-y-5">
+              {/* Written Feedback Textarea */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="review-comment"
+                    className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider"
+                  >
+                    Share helpful details
+                  </label>
+                  <span className="text-[11px] text-[#86868b] font-mono">
+                    {comment.length}/500
+                  </span>
+                </div>
+                <textarea
+                  id="review-comment"
+                  value={comment}
+                  maxLength={500}
+                  rows={3}
+                  onChange={(e) => {
+                    setComment(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="Mention bay access, parking convenience, security, or walk to transit…"
+                  className="w-full resize-none rounded-2xl border border-black/[0.08] dark:border-white/[0.08] bg-[#f8f9fa] dark:bg-[#1c1c1e] p-3.5 text-xs sm:text-[13px] text-[#111] dark:text-white leading-relaxed outline-none transition placeholder:text-[#8e8e93] focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20"
+                />
+              </div>
+
+              {/* Photo Upload Section */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
+                    Bay Condition & Clearance Photos
+                  </label>
+                  <span className="text-[11px] text-[#86868b] font-mono">
+                    {photos.length}/3 photos
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {photos.map((photo, idx) => (
+                    <div
+                      key={idx}
+                      className="relative h-16 w-16 sm:h-18 sm:w-18 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 group shadow-sm shrink-0"
+                    >
+                      <img src={photo} alt={`Bay photo ${idx + 1}`} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(idx)}
+                        className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center transition-opacity cursor-pointer"
+                        aria-label="Remove photo"
+                      >
+                        <X size={11} strokeWidth={2.5} />
+                      </button>
+                    </div>
+                  ))}
+
+                  {photos.length < 3 && (
+                    <label className="flex h-16 w-16 sm:h-18 sm:w-18 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-black/15 dark:border-white/20 bg-[#f8f9fa] dark:bg-[#1c1c1e] text-[#8e8e93] hover:border-[#007AFF] hover:text-[#007AFF] transition-colors shrink-0">
+                      <Camera size={18} strokeWidth={1.8} />
+                      <span className="mt-1 text-[10px] font-medium">Add Photo</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handlePhotoUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+
+                  <p className="text-[11px] text-[#86868b] leading-tight ml-1">
+                    Clearance height signage, bay surface, or entrance pillar (max 5MB each).
+                  </p>
+                </div>
+              </div>
+
+              {/* Error & Publish Button */}
+              <div className="space-y-2 pt-1">
+                {error && (
+                  <p
+                    role="alert"
+                    className="rounded-xl bg-red-500/10 border border-red-500/20 px-3.5 py-2 text-xs font-medium text-[#ff453a]"
+                  >
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  onClick={() => void submitReview()}
+                  disabled={isSubmitting}
+                  className="flex w-full h-11 sm:h-12 items-center justify-center gap-2 rounded-xl bg-[#007AFF] hover:bg-[#0071E3] active:scale-[0.99] px-5 text-sm font-semibold text-white transition cursor-pointer disabled:cursor-wait disabled:opacity-60 shadow-sm"
+                >
+                  {isSubmitting && <Loader2 size={16} className="animate-spin" />}
+                  <span>{isSubmitting ? 'Publishing…' : 'Publish Review'}</span>
+                </button>
+
+                <p className="flex items-center justify-center gap-1.5 text-[11px] text-[#86868b] pt-0.5">
+                  <ShieldCheck size={12} className="text-[#34C759]" />
+                  <span>Verified booking · Your vehicle registration and payment details remain private</span>
+                </p>
+              </div>
             </div>
           </div>
         </section>

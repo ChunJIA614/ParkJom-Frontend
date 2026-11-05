@@ -23,6 +23,7 @@ import {
 import { Bus, Footprints, Sparkles, Compass, CheckCircle2, Zap, Umbrella, Accessibility, Video } from 'lucide-react';
 import { getPublicParkingSpot } from '../api/parkingApi';
 import { AiCongestionForecastCard } from '../components/AiCongestionForecastCard';
+import { GracePeriodRoadAnimation } from '../components/GracePeriodRoadAnimation';
 import { calculateWalkingMinutes } from '@/services/pedestrianWalkingService';
 import { getTransitStops } from '@/services/gtfsApi';
 import {
@@ -150,8 +151,15 @@ export default function ParkingDetail() {
   const [isFetchingSpot, setIsFetchingSpot] = useState(false);
   const [fetchSpotError, setFetchSpotError] = useState<string | null>(null);
 
+  const rawRouteId = routeId ? String(routeId).trim() : '';
+  const cleanSpotId = rawRouteId.replace(/^spot-/, '');
+
   const stateSpotMatchesRoute = Boolean(
-    state?.spot && String(state.spot.parkingSpotId ?? state.spot.id) === String(routeId),
+    state?.spot && (
+      String(state.spot.parkingSpotId) === cleanSpotId ||
+      String(state.spot.id) === rawRouteId ||
+      String(state.spot.id) === cleanSpotId
+    ),
   );
   const spot = fetchedSpot ?? (stateSpotMatchesRoute ? state?.spot ?? null : null);
   const [activeTab, setActiveTab] = useState<DetailTab>('reserve');
@@ -208,13 +216,13 @@ export default function ParkingDetail() {
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
   useEffect(() => {
-    if (!routeId) return;
+    if (!cleanSpotId) return;
     const controller = new AbortController();
     if (!state?.spot) {
       setIsFetchingSpot(true);
     }
     setFetchSpotError(null);
-    getPublicParkingSpot(routeId, controller.signal)
+    getPublicParkingSpot(cleanSpotId, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
         const d = result.data;
@@ -274,7 +282,7 @@ export default function ParkingDetail() {
       });
 
     return () => controller.abort();
-  }, [routeId]);
+  }, [cleanSpotId]);
 
   // ── Booking ──
   const today = new Date();
@@ -2873,166 +2881,11 @@ export default function ParkingDetail() {
           </header>
 
           {/* ── Middle: Animated Road with Moving Cities & Trees ── */}
-          <div className="w-full max-w-2xl mx-auto my-auto py-8 sm:py-12">
-            {/* Scenery Container (Skyline + Trees) */}
-            <div className="relative w-full h-24 sm:h-28 overflow-hidden flex items-end">
-              {/* Skyline silhouette (Moving City) */}
-              <div
-                className="absolute inset-x-0 bottom-3 flex items-end opacity-20 pointer-events-none"
-                style={{
-                  transform: `translateX(-${(graceProgress * 0.35) % 25}%)`,
-                  transition: 'transform 75ms linear',
-                }}
-              >
-                {[0, 1].map((copyIndex) => (
-                  <svg
-                    key={`city-${copyIndex}`}
-                    className="shrink-0 h-20 sm:h-24 w-[600px] sm:w-[800px] text-white fill-current"
-                    viewBox="0 0 800 120"
-                    preserveAspectRatio="none"
-                  >
-                    <rect x="20" y="30" width="45" height="90" rx="3" />
-                    <rect x="75" y="55" width="35" height="65" rx="2" />
-                    <rect x="120" y="15" width="55" height="105" rx="4" />
-                    <line x1="147" y1="15" x2="147" y2="2" stroke="currentColor" strokeWidth="2" />
-                    <rect x="185" y="45" width="40" height="75" rx="2" />
-                    <rect x="235" y="60" width="50" height="60" rx="3" />
-                    <rect x="295" y="25" width="45" height="95" rx="3" />
-                    <rect x="350" y="40" width="60" height="80" rx="3" />
-                    <rect x="420" y="10" width="50" height="110" rx="4" />
-                    <line x1="445" y1="10" x2="445" y2="0" stroke="currentColor" strokeWidth="2" />
-                    <rect x="480" y="50" width="35" height="70" rx="2" />
-                    <rect x="525" y="35" width="55" height="85" rx="3" />
-                    <rect x="590" y="55" width="45" height="65" rx="2" />
-                    <rect x="645" y="20" width="50" height="100" rx="3" />
-                    <rect x="705" y="45" width="40" height="75" rx="2" />
-                    <rect x="755" y="30" width="45" height="90" rx="3" />
-                  </svg>
-                ))}
-              </div>
-
-              {/* Roadside Trees (Moving Trees) */}
-              <div
-                className="absolute inset-x-0 bottom-0 flex items-end justify-between px-2 opacity-45 pointer-events-none"
-                style={{
-                  transform: `translateX(-${(graceProgress * 0.65) % 25}%)`,
-                  transition: 'transform 75ms linear',
-                }}
-              >
-                {[0, 1].map((copyIndex) => (
-                  <div key={`trees-${copyIndex}`} className="flex items-end gap-12 sm:gap-16 shrink-0 w-[600px] sm:w-[800px] pr-8">
-                    {/* Tree 1 */}
-                    <svg className="w-5 h-9 text-emerald-400 fill-current opacity-70" viewBox="0 0 24 36">
-                      <circle cx="12" cy="14" r="10" />
-                      <rect x="10.5" y="24" width="3" height="12" fill="#64748B" />
-                    </svg>
-                    {/* Tree 2 (Pine) */}
-                    <svg className="w-6 h-11 text-emerald-500 fill-current opacity-80" viewBox="0 0 24 40">
-                      <polygon points="12,2 4,16 20,16" />
-                      <polygon points="12,10 2,24 22,24" />
-                      <rect x="10.5" y="24" width="3" height="14" fill="#64748B" />
-                    </svg>
-                    {/* Tree 3 */}
-                    <svg className="w-5 h-8 text-emerald-400 fill-current opacity-60" viewBox="0 0 24 36">
-                      <circle cx="12" cy="13" r="9" />
-                      <rect x="10.5" y="22" width="3" height="12" fill="#64748B" />
-                    </svg>
-                    {/* Street lamp */}
-                    <svg className="w-4 h-12 text-white/50" viewBox="0 0 16 48" fill="none">
-                      <line x1="8" y1="48" x2="8" y2="8" stroke="currentColor" strokeWidth="2" />
-                      <path d="M8 8 C8 4, 14 4, 14 8" stroke="currentColor" strokeWidth="2" />
-                      <circle cx="14" cy="9" r="2" fill="#FACC15" />
-                    </svg>
-                    {/* Tree 4 */}
-                    <svg className="w-6 h-10 text-emerald-500 fill-current opacity-75" viewBox="0 0 24 38">
-                      <circle cx="12" cy="14" r="10" />
-                      <rect x="10.5" y="24" width="3" height="12" fill="#64748B" />
-                    </svg>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── The Road Progress Bar ── */}
-            <div className="relative w-full h-14 sm:h-16 rounded-2xl bg-[#1c1c1e] overflow-hidden flex items-center shadow-2xl">
-              {/* Road Shoulders (Solid white lines) */}
-              <div className="absolute top-1.5 inset-x-0 h-0.5 bg-white/15" />
-              <div className="absolute bottom-1.5 inset-x-0 h-0.5 bg-white/15" />
-
-              {/* Dashed Center Road Markings */}
-              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0 border-b-2 border-dashed border-white/25" />
-
-              {/* Travelled Lane Highlight (Apple Blue Progress) */}
-              <div
-                className="absolute inset-y-0 left-0 bg-[#007AFF]/20 transition-all duration-75 ease-linear pointer-events-none"
-                style={{ width: `${Math.min(100, Math.max(0, graceProgress))}%` }}
-              />
-
-              {/* ── The Car Driving Forward (Facing Right) ── */}
-              <div
-                className="absolute top-1/2 -translate-y-1/2 pointer-events-none transition-all duration-75 ease-linear z-20"
-                style={{
-                  left: `calc(${Math.min(88, Math.max(2, graceProgress))}% - 14px)`,
-                }}
-              >
-                <div className="relative flex items-center">
-                  {/* Custom High-Fidelity SVG Car (Explicitly Facing Forward to Right) */}
-                  <svg
-                    width="48"
-                    height="28"
-                    viewBox="0 0 44 26"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="drop-shadow-[0_4px_12px_rgba(0,122,255,0.6)]"
-                  >
-                    {/* Car Body - Rear on Left, Front Hood on Right */}
-                    <path
-                      d="M4 14C4 12.8954 4.89543 12 6 12H11.5L16.2 6.4C16.697 5.80357 17.4326 5.45455 18.2121 5.45455H28.5C29.6046 5.45455 30.5 6.34998 30.5 7.45455V12H38C39.6569 12 41 13.3431 41 15V19C41 19.5523 40.5523 20 40 20H4C3.44772 20 3 19.5523 3 19V15C3 14.4477 3.44772 14 4 14Z"
-                      fill="#007AFF"
-                    />
-                    {/* Rear and Front Windows */}
-                    <path d="M17.5 7H22.5V11H14L17.5 7Z" fill="#E0F2FE" opacity="0.85" />
-                    <path d="M24.5 7H28.5C29.0523 7 29.5 7.44772 29.5 8V11H24.5V7Z" fill="#E0F2FE" opacity="0.85" />
-                    {/* Headlight on Front Right */}
-                    <path d="M40 14H41.5V17H40V14Z" fill="#FDE047" />
-                    {/* Wheels */}
-                    <circle cx="12" cy="20" r="4" fill="#0A0A0C" stroke="#94A3B8" strokeWidth="1.2" />
-                    <circle cx="32" cy="20" r="4" fill="#0A0A0C" stroke="#94A3B8" strokeWidth="1.2" />
-                    <circle cx="12" cy="20" r="1.5" fill="#E2E8F0" />
-                    <circle cx="32" cy="20" r="1.5" fill="#E2E8F0" />
-                  </svg>
-                  {/* Subtle Forward Headlight Beam */}
-                  <div className="absolute left-[44px] top-1/2 -translate-y-1/2 w-6 h-8 bg-gradient-to-r from-yellow-300/30 to-transparent blur-[3px] rounded-r-full pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Destination Parking Entrance at End of Road */}
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex items-center">
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 ${
-                    graceProgress >= 95
-                      ? 'bg-[#007AFF] text-white shadow-[0_0_16px_rgba(0,122,255,0.8)] scale-110'
-                      : 'bg-white/[0.08] text-white/80'
-                  }`}
-                  title={spot.propertyName || spot.address}
-                >
-                  <MapPin size={18} strokeWidth={2.4} />
-                </div>
-              </div>
-            </div>
-
-            {/* Road Trip Labels */}
-            <div className="flex items-center justify-between text-xs text-[#86868b] font-medium mt-3 px-1">
-              <span className="flex items-center gap-1.5 text-white/70">
-                <Car size={13} className="text-[#007AFF]" />
-                <span>Start Point</span>
-              </span>
-              <span className="flex items-center gap-1.5 text-white/90 font-semibold truncate max-w-[260px]">
-                <MapPin size={13} className="text-[#007AFF] shrink-0" />
-                <span className="truncate">{spot.propertyName || spot.address}</span>
-              </span>
-            </div>
-          </div>
+          <GracePeriodRoadAnimation
+            graceProgress={graceProgress}
+            isFinalizingBooking={isFinalizingBooking}
+            destinationName={spot.propertyName || spot.address}
+          />
 
           {/* ── Bottom Section: Minimalist Summary & Action ── */}
           <footer className="w-full max-w-md mx-auto space-y-4 pb-2 sm:pb-4">

@@ -107,7 +107,8 @@ export async function getPublicParkingSpot(
   id: number | string,
   signal?: AbortSignal,
 ): Promise<PublicParkingSpotResponse> {
-  const response = await apiRequest(`/public/parking/${encodeURIComponent(String(id))}`, {
+  const cleanId = String(id).replace(/^spot-/, '').trim();
+  const response = await apiRequest(`/public/parking/${encodeURIComponent(cleanId)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
     signal,

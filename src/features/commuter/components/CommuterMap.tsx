@@ -2689,11 +2689,12 @@ export default function CommuterMap({
                       onClick={(e) => {
                         e.stopPropagation();
                         onSpotClick(spot);
-                        navigate(`/commuter/parking/${spot.id}`, {
+                        const spotId = spot.parkingSpotId || String(spot.id).replace(/^spot-/, '');
+                        navigate(`/commuter/parking/${spotId}`, {
                           state: {
                             spot: {
                               ...spot,
-                              id: spot.id,
+                              id: String(spot.parkingSpotId || spot.id),
                               lat: spot.lat,
                               lon: spot.lng,
                               address: spot.address,
