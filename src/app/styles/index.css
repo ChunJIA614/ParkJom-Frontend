@@ -3209,14 +3209,31 @@ html {
   box-shadow: none;
 }
 
-.app-workspace main :where(input, select, textarea):focus,
-.app-workspace main :where(input, select, textarea):focus-visible,
-.system-select-trigger:focus,
-.system-select-trigger:focus-visible,
-.system-select-trigger.is-open {
+.app-workspace main :where(input:not(.search-capsule-input), select, textarea):focus,
+.app-workspace main :where(input:not(.search-capsule-input), select, textarea):focus-visible,
+.system-select-trigger:not(.variant-ghost):focus,
+.system-select-trigger:not(.variant-ghost):focus-visible,
+.system-select-trigger:not(.variant-ghost).is-open {
   outline: none !important;
   border-color: var(--workspace-accent) !important;
   box-shadow: 0 0 0 3px rgba(var(--workspace-accent-rgb), 0.14) !important;
+}
+
+.search-capsule-input,
+.search-capsule-input:focus,
+.search-capsule-input:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.system-select-trigger.variant-ghost,
+.system-select-trigger.variant-ghost:focus,
+.system-select-trigger.variant-ghost:focus-visible,
+.system-select-trigger.variant-ghost.is-open {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .system-select-option:focus,

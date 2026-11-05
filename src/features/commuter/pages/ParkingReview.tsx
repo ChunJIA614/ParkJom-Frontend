@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, CheckCircle2, Loader2, MapPin, ShieldCheck, Star } from 'lucide-react';
+import { ArrowLeft, Camera, Check, CheckCircle2, Loader2, MapPin, ShieldCheck, Star, X } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import type { Booking } from '../types';
@@ -19,6 +19,7 @@ export default function ParkingReview() {
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState('');
   const [selectedHighlights, setSelectedHighlights] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<string[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -27,6 +28,38 @@ export default function ParkingReview() {
     setSelectedHighlights((current) => current.includes(highlight)
       ? current.filter((item) => item !== highlight)
       : [...current, highlight]);
+  };
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const remainingSlots = 3 - photos.length;
+    if (remainingSlots <= 0) {
+      setError('You can upload a maximum of 3 photos.');
+      return;
+    }
+
+    const selectedFiles = Array.from(files).slice(0, remainingSlots);
+    for (const file of selectedFiles) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Each photo must be under 5MB.');
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        if (result) {
+          setPhotos((prev) => (prev.length < 3 ? [...prev, result] : prev));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
   const submitReview = async () => {
@@ -50,6 +83,7 @@ export default function ParkingReview() {
         bookingId,
         rating,
         ...(detail ? { comment: detail } : {}),
+        photos: photos.length > 0 ? photos : undefined,
       });
       saveParkingReview({
         reviewId: result.data.reviewId,
@@ -61,6 +95,7 @@ export default function ParkingReview() {
           || 'ParkJom commuter',
         rating: result.data.rating,
         comment: result.data.comment,
+        photos: result.data.photos || photos,
         ownerReply: result.data.ownerReply,
         ownerReplyAt: result.data.ownerReplyAt,
         createdAt: result.data.createdAt,
@@ -146,6 +181,44 @@ export default function ParkingReview() {
               <div className="flex items-center justify-between"><label htmlFor="review-comment" className="text-[13px] font-semibold dark:text-white">Share helpful details</label><span className="text-[11px] text-[#8e8e93] dark:text-[#71717A]">{comment.length}/500</span></div>
               <p className="mt-1 text-[11px] text-[#8e8e93] dark:text-[#A1A1AA]">Mention access, safety, cleanliness or the walk to transit.</p>
               <textarea id="review-comment" value={comment} maxLength={500} rows={5} onChange={(event) => { setComment(event.target.value); setError(''); }} placeholder="The bay was easy to locate and the walk to the station…" className="mt-3 w-full resize-none rounded-2xl border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] p-4 text-[13px] text-[#111] dark:text-white leading-5 outline-none transition placeholder:text-[#aeaeb2] dark:placeholder:text-[#71717A] focus:border-[#007AFF] focus:ring-4 focus:ring-[#007AFF]/10" />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-[13px] font-semibold dark:text-white">Bay Condition & Clearance Height Photos</label>
+                <span className="text-[11px] text-[#8e8e93] dark:text-[#71717A]">{photos.length}/3 photos</span>
+              </div>
+              <p className="mt-1 text-[11px] text-[#8e8e93] dark:text-[#A1A1AA]">
+                Upload photos showing bay condition, clearance height signage, or entrance access.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {photos.map((photo, idx) => (
+                  <div key={idx} className="relative h-20 w-20 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 group">
+                    <img src={photo} alt={`Bay photo ${idx + 1}`} className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(idx)}
+                      className="absolute top-1 right-1 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity"
+                      aria-label="Remove photo"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                {photos.length < 3 && (
+                  <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#d2d2d7] dark:border-white/20 text-[#8e8e93] hover:border-[#007AFF] hover:text-[#007AFF] transition-colors">
+                    <Camera size={20} />
+                    <span className="mt-1 text-[10px] font-medium">Add Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
             </div>
 
             {error && <p role="alert" className="rounded-xl bg-[#fff2f1] px-4 py-3 text-[12px] font-medium text-[#d92d20]">{error}</p>}

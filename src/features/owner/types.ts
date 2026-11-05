@@ -22,6 +22,11 @@ export interface ParkingBay {
   verificationSubmittedAt?: string;
   activeBookingCount?: number;
   hasActiveBookings?: boolean;
+  hasEvCharging?: boolean;
+  evChargingSpeed?: string | null;
+  isCovered?: boolean;
+  isHandicapAccessible?: boolean;
+  hasCctv?: boolean;
 }
 
 export type ParkingAvailabilityStatus = 'Inactive' | 'Available' | 'Reserved' | 'Occupied';
@@ -35,6 +40,11 @@ export interface ParkingConfigurationPayload {
   description: string;
   dailyRate: number;
   monthlyRate: number;
+  hasEvCharging?: boolean;
+  evChargingSpeed?: string | null;
+  isCovered?: boolean;
+  isHandicapAccessible?: boolean;
+  hasCctv?: boolean;
 }
 
 export interface ParkingConfigurationResponse extends ParkingActionResult {

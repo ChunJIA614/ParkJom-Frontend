@@ -12,44 +12,14 @@ export interface ParkingReview {
   updatedAt: string;
   parkingName?: string;
   stationName?: string;
+  photos?: string[];
 }
 
 const STORAGE_KEY = 'parkjom.parkingReviews';
 const DELETED_KEY = 'parkjom.deletedParkingReviewIds';
 export const PARKING_REVIEWS_CHANGED_EVENT = 'parkjom:parking-reviews-changed';
 
-export const SAMPLE_REVIEWS: ParkingReview[] = [
-  {
-    reviewId: 1,
-    bookingId: 'SAMPLE-001',
-    parkingSpotId: 0,
-    reviewerId: 0,
-    reviewerName: 'Aina R.',
-    rating: 5,
-    comment: 'Easy to find and only a short walk to the station. The bay felt secure even after dark.',
-    ownerReply: 'Thank you, Aina. We are glad the arrival instructions helped!',
-    ownerReplyAt: '2026-08-19T10:00:00.000Z',
-    createdAt: '2026-08-18T08:30:00.000Z',
-    updatedAt: '2026-08-18T08:30:00.000Z',
-    parkingName: 'KL Gateway Residence Bay A-12',
-    stationName: 'Universiti LRT',
-  },
-  {
-    reviewId: 2,
-    bookingId: 'SAMPLE-002',
-    parkingSpotId: 0,
-    reviewerId: 0,
-    reviewerName: 'Daniel L.',
-    rating: 4,
-    comment: 'Clean, well marked and the smart bollard worked immediately. The entrance is a little narrow.',
-    ownerReply: null,
-    ownerReplyAt: null,
-    createdAt: '2026-08-09T14:20:00.000Z',
-    updatedAt: '2026-08-09T14:20:00.000Z',
-    parkingName: 'Mutiara Damansara Private Bay',
-    stationName: 'Mutiara Damansara MRT',
-  },
-];
+export const SAMPLE_REVIEWS: ParkingReview[] = [];
 
 function loadStoredReviews() {
   try {
@@ -71,11 +41,11 @@ function loadDeletedReviewIds() {
 
 export function loadAllParkingReviews() {
   const deleted = new Set(loadDeletedReviewIds());
-  return [...loadStoredReviews(), ...SAMPLE_REVIEWS].filter((review) => !deleted.has(review.reviewId));
+  return loadStoredReviews().filter((review) => !deleted.has(review.reviewId));
 }
 
 export function loadParkingReviews(parkingSpotId: number) {
-  return loadAllParkingReviews().filter((review) => review.parkingSpotId === parkingSpotId || review.parkingSpotId === 0);
+  return loadAllParkingReviews().filter((review) => review.parkingSpotId === parkingSpotId);
 }
 
 export function loadCachedParkingReviews(parkingSpotId: number) {

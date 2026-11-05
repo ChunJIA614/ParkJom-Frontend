@@ -7,12 +7,12 @@ import {
   Loader2, Calendar, AlertTriangle,
   Heart, Copy, Check,
   ChevronLeft, ChevronRight, MessageSquare, Pencil, Star, Trash2,
-  Share2,
+  Share2, Flag, X, LayoutGrid, RotateCcw, Clock,
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { showConfirm } from '@/contexts/ModalContext';
-import type { Booking, ParkingSpot } from '../types';
+import type { Booking, ParkingSpot, PublicParkingSpotImage } from '../types';
 import { loadJourneySession, saveJourneySession } from '../lib/journeySession';
 import { getWalkingRoute } from '@/services/walkingRoutes';
 import {
@@ -20,7 +20,7 @@ import {
   MultimodalPlanResult,
   CommuterPreference,
 } from '@/services/multimodalRoutingService';
-import { Bus, Footprints, Sparkles, Compass, CheckCircle2 } from 'lucide-react';
+import { Bus, Footprints, Sparkles, Compass, CheckCircle2, Zap, Umbrella, Accessibility, Video } from 'lucide-react';
 import { getPublicParkingSpot } from '../api/parkingApi';
 import { AiCongestionForecastCard } from '../components/AiCongestionForecastCard';
 import { calculateWalkingMinutes } from '@/services/pedestrianWalkingService';
@@ -34,7 +34,7 @@ import {
   type ConfirmedBooking,
 } from '../api/bookingApi';
 import { getFavoriteParking, updateFavoriteParking } from '../api/favoriteApi';
-import { deleteReview, getParkingReviews, updateReview } from '../api/reviewApi';
+import { deleteReview, getParkingReviews, updateReview, reportReview } from '../api/reviewApi';
 import { getMyVehicles } from '../api/vehicleApi';
 import {
   applyActiveVehicle,
@@ -69,6 +69,8 @@ interface MockParkingSpot extends ParkingSpot {
    * 0 placeholders and every distance/route affordance must stay hidden.
    */
   hasCoordinates?: boolean;
+  images?: PublicParkingSpotImage[];
+  allPhotos?: string[];
 }
 interface WalkingInfo {
   distanceText: string;
@@ -76,6 +78,14 @@ interface WalkingInfo {
   rawDistance: number;
   durationMinutes?: number;
 }
+
+const FALLBACK_BAY_PHOTOS = [
+  'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=1200&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?w=800&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1545179605-12988d227443?w=800&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1562774053-701939374585?w=800&auto=format&fit=crop&q=80',
+];
 
 const REVIEW_PAGE_SIZE = 10;
 
@@ -198,15 +208,22 @@ export default function ParkingDetail() {
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
   useEffect(() => {
-    if (state?.spot || !routeId) return;
+    if (!routeId) return;
     const controller = new AbortController();
-    setIsFetchingSpot(true);
+    if (!state?.spot) {
+      setIsFetchingSpot(true);
+    }
     setFetchSpotError(null);
     getPublicParkingSpot(routeId, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
         const d = result.data;
+        const rawImages = d.images || [];
+        const imageUrls = rawImages
+          .map((img: any) => img.secureUrl || (img.mediaFileId ? `/api/media/view/image/${img.mediaFileId}` : ''))
+          .filter(Boolean);
         const primaryImg =
+          imageUrls[0] ||
           d.images?.[0]?.secureUrl ||
           (d.images?.[0]?.mediaFileId ? `/api/media/view/image/${d.images[0].mediaFileId}` : '') ||
           'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80';
@@ -234,6 +251,8 @@ export default function ParkingDetail() {
           dailyRate: d.dailyRate,
           primaryImageUrl: primaryImg,
           photoUrl: primaryImg,
+          images: d.images,
+          allPhotos: imageUrls.length > 0 ? imageUrls : [primaryImg],
           price: d.dailyRate ?? (d.monthlyRate ? Number((d.monthlyRate / 30).toFixed(2)) : 0),
           station: d.stationName ?? '',
           name: d.propertyName || d.address,
@@ -255,7 +274,7 @@ export default function ParkingDetail() {
       });
 
     return () => controller.abort();
-  }, [routeId, state?.spot]);
+  }, [routeId]);
 
   // ── Booking ──
   const today = new Date();
@@ -273,6 +292,14 @@ export default function ParkingDetail() {
   const [isVehiclesLoading, setIsVehiclesLoading] = useState(false);
   const [isBookingLoading, setIsBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingNotice, setBookingNotice] = useState<string | null>(null);
+  const [isGracePeriodActive, setIsGracePeriodActive] = useState(false);
+  const [graceProgress, setGraceProgress] = useState(0);
+  const [graceSecondsLeft, setGraceSecondsLeft] = useState(7);
+  const [isFinalizingBooking, setIsFinalizingBooking] = useState(false);
+  const graceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const graceStartTimeRef = useRef<number>(0);
+  const activeVehicle = useMemo(() => vehicles.find((item) => item.vehicleId === selectedVehicleId), [vehicles, selectedVehicleId]);
   const [reservationReady, setReservationReady] = useState(false);
   const [copiedRef, setCopiedRef] = useState(false);
   const [isFavorite, setIsFavorite] = useState(() => Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
@@ -292,9 +319,59 @@ export default function ParkingDetail() {
   const [reviewUpdateError, setReviewUpdateError] = useState<string | null>(null);
   const [reviewDeletingId, setReviewDeletingId] = useState<number | null>(null);
   const [reviewDeleteError, setReviewDeleteError] = useState<string | null>(null);
+  const [reportingReview, setReportingReview] = useState<ParkingReview | null>(null);
+  const [reportReason, setReportReason] = useState('Inappropriate or offensive language');
+  const [reportDetails, setReportDetails] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [reportStatus, setReportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [viewingPhotoUrl, setViewingPhotoUrl] = useState<string | null>(null);
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+
+  const displayPhotos = useMemo(() => {
+    const extracted: string[] = [];
+    if (spot) {
+      if (spot.allPhotos && Array.isArray(spot.allPhotos)) {
+        spot.allPhotos.forEach((p) => {
+          if (p && typeof p === 'string' && p.trim() && !extracted.includes(p.trim())) {
+            extracted.push(p.trim());
+          }
+        });
+      }
+      if (spot.images && Array.isArray(spot.images)) {
+        spot.images.forEach((img: any) => {
+          const url = typeof img === 'string' ? img : (img?.secureUrl || (img?.mediaFileId ? `/api/media/view/image/${img.mediaFileId}` : ''));
+          if (url && typeof url === 'string' && url.trim() && !extracted.includes(url.trim())) {
+            extracted.push(url.trim());
+          }
+        });
+      }
+      const primary = spot.primaryImageUrl || spot.photoUrl;
+      if (primary && typeof primary === 'string' && primary.trim() && !extracted.includes(primary.trim())) {
+        extracted.unshift(primary.trim());
+      }
+    }
+    // Return strictly only real uploaded photos of this parking spot
+    return extracted;
+  }, [spot]);
+
+  useEffect(() => {
+    if (galleryIndex === null) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setGalleryIndex(null);
+      if (e.key === 'ArrowLeft') {
+        setGalleryIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : displayPhotos.length - 1));
+      }
+      if (e.key === 'ArrowRight') {
+        setGalleryIndex((prev) => (prev !== null && prev < displayPhotos.length - 1 ? prev + 1 : 0));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [galleryIndex, displayPhotos.length]);
   const averageRating = reviewMeta?.averageRating ?? (reviews.length
     ? reviews.reduce((total, review) => total + review.rating, 0) / reviews.length
     : 0);
+  const totalReviewCount = reviewMeta?.totalCount ?? reviews.length;
 
   // `0,0` is the placeholder used when the API omits coordinates, so treat it
   // as "unknown" rather than as a real bay in the Gulf of Guinea.
@@ -526,6 +603,7 @@ export default function ParkingDetail() {
             reviewerName: review.reviewerDisplayName || cachedReview?.reviewerName || 'ParkJom commuter',
             rating: review.rating,
             comment: review.comment,
+            photos: review.photos ?? cachedReview?.photos ?? [],
             ownerReply: review.ownerReply,
             ownerReplyAt: review.ownerReplyAt,
             createdAt: review.createdAt,
@@ -587,6 +665,7 @@ export default function ParkingDetail() {
         reviewerName: result.data.reviewerDisplayName || existingReview.reviewerName,
         rating: result.data.rating,
         comment: result.data.comment,
+        photos: result.data.photos ?? existingReview.photos,
         ownerReply: result.data.ownerReply,
         ownerReplyAt: result.data.ownerReplyAt,
         createdAt: result.data.createdAt || existingReview.createdAt,
@@ -600,6 +679,31 @@ export default function ParkingDetail() {
       setReviewUpdateError(error instanceof Error ? error.message : 'Unable to update this review.');
     } finally {
       setIsReviewUpdating(false);
+    }
+  };
+
+  const handleReportReview = async () => {
+    if (!reportingReview || !user?.token || isSubmittingReport) return;
+    setIsSubmittingReport(true);
+    setReportStatus(null);
+    try {
+      const res = await reportReview(user.token, reportingReview.reviewId, {
+        reason: reportReason,
+        details: reportDetails.trim() || undefined,
+      });
+      setReportStatus({ type: 'success', message: res.message || 'Report submitted for moderation.' });
+      setTimeout(() => {
+        setReportingReview(null);
+        setReportStatus(null);
+        setReportDetails('');
+      }, 1500);
+    } catch (err) {
+      setReportStatus({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Unable to submit report.',
+      });
+    } finally {
+      setIsSubmittingReport(false);
     }
   };
 
@@ -812,18 +916,35 @@ export default function ParkingDetail() {
     void handleBook();
   };
 
-  const handleBook = async () => {
-    if (!user?.token || invalidDates || isBookingLoading) return;
-    setBookingError(null);
-    setIsBookingLoading(true);
+  const GRACE_PERIOD_DURATION_MS = 7000; // 7 seconds
+
+  // Clean up grace period timer on unmount
+  useEffect(() => {
+    return () => {
+      if (graceTimerRef.current) clearInterval(graceTimerRef.current);
+    };
+  }, []);
+
+  const handleCancelGracePeriod = () => {
+    if (graceTimerRef.current) {
+      clearInterval(graceTimerRef.current);
+      graceTimerRef.current = null;
+    }
+    setIsGracePeriodActive(false);
+    setIsBookingLoading(false);
+    setIsFinalizingBooking(false);
+    setBookingNotice('Order cancelled. You have not been charged.');
+  };
+
+  const executeConfirmBooking = async () => {
+    if (!user?.token || !quote) {
+      setIsGracePeriodActive(false);
+      setIsBookingLoading(false);
+      setIsFinalizingBooking(false);
+      return;
+    }
 
     try {
-      if (!quote) {
-        const result = await createBookingQuote(user.token, spot.parkingSpotId, { startDate, endDate });
-        setQuote(result.data);
-        return;
-      }
-
       if (!selectedVehicleId) throw new Error('Select a vehicle before confirming this booking.');
       idempotencyKeyRef.current ??= crypto.randomUUID();
       const confirmation = await confirmBooking(
@@ -862,12 +983,76 @@ export default function ParkingDetail() {
       if (!currentSession || new Date(currentSession.booking.endTime) <= new Date() || new Date(booking.startTime) <= new Date(currentSession.booking.startTime)) {
         saveJourneySession(booking, 'reserved', user.userId);
       }
+      setIsGracePeriodActive(false);
       setReservationReady(true);
     } catch (error) {
+      setIsGracePeriodActive(false);
       setBookingError(error instanceof Error ? error.message : 'Unable to complete this booking.');
     } finally {
       setIsBookingLoading(false);
+      setIsFinalizingBooking(false);
     }
+  };
+
+  const startGracePeriodBooking = () => {
+    if (!user?.token || !quote) return;
+    if (!selectedVehicleId) {
+      setBookingError('Select a vehicle before confirming this booking.');
+      return;
+    }
+
+    setBookingError(null);
+    setBookingNotice(null);
+    setIsGracePeriodActive(true);
+    setGraceProgress(0);
+    setGraceSecondsLeft(7);
+    setIsFinalizingBooking(false);
+
+    const startTime = Date.now();
+    graceStartTimeRef.current = startTime;
+
+    if (graceTimerRef.current) clearInterval(graceTimerRef.current);
+
+    graceTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progressPercent = Math.min(100, (elapsed / GRACE_PERIOD_DURATION_MS) * 100);
+      const remainingSeconds = Math.max(0, Math.ceil((GRACE_PERIOD_DURATION_MS - elapsed) / 1000));
+
+      setGraceProgress(progressPercent);
+      setGraceSecondsLeft(remainingSeconds);
+
+      if (elapsed >= GRACE_PERIOD_DURATION_MS) {
+        if (graceTimerRef.current) {
+          clearInterval(graceTimerRef.current);
+          graceTimerRef.current = null;
+        }
+        setIsFinalizingBooking(true);
+        void executeConfirmBooking();
+      }
+    }, 40);
+  };
+
+  const handleBook = async () => {
+    if (!user?.token || invalidDates || isBookingLoading || isGracePeriodActive) return;
+    setBookingError(null);
+    setBookingNotice(null);
+
+    // If quote is not generated yet, get quote first
+    if (!quote) {
+      setIsBookingLoading(true);
+      try {
+        const result = await createBookingQuote(user.token, spot.parkingSpotId, { startDate, endDate });
+        setQuote(result.data);
+      } catch (error) {
+        setBookingError(error instanceof Error ? error.message : 'Unable to create booking quote.');
+      } finally {
+        setIsBookingLoading(false);
+      }
+      return;
+    }
+
+    // Quote already present: User clicks "Confirm & Pay" -> Start Zus Coffee Grace Period!
+    startGracePeriodBooking();
   };
 
   if (reservationReady) {
@@ -1070,6 +1255,7 @@ export default function ParkingDetail() {
 
           <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-4 text-xs sm:text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
             <div className="flex flex-wrap items-center gap-2">
+            {totalReviewCount > 0 ? (
               <span className="inline-flex items-center gap-1 font-bold text-[#111] dark:text-white">
                 <Star size={14} className="text-[#ff9500] fill-[#ff9500]" />
                 <span>{averageRating.toFixed(1)}</span>
@@ -1079,9 +1265,15 @@ export default function ParkingDetail() {
                   onClick={() => document.getElementById('commuter-reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
                   className="font-normal underline hover:text-[#111] dark:hover:text-white cursor-pointer"
                 >
-                  {reviewMeta?.totalCount ?? reviews.length} reviews
+                  {totalReviewCount} {totalReviewCount === 1 ? 'review' : 'reviews'}
                 </button>
               </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 font-semibold text-[#8e8e93] dark:text-[#A1A1AA]">
+                <Star size={14} className="text-[#8e8e93] dark:text-[#71717A]" />
+                <span>New</span>
+              </span>
+            )}
               <span>·</span>
               <span className="inline-flex items-center gap-1">
                 <MapPin size={14} className="text-[#007AFF] shrink-0" />
@@ -1133,27 +1325,373 @@ export default function ParkingDetail() {
           </div>
         </div>
 
-        {/* ── Full-Width Top Hero Banner (Airbnb listing hero spanning full container width) ── */}
-        <div className="relative aspect-[21/9] sm:aspect-[24/9] md:aspect-[2.6/1] w-full min-h-[260px] max-h-[460px] overflow-hidden rounded-2xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm mb-10">
-          <img
-            src={spot.primaryImageUrl || spot.photoUrl || 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=1200&auto=format&fit=crop&q=80'}
-            alt={spot.name || 'Parking bay'}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-          <div className="absolute top-4 left-4 flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15">
-              <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
-            </span>
+        {/* ── Dynamic Multi-Picture Gallery Section (Adapts to exact picture count: 1, 2, 3, 4, 5+) ── */}
+        {displayPhotos.length === 0 ? (
+          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[260px] sm:h-[340px] flex flex-col items-center justify-center p-6 text-center">
+            <Car size={40} className="text-[#8e8e93] dark:text-[#71717A] mb-2 opacity-50" />
+            <p className="text-sm font-bold text-[#111] dark:text-white">Parking Bay Photo</p>
+            <p className="text-xs text-[#6e6e73] dark:text-[#A1A1AA] mt-1 max-w-sm">
+              Bay {spot.parkingLabel ? `${spot.parkingLabel} · ` : ''}{spot.propertyName || spot.name}
+            </p>
           </div>
-          {spot.parkingLabel && (
-            <div className="absolute bottom-4 right-4 flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15">
-                Bay {spot.parkingLabel}
-              </span>
+        ) : displayPhotos.length === 1 ? (
+          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[320px] sm:h-[400px] md:h-[460px]">
+            {/* 1 Photo: Clean Full-Width Hero Banner */}
+            <div
+              onClick={() => setGalleryIndex(0)}
+              className="relative h-full w-full group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
+            >
+              <img
+                src={displayPhotos[0]}
+                alt={spot.propertyName || spot.name || 'Parking bay view'}
+                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
+                loading="eager"
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+
+              <div className="absolute top-4 left-4 flex items-center gap-2 pointer-events-none">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                  <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
+                </span>
+              </div>
+
+              {spot.parkingLabel && (
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 pointer-events-none">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                    Bay {spot.parkingLabel}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        ) : displayPhotos.length === 2 ? (
+          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[320px] sm:h-[400px] md:h-[460px]">
+            {/* 2 Photos: 50% / 50% Split Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 h-full">
+              <div
+                onClick={() => setGalleryIndex(0)}
+                className="relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[0]}
+                  alt="Parking bay photo 1"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+                <div className="absolute top-4 left-4 pointer-events-none">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                    <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
+                  </span>
+                </div>
+                {spot.parkingLabel && (
+                  <div className="absolute bottom-4 left-4 pointer-events-none">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                      Bay {spot.parkingLabel}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(1)}
+                className="hidden sm:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[1]}
+                  alt="Parking bay photo 2"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGalleryIndex(0);
+                  }}
+                  className="absolute bottom-3.5 right-3.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <LayoutGrid size={13} />
+                  <span>Show all 2 photos</span>
+                </button>
+              </div>
+            </div>
+            {/* Mobile 'Show all photos' pill */}
+            <button
+              type="button"
+              onClick={() => setGalleryIndex(0)}
+              className="sm:hidden absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md cursor-pointer"
+            >
+              <LayoutGrid size={13} />
+              <span>Show all 2 photos</span>
+            </button>
+          </div>
+        ) : displayPhotos.length === 3 ? (
+          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[320px] sm:h-[400px] md:h-[460px]">
+            {/* 3 Photos: 1 Hero on Left (66%), 2 Stacked on Right (33%) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-2 h-full">
+              <div
+                onClick={() => setGalleryIndex(0)}
+                className="md:col-span-2 md:row-span-2 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[0]}
+                  alt="Parking bay photo 1"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+                <div className="absolute top-4 left-4 pointer-events-none">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                    <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
+                  </span>
+                </div>
+                {spot.parkingLabel && (
+                  <div className="absolute bottom-4 left-4 pointer-events-none">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                      Bay {spot.parkingLabel}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(1)}
+                className="hidden md:block md:col-span-1 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[1]}
+                  alt="Parking bay photo 2"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(2)}
+                className="hidden md:block md:col-span-1 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[2]}
+                  alt="Parking bay photo 3"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGalleryIndex(0);
+                  }}
+                  className="absolute bottom-3.5 right-3.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <LayoutGrid size={13} />
+                  <span>Show all 3 photos</span>
+                </button>
+              </div>
+            </div>
+            {/* Mobile 'Show all photos' pill */}
+            <button
+              type="button"
+              onClick={() => setGalleryIndex(0)}
+              className="md:hidden absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md cursor-pointer"
+            >
+              <LayoutGrid size={13} />
+              <span>Show all 3 photos</span>
+            </button>
+          </div>
+        ) : displayPhotos.length === 4 ? (
+          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[320px] sm:h-[400px] md:h-[460px]">
+            {/* 4 Photos: 1 Hero on Left (50%), 1 Top-Right (50%), 2 Squares Bottom-Right */}
+            <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-2 h-full">
+              <div
+                onClick={() => setGalleryIndex(0)}
+                className="md:col-span-2 md:row-span-2 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[0]}
+                  alt="Parking bay photo 1"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+                <div className="absolute top-4 left-4 pointer-events-none">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                    <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
+                  </span>
+                </div>
+                {spot.parkingLabel && (
+                  <div className="absolute bottom-4 left-4 pointer-events-none">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                      Bay {spot.parkingLabel}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(1)}
+                className="hidden md:block md:col-span-2 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[1]}
+                  alt="Parking bay photo 2"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(2)}
+                className="hidden md:block md:col-span-1 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[2]}
+                  alt="Parking bay photo 3"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(3)}
+                className="hidden md:block md:col-span-1 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
+              >
+                <img
+                  src={displayPhotos[3]}
+                  alt="Parking bay photo 4"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGalleryIndex(0);
+                  }}
+                  className="absolute bottom-3.5 right-3.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <LayoutGrid size={13} />
+                  <span>Show all 4 photos</span>
+                </button>
+              </div>
+            </div>
+            {/* Mobile 'Show all photos' pill */}
+            <button
+              type="button"
+              onClick={() => setGalleryIndex(0)}
+              className="md:hidden absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md cursor-pointer"
+            >
+              <LayoutGrid size={13} />
+              <span>Show all 4 photos</span>
+            </button>
+          </div>
+        ) : (
+          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm">
+            {/* 5+ Photos: Full Airbnb Mosaic (1 Large Left + 4 Squares Right in 2x2) */}
+            <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-2 md:gap-2.5 h-[320px] sm:h-[400px] md:h-[480px]">
+              <div
+                onClick={() => setGalleryIndex(0)}
+                className="md:col-span-2 md:row-span-2 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
+              >
+                <img
+                  src={displayPhotos[0]}
+                  alt={spot.propertyName || spot.name || 'Parking bay main view'}
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
+                  loading="eager"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+
+                <div className="absolute top-4 left-4 flex items-center gap-2 pointer-events-none">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                    <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
+                  </span>
+                </div>
+
+                {spot.parkingLabel && (
+                  <div className="absolute bottom-4 left-4 flex items-center gap-2 pointer-events-none">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
+                      Bay {spot.parkingLabel}
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGalleryIndex(0);
+                  }}
+                  className="md:hidden absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+                >
+                  <LayoutGrid size={13} className="shrink-0 text-slate-700 dark:text-slate-300" />
+                  <span>Show all {displayPhotos.length} photos</span>
+                </button>
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(1)}
+                className="hidden md:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
+              >
+                <img
+                  src={displayPhotos[1]}
+                  alt="Parking facility view 2"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(2)}
+                className="hidden md:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
+              >
+                <img
+                  src={displayPhotos[2]}
+                  alt="Parking facility view 3"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(3)}
+                className="hidden md:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
+              >
+                <img
+                  src={displayPhotos[3]}
+                  alt="Parking facility view 4"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+              </div>
+
+              <div
+                onClick={() => setGalleryIndex(4)}
+                className="hidden md:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
+              >
+                <img
+                  src={displayPhotos[4]}
+                  alt="Parking facility view 5"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGalleryIndex(0);
+                  }}
+                  className="absolute bottom-3.5 right-3.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all hover:bg-white dark:hover:bg-[#2C2C2E] hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <LayoutGrid size={13} className="shrink-0 text-slate-700 dark:text-slate-300" />
+                  <span>Show all {displayPhotos.length} photos</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {favoriteError && (
           <div role="alert" className="mb-6 flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs text-rose-700 dark:text-rose-300">
@@ -1255,10 +1793,10 @@ export default function ParkingDetail() {
               </h2>
               <div className="grid grid-cols-2 gap-3 pt-1">
                 {[
-                  { icon: Car, label: 'Private dedicated bay', desc: 'Reserved exclusively for your booked dates' },
-                  { icon: Wifi, label: 'Smart bollard access', desc: 'Automated entry and exit via ParkJom pass' },
-                  { icon: Navigation, label: 'Transit-adjacent', desc: 'Direct walking connectivity to train station' },
-                  { icon: ShieldCheck, label: 'Secure automated access', desc: 'Continuous sensor monitoring and protection' },
+                  { icon: Car, label: spot.isCovered ? 'Covered / Indoor bay' : 'Open-air bay', desc: spot.isCovered ? 'Sheltered from rain and direct sun' : 'Outdoor surface parking bay' },
+                  { icon: Zap, label: spot.hasEvCharging ? (spot.evChargingSpeed ? 'EV Charging (' + spot.evChargingSpeed + ')' : 'EV Charging Available') : 'No EV Charger', desc: spot.hasEvCharging ? 'Dedicated charging point for electric vehicles' : 'Standard combustion / hybrid bay' },
+                  { icon: Accessibility, label: spot.isHandicapAccessible ? 'OKU / Handicap accessible' : 'Standard access bay', desc: spot.isHandicapAccessible ? 'Wider berth & step-free transit pathway' : 'Standard commuter parking width' },
+                  { icon: ShieldCheck, label: spot.hasCctv ? '24/7 CCTV & Security' : 'Continuous sensor access', desc: spot.hasCctv ? 'Active surveillance on premise' : 'Monitored smart bollard bay' },
                 ].map(({ icon: Icon, label, desc }) => (
                   <div key={label} className="p-3.5 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-[#F9F9FB] dark:bg-white/[0.03]">
                     <div className="flex items-center gap-2">
@@ -1767,31 +2305,42 @@ export default function ParkingDetail() {
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">Verified stays</p>
                   <h2 id="parking-reviews-title" className="mt-1 text-lg sm:text-xl font-bold text-[#111] dark:text-white flex items-center gap-2">
-                    <Star size={18} className="text-[#ff9500] fill-[#ff9500]" />
-                    <span>{averageRating.toFixed(1)} · {reviewMeta?.totalCount ?? reviews.length} reviews</span>
+                    {totalReviewCount > 0 ? (
+                      <>
+                        <Star size={18} className="text-[#ff9500] fill-[#ff9500]" />
+                        <span>{averageRating.toFixed(1)} · {totalReviewCount} {totalReviewCount === 1 ? 'review' : 'reviews'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Star size={18} className="text-[#8e8e93] dark:text-[#71717A]" />
+                        <span>New · No reviews yet</span>
+                      </>
+                    )}
                   </h2>
                 </div>
               </div>
 
-              {/* Airbnb Review Category Pillars */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 border-y border-black/[0.04] dark:border-white/[0.06]">
-                <div>
-                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Overall rating</span>
-                  <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">{averageRating.toFixed(1)} / 5.0</span>
+              {/* Review Summary Pillars - Only show when real reviews exist */}
+              {totalReviewCount > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 border-y border-black/[0.04] dark:border-white/[0.06]">
+                  <div>
+                    <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Overall rating</span>
+                    <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">{averageRating.toFixed(1)} / 5.0</span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Total reviews</span>
+                    <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">{totalReviewCount}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Authenticity</span>
+                    <span className="block text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">Verified stays</span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Transit proximity</span>
+                    <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5 truncate">{spot.stationName || spot.station || 'Near Transit'}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Gate access</span>
-                  <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">5.0</span>
-                </div>
-                <div>
-                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Station transit</span>
-                  <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">4.9</span>
-                </div>
-                <div>
-                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Value</span>
-                  <span className="block text-sm font-bold text-[#111] dark:text-white mt-0.5">5.0</span>
-                </div>
-              </div>
+              )}
 
               {reviewsLoadError && (
                 <p role="alert" className="rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-3 py-2.5 text-[11px] font-medium text-rose-700 dark:text-rose-300">{reviewsLoadError}</p>
@@ -1839,6 +2388,21 @@ export default function ParkingDetail() {
                               <button type="button" disabled={reviewDeletingId !== null} aria-label="Delete your review" title="Delete your review" onClick={() => void handleDeleteReview(review)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-[#fff2f1] dark:hover:bg-rose-950/40 hover:text-[#d92d20] dark:hover:text-rose-400 disabled:cursor-wait disabled:opacity-60 cursor-pointer">{reviewDeletingId === review.reviewId ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}</button>
                             </>
                           )}
+                          {!isOwnReview && (
+                            <button
+                              type="button"
+                              aria-label="Report review"
+                              title="Report this review for moderation"
+                              onClick={() => {
+                                setReportingReview(review);
+                                setReportStatus(null);
+                                setReportDetails('');
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-[#8e8e93] dark:text-[#A1A1AA] transition hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-[#d92d20] dark:hover:text-rose-400 cursor-pointer"
+                            >
+                              <Flag size={13} />
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1871,7 +2435,24 @@ export default function ParkingDetail() {
                           </div>
                         </div>
                       ) : (
-                        <p className="review-comment-text mt-2.5 whitespace-pre-line text-xs sm:text-[13px] leading-5 text-[#333] dark:text-[#D4D4D8]">{review.comment || 'No written comment.'}</p>
+                        <div>
+                          <p className="review-comment-text mt-2.5 whitespace-pre-line text-xs sm:text-[13px] leading-5 text-[#333] dark:text-[#D4D4D8]">{review.comment || 'No written comment.'}</p>
+                          {review.photos && review.photos.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {review.photos.map((photo, pIdx) => (
+                                <button
+                                  key={pIdx}
+                                  type="button"
+                                  onClick={() => setViewingPhotoUrl(photo)}
+                                  className="relative h-16 w-16 sm:h-20 sm:w-20 overflow-hidden rounded-xl border border-black/10 dark:border-white/10 hover:opacity-90 transition cursor-zoom-in"
+                                  title="View full size photo"
+                                >
+                                  <img src={photo} alt={`Bay condition ${pIdx + 1}`} className="h-full w-full object-cover" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       )}
 
                       {review.ownerReply && (
@@ -1909,18 +2490,25 @@ export default function ParkingDetail() {
                     / day
                   </span>
                 </div>
-                <div className="flex items-center gap-1 text-xs font-bold text-[#111] dark:text-white">
-                  <Star size={13} className="text-[#ff9500] fill-[#ff9500]" />
-                  <span>{averageRating.toFixed(1)}</span>
-                  <span className="font-normal text-[#8e8e93] dark:text-[#71717A]">·</span>
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('commuter-reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="font-normal underline text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white cursor-pointer"
-                  >
-                    {reviewMeta?.totalCount ?? reviews.length} reviews
-                  </button>
-                </div>
+                {totalReviewCount > 0 ? (
+                  <div className="flex items-center gap-1 text-xs font-bold text-[#111] dark:text-white">
+                    <Star size={13} className="text-[#ff9500] fill-[#ff9500]" />
+                    <span>{averageRating.toFixed(1)}</span>
+                    <span className="font-normal text-[#8e8e93] dark:text-[#71717A]">·</span>
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('commuter-reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
+                      className="font-normal underline text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white cursor-pointer"
+                    >
+                      {totalReviewCount} {totalReviewCount === 1 ? 'review' : 'reviews'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 text-xs font-semibold text-[#8e8e93] dark:text-[#A1A1AA]">
+                    <Star size={13} className="text-[#8e8e93] dark:text-[#71717A]" />
+                    <span>New</span>
+                  </div>
+                )}
               </div>
 
               {/* Airbnb Signature Reservation Twin-Box */}
@@ -1986,6 +2574,13 @@ export default function ParkingDetail() {
                 </div>
               )}
 
+              {bookingNotice && (
+                <div className="flex items-start gap-2 text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/40 rounded-xl p-2.5">
+                  <CheckCircle2 size={14} className="shrink-0 mt-0.5 text-blue-600" />
+                  <span>{bookingNotice}</span>
+                </div>
+              )}
+
               {bookingError && (
                 <div className="flex items-start gap-2 text-xs text-[#dc2626] dark:text-rose-400 bg-[#fef2f2] dark:bg-rose-950/30 border border-[#fecaca] dark:border-rose-900/40 rounded-xl p-2.5">
                   <AlertTriangle size={14} className="shrink-0 mt-0.5" />
@@ -2029,6 +2624,199 @@ export default function ParkingDetail() {
         </div>
       </main>
 
+      {/* Report Review Modal */}
+      {reportingReview && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#18181C] p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06] dark:border-white/10">
+              <h3 className="text-base font-semibold text-[#111] dark:text-white flex items-center gap-2">
+                <Flag size={16} className="text-rose-600" /> Report Review
+              </h3>
+              <button
+                type="button"
+                onClick={() => { setReportingReview(null); setReportStatus(null); }}
+                className="text-[#8e8e93] hover:text-[#111] dark:hover:text-white cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] mb-1.5">
+                  Reason for report
+                </label>
+                <SystemSelect
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121214] text-[#111] dark:text-white outline-none focus:border-[#007AFF]"
+                >
+                  <option value="Inappropriate or offensive language">Inappropriate or offensive language</option>
+                  <option value="Spam or irrelevant content">Spam or irrelevant content</option>
+                  <option value="Harassment or threats">Harassment or threats</option>
+                  <option value="Fraudulent or misleading review">Fraudulent or misleading review</option>
+                  <option value="Other">Other</option>
+                </SystemSelect>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] mb-1.5">
+                  Additional details (optional)
+                </label>
+                <textarea
+                  value={reportDetails}
+                  onChange={(e) => setReportDetails(e.target.value)}
+                  rows={3}
+                  placeholder="Explain what is misleading, abusive, or violating community guidelines..."
+                  className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121214] p-2.5 text-xs text-[#111] dark:text-white outline-none resize-none focus:border-[#007AFF]"
+                />
+              </div>
+
+              {reportStatus && (
+                <p
+                  className={`rounded-xl px-3 py-2 text-xs font-medium ${
+                    reportStatus.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+                      : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'
+                  }`}
+                >
+                  {reportStatus.message}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={isSubmittingReport}
+                  onClick={() => { setReportingReview(null); setReportStatus(null); }}
+                  className="rounded-xl px-4 py-2 text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/[0.06] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingReport}
+                  onClick={() => void handleReportReview()}
+                  className="flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmittingReport && <Loader2 size={13} className="animate-spin" />}
+                  {isSubmittingReport ? 'Submitting…' : 'Submit Report'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full Photo Gallery Modal */}
+      {galleryIndex !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo gallery"
+          className="fixed inset-0 z-[2000] flex flex-col justify-between bg-black/95 text-white backdrop-blur-md p-4 sm:p-6"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between pb-3 shrink-0 relative z-10">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-medium text-white/70">
+                {galleryIndex + 1} / {displayPhotos.length}
+              </span>
+              <span className="text-xs text-white/50">·</span>
+              <span className="text-xs font-semibold text-white truncate max-w-[200px] sm:max-w-md">
+                {spot.propertyName || spot.name || 'Parking Bay Gallery'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGalleryIndex(null)}
+              className="rounded-full bg-white/20 hover:bg-white/30 active:scale-95 p-2 text-white transition-all cursor-pointer shadow-md border border-white/20"
+              aria-label="Close photo gallery"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Main Photo with navigation arrows */}
+          <div className="relative flex-1 min-h-0 flex items-center justify-center py-2">
+            <img
+              src={displayPhotos[galleryIndex]}
+              alt={`Parking bay photo ${galleryIndex + 1}`}
+              className="max-h-full max-w-full object-contain rounded-xl select-none shadow-2xl"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = FALLBACK_BAY_PHOTOS[galleryIndex % FALLBACK_BAY_PHOTOS.length];
+              }}
+            />
+
+            {displayPhotos.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setGalleryIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : displayPhotos.length - 1))}
+                  className="absolute left-2 sm:left-4 rounded-full bg-black/60 hover:bg-black/90 p-2 sm:p-3 text-white transition backdrop-blur-xs border border-white/15 cursor-pointer"
+                  aria-label="Previous photo"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGalleryIndex((prev) => (prev !== null && prev < displayPhotos.length - 1 ? prev + 1 : 0))}
+                  className="absolute right-2 sm:right-4 rounded-full bg-black/60 hover:bg-black/90 p-2 sm:p-3 text-white transition backdrop-blur-xs border border-white/15 cursor-pointer"
+                  aria-label="Next photo"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Thumbnail Strip */}
+          {displayPhotos.length > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-3 shrink-0 overflow-x-auto no-scrollbar">
+              {displayPhotos.map((photo, idx) => (
+                <button
+                  key={`${photo}-${idx}`}
+                  type="button"
+                  onClick={() => setGalleryIndex(idx)}
+                  className={`relative h-12 w-16 sm:h-14 sm:w-20 shrink-0 overflow-hidden rounded-lg border-2 transition-all cursor-pointer ${
+                    galleryIndex === idx ? 'border-white scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  <img
+                    src={photo}
+                    alt={`Thumbnail ${idx + 1}`}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = FALLBACK_BAY_PHOTOS[idx % FALLBACK_BAY_PHOTOS.length];
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Enlarged Photo Preview Modal */}
+      {viewingPhotoUrl && (
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs cursor-pointer"
+          onClick={() => setViewingPhotoUrl(null)}
+        >
+          <div className="relative max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl bg-black">
+            <img src={viewingPhotoUrl} alt="Bay condition enlarged preview" className="max-h-[85vh] w-auto object-contain" />
+            <button
+              type="button"
+              onClick={() => setViewingPhotoUrl(null)}
+              className="absolute top-3 right-3 rounded-full bg-black/70 p-1.5 text-white hover:bg-black cursor-pointer"
+              aria-label="Close image"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Mobile bottom fixed booking bar (Hidden on desktop screens) ── */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#141417]/95 border-t border-[#e8eaed] dark:border-white/10 px-4 py-3 z-40 backdrop-blur-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
@@ -2064,6 +2852,239 @@ export default function ParkingDetail() {
           </button>
         </div>
       </div>
+
+      {/* ── Apple-style Full Page Grace Period Screen ── */}
+      {isGracePeriodActive && (
+        <div className="fixed inset-0 z-[2500] flex flex-col justify-between bg-[#000000] text-white p-5 sm:p-8 md:p-12 select-none overflow-y-auto no-scrollbar animate-in fade-in duration-300">
+          {/* Top Bar / Header */}
+          <header className="w-full max-w-2xl mx-auto flex flex-col items-center text-center space-y-2 pt-2 sm:pt-4">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-4 py-1.5 text-xs font-semibold text-white/90 shadow-sm">
+              <Clock size={13} className="text-[#007AFF] animate-pulse" />
+              <span>Auto-confirming in {graceSecondsLeft}s</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white pt-1">
+              {isFinalizingBooking ? 'Securing Your Bay…' : 'Driving to Your Parking Bay'}
+            </h1>
+            <p className="text-xs sm:text-sm text-[#86868b] max-w-md leading-relaxed">
+              {isFinalizingBooking
+                ? 'Processing payment and registering vehicle access…'
+                : `Heading to ${spot.propertyName || spot.address}. You can regret and cancel anytime before arrival.`}
+            </p>
+          </header>
+
+          {/* ── Middle: Animated Road with Moving Cities & Trees ── */}
+          <div className="w-full max-w-2xl mx-auto my-auto py-8 sm:py-12">
+            {/* Scenery Container (Skyline + Trees) */}
+            <div className="relative w-full h-24 sm:h-28 overflow-hidden flex items-end">
+              {/* Skyline silhouette (Moving City) */}
+              <div
+                className="absolute inset-x-0 bottom-3 flex items-end opacity-20 pointer-events-none"
+                style={{
+                  transform: `translateX(-${(graceProgress * 0.35) % 25}%)`,
+                  transition: 'transform 75ms linear',
+                }}
+              >
+                {[0, 1].map((copyIndex) => (
+                  <svg
+                    key={`city-${copyIndex}`}
+                    className="shrink-0 h-20 sm:h-24 w-[600px] sm:w-[800px] text-white fill-current"
+                    viewBox="0 0 800 120"
+                    preserveAspectRatio="none"
+                  >
+                    <rect x="20" y="30" width="45" height="90" rx="3" />
+                    <rect x="75" y="55" width="35" height="65" rx="2" />
+                    <rect x="120" y="15" width="55" height="105" rx="4" />
+                    <line x1="147" y1="15" x2="147" y2="2" stroke="currentColor" strokeWidth="2" />
+                    <rect x="185" y="45" width="40" height="75" rx="2" />
+                    <rect x="235" y="60" width="50" height="60" rx="3" />
+                    <rect x="295" y="25" width="45" height="95" rx="3" />
+                    <rect x="350" y="40" width="60" height="80" rx="3" />
+                    <rect x="420" y="10" width="50" height="110" rx="4" />
+                    <line x1="445" y1="10" x2="445" y2="0" stroke="currentColor" strokeWidth="2" />
+                    <rect x="480" y="50" width="35" height="70" rx="2" />
+                    <rect x="525" y="35" width="55" height="85" rx="3" />
+                    <rect x="590" y="55" width="45" height="65" rx="2" />
+                    <rect x="645" y="20" width="50" height="100" rx="3" />
+                    <rect x="705" y="45" width="40" height="75" rx="2" />
+                    <rect x="755" y="30" width="45" height="90" rx="3" />
+                  </svg>
+                ))}
+              </div>
+
+              {/* Roadside Trees (Moving Trees) */}
+              <div
+                className="absolute inset-x-0 bottom-0 flex items-end justify-between px-2 opacity-45 pointer-events-none"
+                style={{
+                  transform: `translateX(-${(graceProgress * 0.65) % 25}%)`,
+                  transition: 'transform 75ms linear',
+                }}
+              >
+                {[0, 1].map((copyIndex) => (
+                  <div key={`trees-${copyIndex}`} className="flex items-end gap-12 sm:gap-16 shrink-0 w-[600px] sm:w-[800px] pr-8">
+                    {/* Tree 1 */}
+                    <svg className="w-5 h-9 text-emerald-400 fill-current opacity-70" viewBox="0 0 24 36">
+                      <circle cx="12" cy="14" r="10" />
+                      <rect x="10.5" y="24" width="3" height="12" fill="#64748B" />
+                    </svg>
+                    {/* Tree 2 (Pine) */}
+                    <svg className="w-6 h-11 text-emerald-500 fill-current opacity-80" viewBox="0 0 24 40">
+                      <polygon points="12,2 4,16 20,16" />
+                      <polygon points="12,10 2,24 22,24" />
+                      <rect x="10.5" y="24" width="3" height="14" fill="#64748B" />
+                    </svg>
+                    {/* Tree 3 */}
+                    <svg className="w-5 h-8 text-emerald-400 fill-current opacity-60" viewBox="0 0 24 36">
+                      <circle cx="12" cy="13" r="9" />
+                      <rect x="10.5" y="22" width="3" height="12" fill="#64748B" />
+                    </svg>
+                    {/* Street lamp */}
+                    <svg className="w-4 h-12 text-white/50" viewBox="0 0 16 48" fill="none">
+                      <line x1="8" y1="48" x2="8" y2="8" stroke="currentColor" strokeWidth="2" />
+                      <path d="M8 8 C8 4, 14 4, 14 8" stroke="currentColor" strokeWidth="2" />
+                      <circle cx="14" cy="9" r="2" fill="#FACC15" />
+                    </svg>
+                    {/* Tree 4 */}
+                    <svg className="w-6 h-10 text-emerald-500 fill-current opacity-75" viewBox="0 0 24 38">
+                      <circle cx="12" cy="14" r="10" />
+                      <rect x="10.5" y="24" width="3" height="12" fill="#64748B" />
+                    </svg>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── The Road Progress Bar ── */}
+            <div className="relative w-full h-14 sm:h-16 rounded-2xl bg-[#1c1c1e] overflow-hidden flex items-center shadow-2xl">
+              {/* Road Shoulders (Solid white lines) */}
+              <div className="absolute top-1.5 inset-x-0 h-0.5 bg-white/15" />
+              <div className="absolute bottom-1.5 inset-x-0 h-0.5 bg-white/15" />
+
+              {/* Dashed Center Road Markings */}
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0 border-b-2 border-dashed border-white/25" />
+
+              {/* Travelled Lane Highlight (Apple Blue Progress) */}
+              <div
+                className="absolute inset-y-0 left-0 bg-[#007AFF]/20 transition-all duration-75 ease-linear pointer-events-none"
+                style={{ width: `${Math.min(100, Math.max(0, graceProgress))}%` }}
+              />
+
+              {/* ── The Car Driving Forward (Facing Right) ── */}
+              <div
+                className="absolute top-1/2 -translate-y-1/2 pointer-events-none transition-all duration-75 ease-linear z-20"
+                style={{
+                  left: `calc(${Math.min(88, Math.max(2, graceProgress))}% - 14px)`,
+                }}
+              >
+                <div className="relative flex items-center">
+                  {/* Custom High-Fidelity SVG Car (Explicitly Facing Forward to Right) */}
+                  <svg
+                    width="48"
+                    height="28"
+                    viewBox="0 0 44 26"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="drop-shadow-[0_4px_12px_rgba(0,122,255,0.6)]"
+                  >
+                    {/* Car Body - Rear on Left, Front Hood on Right */}
+                    <path
+                      d="M4 14C4 12.8954 4.89543 12 6 12H11.5L16.2 6.4C16.697 5.80357 17.4326 5.45455 18.2121 5.45455H28.5C29.6046 5.45455 30.5 6.34998 30.5 7.45455V12H38C39.6569 12 41 13.3431 41 15V19C41 19.5523 40.5523 20 40 20H4C3.44772 20 3 19.5523 3 19V15C3 14.4477 3.44772 14 4 14Z"
+                      fill="#007AFF"
+                    />
+                    {/* Rear and Front Windows */}
+                    <path d="M17.5 7H22.5V11H14L17.5 7Z" fill="#E0F2FE" opacity="0.85" />
+                    <path d="M24.5 7H28.5C29.0523 7 29.5 7.44772 29.5 8V11H24.5V7Z" fill="#E0F2FE" opacity="0.85" />
+                    {/* Headlight on Front Right */}
+                    <path d="M40 14H41.5V17H40V14Z" fill="#FDE047" />
+                    {/* Wheels */}
+                    <circle cx="12" cy="20" r="4" fill="#0A0A0C" stroke="#94A3B8" strokeWidth="1.2" />
+                    <circle cx="32" cy="20" r="4" fill="#0A0A0C" stroke="#94A3B8" strokeWidth="1.2" />
+                    <circle cx="12" cy="20" r="1.5" fill="#E2E8F0" />
+                    <circle cx="32" cy="20" r="1.5" fill="#E2E8F0" />
+                  </svg>
+                  {/* Subtle Forward Headlight Beam */}
+                  <div className="absolute left-[44px] top-1/2 -translate-y-1/2 w-6 h-8 bg-gradient-to-r from-yellow-300/30 to-transparent blur-[3px] rounded-r-full pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Destination Parking Entrance at End of Road */}
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex items-center">
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 ${
+                    graceProgress >= 95
+                      ? 'bg-[#007AFF] text-white shadow-[0_0_16px_rgba(0,122,255,0.8)] scale-110'
+                      : 'bg-white/[0.08] text-white/80'
+                  }`}
+                  title={spot.propertyName || spot.address}
+                >
+                  <MapPin size={18} strokeWidth={2.4} />
+                </div>
+              </div>
+            </div>
+
+            {/* Road Trip Labels */}
+            <div className="flex items-center justify-between text-xs text-[#86868b] font-medium mt-3 px-1">
+              <span className="flex items-center gap-1.5 text-white/70">
+                <Car size={13} className="text-[#007AFF]" />
+                <span>Start Point</span>
+              </span>
+              <span className="flex items-center gap-1.5 text-white/90 font-semibold truncate max-w-[260px]">
+                <MapPin size={13} className="text-[#007AFF] shrink-0" />
+                <span className="truncate">{spot.propertyName || spot.address}</span>
+              </span>
+            </div>
+          </div>
+
+          {/* ── Bottom Section: Minimalist Summary & Action ── */}
+          <footer className="w-full max-w-md mx-auto space-y-4 pb-2 sm:pb-4">
+            {/* Borderless Summary Card */}
+            <div className="rounded-2xl bg-[#1c1c1e] p-4 sm:p-5 text-xs space-y-2.5 shadow-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-[#86868b]">Parking bay</span>
+                <span className="font-semibold text-white truncate max-w-[220px]">
+                  {spot.propertyName || spot.address}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#86868b]">Dates</span>
+                <span className="font-medium text-white">
+                  {startDate ? formatDateKey(startDate) : ''}
+                  {endDate && endDate !== startDate ? ` – ${formatDateKey(endDate)}` : ''}
+                </span>
+              </div>
+              {activeVehicle && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[#86868b]">Vehicle</span>
+                  <span className="font-medium text-white">
+                    {activeVehicle.plate} {activeVehicle.makeModel ? `· ${activeVehicle.makeModel}` : ''}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.06] text-sm">
+                <span className="font-semibold text-[#86868b]">Total Amount</span>
+                <span className="font-bold text-white text-base">RM {quote?.renterTotal.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Apple HIG Destructive Cancel Button */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={isFinalizingBooking}
+                onClick={handleCancelGracePeriod}
+                className="w-full h-12 rounded-xl bg-red-500/[0.12] hover:bg-red-500/[0.18] active:scale-[0.98] text-[#ff453a] font-semibold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+              >
+                <RotateCcw size={15} strokeWidth={2.2} />
+                <span>Cancel Order</span>
+              </button>
+              <p className="text-center text-[11px] text-[#86868b]">
+                {isFinalizingBooking
+                  ? 'Securing booking details…'
+                  : 'Tap to cancel immediately without being charged'}
+              </p>
+            </div>
+          </footer>
+        </div>
+      )}
     </div>
   );
 }

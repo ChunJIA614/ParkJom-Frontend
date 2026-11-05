@@ -4,11 +4,13 @@ export interface CreateReviewRequest {
   bookingId: number;
   rating: number;
   comment?: string;
+  photos?: string[];
 }
 
 export interface UpdateReviewRequest {
   rating: number;
   comment?: string;
+  photos?: string[];
 }
 
 export interface OwnerReplyRequest {
@@ -26,6 +28,7 @@ export interface ReviewApiData {
   ownerReplyAt: string | null;
   createdAt: string;
   updatedAt: string;
+  photos?: string[];
 }
 
 export interface CreateReviewResponse {
@@ -98,6 +101,8 @@ type ReviewWireData = Partial<ReviewApiData> & {
   OwnerReplyAt?: string | null;
   CreatedAt?: string;
   UpdatedAt?: string;
+  Photos?: string[];
+  photos?: string[];
 };
 
 type CreateReviewWireResponse = {
@@ -183,6 +188,7 @@ function normalizeReview(data: ReviewWireData): ReviewApiData | null {
     ownerReplyAt: data.ownerReplyAt ?? data.OwnerReplyAt ?? null,
     createdAt: data.createdAt ?? data.CreatedAt ?? '',
     updatedAt: data.updatedAt ?? data.UpdatedAt ?? '',
+    photos: Array.isArray(data.photos) ? data.photos : (Array.isArray(data.Photos) ? data.Photos : []),
   };
 }
 
@@ -560,4 +566,41 @@ export async function deleteReview(
   }
 
   return result;
+}
+
+export interface ReportReviewRequest {
+  reason: string;
+  details?: string;
+}
+
+export interface ReportReviewResponse {
+  code: number;
+  success: boolean;
+  message: string;
+  reportId?: number;
+}
+
+export async function reportReview(
+  token: string,
+  reviewId: number,
+  request: ReportReviewRequest,
+  signal?: AbortSignal,
+): Promise<ReportReviewResponse> {
+  const response = await apiRequest(`/reviews/${reviewId}/report`, {
+    method: 'POST',
+    headers: authorizationHeaders(token, 'application/json'),
+    body: JSON.stringify(request),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Unable to submit review report.'));
+  }
+
+  const payload = await response.json().catch(() => null) as ReportReviewResponse | null;
+  if (!payload || !payload.success) {
+    throw new Error(payload?.message || 'Unable to submit review report.');
+  }
+
+  return payload;
 }

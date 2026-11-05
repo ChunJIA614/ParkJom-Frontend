@@ -23,6 +23,13 @@ export interface ParkingSpot {
   available: boolean;
   type: 'Condo Bay' | 'Landed Driveway';
   owner: string;
+  hasEvCharging?: boolean;
+  evChargingSpeed?: string | null;
+  isCovered?: boolean;
+  isHandicapAccessible?: boolean;
+  hasCctv?: boolean;
+  averageRating?: number | null;
+  totalReviews?: number;
 }
 
 export interface ParkingSearchResponse {
@@ -44,6 +51,13 @@ export interface ParkingSearchResponse {
     monthlyRate: number;
     dailyRate: number | null;
     primaryImageUrl: string | null;
+    hasEvCharging?: boolean;
+    evChargingSpeed?: string | null;
+    isCovered?: boolean;
+    isHandicapAccessible?: boolean;
+    hasCctv?: boolean;
+    averageRating?: number | null;
+    totalReviews?: number;
   }>;
   totalCount: number;
   page: number;
@@ -168,6 +182,13 @@ export interface PublicParkingSpotDetail {
   stationLongitude?: number | null;
   distanceToStationMeters?: number | null;
   timeToStationInMinutes?: number | null;
+  hasEvCharging?: boolean;
+  evChargingSpeed?: string | null;
+  isCovered?: boolean;
+  isHandicapAccessible?: boolean;
+  hasCctv?: boolean;
+  averageRating?: number | null;
+  totalReviews?: number;
 }
 
 export interface PublicParkingSpotResponse {

@@ -1,4 +1,5 @@
 import SystemSelect from '@/components/ui/SystemSelect';
+import DateRangePicker from '@/components/ui/DateRangePicker';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -25,6 +26,9 @@ import {
   Trash2,
   UploadCloud,
   Users,
+  Umbrella,
+  Accessibility,
+  Zap,
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -85,6 +89,11 @@ export interface OwnerParkingSetup {
   accessInstructions: string;
   dailyRate: number | null;
   monthlyRate: number | null;
+  hasEvCharging: boolean;
+  evChargingSpeed: string;
+  isCovered: boolean;
+  isHandicapAccessible: boolean;
+  hasCctv: boolean;
   published: boolean;
   updatedAt?: string;
 }
@@ -216,6 +225,11 @@ function emptySetup(bay?: ParkingBay): OwnerParkingSetup {
     accessInstructions: '',
     dailyRate: bay && safeNumber(bay.dailyRate) && (bay.dailyRate ?? 0) > 0 ? bay.dailyRate : null,
     monthlyRate: bay && safeNumber(bay.monthlyRate) && bay.monthlyRate > 0 ? bay.monthlyRate : null,
+    hasEvCharging: Boolean(bay?.hasEvCharging),
+    evChargingSpeed: typeof bay?.evChargingSpeed === 'string' ? bay.evChargingSpeed : '',
+    isCovered: Boolean(bay?.isCovered),
+    isHandicapAccessible: Boolean(bay?.isHandicapAccessible),
+    hasCctv: Boolean(bay?.hasCctv),
     published: Boolean(bay?.isPublished),
   };
 }
@@ -265,6 +279,21 @@ function normaliseSetup(value: unknown, bay?: ParkingBay): OwnerParkingSetup {
     monthlyRate: bay
       ? (apiMonthlyRate !== null && apiMonthlyRate > 0 ? apiMonthlyRate : null)
       : candidate.monthlyRate === undefined ? fallback.monthlyRate : safeNumber(candidate.monthlyRate),
+    hasEvCharging: bay && typeof bay.hasEvCharging === 'boolean'
+      ? bay.hasEvCharging
+      : typeof candidate.hasEvCharging === 'boolean' ? candidate.hasEvCharging : fallback.hasEvCharging,
+    evChargingSpeed: bay && typeof bay.evChargingSpeed === 'string'
+      ? bay.evChargingSpeed
+      : typeof candidate.evChargingSpeed === 'string' ? candidate.evChargingSpeed : fallback.evChargingSpeed,
+    isCovered: bay && typeof bay.isCovered === 'boolean'
+      ? bay.isCovered
+      : typeof candidate.isCovered === 'boolean' ? candidate.isCovered : fallback.isCovered,
+    isHandicapAccessible: bay && typeof bay.isHandicapAccessible === 'boolean'
+      ? bay.isHandicapAccessible
+      : typeof candidate.isHandicapAccessible === 'boolean' ? candidate.isHandicapAccessible : fallback.isHandicapAccessible,
+    hasCctv: bay && typeof bay.hasCctv === 'boolean'
+      ? bay.hasCctv
+      : typeof candidate.hasCctv === 'boolean' ? candidate.hasCctv : fallback.hasCctv,
     published: bay
       ? Boolean(bay.isPublished)
       : typeof candidate.published === 'boolean' ? candidate.published : fallback.published,
@@ -492,7 +521,12 @@ export default function AvailabilityScheduler({
     accessInstructions: string;
     dailyRate: string;
     monthlyRate: string;
-  }>({ photos: [], description: '', accessInstructions: '', dailyRate: '', monthlyRate: '' });
+    hasEvCharging: boolean;
+    evChargingSpeed: string;
+    isCovered: boolean;
+    isHandicapAccessible: boolean;
+    hasCctv: boolean;
+  }>({ photos: [], description: '', accessInstructions: '', dailyRate: '', monthlyRate: '', hasEvCharging: false, evChargingSpeed: '', isCovered: false, isHandicapAccessible: false, hasCctv: false });
   const [photoPreviews, setPhotoPreviews] = useState<Record<string, string[]>>({});
   const [pendingPhotoCount, setPendingPhotoCount] = useState(0);
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
@@ -580,6 +614,11 @@ export default function AvailabilityScheduler({
       accessInstructions: setup.accessInstructions,
       dailyRate: setup.dailyRate === null ? '' : String(setup.dailyRate),
       monthlyRate: setup.monthlyRate === null ? '' : String(setup.monthlyRate),
+      hasEvCharging: setup.hasEvCharging,
+      evChargingSpeed: setup.evChargingSpeed,
+      isCovered: setup.isCovered,
+      isHandicapAccessible: setup.isHandicapAccessible,
+      hasCctv: setup.hasCctv,
     });
     setPhotoPreviews((current) => ({ ...current, [selectedBayId]: [...setup.photos] }));
     setSetupStep(1);
@@ -682,7 +721,7 @@ export default function AvailabilityScheduler({
     if (section === 'timetable') void fetchAvailabilityCalendar();
   }, [fetchAvailabilityCalendar, section]);
 
-  const replaceSetupForm = (field: keyof typeof setupForm, value: string | string[]) => {
+  const replaceSetupForm = <K extends keyof typeof setupForm>(field: K, value: (typeof setupForm)[K]) => {
     setSetupForm((current) => ({ ...current, [field]: value }));
     setSetupMessage(null);
     setSetupError(null);
@@ -855,6 +894,11 @@ export default function AvailabilityScheduler({
       accessInstructions: setupForm.accessInstructions.trim(),
       dailyRate: daily !== null && daily > 0 ? daily : null,
       monthlyRate: monthly !== null && monthly > 0 ? monthly : null,
+      hasEvCharging: setupForm.hasEvCharging,
+      evChargingSpeed: setupForm.evChargingSpeed,
+      isCovered: setupForm.isCovered,
+      isHandicapAccessible: setupForm.isHandicapAccessible,
+      hasCctv: setupForm.hasCctv,
       published: publish ? true : activeSetup.published,
       updatedAt,
     };
@@ -874,6 +918,11 @@ export default function AvailabilityScheduler({
       accessInstructions: nextSetup.accessInstructions,
       dailyRate: nextSetup.dailyRate === null ? '' : String(nextSetup.dailyRate),
       monthlyRate: nextSetup.monthlyRate === null ? '' : String(nextSetup.monthlyRate),
+      hasEvCharging: nextSetup.hasEvCharging,
+      evChargingSpeed: nextSetup.evChargingSpeed,
+      isCovered: nextSetup.isCovered,
+      isHandicapAccessible: nextSetup.isHandicapAccessible,
+      hasCctv: nextSetup.hasCctv,
     });
     setPhotoPreviews((current) => ({ ...current, [activeSpotId]: [...nextSetup.photos] }));
     setSetupMessage(successMessage);
@@ -911,12 +960,23 @@ export default function AvailabilityScheduler({
         description: setupForm.description.trim(),
         dailyRate,
         monthlyRate,
+        hasEvCharging: setupForm.hasEvCharging,
+        evChargingSpeed: setupForm.hasEvCharging ? setupForm.evChargingSpeed : null,
+        isCovered: setupForm.isCovered,
+        isHandicapAccessible: setupForm.isHandicapAccessible,
+        hasCctv: setupForm.hasCctv,
       });
       const body = await response.json().catch(() => null) as ParkingConfigurationResponse | null;
       if (!response.ok || !body?.success) {
         throw new Error(body?.message || `Unable to save parking configuration (${response.status}).`);
       }
 
+      activeBay.hasEvCharging = setupForm.hasEvCharging;
+      activeBay.evChargingSpeed = setupForm.hasEvCharging ? setupForm.evChargingSpeed : null;
+      activeBay.isCovered = setupForm.isCovered;
+      activeBay.isHandicapAccessible = setupForm.isHandicapAccessible;
+      activeBay.hasCctv = setupForm.hasCctv;
+      onScheduleChange?.();
       return persistSetup(false, body.updatedAt, body.message);
     } catch (error) {
       setSetupError(error instanceof Error ? error.message : 'Unable to save parking configuration.');
@@ -1073,6 +1133,11 @@ export default function AvailabilityScheduler({
     accessInstructions: setupForm.accessInstructions,
     dailyRate: setupForm.dailyRate.trim() === '' ? null : Number(setupForm.dailyRate),
     monthlyRate: setupForm.monthlyRate.trim() === '' ? null : Number(setupForm.monthlyRate),
+    hasEvCharging: setupForm.hasEvCharging,
+    evChargingSpeed: setupForm.evChargingSpeed,
+    isCovered: setupForm.isCovered,
+    isHandicapAccessible: setupForm.isHandicapAccessible,
+    hasCctv: setupForm.hasCctv,
     published: activeSetup.published,
   });
 
@@ -1476,6 +1541,11 @@ export default function AvailabilityScheduler({
     accessInstructions: setupForm.accessInstructions,
     dailyRate: setupForm.dailyRate.trim() === '' ? null : Number(setupForm.dailyRate),
     monthlyRate: setupForm.monthlyRate.trim() === '' ? null : Number(setupForm.monthlyRate),
+    hasEvCharging: setupForm.hasEvCharging,
+    evChargingSpeed: setupForm.evChargingSpeed,
+    isCovered: setupForm.isCovered,
+    isHandicapAccessible: setupForm.isHandicapAccessible,
+    hasCctv: setupForm.hasCctv,
     published: activeSetup.published,
   };
   const setupIsComplete = setupCompletion(setupCandidate).complete;
@@ -1489,13 +1559,18 @@ export default function AvailabilityScheduler({
              <div className="min-w-0"><p className="hidden text-xs font-semibold text-blue-600 sm:block">Owner workspace</p><h1 className="truncate text-base font-extrabold tracking-tight text-slate-950 sm:text-lg">Configure parking</h1><p className="hidden truncate text-xs text-slate-500 md:block">Set up your listing, then choose when commuters can book it.</p></div>
           </div>
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-            <label className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-slate-200/90 bg-white/75 px-3 sm:h-11 sm:min-w-[260px]">
-              <MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
-              <span className="sr-only">Parking spot</span>
-              <SystemSelect value={selectedBayId} onChange={(event) => setSelectedBayId(event.target.value)} disabled={pendingPhotoCount > 0 || setupBusy} style={{ minHeight: 0 }} className="h-auto min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-800 outline-none disabled:opacity-60">
+            <div className="flex min-w-0 items-center sm:min-w-[260px]">
+              <SystemSelect
+                value={selectedBayId}
+                onChange={(event) => setSelectedBayId(event.target.value)}
+                disabled={pendingPhotoCount > 0 || setupBusy}
+                leadingIcon={<MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />}
+                className="w-full text-xs font-bold"
+                aria-label="Parking spot"
+              >
                 {bays.map((bay) => <option key={bay.id || bay.parkingSpotId} value={String(bay.parkingSpotId)}>{bayLabel(bay)}</option>)}
               </SystemSelect>
-            </label>
+            </div>
             {onDeleteParking && activeBay && (() => {
               const activeCount = activeBay.activeBookingCount ?? 0;
               const hasActiveBooking = Boolean(
@@ -1605,7 +1680,9 @@ export default function AvailabilityScheduler({
               <motion.div key="photos-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
                 <div>
                   <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Show commuters the exact spot</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">Add at least one clear photo. The first photo becomes the cover.</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">
+                    Add photos of your parking bay. <strong className="font-semibold text-slate-900 dark:text-white">Uploading 5 photos is recommended</strong> for the best multi-picture showcase on the booking page (not compulsory — at least 1 photo required).
+                  </p>
                 </div>
                 <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={handlePhotoChange} className="hidden" />
                 <button
@@ -1618,7 +1695,7 @@ export default function AvailabilityScheduler({
                 >
                   <span className="photo-upload-icon-circle grid h-11 w-11 place-items-center rounded-full"><UploadCloud className="h-5 w-5" aria-hidden="true" /></span>
                   <span className="photo-upload-title text-sm">Tap to add photos</span>
-                  <span className="photo-upload-subtext text-[11px]">or drop JPG, PNG, WEBP here · {setupPhotos.length}/{MAX_PHOTOS}</span>
+                  <span className="photo-upload-subtext text-[11px]">or drop JPG, PNG, WEBP here · {setupPhotos.length}/{MAX_PHOTOS} (5 photos recommended)</span>
                 </button>
                 {setupPhotos.length > 0 && (
                   <div>
@@ -1671,8 +1748,127 @@ export default function AvailabilityScheduler({
                 <label className="block">
                   <span className="mb-2 block text-xs font-semibold text-slate-800 dark:text-slate-200">Description</span>
                   <textarea value={setupForm.description} onChange={(event) => replaceSetupForm('description', event.target.value)} rows={6} maxLength={500} placeholder="Covered bay on Level B2, beside the lift lobby. Enter through the visitor lane." className="w-full resize-none rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-slate-900 dark:text-white outline-none placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:border-blue-500 focus:bg-white dark:focus:bg-[#18181C] focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/40 sm:py-3.5" />
-                  <span className="mt-1.5 block text-right text-[11px] tabular-nums text-slate-400 dark:text-slate-500">{setupForm.description.length}/500</span>
+                                    <span className="mt-1.5 block text-right text-[11px] tabular-nums text-slate-400 dark:text-slate-500">{setupForm.description.length}/500</span>
                 </label>
+
+                {/* Spot Amenities & Features */}
+                <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-white/10">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">Bay Amenities & Features</h4>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-[#A1A1AA]">
+                      Tick the amenities provided at this bay so commuters can find and filter it on the search page.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Covered */}
+                    <label className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                      setupForm.isCovered
+                        ? 'border-blue-500/80 bg-blue-50/50 dark:bg-blue-500/10 dark:border-blue-500/50'
+                        : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] hover:border-slate-300 dark:hover:border-white/20'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={setupForm.isCovered}
+                        onChange={(e) => replaceSetupForm('isCovered', e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <div className="min-w-0">
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                          <Umbrella className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                          Covered / Indoor Bay
+                        </span>
+                        <span className="block text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">Sheltered from weather and direct sun</span>
+                      </div>
+                    </label>
+
+                    {/* CCTV */}
+                    <label className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                      setupForm.hasCctv
+                        ? 'border-blue-500/80 bg-blue-50/50 dark:bg-blue-500/10 dark:border-blue-500/50'
+                        : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] hover:border-slate-300 dark:hover:border-white/20'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={setupForm.hasCctv}
+                        onChange={(e) => replaceSetupForm('hasCctv', e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <div className="min-w-0">
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                          <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                          24/7 CCTV & Security
+                        </span>
+                        <span className="block text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">Active premises video surveillance</span>
+                      </div>
+                    </label>
+
+                    {/* Handicap Accessible */}
+                    <label className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                      setupForm.isHandicapAccessible
+                        ? 'border-blue-500/80 bg-blue-50/50 dark:bg-blue-500/10 dark:border-blue-500/50'
+                        : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] hover:border-slate-300 dark:hover:border-white/20'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={setupForm.isHandicapAccessible}
+                        onChange={(e) => replaceSetupForm('isHandicapAccessible', e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <div className="min-w-0">
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                          <Accessibility className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                          OKU / Handicap Accessible
+                        </span>
+                        <span className="block text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">Wider berth & step-free transit pathway</span>
+                      </div>
+                    </label>
+
+                    {/* EV Charging */}
+                    <div className={`p-3.5 rounded-2xl border transition-all ${
+                      setupForm.hasEvCharging
+                        ? 'border-blue-500/80 bg-blue-50/50 dark:bg-blue-500/10 dark:border-blue-500/50'
+                        : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] hover:border-slate-300 dark:hover:border-white/20'
+                    }`}>
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={setupForm.hasEvCharging}
+                          onChange={(e) => {
+                            replaceSetupForm('hasEvCharging', e.target.checked);
+                            if (e.target.checked && !setupForm.evChargingSpeed) {
+                              replaceSetupForm('evChargingSpeed', 'Medium (7.4kW)');
+                            }
+                          }}
+                          className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                            <Zap className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                            EV Charging Point
+                          </span>
+                          <span className="block text-[11px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">Dedicated charger for electric vehicles</span>
+                        </div>
+                      </label>
+
+                      {setupForm.hasEvCharging && (
+                        <div className="mt-2.5 pt-2.5 border-t border-blue-200/60 dark:border-white/10">
+                          <span className="block text-[10px] font-semibold text-slate-600 dark:text-[#A1A1AA] mb-1">Charging Speed</span>
+                          <SystemSelect
+                            value={setupForm.evChargingSpeed || 'Medium (7.4kW)'}
+                            onChange={(e) => replaceSetupForm('evChargingSpeed', e.target.value)}
+                            className="w-full text-xs"
+                          >
+                            <option value="Slow (3.7kW)">Slow (3.7kW - 3-pin Standard)</option>
+                            <option value="Medium (7.4kW)">Medium (7.4kW - AC Wallbox)</option>
+                            <option value="Fast (11kW / 22kW)">Fast (11kW / 22kW - 3-Phase AC)</option>
+                            <option value="Rapid DC (50kW+)">Rapid DC (50kW+ DC Fast Charger)</option>
+                          </SystemSelect>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
                   <button type="button" onClick={() => setSetupStep(1)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
                   <button type="button" onClick={continueFromDescription} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
@@ -1750,6 +1946,28 @@ export default function AvailabilityScheduler({
                   <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
                     <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">{activeBay.propertyName || `Property #${activeBay.propertyId}`}</p><h4 className="mt-1 text-lg font-bold text-slate-950 dark:text-white">{activeBay.bayNumber || activeBay.parkingLabel}</h4></div><span className="shrink-0 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:text-[#A1A1AA]">{setupPhotos.length} photo{setupPhotos.length === 1 ? '' : 's'}</span></div>
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">{setupForm.description}</p>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {setupForm.isCovered && (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+                          <Umbrella className="h-3 w-3" /> Covered bay
+                        </span>
+                      )}
+                      {setupForm.hasCctv && (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+                          <ShieldCheck className="h-3 w-3" /> 24/7 CCTV
+                        </span>
+                      )}
+                      {setupForm.isHandicapAccessible && (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+                          <Accessibility className="h-3 w-3" /> Handicap OKU
+                        </span>
+                      )}
+                      {setupForm.hasEvCharging && (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                          <Zap className="h-3 w-3" /> EV Charging ({setupForm.evChargingSpeed || 'Available'})
+                        </span>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2 border-t border-slate-100 dark:border-white/10 pt-4">
                       <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Daily</p><p className="mt-1 text-base font-bold text-slate-900 dark:text-white">{setupForm.dailyRate ? `RM ${Number(setupForm.dailyRate).toFixed(2)}` : 'Not offered'}</p></div>
                       <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Monthly</p><p className="mt-1 text-base font-bold text-slate-900 dark:text-white">{setupForm.monthlyRate ? `RM ${Number(setupForm.monthlyRate).toFixed(2)}` : 'Not offered'}</p></div>
@@ -1849,14 +2067,14 @@ export default function AvailabilityScheduler({
             </aside>
           </div>
 
-          <div className="rounded-3xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
+          <div className="rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#141417] p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <CalendarRange className="h-4 w-4 shrink-0 text-[#007AFF]" aria-hidden="true" />
-                  <h3 className="text-sm font-bold text-slate-900">Range editor</h3>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Range editor</h3>
                 </div>
-                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Set one schedule across several dates.</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-[#A1A1AA]">Set one schedule across several dates.</p>
               </div>
               <button
                 type="button"
@@ -1871,50 +2089,107 @@ export default function AvailabilityScheduler({
                   setBulkError(null);
                 }}
                 disabled={availabilitySaving}
-                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-slate-500 dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white disabled:opacity-50 transition-colors"
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Reset
               </button>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" aria-label="Availability action">
-              <button type="button" onClick={() => setBulkStatus('available')} disabled={availabilitySaving} className={`min-h-10 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${bulkStatus === 'available' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`} aria-pressed={bulkStatus === 'available'}><span className="inline-flex items-center gap-1.5"><Check className="h-4 w-4" aria-hidden="true" /> Open dates</span></button>
-              <button type="button" onClick={() => setBulkStatus('unavailable')} disabled={availabilitySaving} className={`min-h-10 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${bulkStatus === 'unavailable' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`} aria-pressed={bulkStatus === 'unavailable'}><span className="inline-flex items-center gap-1.5"><Ban className="h-4 w-4" aria-hidden="true" /> Close dates</span></button>
+            <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 dark:bg-white/[0.06] p-1" aria-label="Availability action">
+              <button
+                type="button"
+                onClick={() => setBulkStatus('available')}
+                disabled={availabilitySaving}
+                className={`min-h-10 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
+                  bulkStatus === 'available'
+                    ? 'bg-white dark:bg-[#1C1C1E] text-emerald-700 dark:text-emerald-400 shadow-sm'
+                    : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-700 dark:hover:text-white'
+                }`}
+                aria-pressed={bulkStatus === 'available'}
+              >
+                <span className="inline-flex items-center gap-1.5"><Check className="h-4 w-4" aria-hidden="true" /> Open dates</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkStatus('unavailable')}
+                disabled={availabilitySaving}
+                className={`min-h-10 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
+                  bulkStatus === 'unavailable'
+                    ? 'bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-700 dark:hover:text-white'
+                }`}
+                aria-pressed={bulkStatus === 'unavailable'}
+              >
+                <span className="inline-flex items-center gap-1.5"><Ban className="h-4 w-4" aria-hidden="true" /> Close dates</span>
+              </button>
             </div>
 
             <div className={`mt-4 grid gap-3 ${bulkStatus === 'available' ? 'lg:grid-cols-2' : ''}`}>
-              <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" aria-labelledby="range-dates-title">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 id="range-dates-title" className="text-[11px] font-semibold text-slate-700">Date range</h4>
-                  <div className="flex gap-1.5" aria-label="Date presets">
-                    <button type="button" onClick={() => setPreset('week')} disabled={availabilitySaving} className="min-h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">This week</button>
-                    <button type="button" onClick={() => setPreset('month')} disabled={availabilitySaving} className="min-h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">This month</button>
-                  </div>
+              <section className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-[#18181C]/60 p-3 sm:p-4" aria-labelledby="range-dates-title">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h4 id="range-dates-title" className="text-xs font-bold text-slate-800 dark:text-white">Date range</h4>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">From</span><input type="date" value={bulkStart} onChange={(event) => setBulkStart(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
-                  <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">To</span><input type="date" value={bulkEnd} onChange={(event) => setBulkEnd(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
-                </div>
+                <DateRangePicker
+                  startDate={bulkStart}
+                  endDate={bulkEnd}
+                  onChange={(start, end) => {
+                    setBulkStart(start);
+                    setBulkEnd(end);
+                    setBulkError(null);
+                  }}
+                  disabled={availabilitySaving}
+                />
               </section>
 
               {bulkStatus === 'available' && (
-                <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" aria-labelledby="range-schedule-title">
-                  <h4 id="range-schedule-title" className="text-[11px] font-semibold text-slate-700">Opening schedule</h4>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">Opens</span><input type="time" value={bulkFromTime} onChange={(event) => setBulkFromTime(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
-                    <label className="min-w-0"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500">Closes</span><input type="time" value={bulkToTime} onChange={(event) => setBulkToTime(event.target.value)} disabled={availabilitySaving} className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60" /></label>
+                <section className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-[#18181C]/60 p-3 sm:p-4 flex flex-col justify-between" aria-labelledby="range-schedule-title">
+                  <div>
+                    <h4 id="range-schedule-title" className="text-xs font-bold text-slate-800 dark:text-white mb-3">Opening schedule</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="min-w-0">
+                        <span className="mb-1.5 block text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Opens</span>
+                        <input
+                          type="time"
+                          value={bulkFromTime}
+                          onChange={(event) => setBulkFromTime(event.target.value)}
+                          disabled={availabilitySaving}
+                          className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 disabled:opacity-60"
+                        />
+                      </label>
+                      <label className="min-w-0">
+                        <span className="mb-1.5 block text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Closes</span>
+                        <input
+                          type="time"
+                          value={bulkToTime}
+                          onChange={(event) => setBulkToTime(event.target.value)}
+                          disabled={availabilitySaving}
+                          className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 disabled:opacity-60"
+                        />
+                      </label>
+                    </div>
+                    <label className="mt-3 block">
+                      <span className="mb-1.5 block text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Repeat pattern</span>
+                      <SystemSelect
+                        value={bulkDayPattern}
+                        onChange={(event) => setBulkDayPattern(event.target.value as OwnerAvailabilityDayPattern)}
+                        disabled={availabilitySaving}
+                        className="min-h-10 w-full rounded-lg border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-[#18181C] px-2.5 text-[11px] font-semibold text-slate-800 dark:text-white outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                      >
+                        <option value="Weekdays">Weekdays (Mon – Fri)</option>
+                        <option value="Everyday">Every day (Mon – Sun)</option>
+                      </SystemSelect>
+                    </label>
                   </div>
-                  <label className="mt-2 block"><span className="mb-1.5 block text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Repeat pattern</span><SystemSelect value={bulkDayPattern} onChange={(event) => setBulkDayPattern(event.target.value as OwnerAvailabilityDayPattern)} disabled={availabilitySaving} className="min-h-10 w-full rounded-lg border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-[#18181C] px-2.5 text-[11px] font-semibold text-slate-800 dark:text-white outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60"><option value="Weekdays">Weekdays (Mon – Fri)</option><option value="Everyday">Every day (Mon – Sun)</option></SystemSelect></label>
                 </section>
               )}
             </div>
 
-            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[11px] leading-relaxed text-slate-500" aria-live="polite">{bulkPreview.total ? <><strong className="text-slate-800">{bulkPreview.changed}</strong> day{bulkPreview.changed === 1 ? '' : 's'} will change · <strong className="text-slate-800">{bulkPreview.skipped}</strong> skipped</> : 'Choose a date range to preview changes.'}</p>
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 dark:border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[11px] leading-relaxed text-slate-500 dark:text-[#A1A1AA]" aria-live="polite">{bulkPreview.total ? <><strong className="text-slate-800 dark:text-white">{bulkPreview.changed}</strong> day{bulkPreview.changed === 1 ? '' : 's'} will change · <strong className="text-slate-800 dark:text-white">{bulkPreview.skipped}</strong> skipped</> : 'Choose a date range to preview changes.'}</p>
               <button type="button" onClick={() => void bulkUpdate(bulkStatus)} disabled={availabilitySaving || !bulkPreview.total || bulkPreview.total > MAX_BULK_DAYS || !bulkPreview.editable} className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-xs font-semibold text-white hover:bg-[#006EE6] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"><Check className="h-4 w-4" aria-hidden="true" /> {availabilitySaving ? 'Creating rule…' : bulkStatus === 'available' ? 'Create rule' : 'Apply range'}</button>
             </div>
-            {bulkError && <p role="alert" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{bulkError}</p>}
-            {bulkMessage && <p role="status" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{bulkMessage}</p>}
+            {bulkError && <p role="alert" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{bulkError}</p>}
+            {bulkMessage && <p role="status" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{bulkMessage}</p>}
           </div>
         </motion.section>
       )}

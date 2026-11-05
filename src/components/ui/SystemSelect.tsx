@@ -15,6 +15,7 @@ export interface SystemSelectProps
   options?: SystemSelectOption[];
   placeholder?: string;
   leadingIcon?: React.ReactNode;
+  variant?: 'default' | 'ghost';
 }
 
 function extractOptionsFromChildren(children: React.ReactNode): SystemSelectOption[] {
@@ -60,6 +61,7 @@ export default function SystemSelect({
   'aria-labelledby': ariaLabelledBy,
   placeholder,
   leadingIcon,
+  variant = 'default',
 }: SystemSelectProps) {
   const generatedId = useId();
   const selectId = id || `system-select-${generatedId}`;
@@ -182,16 +184,22 @@ export default function SystemSelect({
           if (!open) updatePosition();
           setOpen((prev) => !prev);
         }}
-        className={`system-select-trigger inline-flex items-center justify-between gap-2 rounded-xl border border-black/[0.09] dark:border-white/10 bg-white/95 dark:bg-[#18181C] px-3 py-1.5 text-left text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all hover:border-black/[0.18] dark:hover:border-white/20 hover:bg-white dark:hover:bg-[#202025] disabled:cursor-not-allowed disabled:opacity-50 ${
-          open ? 'is-open border-[#007aff] dark:border-[#0071E3] bg-white dark:bg-[#18181C] ring-3 ring-[#007aff]/14 dark:ring-[#0071E3]/20' : ''
+        className={`system-select-trigger inline-flex items-center justify-between gap-1.5 text-left text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 transition-all ${
+          variant === 'ghost'
+            ? `variant-ghost !bg-transparent !border-0 !border-none !shadow-none !outline-none !ring-0 p-0 text-[#1d1d1f] dark:text-white hover:text-[#007AFF] dark:hover:text-[#3894FF] ${
+                open ? 'text-[#007AFF] dark:text-[#3894FF]' : ''
+              }`
+            : `rounded-xl border border-black/[0.09] dark:border-white/10 bg-white/95 dark:bg-[#18181C] px-3 py-1.5 text-[#1d1d1f] dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-black/[0.18] dark:hover:border-white/20 hover:bg-white dark:hover:bg-[#202025] ${
+                open ? 'is-open border-[#007aff] dark:border-[#0071E3] bg-white dark:bg-[#18181C] ring-3 ring-[#007aff]/14 dark:ring-[#0071E3]/20' : ''
+              }`
         } ${isFullWidth ? 'w-full' : ''} ${className}`}
       >
-        <span className="inline-flex items-center gap-2 min-w-0">
+        <span className="inline-flex items-center gap-1.5 min-w-0">
           {leadingIcon}
           <span className="truncate">{selectedOption?.label ?? ''}</span>
         </span>
         <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-[#8e8e93] dark:text-[#A1A1AA] transition-transform duration-150 ${
+          className={`h-3 w-3 shrink-0 text-[#8e8e93] dark:text-[#A1A1AA] transition-transform duration-150 ${
             open ? 'rotate-180 text-[#007aff] dark:text-[#3894FF]' : ''
           }`}
           aria-hidden="true"

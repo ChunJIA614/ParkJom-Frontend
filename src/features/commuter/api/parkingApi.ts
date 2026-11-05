@@ -95,6 +95,11 @@ function normalizeParkingDetail(
     timeToStationInMinutes: readWireNumber(source, [
       'timeToStationInMinutes', 'TimeToStationInMinutes', 'timeToStation', 'TimeToStation',
     ]),
+    hasEvCharging: Boolean(source.hasEvCharging || source.HasEvCharging),
+    evChargingSpeed: readWireString(source, ['evChargingSpeed', 'EvChargingSpeed']),
+    isCovered: Boolean(source.isCovered || source.IsCovered),
+    isHandicapAccessible: Boolean(source.isHandicapAccessible || source.IsHandicapAccessible),
+    hasCctv: Boolean(source.hasCctv || source.HasCctv),
   };
 }
 
@@ -121,4 +126,34 @@ export async function getPublicParkingSpot(
     ...payload,
     data: normalizeParkingDetail(payload.data),
   };
+}
+
+
+export interface ParkingFilterOptions {
+  stationId?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  hasEvCharging?: boolean;
+  isCovered?: boolean;
+  isHandicapAccessible?: boolean;
+  hasCctv?: boolean;
+  pageSize?: number;
+}
+
+export function filterParking(options: ParkingFilterOptions, signal?: AbortSignal): Promise<Response> {
+  const params = new URLSearchParams();
+  if (options.stationId) params.set('stationId', String(options.stationId));
+  if (options.minPrice !== undefined) params.set('minPrice', String(options.minPrice));
+  if (options.maxPrice !== undefined) params.set('maxPrice', String(options.maxPrice));
+  if (options.hasEvCharging) params.set('hasEvCharging', 'true');
+  if (options.isCovered !== undefined) params.set('isCovered', String(options.isCovered));
+  if (options.isHandicapAccessible) params.set('isHandicapAccessible', 'true');
+  if (options.hasCctv) params.set('hasCctv', 'true');
+  params.set('pageSize', String(options.pageSize || 100));
+
+  return apiRequest(`/parking/filter?${params.toString()}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal,
+  });
 }

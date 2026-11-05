@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Mail, Check } from 'lucide-react';
+import { fetchNotificationPreferences, updateNotificationPreferences } from '@/features/notifications/api';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { Building, Sliders, Save, CheckCircle, Wifi, Battery, Radio, ShieldAlert, UserRound, Sparkles } from 'lucide-react';
 import { showAlert } from '@/contexts/ModalContext';
@@ -18,7 +20,41 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
   const [holder, setHolder] = useState(bank.holder);
 
   const [emailAlerts, setEmailAlerts] = useState(true);
-  const [whatsAppAlerts, setWhatsAppAlerts] = useState(true);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [emailSaveSuccess, setEmailSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    if (!user?.token) return;
+    fetchNotificationPreferences(user.token)
+      .then((res) => {
+        const emailPrefs = res.preferences.filter((p) => p.channel.toLowerCase() === 'email');
+        if (emailPrefs.length > 0) {
+          setEmailAlerts(emailPrefs.some((p) => p.enabled));
+        }
+      })
+      .catch((err) => console.warn('Failed to fetch notification preferences:', err));
+  }, [user?.token]);
+
+  const handleToggleEmailAlerts = async (enabled: boolean) => {
+    if (!user?.token) return;
+    setEmailAlerts(enabled);
+    setIsSavingEmail(true);
+    setEmailSaveSuccess(false);
+    try {
+      const categories = ['Booking', 'Wallet', 'Listing', 'Support', 'Account', 'System'];
+      await updateNotificationPreferences(
+        user.token,
+        categories.map((c) => ({ category: c, channel: 'Email', enabled }))
+      );
+      setEmailSaveSuccess(true);
+      setTimeout(() => setEmailSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to update email notification preferences:', err);
+      setEmailAlerts(!enabled);
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
   const [autoPayout, setAutoPayout] = useState(false);
 
   const handleBankSubmit = (e: React.FormEvent) => {
@@ -164,36 +200,38 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="block text-xs font-bold text-slate-800">Email Notifications</span>
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-200">
-                      <Sparkles className="h-2.5 w-2.5" /> Upcoming
-                    </span>
+                    {emailSaveSuccess ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700 border border-emerald-200">
+                        <Check className="h-2.5 w-2.5" /> Saved
+                      </span>
+                    ) : isSavingEmail ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700 border border-blue-200">
+                        Saving...
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700 border border-blue-200">
+                        <Mail className="h-2.5 w-2.5" /> Active Channel
+                      </span>
+                    )}
                   </div>
-                  <span className="block text-[10px] text-slate-400 mt-0.5 leading-normal">Weekly supplies, ledger activity audits, and verification notices.</span>
+                  <span className="block text-[10px] text-slate-400 mt-0.5 leading-normal">
+                    Receive booking confirmations, payout summaries, and system alerts via your registered email ({user?.email || 'email'}).
+                  </span>
                 </div>
                 <input 
                   type="checkbox"
-                  disabled
-                  checked={false}
-                  className="rounded border-slate-200 text-slate-300 w-4 h-4 cursor-not-allowed opacity-50"
+                  checked={emailAlerts}
+                  disabled={isSavingEmail}
+                  onChange={(e) => void handleToggleEmailAlerts(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                 />
               </div>
 
-              <div className="flex items-start justify-between gap-4 border-b border-slate-50 pb-3">
+              <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-[11px] text-slate-500 leading-relaxed flex items-start gap-2.5">
+                <Mail className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="block text-xs font-bold text-slate-800">WhatsApp Smart Access Alerts</span>
-                    <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-200">
-                      <Sparkles className="h-2.5 w-2.5" /> Upcoming
-                    </span>
-                  </div>
-                  <span className="block text-[10px] text-slate-400 mt-0.5 leading-normal">Real-time status events of barrier actuations and overstay alert notifications.</span>
+                  <span className="font-semibold text-slate-700">Official Channel Policy:</span> External alert delivery operates exclusively via authenticated Email for regulatory compliance and audit security.
                 </div>
-                <input 
-                  type="checkbox"
-                  disabled
-                  checked={false}
-                  className="rounded border-slate-200 text-slate-300 w-4 h-4 cursor-not-allowed opacity-50"
-                />
               </div>
 
               <div className="flex items-start justify-between gap-4">

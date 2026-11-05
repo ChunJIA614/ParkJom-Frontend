@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { AUTH_REJECTED_EVENT } from '@/services/apiClient';
+import { apiRequest, AUTH_REJECTED_EVENT } from '@/services/apiClient';
 
 // ---- Types ----
 export type UserRole = 'Commuter' | 'Owner' | 'Admin';
@@ -74,6 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const logout = () => {
+    if (user?.token) {
+      void apiRequest('/auth/logout', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${user.token}`,
+        },
+      }).catch((err) => console.warn('Server logout notice failed:', err));
+    }
     setUser(null);
   };
 

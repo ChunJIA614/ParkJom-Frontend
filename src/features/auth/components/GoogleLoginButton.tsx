@@ -54,23 +54,29 @@ export default function GoogleLoginButton() {
   const [loginError, setLoginError] = useState('');
   const loginRequestInFlightRef = useRef(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const [buttonWidth, setButtonWidth] = useState<number>(320);
 
-  // Measure container and scale smoothly on narrow mobile screens so Google's pill border never cuts off
+  // Measure container and adapt width smoothly on mobile screens so Google's pill never overflows or cuts off
   useEffect(() => {
-    const updateScale = () => {
-      if (wrapperRef.current) {
-        const containerWidth = wrapperRef.current.offsetWidth;
-        if (containerWidth > 0 && containerWidth < 380) {
-          setScale(containerWidth / 380);
-        } else {
-          setScale(1);
-        }
+    const el = wrapperRef.current;
+    if (!el) return;
+    const updateWidth = () => {
+      const containerWidth = el.clientWidth;
+      if (containerWidth > 0) {
+        // Clamp between 220px and 360px (Google GIS max button width is 400, min is 200)
+        // Subtly leave 8px margin so the pill has breathing room
+        const calculated = Math.min(360, Math.max(220, Math.floor(containerWidth - 8)));
+        setButtonWidth(calculated);
       }
     };
-    updateScale();
-    window.addEventListener('resize', updateScale);
-    return () => window.removeEventListener('resize', updateScale);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(el);
+    window.addEventListener('resize', updateWidth);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
   }, []);
 
   const beginGoogleLoginRequest = () => {
@@ -332,7 +338,7 @@ export default function GoogleLoginButton() {
           type="button"
           disabled
           aria-busy="true"
-          className="flex min-h-11 w-full max-w-[320px] cursor-wait items-center justify-center gap-2.5 rounded-xl border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white shadow-sm opacity-80"
+          className="flex min-h-11 w-full max-w-[320px] cursor-wait items-center justify-center gap-2.5 rounded-full border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white shadow-sm opacity-80"
         >
           <Loader2 size={17} aria-hidden="true" className="animate-spin text-[#007AFF]" />
           <span aria-live="polite">Signing you in…</span>
@@ -342,25 +348,24 @@ export default function GoogleLoginButton() {
           type="button"
           whileTap={{ scale: 0.97 }}
           onClick={handleNativeGoogleLogin}
-          className="flex min-h-11 w-full max-w-[320px] items-center justify-center gap-3 rounded-xl border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white hover:dark:bg-[#1F1F24] shadow-sm"
+          className="flex min-h-11 w-full max-w-[320px] items-center justify-center gap-3 rounded-full border border-black/10 dark:border-white/14 bg-white dark:bg-[#141417] px-6 text-[14px] font-semibold text-[#1d1d1f] dark:text-white hover:dark:bg-[#1F1F24] shadow-sm"
         >
           <span aria-hidden="true" className="text-[17px] font-bold text-[#4285f4]">G</span>
           Continue with Google
         </motion.button>
       ) : (
-        <div ref={wrapperRef} className="w-full flex justify-center items-center overflow-visible">
+        <div ref={wrapperRef} className="w-full flex justify-center items-center overflow-hidden py-0.5 max-w-full">
           <div
             style={{
-              width: 380,
-              transform: scale < 1 ? `scale(${scale})` : undefined,
-              transformOrigin: 'center center',
+              width: buttonWidth,
+              maxWidth: '100%',
               colorScheme: 'light',
             }}
-            className="flex justify-center items-center shrink-0"
+            className="flex justify-center items-center rounded-full overflow-hidden"
           >
             <GoogleLogin
-              // Re-mount on theme change so the previous iframe cannot linger.
-              key={isDark ? 'google-dark' : 'google-light'}
+              // Re-mount on theme or width change so the GIS button cleanly re-renders at the exact fitted width
+              key={`${isDark ? 'google-dark' : 'google-light'}-${buttonWidth}`}
               {...fedCmButtonOptions}
               onSuccess={handleGoogleSuccess}
               onError={handleGoogleError}
@@ -368,10 +373,10 @@ export default function GoogleLoginButton() {
               // In dark mode use filled_black to instruct Google GIS to render a dark pill
               theme={isDark ? 'filled_black' : 'outline'}
               size="large"
-              shape="rectangular"
+              shape="pill"
               text="continue_with"
-              width={380}
-              containerProps={{ className: 'google-signin-shell flex justify-center' }}
+              width={buttonWidth}
+              containerProps={{ className: 'google-signin-shell flex justify-center w-full max-w-full' }}
             />
           </div>
         </div>

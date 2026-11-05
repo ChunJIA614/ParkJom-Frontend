@@ -54,6 +54,11 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
   const [bayNumber, setBayNumber] = useState('');
   const [level, setLevel] = useState('');
   const [documentType, setDocumentType] = useState<number>(1);
+  const [hasEvCharging, setHasEvCharging] = useState(false);
+  const [evChargingSpeed, setEvChargingSpeed] = useState('Medium (7.4kW)');
+  const [isCovered, setIsCovered] = useState(false);
+  const [isHandicapAccessible, setIsHandicapAccessible] = useState(false);
+  const [hasCctv, setHasCctv] = useState(false);
 
   // Auto-detect station state
   const [allStops, setAllStops] = useState<{ name: string; lat: number; lon: number }[]>([]);
@@ -270,6 +275,13 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       formData.append('Level', level.trim());
       formData.append('DocumentType', String(documentType));
       formData.append('Document', uploadedFileObject);
+      formData.append('hasEvCharging', String(hasEvCharging));
+      if (hasEvCharging && evChargingSpeed) {
+        formData.append('evChargingSpeed', evChargingSpeed);
+      }
+      formData.append('isCovered', String(isCovered));
+      formData.append('isHandicapAccessible', String(isHandicapAccessible));
+      formData.append('hasCctv', String(hasCctv));
 
       const parkRes = await createParking(token, formData);
 
@@ -330,6 +342,11 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       setUploadedFile(null);
       setUploadedFileObject(null);
       setUploadError(null);
+      setHasEvCharging(false);
+      setEvChargingSpeed('Medium (7.4kW)');
+      setIsCovered(false);
+      setIsHandicapAccessible(false);
+      setHasCctv(false);
     } catch (err: any) {
       console.error('❌ Registration failed:', err.message);
       setSubmitError(err.message);
@@ -519,6 +536,95 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                     className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
                     required
                   />
+                </div>
+              </div>
+
+              {/* Bay Amenities */}
+              <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700">Bay Amenities & Features</label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Tick all amenities provided at this bay so commuters can find them via filters.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    isCovered ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={isCovered}
+                      onChange={(e) => setIsCovered(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-xs font-bold text-slate-900">☂️ Covered Bay</span>
+                      <span className="block text-[10px] text-slate-500 mt-0.5">Sheltered from rain and sun</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    hasCctv ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={hasCctv}
+                      onChange={(e) => setHasCctv(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-xs font-bold text-slate-900">🛡️ 24/7 CCTV & Security</span>
+                      <span className="block text-[10px] text-slate-500 mt-0.5">Active premises video surveillance</span>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    isHandicapAccessible ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={isHandicapAccessible}
+                      onChange={(e) => setIsHandicapAccessible(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-xs font-bold text-slate-900">♿ OKU / Handicap Accessible</span>
+                      <span className="block text-[10px] text-slate-500 mt-0.5">Wider berth & step-free path</span>
+                    </div>
+                  </label>
+
+                  <div className={`p-3 rounded-xl border transition-all ${
+                    hasEvCharging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasEvCharging}
+                        onChange={(e) => setHasEvCharging(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <span className="block text-xs font-bold text-slate-900">⚡ EV Charging Point</span>
+                        <span className="block text-[10px] text-slate-500 mt-0.5">Electric vehicle charging station</span>
+                      </div>
+                    </label>
+
+                    {hasEvCharging && (
+                      <div className="mt-2 pt-2 border-t border-blue-200/60">
+                        <span className="block text-[10px] font-semibold text-slate-600 mb-1">Charging Speed</span>
+                        <SystemSelect
+                          value={evChargingSpeed}
+                          onChange={(e) => setEvChargingSpeed(e.target.value)}
+                          className="w-full text-xs"
+                        >
+                          <option value="Slow (3.7kW)">Slow (3.7kW - 3-pin Standard)</option>
+                          <option value="Medium (7.4kW)">Medium (7.4kW - AC Wallbox)</option>
+                          <option value="Fast (11kW / 22kW)">Fast (11kW / 22kW - 3-Phase AC)</option>
+                          <option value="Rapid DC (50kW+)">Rapid DC (50kW+ DC Fast Charger)</option>
+                        </SystemSelect>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

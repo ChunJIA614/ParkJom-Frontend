@@ -45,6 +45,11 @@ import {
   Heart,
   Menu,
   Calendar,
+  Globe,
+  Building2,
+  ChevronLeft,
+  Zap,
+  Accessibility,
 } from 'lucide-react';
 import {
   ParkingSpot,
@@ -57,6 +62,7 @@ import {
   WalletTopUpHistoryItem,
   WalletTransactionItem,
 } from '../types';
+import SystemSelect from '@/components/ui/SystemSelect';
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
 import JourneyStrip from '../components/JourneyStrip';
@@ -111,7 +117,7 @@ import {
 } from '../lib/vehicleStorage';
 import { getDeviceLocation, DeviceLocationError } from '@/services/deviceCapabilities';
 import { isWithinArrivalRadius, resolveSpotCoordinates } from '../lib/geofence';
-import { updateReview } from '../api/reviewApi';
+import { getParkingReviews, updateReview } from '../api/reviewApi';
 import { getCommuterBookingHistory, type BookingHistoryItem } from '@/features/bookings/api/bookingHistoryApi';
 import { VEHICLE_CATALOG_FALLBACK } from '../data/vehicleCatalog';
 import VehicleBrandModelFields from '../components/VehicleBrandModelFields';
@@ -153,6 +159,13 @@ const mapParkingResult = (spot: ParkingResultDto): ParkingSpot => ({
   available: spot.availabilityStatus.toLowerCase() === 'available',
   type: 'Condo Bay',
   owner: spot.propertyName || `Property #${spot.propertyId}`,
+  hasEvCharging: Boolean(spot.hasEvCharging),
+  evChargingSpeed: spot.evChargingSpeed,
+  isCovered: Boolean(spot.isCovered),
+  isHandicapAccessible: Boolean(spot.isHandicapAccessible),
+  hasCctv: Boolean(spot.hasCctv),
+  averageRating: spot.averageRating ?? null,
+  totalReviews: spot.totalReviews ?? 0,
 });
 
 const historyItemToBooking = ({ booking }: BookingHistoryItem): Booking => ({
@@ -336,6 +349,12 @@ export default function CommuterDashboard() {
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
   const [selectedStationCoords, setSelectedStationCoords] = useState<StationCoordinates | null>(null);
   const [distanceFilter, setDistanceFilter] = useState<number>(3000); // meters
+  const [amenityFilters, setAmenityFilters] = useState<{ ev: boolean; covered: boolean; oku: boolean; cctv: boolean }>({
+    ev: false,
+    covered: false,
+    oku: false,
+    cctv: false,
+  });
   const [mobileTransitTab, setMobileTransitTab] = useState<'map' | 'transit' | 'bays'>('map');
   const [transitWorkspaceMode, setTransitWorkspaceMode] = useState<'explore' | 'navigation'>('explore');
   const [navigationRoutes, setNavigationRoutes] = useState<{
@@ -367,6 +386,78 @@ export default function CommuterDashboard() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationRequestKey, setLocationRequestKey] = useState(0);
   const [suggestedSpots, setSuggestedSpots] = useState<ParkingSpot[]>([]);
+  type RealCategory = 'all' | 'transit' | 'covered' | 'ev' | 'cctv' | 'monthly' | 'accessible';
+  const [activeCategory, setActiveCategory] = useState<RealCategory>('all');
+  const [rateFilter, setRateFilter] = useState<'all' | 'daily' | 'monthly'>('all');
+  const [featureFilter, setFeatureFilter] = useState<'all' | 'covered' | 'ev' | 'cctv' | 'accessible'>('all');
+  const carouselRef1 = useRef<HTMLDivElement>(null);
+  const carouselRef2 = useRef<HTMLDivElement>(null);
+  const carouselRef3 = useRef<HTMLDivElement>(null);
+
+  const scrollCarousel = (ref: React.RefObject<HTMLDivElement | null>, direction: 'left' | 'right') => {
+    if (ref.current) {
+      const scrollAmount = ref.current.clientWidth * 0.75;
+      ref.current.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  const [spotRatings, setSpotRatings] = useState<Record<number, { averageRating: number; totalCount: number }>>({});
+
+  const renderSpotRating = (spotId: number) => {
+    const ratingData = spotRatings[spotId];
+    if (ratingData && ratingData.totalCount > 0 && ratingData.averageRating > 0) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#111] dark:text-white shrink-0">
+          <Star size={12} className="text-[#ff9500] fill-[#ff9500]" />
+          <span>{ratingData.averageRating.toFixed(1)}</span>
+          <span className="text-[11px] font-normal text-[#8e8e93] dark:text-[#71717A]">({ratingData.totalCount})</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8e8e93] dark:text-[#71717A] shrink-0">
+        <Star size={11} className="text-[#8e8e93] dark:text-[#71717A]" />
+        <span>New</span>
+      </span>
+    );
+  };
+
+  useEffect(() => {
+    if (!user?.token) return;
+    const allVisibleSpots = [
+      ...suggestedSpots,
+      ...nearbySpots,
+      ...searchSpots,
+    ];
+    const missingSpotIds = Array.from(new Set(allVisibleSpots.map((s) => s.parkingSpotId)))
+      .filter((id) => id > 0 && !(id in spotRatings));
+
+    if (missingSpotIds.length === 0) return;
+
+    let isMounted = true;
+    missingSpotIds.forEach((id) => {
+      getParkingReviews(user.token, id, 1, 1)
+        .then((res) => {
+          if (!isMounted) return;
+          setSpotRatings((prev) => ({
+            ...prev,
+            [id]: { averageRating: res.averageRating, totalCount: res.totalCount },
+          }));
+        })
+        .catch(() => {
+          if (!isMounted) return;
+          setSpotRatings((prev) => ({
+            ...prev,
+            [id]: { averageRating: 0, totalCount: 0 },
+          }));
+        });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.token, suggestedSpots, nearbySpots, searchSpots, spotRatings]);
+
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   
@@ -782,6 +873,32 @@ export default function CommuterDashboard() {
   });
 
   const discoverySpots = searchMeta ? filteredSpots : locationSuggestedSpots;
+  const filteredBrowseSpots = useMemo(() => {
+    return discoverySpots.filter((spot) => {
+      // 1. Real Category Filter
+      if (activeCategory === 'transit' && !(spot.stationName && (spot.distanceToStation > 0 || spot.timeToStationInMinutes > 0))) return false;
+      if (activeCategory === 'covered' && !spot.isCovered) return false;
+      if (activeCategory === 'ev' && !spot.hasEvCharging) return false;
+      if (activeCategory === 'cctv' && !spot.hasCctv) return false;
+      if (activeCategory === 'monthly' && !(spot.monthlyRate > 0)) return false;
+      if (activeCategory === 'accessible' && !spot.isHandicapAccessible) return false;
+
+      // 2. Real Rate Filter
+      if (rateFilter === 'daily' && spot.dailyRate === null) return false;
+      if (rateFilter === 'monthly' && !(spot.monthlyRate > 0)) return false;
+
+      // 3. Real Feature Filter
+      if (featureFilter === 'covered' && !spot.isCovered) return false;
+      if (featureFilter === 'ev' && !spot.hasEvCharging) return false;
+      if (featureFilter === 'cctv' && !spot.hasCctv) return false;
+      if (featureFilter === 'accessible' && !spot.isHandicapAccessible) return false;
+
+      return true;
+    });
+  }, [discoverySpots, activeCategory, rateFilter, featureFilter]);
+
+  const hasActiveFilters = activeCategory !== 'all' || rateFilter !== 'all' || featureFilter !== 'all' || Boolean(searchMeta) || searchQuery.trim() !== '';
+
 
   const mapNearbySpots = nearbySpots.filter((spot) => {
     if (spotTypeFilter !== 'all' && spot.type !== spotTypeFilter) return false;
@@ -789,6 +906,10 @@ export default function CommuterDashboard() {
       ? distanceBetweenKm(selectedStationCoords, { lat: spot.lat, lng: spot.lng }) * 1000
       : spot.distance;
     if (actualDistance > distanceFilter) return false;
+    if (amenityFilters.ev && !spot.hasEvCharging) return false;
+    if (amenityFilters.covered && !spot.isCovered) return false;
+    if (amenityFilters.oku && !spot.isHandicapAccessible) return false;
+    if (amenityFilters.cctv && !spot.hasCctv) return false;
     if (activeBooking && activeBooking.spot.id === spot.id) return false;
     return spot.available;
   });
@@ -906,6 +1027,21 @@ export default function CommuterDashboard() {
       stopWatching?.();
     };
   }, [activeTab, locationRequestKey]);
+
+
+  useEffect(() => {
+    if (suggestedSpots.length > 0 || currentLocation) return;
+    const controller = new AbortController();
+    getNearbyParking(3.1478, 101.6953, 30, controller.signal)
+      .then(async (res) => {
+        const data = (await res.json().catch(() => null)) as ParkingSearchResponse | null;
+        if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
+          setSuggestedSpots(data.data.map(mapParkingResult));
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [currentLocation, suggestedSpots.length]);
 
   useEffect(() => {
     if (!currentLocation) return;
@@ -2205,59 +2341,19 @@ export default function CommuterDashboard() {
       />
 
       {/* ─── Main Layout ─── */}
-      <div className={`commuter-content-grid flex-1 ${activeTab === 'map' ? 'max-w-[1520px]' : 'max-w-[1180px]'} w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 pb-20 md:pb-8`}>
+      <div className={`commuter-content-grid flex-1 ${activeTab === 'map' || activeTab === 'home' ? 'max-w-[1520px]' : 'max-w-[1180px]'} w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 pb-20 md:pb-8`}>
 
         {/* Main Content */}
         <main className="min-h-0">
-          <div className="workspace-heading workspace-heading--compact">
-            <div>
-              <h1>{commuterViewMeta[activeTab].title}</h1>
-              <p>{commuterViewMeta[activeTab].description}</p>
-            </div>
-          </div>
-          <PageTransition transitionKey={activeTab}>
-
-          {/* Active booking banner */}
-          {activeBooking && activeTab !== 'active' && (
-            <div className="active-booking-banner w-full rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px] font-semibold mb-4 transition-all duration-200">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="flex h-2.5 w-2.5 relative shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
-                </span>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="active-booking-tag text-[10px] font-bold uppercase tracking-wider">Reserved Parking Bay</span>
-                    <span className="active-booking-bay-badge text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">Bay {activeBooking.spot.parkingLabel}</span>
-                  </div>
-                  <div className="active-booking-spot-name truncate font-bold">{formatShortSpotName(activeBooking.spot.name)}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="active-booking-timer font-mono font-bold px-3 py-1.5 rounded-xl text-xs">{formatTime(secondsRemaining)}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedSpot(activeBooking.spot);
-                    setActiveTab('map');
-                    setMobileTransitTab('transit');
-                    setTransitWorkspaceMode('navigation');
-                  }}
-                  className="active-booking-drive-btn px-3.5 py-1.5 font-bold rounded-xl text-xs transition shadow-xs flex items-center gap-1.5"
-                >
-                  <Navigation size={13} />
-                  <span>Drive to Bay</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('active')}
-                  className="active-booking-pass-btn px-3 py-1.5 font-semibold rounded-xl text-xs transition"
-                >
-                  Pass
-                </button>
+          {activeTab !== 'home' && (
+            <div className="workspace-heading workspace-heading--compact">
+              <div>
+                <h1>{commuterViewMeta[activeTab].title}</h1>
+                <p>{commuterViewMeta[activeTab].description}</p>
               </div>
             </div>
           )}
+          <PageTransition transitionKey={activeTab}>
 
           {favoriteError && (
             <div role="alert" className="mb-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">
@@ -2269,168 +2365,682 @@ export default function CommuterDashboard() {
             </div>
           )}
 
-          {/* ─── TAB: Home / Discovery ─── */}
+          {/* ─── TAB: Home / Browse (Apple HIG System Design) ─── */}
           {activeTab === 'home' && (
-            <div className="space-y-4">
-              <section className="bg-white rounded-2xl border border-[#e8eaed] p-4" aria-live="polite">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#eff6ff] text-[#007AFF]">
-                      {locationStatus === 'locating' ? <Loader2 size={18} className="animate-spin" /> : <Navigation size={18} />}
-                    </span>
-                    <div className="min-w-0">
-                      <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Parking near you</h3>
-                      <p className="mt-1 text-[11px] text-[#9ca3af]">
-                        {locationStatus === 'ready'
-                          ? `Live location active${locationAccuracy ? ` · accurate to about ${Math.round(locationAccuracy)} m` : ''}. Suggestions refresh as you move.`
-                          : locationStatus === 'locating'
-                            ? 'Finding your current location and the closest available properties…'
-                            : 'Location is needed to recommend the closest available parking.'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setLocationRequestKey((request) => request + 1)}
-                    className="w-full sm:w-auto shrink-0 rounded-xl border border-[#dadce0] px-3 py-2 text-[11px] font-semibold text-[#5f6368] hover:border-[#007AFF] hover:text-[#007AFF]"
-                  >
-                    {locationStatus === 'ready' ? 'Refresh location' : 'Use my location'}
-                  </button>
-                </div>
-                {locationError && <p role="alert" className="mt-3 text-[11px] font-medium text-rose-600">{locationError}</p>}
-                {suggestionsError && <p role="alert" className="mt-3 text-[11px] font-medium text-rose-600">{suggestionsError}</p>}
-              </section>
-
-              <div className="bg-white rounded-2xl border border-[#e8eaed] p-4">
-                <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">Going somewhere else?</h3>
-                <p className="mt-1 text-[11px] text-[#9ca3af]">Search a different property, address, area, or station.</p>
-                <form onSubmit={handleParkingSearch} className="mt-3 flex flex-col sm:flex-row gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9ca3af]" />
-                    <input
-                      type="search"
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      placeholder="e.g. Setapak or Taman Melati"
-                      className="w-full rounded-xl border border-[#dadce0] py-2.5 pl-9 pr-3 text-[13px] outline-none focus:border-[#007AFF]"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={isSearchLoading}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-2.5 text-[12px] font-semibold text-white hover:bg-[#0066d6] disabled:opacity-60"
-                  >
-                    {isSearchLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                    Search
-                  </button>
-                </form>
-                {searchError && <p role="alert" className="mt-2 text-[11px] font-medium text-rose-600">{searchError}</p>}
-                {searchMeta && (
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <p className="text-[10px] text-[#6e6e73]">Page {searchMeta.page} · {searchMeta.pageSize} per page</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchMeta(null);
-                        setSearchSpots([]);
-                        setSearchError(null);
-                      }}
-                      className="shrink-0 text-[10px] font-semibold text-[#007AFF] hover:text-[#0066d6]"
-                    >
-                      Show parking near me
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Spot Cards */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-[12px] font-semibold text-[#5f6368] uppercase tracking-wider">
-                      {searchMeta ? 'Search results' : 'Recommended near you'} ({searchMeta?.totalCount ?? locationSuggestedSpots.length})
-                    </h3>
-                  </div>
-                  {!searchMeta && isSuggestionsLoading && <Loader2 size={16} className="animate-spin text-[#007AFF]" />}
-                </div>
-                {!searchMeta && (locationStatus === 'locating' || (isSuggestionsLoading && discoverySpots.length === 0)) && (
-                  <div className="bg-white rounded-2xl border border-[#e8eaed] p-8 text-center">
-                    <Loader2 size={28} className="mx-auto mb-2 animate-spin text-[#007AFF]" />
-                    <p className="text-[13px] text-[#5f6368] font-medium">Finding the closest parking</p>
-                    <p className="text-[11px] text-[#9ca3af] mt-1">Your nearest available properties will appear automatically.</p>
-                  </div>
-                )}
-                {!searchMeta && locationStatus !== 'locating' && !isSuggestionsLoading && discoverySpots.length === 0 && (
-                  <div className="bg-white rounded-2xl border border-[#e8eaed] p-8 text-center">
-                    <MapPin size={32} className="mx-auto text-[#dadce0] mb-2" />
-                    <p className="text-[13px] text-[#5f6368] font-medium">
-                      {locationStatus === 'ready' ? 'No available parking found nearby' : 'Turn on location recommendations'}
-                    </p>
-                    <p className="text-[11px] text-[#9ca3af] mt-1">
-                      {locationStatus === 'ready'
-                        ? 'We will refresh the recommendations automatically as your location changes.'
-                        : 'Allow location access, or use the optional area search above.'}
-                    </p>
-                  </div>
-                )}
-                {searchMeta && !isSearchLoading && discoverySpots.length === 0 && (
-                  <div className="bg-white rounded-2xl border border-[#e8eaed] p-8 text-center">
-                    <MapPin size={32} className="mx-auto text-[#dadce0] mb-2" />
-                    <p className="text-[13px] text-[#5f6368] font-medium">No matching parking found</p>
-                    <p className="text-[11px] text-[#9ca3af] mt-1">Try a broader area, or return to parking recommendations near you.</p>
-                  </div>
-                )}
-                {discoverySpots.map((spot, index) => {
-                  const userDistance = currentLocation ? distanceFromUser(currentLocation, spot) : null;
+            <div className="space-y-8 pb-12">
+              {/* ── Minimalist Category Tabs (Airbnb / Apple Design: Unboxed, spacious, underline indicator) ── */}
+              <div className="flex items-center justify-start sm:justify-center gap-6 sm:gap-8 overflow-x-auto no-scrollbar pt-1 pb-1">
+                {[
+                  { id: 'all', label: 'All Bays', icon: Globe },
+                  { id: 'transit', label: 'Near Transit', icon: Train },
+                  { id: 'covered', label: 'Covered', icon: Building2 },
+                  { id: 'ev', label: 'EV Charging', icon: Zap },
+                  { id: 'cctv', label: 'CCTV Security', icon: ShieldCheck },
+                  { id: 'monthly', label: 'Monthly Pass', icon: Calendar },
+                  { id: 'accessible', label: 'Accessible', icon: Accessibility },
+                ].map((cat) => {
+                  const Icon = cat.icon;
+                  const isActive = activeCategory === cat.id;
                   return (
-                    <div key={spot.id} className="relative">
-                    <button type="button" onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
-                      className="w-full bg-white rounded-2xl border p-3 sm:p-4 sm:pr-12 text-left cursor-pointer transition-all duration-150 border-[#e8eaed] hover:border-[#d2d5d9] shadow-[0_4px_14px_rgba(15,23,42,0.04)] sm:shadow-none">
-                      <div className="flex flex-col sm:flex-row items-start gap-4">
-                        {spot.primaryImageUrl ? (
-                          <img src={spot.primaryImageUrl} alt="" className="aspect-[16/9] sm:aspect-auto sm:h-20 w-full sm:w-24 shrink-0 rounded-xl object-cover" />
-                        ) : (
-                          <div className="aspect-[16/9] sm:aspect-auto sm:h-20 w-full sm:w-24 rounded-xl bg-[#eff6ff] flex items-center justify-center shrink-0"><Home size={24} className="text-[#007AFF]" /></div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-3">
-                            <div>
-                              <p className="text-[13px] font-semibold text-[#111]">{spot.propertyName}</p>
-                              <p className="text-[10px] font-mono text-[#9ca3af]">Spot #{spot.parkingSpotId} · Property #{spot.propertyId} · Bay {spot.parkingLabel}</p>
-                            </div>
-                            <div className="flex shrink-0 flex-wrap sm:justify-end gap-1">
-                              {!searchMeta && userDistance !== null && (
-                                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-[#007AFF]">
-                                  {index === 0 ? 'Nearest · ' : ''}{formatUserDistance(userDistance)}
-                                </span>
-                              )}
-                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-700">{spot.availabilityStatus}</span>
-                            </div>
-                          </div>
-                          <p className="mt-1 text-[11px] text-[#5f6368] dark:text-[#a1a1a6]">{spot.address}</p>
-                          <p className="mt-1 text-[10px] text-[#9ca3af]">Near {spot.stationName} · {(spot.distanceToStation ?? 0).toFixed(2)} km to station · {(spot.distanceToStation ?? 0) > 0 ? calculateWalkingMinutes((spot.distanceToStation ?? 0) * 1000, { isStationDestination: true }) : (spot.timeToStationInMinutes ? Math.round(spot.timeToStationInMinutes) : 0)} min</p>
-                          <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold text-[#5f6368]">
-                            <span>Daily: {spot.dailyRate === null ? '—' : `RM ${spot.dailyRate.toFixed(2)}`}</span>
-                            <span>Monthly: RM {spot.monthlyRate.toFixed(2)}</span>
-                            <span>{spot.primaryImageUrl ? 'Photo available' : 'No primary photo'}</span>
-                          </div>
-                        </div>
-                        <ChevronRight size={18} className="hidden sm:block mt-1 shrink-0 text-[#9ca3af]" />
-                      </div>
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setActiveCategory(cat.id as RealCategory)}
+                      className={`group relative flex flex-col items-center gap-1.5 pb-2 text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                        isActive
+                          ? 'text-[#111] dark:text-white'
+                          : 'text-[#717171] dark:text-[#8E8E93] hover:text-[#111] dark:hover:text-white opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <Icon
+                        size={20}
+                        strokeWidth={isActive ? 2.4 : 1.8}
+                        className={
+                          isActive
+                            ? 'text-[#007AFF] dark:text-[#3894FF]'
+                            : 'text-[#8e8e93] dark:text-[#71717A] group-hover:text-[#111] dark:group-hover:text-white transition-colors'
+                        }
+                      />
+                      <span className="whitespace-nowrap tracking-tight">{cat.label}</span>
+                      {/* Active Indicator Underline */}
+                      {isActive && (
+                        <span className="absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-[#007AFF] dark:bg-[#3894FF]" />
+                      )}
                     </button>
-                    <button type="button" onClick={() => void handleToggleFavorite(spot)}
-                      disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
-                      aria-label={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? `Remove ${spot.propertyName} from favorites` : `Add ${spot.propertyName} to favorites`}
-                      aria-pressed={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId)}
-                      className="absolute right-5 top-5 sm:right-3 sm:top-3 z-10 flex h-10 w-10 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-black/[0.08] bg-white/95 text-[#5f6368] shadow-md backdrop-blur transition hover:text-rose-500 active:scale-95 disabled:cursor-wait disabled:opacity-70">
-                      {favoriteUpdatingIds.includes(spot.parkingSpotId)
-                        ? <Loader2 size={17} className="animate-spin text-[#007AFF]" />
-                        : <Heart size={17} fill={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? 'currentColor' : 'none'} className={favoriteSpots.some((favorite) => favorite.parkingSpotId === spot.parkingSpotId) ? 'text-rose-500' : ''} />}
-                    </button>
-                    </div>
                   );
                 })}
               </div>
+
+              {/* ── Apple / Airbnb 1-Line Seamless Search Capsule (Zero Redundant Layers) ── */}
+              <div className="max-w-4xl mx-auto">
+                <div className="rounded-full border border-black/[0.09] dark:border-white/12 bg-white/95 dark:bg-[#1C1C1E]/95 shadow-[0_4px_20px_rgba(0,0,0,0.06)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all pl-7 sm:pl-8 pr-2.5 sm:pr-3 py-2 sm:py-2.5 min-h-[62px] sm:min-h-[66px] flex items-center">
+                  {/* Segment 1: Where */}
+                  <div className="flex-1 min-w-0 pr-4 flex flex-col justify-center text-left">
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
+                      Where
+                    </span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Search size={15} className="text-[#8e8e93] dark:text-[#A1A1AA] shrink-0" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleParkingSearch(e as any);
+                          }
+                        }}
+                        placeholder="Search station, condo, or area..."
+                        className="search-capsule-input w-full bg-transparent text-xs sm:text-[13px] font-medium text-[#1d1d1f] dark:text-white placeholder-[#8e8e93] dark:placeholder-[#A1A1AA] !outline-none !border-none !ring-0 !shadow-none pl-1.5 pr-2 py-0.5 truncate"
+                      />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery('');
+                            if (searchMeta) {
+                              setSearchMeta(null);
+                              setSearchSpots([]);
+                            }
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition cursor-pointer shrink-0"
+                          aria-label="Clear search"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Hairline Divider 1 */}
+                  <div className="h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
+
+                  {/* Segment 2: Rate Type */}
+                  <div className="w-[85px] sm:w-[130px] shrink-0 px-2 sm:px-3 flex flex-col justify-center text-left">
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
+                      Rate
+                    </span>
+                    <SystemSelect
+                      variant="ghost"
+                      id="rate-filter-select"
+                      value={rateFilter}
+                      onChange={(e) => setRateFilter(e.target.value as 'all' | 'daily' | 'monthly')}
+                      aria-label="Filter by rate type"
+                      className="!h-auto text-xs sm:text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
+                    >
+                      <option value="all">All Rates</option>
+                      <option value="daily">Daily</option>
+                      <option value="monthly">Monthly</option>
+                    </SystemSelect>
+                  </div>
+
+                  {/* Hairline Divider 2 */}
+                  <div className="h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
+
+                  {/* Segment 3: Features */}
+                  <div className="w-[95px] sm:w-[140px] shrink-0 px-2 sm:px-3 flex flex-col justify-center text-left">
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
+                      Features
+                    </span>
+                    <SystemSelect
+                      variant="ghost"
+                      id="feature-filter-select"
+                      value={featureFilter}
+                      onChange={(e) => setFeatureFilter(e.target.value as 'all' | 'covered' | 'ev' | 'cctv' | 'accessible')}
+                      aria-label="Filter by features"
+                      className="!h-auto text-xs sm:text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
+                    >
+                      <option value="all">All Features</option>
+                      <option value="covered">Covered</option>
+                      <option value="ev">EV Ready</option>
+                      <option value="cctv">24/7 CCTV</option>
+                      <option value="accessible">Accessible</option>
+                    </SystemSelect>
+                  </div>
+
+                  {/* Search Action Button (Centered on the same line) */}
+                  <button
+                    type="button"
+                    onClick={(e) => handleParkingSearch(e as any)}
+                    disabled={isSearchLoading}
+                    className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-[#007AFF] hover:bg-[#0066d6] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-blue-500/25 shrink-0 ml-2 cursor-pointer disabled:opacity-70"
+                    aria-label="Search parking"
+                  >
+                    {isSearchLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} strokeWidth={2.5} />}
+                  </button>
+                </div>
+
+                {/* GPS Location Status Bar (Apple Subtitle Polish) */}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-3 text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-medium">
+                      <Navigation size={13} className={locationStatus === 'ready' ? 'text-[#007AFF]' : 'text-slate-400'} />
+                      <span>
+                        {locationStatus === 'ready'
+                          ? `Live GPS active: Showing verified bays within ${Math.round(locationAccuracy ?? 50)}m accuracy`
+                          : locationStatus === 'locating'
+                          ? 'Locating closest available parking bays...'
+                          : 'Showing verified parking bays in Klang Valley'}
+                      </span>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocationRequestKey((k) => k + 1)}
+                    className="text-[11px] font-semibold text-[#007AFF] hover:underline cursor-pointer"
+                  >
+                    {locationStatus === 'ready' ? 'Refresh location' : 'Enable precise GPS'}
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Filtered Results Mode (When Search or Active Filters are Applied) ── */}
+              {hasActiveFilters ? (
+                <div className="space-y-4 pt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.06] dark:border-white/10 pb-4">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-bold text-[#111] dark:text-white">
+                        {searchMeta ? `Search Results for "${searchQuery}"` : 'Filtered Parking Bays'}
+                        <span className="ml-2 text-sm font-normal text-[#6e6e73] dark:text-[#A1A1AA]">
+                          ({filteredBrowseSpots.length} {filteredBrowseSpots.length === 1 ? 'bay' : 'bays'} found)
+                        </span>
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        {activeCategory !== 'all' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-[#007AFF] border border-blue-200/50 dark:border-blue-800/50">
+                            Category: {activeCategory}
+                          </span>
+                        )}
+                        {rateFilter !== 'all' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-white/10 text-[#111] dark:text-white border border-black/5 dark:border-white/10">
+                            Rate: {rateFilter === 'daily' ? 'Daily' : 'Monthly'}
+                          </span>
+                        )}
+                        {featureFilter !== 'all' && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-white/10 text-[#111] dark:text-white border border-black/5 dark:border-white/10">
+                            Feature: {featureFilter}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveCategory('all');
+                        setRateFilter('all');
+                        setFeatureFilter('all');
+                        setSearchMeta(null);
+                        setSearchQuery('');
+                        setSearchSpots([]);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-xs font-semibold text-[#111] dark:text-white transition-all cursor-pointer"
+                    >
+                      <X size={14} /> Reset all filters
+                    </button>
+                  </div>
+
+                  {filteredBrowseSpots.length === 0 ? (
+                    <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 p-12 text-center">
+                      <MapPin size={36} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+                      <p className="text-sm font-bold text-[#111] dark:text-white">No parking bays match your criteria</p>
+                      <p className="text-xs text-[#717171] dark:text-[#A1A1AA] mt-1">Try resetting the filters or searching a broader station or area.</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveCategory('all');
+                          setRateFilter('all');
+                          setFeatureFilter('all');
+                          setSearchMeta(null);
+                          setSearchQuery('');
+                          setSearchSpots([]);
+                        }}
+                        className="mt-4 px-4 py-2 rounded-xl bg-[#007AFF] text-white text-xs font-semibold hover:bg-[#0066d6] transition cursor-pointer"
+                      >
+                        Show all verified bays
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pt-2">
+                      {filteredBrowseSpots.map((spot, index) => {
+                        const isSaved = favoriteSpots.some((f) => f.parkingSpotId === spot.parkingSpotId);
+                        return (
+                          <div
+                            key={spot.id}
+                            onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
+                            className="group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2 -m-2 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                          >
+                            <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
+                              <img
+                                src={spot.primaryImageUrl || BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length]}
+                                alt={spot.propertyName || spot.name}
+                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length];
+                                }}
+                              />
+                              <div className="absolute top-3 left-3 pointer-events-none">
+                                {spot.hasEvCharging ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md">
+                                    <Zap size={11} /> EV Ready
+                                  </span>
+                                ) : spot.isCovered ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
+                                    <Building2 size={11} className="text-[#007AFF]" /> Covered
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
+                                    <CheckCircle2 size={11} className="text-[#34C759]" /> Verified Bay
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleToggleFavorite(spot);
+                                }}
+                                disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
+                                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-sm"
+                                aria-label="Save to favorites"
+                              >
+                                <Heart
+                                  size={16}
+                                  strokeWidth={2}
+                                  className={isSaved ? 'text-rose-500 fill-rose-500' : 'text-white fill-none'}
+                                />
+                              </button>
+                            </div>
+
+                            <div className="pt-3 px-1 space-y-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[13px] font-bold text-[#111] dark:text-white truncate">
+                                  {spot.type === 'Condo Bay' ? 'Condo Bay' : 'Driveway'} · {spot.stationName ? spot.stationName.replace(' LRT', '').replace(' MRT', '') : 'Kuala Lumpur'}
+                                </span>
+                                {renderSpotRating(spot.parkingSpotId)}
+                              </div>
+                              <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] truncate">
+                                {spot.propertyName || spot.address}
+                              </p>
+                              <div className="flex items-center gap-1 text-[11px] text-[#8e8e93] dark:text-[#71717A] truncate">
+                                <MapPin size={11} className="text-[#007AFF] shrink-0" />
+                                <span className="truncate">Near {spot.stationName || 'Rail Station'} · {spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(1)} km` : 'Walking distance'}</span>
+                              </div>
+                              <div className="pt-1 flex items-baseline justify-between text-[13px]">
+                                <span className="font-bold text-[#111] dark:text-white">
+                                  RM {spot.dailyRate ? spot.dailyRate.toFixed(2) : (spot.monthlyRate / 30).toFixed(2)}
+                                  <span className="font-normal text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
+                                </span>
+                                {spot.monthlyRate > 0 && (
+                                  <span className="text-[11px] font-medium text-[#007AFF]">
+                                    RM {spot.monthlyRate.toFixed(0)}/mo
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-10 pt-2">
+                  {/* ── Standard Multi-Carousel Display (Apple HIG Polish) ── */}
+                  {/* ─── Section 1: Popular Parking in Kuala Lumpur ─── */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('map');
+                          setMobileTransitTab('transit');
+                        }}
+                        className="group inline-flex items-center gap-2 text-xl sm:text-2xl font-bold tracking-tight text-[#111] dark:text-white hover:text-[#007AFF] transition-colors cursor-pointer"
+                      >
+                        <span>Popular Parking in Kuala Lumpur</span>
+                        <ChevronRight size={20} className="text-[#8e8e93] dark:text-[#71717A] group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-transform" />
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => scrollCarousel(carouselRef1, 'left')}
+                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
+                          aria-label="Previous items"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollCarousel(carouselRef1, 'right')}
+                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
+                          aria-label="Next items"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      ref={carouselRef1}
+                      className="flex gap-4 sm:gap-5 overflow-x-auto scroll-smooth no-scrollbar py-2 px-1"
+                    >
+                      {filteredBrowseSpots.slice(0, 10).map((spot, index) => {
+                        const isSaved = favoriteSpots.some((f) => f.parkingSpotId === spot.parkingSpotId);
+                        return (
+                          <div
+                            key={spot.id}
+                            onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
+                            className="w-[240px] sm:w-[260px] shrink-0 group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2 -m-2 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                          >
+                            <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
+                              <img
+                                src={spot.primaryImageUrl || BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length]}
+                                alt={spot.propertyName || spot.name}
+                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length];
+                                }}
+                              />
+                              <div className="absolute top-3 left-3 pointer-events-none">
+                                {spot.hasEvCharging ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md">
+                                    <Zap size={11} /> EV Ready
+                                  </span>
+                                ) : spot.isCovered ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
+                                    <Building2 size={11} className="text-[#007AFF]" /> Covered
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
+                                    <CheckCircle2 size={11} className="text-[#34C759]" /> Verified Bay
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleToggleFavorite(spot);
+                                }}
+                                disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
+                                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-sm"
+                                aria-label="Save to favorites"
+                              >
+                                <Heart
+                                  size={16}
+                                  strokeWidth={2}
+                                  className={isSaved ? 'text-rose-500 fill-rose-500' : 'text-white fill-none'}
+                                />
+                              </button>
+                            </div>
+
+                            <div className="pt-3 px-1 space-y-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[13px] font-bold text-[#111] dark:text-white truncate">
+                                  {spot.type === 'Condo Bay' ? 'Condo Bay' : 'Driveway'} · {spot.stationName ? spot.stationName.replace(' LRT', '').replace(' MRT', '') : 'Kuala Lumpur'}
+                                </span>
+                                {renderSpotRating(spot.parkingSpotId)}
+                              </div>
+                              <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] truncate">
+                                {spot.propertyName || spot.address}
+                              </p>
+                              <div className="flex items-center gap-1 text-[11px] text-[#8e8e93] dark:text-[#71717A] truncate">
+                                <MapPin size={11} className="text-[#007AFF] shrink-0" />
+                                <span className="truncate">Near {spot.stationName || 'Rail Station'} · {spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(1)} km` : 'Walking distance'}</span>
+                              </div>
+                              <div className="pt-1 flex items-baseline justify-between text-[13px]">
+                                <span className="font-bold text-[#111] dark:text-white">
+                                  RM {spot.dailyRate ? spot.dailyRate.toFixed(2) : (spot.monthlyRate / 30).toFixed(2)}
+                                  <span className="font-normal text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
+                                </span>
+                                {spot.monthlyRate > 0 && (
+                                  <span className="text-[11px] font-medium text-[#007AFF]">
+                                    RM {spot.monthlyRate.toFixed(0)}/mo
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {/* ─── Section 2: Transit-Connected Bays ─── */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('map');
+                          setMobileTransitTab('transit');
+                        }}
+                        className="group inline-flex items-center gap-2 text-xl sm:text-2xl font-bold tracking-tight text-[#111] dark:text-white hover:text-[#007AFF] transition-colors cursor-pointer"
+                      >
+                        <span>Transit-Connected Parking (Near LRT & MRT)</span>
+                        <ChevronRight size={20} className="text-[#8e8e93] dark:text-[#71717A] group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-transform" />
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => scrollCarousel(carouselRef2, 'left')}
+                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
+                          aria-label="Previous items"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollCarousel(carouselRef2, 'right')}
+                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
+                          aria-label="Next items"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      ref={carouselRef2}
+                      className="flex gap-4 sm:gap-5 overflow-x-auto scroll-smooth no-scrollbar py-2 px-1"
+                    >
+                      {filteredBrowseSpots.slice(2, 12).map((spot, index) => {
+                        const isSaved = favoriteSpots.some((f) => f.parkingSpotId === spot.parkingSpotId);
+                        return (
+                          <div
+                            key={`transit-${spot.id}`}
+                            onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
+                            className="w-[240px] sm:w-[260px] shrink-0 group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2 -m-2 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                          >
+                            <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
+                              <img
+                                src={spot.primaryImageUrl || BROWSE_FALLBACK_PHOTOS[(index + 2) % BROWSE_FALLBACK_PHOTOS.length]}
+                                alt={spot.propertyName || spot.name}
+                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = BROWSE_FALLBACK_PHOTOS[(index + 2) % BROWSE_FALLBACK_PHOTOS.length];
+                                }}
+                              />
+                              <div className="absolute top-3 left-3 pointer-events-none">
+                                {spot.hasEvCharging ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md">
+                                    <Zap size={11} /> EV Ready
+                                  </span>
+                                ) : spot.isCovered ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
+                                    <Building2 size={11} className="text-[#007AFF]" /> Covered
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
+                                    <CheckCircle2 size={11} className="text-[#34C759]" /> Verified Bay
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleToggleFavorite(spot);
+                                }}
+                                disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
+                                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-sm"
+                                aria-label="Save to favorites"
+                              >
+                                <Heart
+                                  size={16}
+                                  strokeWidth={2}
+                                  className={isSaved ? 'text-rose-500 fill-rose-500' : 'text-white fill-none'}
+                                />
+                              </button>
+                            </div>
+
+                            <div className="pt-3 px-1 space-y-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[13px] font-bold text-[#111] dark:text-white truncate">
+                                  Condo Bay · {spot.stationName ? spot.stationName.replace(' LRT', '').replace(' MRT', '') : 'Transit Hub'}
+                                </span>
+                                {renderSpotRating(spot.parkingSpotId)}
+                              </div>
+                              <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] truncate">
+                                {spot.propertyName || spot.address}
+                              </p>
+                              <div className="flex items-center gap-1 text-[11px] text-[#8e8e93] dark:text-[#71717A] truncate">
+                                <MapPin size={11} className="text-[#007AFF] shrink-0" />
+                                <span className="truncate">Near {spot.stationName || 'Station'} · {spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(1)} km` : 'Walking distance'}</span>
+                              </div>
+                              <div className="pt-1 flex items-baseline justify-between text-[13px]">
+                                <span className="font-bold text-[#111] dark:text-white">
+                                  RM {spot.dailyRate ? spot.dailyRate.toFixed(2) : (spot.monthlyRate / 30).toFixed(2)}
+                                  <span className="font-normal text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
+                                </span>
+                                {spot.monthlyRate > 0 && (
+                                  <span className="text-[11px] font-medium text-[#007AFF]">
+                                    RM {spot.monthlyRate.toFixed(0)}/mo
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {/* ─── Section 3: Monthly & Long-Term Parking ─── */}
+                  <section>
+                    <div className="flex items-center justify-between mb-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('map');
+                          setMobileTransitTab('transit');
+                        }}
+                        className="group inline-flex items-center gap-2 text-xl sm:text-2xl font-bold tracking-tight text-[#111] dark:text-white hover:text-[#007AFF] transition-colors cursor-pointer"
+                      >
+                        <span>Monthly & Long-Term Reserved Bays</span>
+                        <ChevronRight size={20} className="text-[#8e8e93] dark:text-[#71717A] group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-transform" />
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => scrollCarousel(carouselRef3, 'left')}
+                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
+                          aria-label="Previous items"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollCarousel(carouselRef3, 'right')}
+                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
+                          aria-label="Next items"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      ref={carouselRef3}
+                      className="flex gap-4 sm:gap-5 overflow-x-auto scroll-smooth no-scrollbar py-2 px-1"
+                    >
+                      {filteredBrowseSpots.slice(1, 11).map((spot, index) => {
+                        const isSaved = favoriteSpots.some((f) => f.parkingSpotId === spot.parkingSpotId);
+                        return (
+                          <div
+                            key={`monthly-${spot.id}`}
+                            onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
+                            className="w-[240px] sm:w-[260px] shrink-0 group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2 -m-2 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                          >
+                            <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
+                              <img
+                                src={spot.primaryImageUrl || BROWSE_FALLBACK_PHOTOS[(index + 4) % BROWSE_FALLBACK_PHOTOS.length]}
+                                alt={spot.propertyName || spot.name}
+                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = BROWSE_FALLBACK_PHOTOS[(index + 4) % BROWSE_FALLBACK_PHOTOS.length];
+                                }}
+                              />
+                              <div className="absolute top-3 left-3 pointer-events-none">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 px-2.5 py-1 text-[10px] font-bold text-[#111] dark:text-white shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
+                                  <Calendar size={11} className="text-[#007AFF]" /> Monthly Reserved
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleToggleFavorite(spot);
+                                }}
+                                disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
+                                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-sm"
+                                aria-label="Save to favorites"
+                              >
+                                <Heart
+                                  size={16}
+                                  strokeWidth={2}
+                                  className={isSaved ? 'text-rose-500 fill-rose-500' : 'text-white fill-none'}
+                                />
+                              </button>
+                            </div>
+
+                            <div className="pt-3 px-1 space-y-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[13px] font-bold text-[#111] dark:text-white truncate">
+                                  Monthly Bay · {spot.stationName ? spot.stationName.replace(' LRT', '').replace(' MRT', '') : 'Kuala Lumpur'}
+                                </span>
+                                {renderSpotRating(spot.parkingSpotId)}
+                              </div>
+                              <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] truncate">
+                                {spot.propertyName || spot.address}
+                              </p>
+                              <div className="flex items-center gap-1 text-[11px] text-[#8e8e93] dark:text-[#71717A] truncate">
+                                <MapPin size={11} className="text-[#007AFF] shrink-0" />
+                                <span className="truncate">Monthly Pass · RM {spot.monthlyRate.toFixed(2)} / mo</span>
+                              </div>
+                              <div className="pt-1 flex items-baseline justify-between text-[13px]">
+                                <span className="font-bold text-[#111] dark:text-white">
+                                  RM {(spot.monthlyRate / 30).toFixed(2)}
+                                  <span className="font-normal text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
+                                </span>
+                                <span className="text-[11px] font-medium text-[#007AFF]">
+                                  RM {spot.monthlyRate.toFixed(0)}/mo
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                </div>
+              )}
             </div>
           )}
 
@@ -2573,6 +3183,52 @@ export default function CommuterDashboard() {
                             : `${locationSuggestedSpots.length} available near you · Select a station`}
                         </span>
                       </div>
+                      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-black/[0.04] dark:border-white/[0.06] overflow-x-auto text-xs shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setAmenityFilters((prev) => ({ ...prev, ev: !prev.ev }))}
+                          className={`px-2 py-1 rounded-lg font-medium text-[11px] transition-colors flex items-center gap-1 shrink-0 ${
+                            amenityFilters.ev
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200'
+                          }`}
+                        >
+                          ⚡ EV
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAmenityFilters((prev) => ({ ...prev, covered: !prev.covered }))}
+                          className={`px-2 py-1 rounded-lg font-medium text-[11px] transition-colors flex items-center gap-1 shrink-0 ${
+                            amenityFilters.covered
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200'
+                          }`}
+                        >
+                          ☂️ Covered
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAmenityFilters((prev) => ({ ...prev, oku: !prev.oku }))}
+                          className={`px-2 py-1 rounded-lg font-medium text-[11px] transition-colors flex items-center gap-1 shrink-0 ${
+                            amenityFilters.oku
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200'
+                          }`}
+                        >
+                          ♿ OKU
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAmenityFilters((prev) => ({ ...prev, cctv: !prev.cctv }))}
+                          className={`px-2 py-1 rounded-lg font-medium text-[11px] transition-colors flex items-center gap-1 shrink-0 ${
+                            amenityFilters.cctv
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200'
+                          }`}
+                        >
+                          📹 CCTV
+                        </button>
+                      </div>
                       <div className="nearby-sheet__list">
                         {isNearbyLoading ? (
                           <div className="nearby-sheet__state">
@@ -2601,6 +3257,30 @@ export default function CommuterDashboard() {
                               <div className="nearby-bay__content min-w-0">
                                 <strong>{spot.name}</strong>
                                 <span>Bay {spot.parkingLabel} · {(spot.distanceToStation ?? 0).toFixed(2)} km · {(spot.distanceToStation ?? 0) > 0 ? calculateWalkingMinutes((spot.distanceToStation ?? 0) * 1000, { isStationDestination: true }) : (spot.timeToStationInMinutes ? Math.round(spot.timeToStationInMinutes) : 0)} min</span>
+                                {(spot.hasEvCharging || spot.isCovered || spot.isHandicapAccessible || spot.hasCctv) && (
+                                  <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                    {spot.hasEvCharging && (
+                                      <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+                                        ⚡ EV
+                                      </span>
+                                    )}
+                                    {spot.isCovered && (
+                                      <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                                        ☂️ Covered
+                                      </span>
+                                    )}
+                                    {spot.isHandicapAccessible && (
+                                      <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400">
+                                        ♿ OKU
+                                      </span>
+                                    )}
+                                    {spot.hasCctv && (
+                                      <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8.5px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400">
+                                        📹 CCTV
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                               <span className="nearby-bay__rate">{formatParkingRate(spot)}</span>
                             </button>

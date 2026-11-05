@@ -429,6 +429,18 @@ export default function ReviewModeration({ token, parkingSpots, onModerated }: R
                               <p className="review-comment-text mt-1 whitespace-pre-line text-xs leading-5">
                                 {review.comment || 'The commuter did not leave a written comment.'}
                               </p>
+                              {review.photos && review.photos.length > 0 && (
+                                <div className="mt-2.5 flex flex-wrap gap-2">
+                                  {review.photos.map((photo, pIdx) => (
+                                    <img
+                                      key={pIdx}
+                                      src={photo}
+                                      alt={`Attached photo ${pIdx + 1}`}
+                                      className="h-16 w-16 sm:h-20 sm:w-20 rounded-lg object-cover border border-slate-200"
+                                    />
+                                  ))}
+                                </div>
+                              )}
                             </div>
 
                             <div className={`mt-3 rounded-lg border px-3 py-3 ${review.ownerReply ? 'review-owner-reply-box' : 'border-dashed border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03]'}`}>

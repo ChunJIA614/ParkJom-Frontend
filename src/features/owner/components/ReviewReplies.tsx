@@ -11,14 +11,17 @@ import {
   Star,
   Trash2,
   X,
+  Flag,
 } from 'lucide-react';
 import {
   deleteReview,
   getOwnerParkingReviews,
   type ReviewApiData,
   updateOwnerReply,
+  reportReview,
 } from '@/features/commuter/api/reviewApi';
 import { showConfirm } from '@/contexts/ModalContext';
+import SystemSelect from '@/components/ui/SystemSelect';
 import type { ParkingBay } from '../types';
 
 interface ReviewRepliesProps {
@@ -57,6 +60,11 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [reportingReview, setReportingReview] = useState<ReviewApiData | null>(null);
+  const [reportReason, setReportReason] = useState('Inappropriate or offensive language');
+  const [reportDetails, setReportDetails] = useState('');
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportStatus, setReportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const loadReviews = useCallback(async (signal?: AbortSignal) => {
     if (bays.length === 0) {
@@ -273,6 +281,19 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                   {review.comment || 'The reviewer did not leave a written comment.'}
                 </p>
 
+                {review.photos && review.photos.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {review.photos.map((photo, pIdx) => (
+                      <img
+                        key={pIdx}
+                        src={photo}
+                        alt={`Review photo ${pIdx + 1}`}
+                        className="h-16 w-16 sm:h-20 sm:w-20 rounded-xl object-cover border border-slate-200 dark:border-white/10"
+                      />
+                    ))}
+                  </div>
+                )}
+
                 {review.ownerReply && !isEditing && (
                   <div className="review-owner-reply-box mt-4 rounded-xl px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
@@ -339,6 +360,20 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
                     <button
                       type="button"
+                      onClick={() => {
+                        setReportingReview(review);
+                        setReportReason('Inappropriate or offensive language');
+                        setReportDetails('');
+                        setReportStatus(null);
+                      }}
+                      disabled={isDeleting}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1c1c1e] px-4 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#252830] disabled:opacity-60 cursor-pointer"
+                    >
+                      <Flag className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                      Report
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void removeReview(review)}
                       disabled={isDeleting}
                       className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-500/20 bg-white dark:bg-[#1c1c1e] px-4 text-xs font-bold text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:cursor-not-allowed disabled:opacity-60"
@@ -360,6 +395,112 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
               </article>
             );
           })}
+        </div>
+      )}
+
+      {reportingReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#18181C] p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06] dark:border-white/10">
+              <h3 className="text-base font-semibold text-[#111] dark:text-white flex items-center gap-2">
+                <Flag size={16} className="text-rose-600" /> Report Review
+              </h3>
+              <button
+                type="button"
+                onClick={() => { setReportingReview(null); setReportStatus(null); }}
+                className="text-[#8e8e93] hover:text-[#111] dark:hover:text-white cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] mb-1.5">
+                  Reason for report
+                </label>
+                <SystemSelect
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121214] text-[#111] dark:text-white outline-none focus:border-blue-500"
+                >
+                  <option value="Inappropriate or offensive language">Inappropriate or offensive language</option>
+                  <option value="Spam or irrelevant content">Spam or irrelevant content</option>
+                  <option value="Harassment or threats">Harassment or threats</option>
+                  <option value="Fraudulent or misleading review">Fraudulent or misleading review</option>
+                  <option value="Other">Other</option>
+                </SystemSelect>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] mb-1.5">
+                  Additional details (optional)
+                </label>
+                <textarea
+                  value={reportDetails}
+                  onChange={(e) => setReportDetails(e.target.value)}
+                  rows={3}
+                  placeholder="Explain why this review violates community standards..."
+                  className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121214] p-2.5 text-xs text-[#111] dark:text-white outline-none resize-none focus:border-blue-500"
+                />
+              </div>
+
+              {reportStatus && (
+                <p
+                  className={`rounded-xl px-3 py-2 text-xs font-medium ${
+                    reportStatus.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+                      : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'
+                  }`}
+                >
+                  {reportStatus.message}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={isReporting}
+                  onClick={() => { setReportingReview(null); setReportStatus(null); }}
+                  className="rounded-xl px-4 py-2 text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/[0.06] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isReporting}
+                  onClick={async () => {
+                    if (!reportingReview || !token || isReporting) return;
+                    setIsReporting(true);
+                    setReportStatus(null);
+                    try {
+                      const res = await reportReview(token, reportingReview.reviewId, {
+                        reason: reportReason,
+                        details: reportDetails.trim() || undefined,
+                      });
+                      setReportStatus({ type: 'success', message: res.message || 'Report submitted for moderation.' });
+                      setTimeout(() => {
+                        setReportingReview(null);
+                        setReportStatus(null);
+                        setReportDetails('');
+                      }, 1500);
+                    } catch (err) {
+                      setReportStatus({
+                        type: 'error',
+                        message: err instanceof Error ? err.message : 'Unable to submit report.',
+                      });
+                    } finally {
+                      setIsReporting(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50 cursor-pointer"
+                >
+                  {isReporting && <Loader2 size={13} className="animate-spin" />}
+                  {isReporting ? 'Submitting…' : 'Submit Report'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </section>
