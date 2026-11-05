@@ -1629,14 +1629,23 @@ export default function CommuterMap({
     stationMeta.get(name) ?? stationMeta.get(normalizeStationKey(name));
 
   const stationQuery = stationFilter.trim().toLowerCase();
+  const stationQueryCompact = stationFilter.trim().toLowerCase().replace(/[\s\-_,./\\#+]+/g, '');
 
   // "Nearest to you" only earns its space when it is not duplicating the list.
   const showNearest = Boolean(effectiveUserLocation) && nearestStations.length > 0 && !stationQuery;
 
-  const matchingStations = useMemo(
-    () => stationNames.filter((name) => name.toLowerCase().includes(stationQuery)),
-    [stationNames, stationQuery],
-  );
+  const matchingStations = useMemo(() => {
+    if (!stationQuery) return stationNames;
+    return stationNames.filter((name) => {
+      const lower = name.toLowerCase();
+      if (lower.includes(stationQuery)) return true;
+      if (stationQueryCompact.length >= 2) {
+        const compact = lower.replace(/[\s\-_,./\\#+]+/g, '');
+        if (compact.includes(stationQueryCompact)) return true;
+      }
+      return false;
+    });
+  }, [stationNames, stationQuery, stationQueryCompact]);
 
   const nearestKeys = useMemo(
     () => new Set(nearestStations.map((station) => normalizeStationKey(station.name))),

@@ -58,10 +58,14 @@ export interface ParkingSearchResponse {
     hasCctv?: boolean;
     averageRating?: number | null;
     totalReviews?: number;
+    matchScore?: number;
+    matchReason?: string | null;
   }>;
   totalCount: number;
   page: number;
   pageSize: number;
+  suggestions?: string[];
+  didYouMean?: string | null;
 }
 
 export interface WalletTopUpResponse {
@@ -132,6 +136,7 @@ export interface Vehicle {
   model: string;
   color: string;
   active: boolean;
+  makeModel?: string;
 }
 
 export interface AppNotification {

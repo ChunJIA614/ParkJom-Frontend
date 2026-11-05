@@ -89,6 +89,7 @@ import {
 } from '../lib/journeySession';
 import type { JourneyStage } from '../lib/journeySession';
 import { getNearbyParking, searchParking } from '../api/parkingApi';
+import { fuzzyFilterSpots, getFuzzySuggestions, normalizeCompact, similarityRatio } from '../lib/fuzzySearch';
 import {
   favoriteParkingSpotToParkingSpot,
   getFavoriteParking,
@@ -133,6 +134,13 @@ import {
 } from '@/services/externalNavigation';
 
 type ParkingResultDto = ParkingSearchResponse['data'][number];
+
+const BROWSE_FALLBACK_PHOTOS = [
+  'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1590674899484-d5640e854abe?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1621929747188-0b4dc28498d2?auto=format&fit=crop&w=800&q=80',
+];
 
 const normalizePropertyAddress = (propertyName?: string, address?: string) => {
   if (!address) return '';
@@ -379,7 +387,15 @@ export default function CommuterDashboard() {
   const [searchSpots, setSearchSpots] = useState<ParkingSpot[]>([]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [searchMeta, setSearchMeta] = useState<{ totalCount: number; page: number; pageSize: number } | null>(null);
+  const [searchMeta, setSearchMeta] = useState<{
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    suggestions?: string[];
+    didYouMean?: string | null;
+  } | null>(null);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchCapsuleRef = useRef<HTMLDivElement>(null);
   const [currentLocation, setCurrentLocation] = useState<StationCoordinates | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('locating');
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
@@ -421,6 +437,90 @@ export default function CommuterDashboard() {
       </span>
     );
   };
+
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      if (searchCapsuleRef.current && !searchCapsuleRef.current.contains(e.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => document.removeEventListener('mousedown', handleDocumentClick);
+  }, []);
+
+  const liveSearchSuggestions = useMemo(() => {
+    const q = searchQuery.trim();
+    const allKnown = [...suggestedSpots, ...nearbySpots];
+    const candidateMap: Record<string, { title: string; subtitle: string; type: 'property' | 'station' }> = {};
+
+    const defaultSuggestions: Array<{ title: string; subtitle: string; type: 'property' | 'station' }> = [
+      { title: 'PV128', subtitle: 'Near WANGSA MAJU · Setapak', type: 'property' },
+      { title: 'PV18 Residences', subtitle: 'Near TAMAN MELATI · Setapak', type: 'property' },
+      { title: 'PV 9 Setapak', subtitle: 'Near TAMAN MELATI · Setapak', type: 'property' },
+      { title: 'USJ One Avenue Condominium', subtitle: 'Near USJ 7 · Subang Jaya', type: 'property' },
+      { title: 'M Vertica Residences', subtitle: 'Near MALURI · Cheras', type: 'property' },
+      { title: 'Wangsa Maju', subtitle: 'LRT Kelana Jaya Line', type: 'station' },
+      { title: 'Taman Melati', subtitle: 'LRT Kelana Jaya Line', type: 'station' },
+      { title: 'USJ 7', subtitle: 'LRT & BRT Interchange', type: 'station' },
+      { title: 'Maluri', subtitle: 'MRT Kajang & LRT Ampang Line', type: 'station' },
+    ];
+
+    defaultSuggestions.forEach((item) => {
+      candidateMap[item.title.toLowerCase()] = item;
+    });
+
+    allKnown.forEach((spot) => {
+      const name = spot.propertyName || spot.name;
+      if (name) {
+        candidateMap[name.toLowerCase()] = {
+          title: name,
+          subtitle: spot.stationName ? `Near ${spot.stationName} · ${spot.address || 'Klang Valley'}` : (spot.address || 'Parking Bay'),
+          type: 'property',
+        };
+      }
+      if (spot.stationName) {
+        candidateMap[spot.stationName.toLowerCase()] = {
+          title: spot.stationName,
+          subtitle: 'LRT / MRT Transit Hub',
+          type: 'station',
+        };
+      }
+    });
+
+    const candidates = Object.values(candidateMap);
+    if (!q) {
+      return candidates.slice(0, 5);
+    }
+
+    const qCompact = normalizeCompact(q);
+    const results: Array<{ title: string; subtitle: string; type: 'property' | 'station'; score: number }> = [];
+
+    candidates.forEach((item) => {
+      const tCompact = normalizeCompact(item.title);
+      const subCompact = normalizeCompact(item.subtitle);
+      let score = 0;
+
+      if (item.title.toLowerCase() === q.toLowerCase()) score = 100;
+      else if (tCompact === qCompact) score = 98;
+      else if (tCompact.startsWith(qCompact)) score = 92;
+      else if (tCompact.includes(qCompact)) score = 86;
+      else if (subCompact.includes(qCompact)) score = 76;
+      else {
+        const sim = Math.max(
+          similarityRatio(q.toLowerCase(), item.title.toLowerCase()),
+          similarityRatio(qCompact, tCompact),
+        );
+        if (sim >= 0.65) score = Math.round(sim * 70);
+      }
+
+      if (score >= 40) {
+        results.push({ ...item, score });
+      }
+    });
+
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, 5);
+  }, [searchQuery, suggestedSpots, nearbySpots]);
 
   useEffect(() => {
     if (!user?.token) return;
@@ -1140,17 +1240,27 @@ export default function CommuterDashboard() {
     return () => controller.abort();
   }, [distanceFilter, selectedStation, selectedStationCoords]);
 
-  const handleParkingSearch = async (event: FormEvent) => {
-    event.preventDefault();
-    const query = searchQuery.trim();
+  const handleParkingSearch = async (event?: FormEvent, directQuery?: string) => {
+    if (event) event.preventDefault();
+    const query = (directQuery ?? searchQuery).trim();
     if (!query) {
       setSearchError('Enter a property, address, area, or station name.');
       return;
     }
 
+    if (directQuery !== undefined) {
+      setSearchQuery(directQuery);
+    }
+    setIsSearchFocused(false);
     setIsSearchLoading(true);
     setSearchError(null);
     setSearchMeta(null);
+
+    const allKnownSpots = [
+      ...suggestedSpots,
+      ...nearbySpots,
+      ...discoverySpots,
+    ];
 
     try {
       const res = await searchParking(query);
@@ -1158,15 +1268,56 @@ export default function CommuterDashboard() {
       if (!res.ok || !data?.success) throw new Error(data?.message || `Parking search failed (${res.status})`);
       if (!Array.isArray(data.data)) throw new Error('Parking search returned an invalid data list.');
 
-      setSearchSpots(data.data.map(mapParkingResult));
-      setSearchMeta({
-        totalCount: data.totalCount,
-        page: data.page,
-        pageSize: data.pageSize,
-      });
+      if (data.data.length > 0) {
+        setSearchSpots(data.data.map(mapParkingResult));
+        setSearchMeta({
+          totalCount: data.totalCount,
+          page: data.page,
+          pageSize: data.pageSize,
+          suggestions: data.suggestions,
+          didYouMean: data.didYouMean,
+        });
+      } else {
+        // Fallback to client-side fuzzy search across loaded spots
+        const localMatches = fuzzyFilterSpots(allKnownSpots, query);
+        const suggestions = getFuzzySuggestions(allKnownSpots, query);
+        if (localMatches.length > 0) {
+          setSearchSpots(localMatches);
+          setSearchMeta({
+            totalCount: localMatches.length,
+            page: 1,
+            pageSize: 20,
+            suggestions,
+            didYouMean: suggestions[0] ?? null,
+          });
+        } else {
+          setSearchSpots([]);
+          setSearchMeta({
+            totalCount: 0,
+            page: 1,
+            pageSize: 20,
+            suggestions,
+            didYouMean: suggestions[0] ?? null,
+          });
+        }
+      }
     } catch (error) {
-      setSearchSpots([]);
-      setSearchError(error instanceof Error ? error.message : 'Unable to search for parking right now.');
+      // Offline / network fallback
+      const localMatches = fuzzyFilterSpots(allKnownSpots, query);
+      const suggestions = getFuzzySuggestions(allKnownSpots, query);
+      if (localMatches.length > 0) {
+        setSearchSpots(localMatches);
+        setSearchMeta({
+          totalCount: localMatches.length,
+          page: 1,
+          pageSize: 20,
+          suggestions,
+          didYouMean: suggestions[0] ?? null,
+        });
+      } else {
+        setSearchSpots([]);
+        setSearchError(error instanceof Error ? error.message : 'Unable to search for parking right now.');
+      }
     } finally {
       setIsSearchLoading(false);
     }
@@ -2413,7 +2564,7 @@ export default function CommuterDashboard() {
               </div>
 
               {/* ── Apple / Airbnb 1-Line Seamless Search Capsule (Zero Redundant Layers) ── */}
-              <div className="max-w-4xl mx-auto">
+              <div className="max-w-4xl mx-auto relative" ref={searchCapsuleRef}>
                 <div className="rounded-full border border-black/[0.09] dark:border-white/12 bg-white/95 dark:bg-[#1C1C1E]/95 shadow-[0_4px_20px_rgba(0,0,0,0.06)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all pl-7 sm:pl-8 pr-2.5 sm:pr-3 py-2 sm:py-2.5 min-h-[62px] sm:min-h-[66px] flex items-center">
                   {/* Segment 1: Where */}
                   <div className="flex-1 min-w-0 pr-4 flex flex-col justify-center text-left">
@@ -2426,10 +2577,14 @@ export default function CommuterDashboard() {
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
+                        onFocus={() => setIsSearchFocused(true)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
+                            setIsSearchFocused(false);
                             handleParkingSearch(e as any);
+                          } else if (e.key === 'Escape') {
+                            setIsSearchFocused(false);
                           }
                         }}
                         placeholder="Search station, condo, or area..."
@@ -2512,6 +2667,42 @@ export default function CommuterDashboard() {
                   </button>
                 </div>
 
+                {/* ── Apple-Style Interactive Search Suggestions Dropdown ── */}
+                {isSearchFocused && liveSearchSuggestions.length > 0 && (
+                  <div className="absolute top-[calc(100%+8px)] left-0 right-0 sm:right-auto sm:w-[400px] bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl border border-black/[0.08] dark:border-white/12 shadow-[0_12px_40px_rgba(0,0,0,0.18)] p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="px-3 py-1.5 flex items-center justify-between text-[10px] font-bold tracking-wider uppercase text-[#8e8e93] dark:text-[#71717A]">
+                      <span>{searchQuery.trim() ? 'Matching Places & Stations' : 'Popular Destinations'}</span>
+                      <Sparkles size={12} className="text-[#007AFF]" />
+                    </div>
+                    <div className="space-y-0.5 mt-1">
+                      {liveSearchSuggestions.map((item) => (
+                        <button
+                          key={item.title}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleParkingSearch(undefined, item.title);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-black/[0.05] dark:hover:bg-white/[0.08] flex items-center gap-3 transition cursor-pointer group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-black/[0.04] dark:bg-white/[0.08] flex items-center justify-center shrink-0 text-[#007AFF] group-hover:scale-110 transition-transform">
+                            {item.type === 'station' ? <Train size={15} /> : <Building2 size={15} />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs sm:text-[13px] font-semibold text-[#111] dark:text-white truncate">
+                              {item.title}
+                            </div>
+                            <div className="text-[11px] text-[#8e8e93] dark:text-[#A1A1AA] truncate">
+                              {item.subtitle}
+                            </div>
+                          </div>
+                          <ChevronRight size={14} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* GPS Location Status Bar (Apple Subtitle Polish) */}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-3 text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
                   <div className="flex items-center gap-2">
@@ -2547,6 +2738,27 @@ export default function CommuterDashboard() {
                           ({filteredBrowseSpots.length} {filteredBrowseSpots.length === 1 ? 'bay' : 'bays'} found)
                         </span>
                       </h2>
+
+                      {/* Fuzzy / Did You Mean Suggestions Bar */}
+                      {searchMeta?.suggestions && searchMeta.suggestions.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 text-xs">
+                          <span className="text-[#6e6e73] dark:text-[#A1A1AA] font-medium flex items-center gap-1 shrink-0">
+                            <Sparkles size={12} className="text-[#007AFF]" />
+                            Related suggestions:
+                          </span>
+                          {searchMeta.suggestions.map((sug) => (
+                            <button
+                              key={sug}
+                              type="button"
+                              onClick={() => handleParkingSearch(undefined, sug)}
+                              className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-[#007AFF] hover:bg-blue-100 dark:hover:bg-blue-900/50 font-semibold transition cursor-pointer border border-blue-200/50 dark:border-blue-800/50 text-[11px]"
+                            >
+                              {sug}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         {activeCategory !== 'all' && (
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-[#007AFF] border border-blue-200/50 dark:border-blue-800/50">
@@ -2583,24 +2795,72 @@ export default function CommuterDashboard() {
                   </div>
 
                   {filteredBrowseSpots.length === 0 ? (
-                    <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 p-12 text-center">
-                      <MapPin size={36} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-                      <p className="text-sm font-bold text-[#111] dark:text-white">No parking bays match your criteria</p>
-                      <p className="text-xs text-[#717171] dark:text-[#A1A1AA] mt-1">Try resetting the filters or searching a broader station or area.</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveCategory('all');
-                          setRateFilter('all');
-                          setFeatureFilter('all');
-                          setSearchMeta(null);
-                          setSearchQuery('');
-                          setSearchSpots([]);
-                        }}
-                        className="mt-4 px-4 py-2 rounded-xl bg-[#007AFF] text-white text-xs font-semibold hover:bg-[#0066d6] transition cursor-pointer"
-                      >
-                        Show all verified bays
-                      </button>
+                    <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 p-8 sm:p-12 text-center max-w-xl mx-auto shadow-sm">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-[#007AFF] flex items-center justify-center mx-auto mb-3">
+                        <Search size={26} />
+                      </div>
+                      <p className="text-sm sm:text-base font-bold text-[#111] dark:text-white">
+                        {searchMeta ? `No bays matched "${searchQuery}"` : 'No parking bays match your criteria'}
+                      </p>
+                      <p className="text-xs text-[#717171] dark:text-[#A1A1AA] mt-1 max-w-sm mx-auto">
+                        {searchMeta
+                          ? 'Try one of our flexible suggestions below, or search a nearby transit station.'
+                          : 'Try resetting the filters or searching a broader station or area.'}
+                      </p>
+
+                      {/* Suggested Matches */}
+                      {searchMeta?.suggestions && searchMeta.suggestions.length > 0 && (
+                        <div className="mt-5 p-3.5 rounded-2xl bg-slate-50 dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/5 text-left">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[#8e8e93] dark:text-[#71717A] mb-2 flex items-center gap-1">
+                            <Sparkles size={11} className="text-[#007AFF]" />
+                            Suggested Matches
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {searchMeta.suggestions.map((sug) => (
+                              <button
+                                key={sug}
+                                type="button"
+                                onClick={() => handleParkingSearch(undefined, sug)}
+                                className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#2C2C2E] text-[#007AFF] text-xs font-semibold shadow-xs border border-black/[0.06] dark:border-white/10 hover:border-blue-500 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer"
+                              >
+                                {sug}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Popular Quick Pills */}
+                      <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5 text-xs">
+                        <span className="text-[#8e8e93] dark:text-[#71717A] text-[11px] font-medium mr-1">Popular:</span>
+                        {['PV128', 'PV18 Residences', 'PV 9 Setapak', 'Wangsa Maju', 'USJ One', 'M Vertica'].map((pop) => (
+                          <button
+                            key={pop}
+                            type="button"
+                            onClick={() => handleParkingSearch(undefined, pop)}
+                            className="px-2.5 py-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.12] text-[#111] dark:text-white text-[11px] font-medium transition cursor-pointer"
+                          >
+                            {pop}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-6 flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveCategory('all');
+                            setRateFilter('all');
+                            setFeatureFilter('all');
+                            setSearchMeta(null);
+                            setSearchQuery('');
+                            setSearchSpots([]);
+                          }}
+                          className="px-4 py-2 rounded-xl bg-[#007AFF] text-white text-xs font-semibold hover:bg-[#0066d6] transition cursor-pointer"
+                        >
+                          Show all verified bays
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pt-2">
