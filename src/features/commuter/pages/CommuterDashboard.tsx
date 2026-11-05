@@ -2564,144 +2564,167 @@ export default function CommuterDashboard() {
               </div>
 
               {/* ── Apple / Airbnb 1-Line Seamless Search Capsule (Zero Redundant Layers) ── */}
-              <div className="max-w-4xl mx-auto relative" ref={searchCapsuleRef}>
-                <div className="rounded-full border border-black/[0.09] dark:border-white/12 bg-white/95 dark:bg-[#1C1C1E]/95 shadow-[0_4px_20px_rgba(0,0,0,0.06)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all pl-7 sm:pl-8 pr-2.5 sm:pr-3 py-2 sm:py-2.5 min-h-[62px] sm:min-h-[66px] flex items-center">
-                  {/* Segment 1: Where */}
-                  <div className="flex-1 min-w-0 pr-4 flex flex-col justify-center text-left">
-                    <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
-                      Where
-                    </span>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Search size={15} className="text-[#8e8e93] dark:text-[#A1A1AA] shrink-0" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onFocus={() => setIsSearchFocused(true)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            setIsSearchFocused(false);
-                            handleParkingSearch(e as any);
-                          } else if (e.key === 'Escape') {
-                            setIsSearchFocused(false);
-                          }
-                        }}
-                        placeholder="Search station, condo, or area..."
-                        className="search-capsule-input w-full bg-transparent text-xs sm:text-[13px] font-medium text-[#1d1d1f] dark:text-white placeholder-[#8e8e93] dark:placeholder-[#A1A1AA] !outline-none !border-none !ring-0 !shadow-none pl-1.5 pr-2 py-0.5 truncate"
-                      />
-                      {searchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSearchQuery('');
-                            if (searchMeta) {
-                              setSearchMeta(null);
-                              setSearchSpots([]);
+              <div className="max-w-4xl mx-auto" ref={searchCapsuleRef}>
+                {/* Search Bar Capsule + Dropdown Anchor */}
+                <div className="relative">
+                  <div className="rounded-full border border-black/[0.09] dark:border-white/12 bg-white/95 dark:bg-[#1C1C1E]/95 shadow-[0_4px_20px_rgba(0,0,0,0.06)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all pl-7 sm:pl-8 pr-2.5 sm:pr-3 py-2 sm:py-2.5 min-h-[62px] sm:min-h-[66px] flex items-center">
+                    {/* Segment 1: Where */}
+                    <div className="flex-1 min-w-0 pr-4 flex flex-col justify-center text-left">
+                      <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
+                        Where
+                      </span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Search size={15} className="text-[#8e8e93] dark:text-[#A1A1AA] shrink-0" />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onFocus={() => setIsSearchFocused(true)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              setIsSearchFocused(false);
+                              handleParkingSearch(e as any);
+                            } else if (e.key === 'Escape') {
+                              setIsSearchFocused(false);
                             }
                           }}
-                          className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition cursor-pointer shrink-0"
-                          aria-label="Clear search"
-                        >
-                          <X size={13} />
-                        </button>
-                      )}
+                          placeholder="Search station, condo, or area..."
+                          className="search-capsule-input w-full bg-transparent text-xs sm:text-[13px] font-medium text-[#1d1d1f] dark:text-white placeholder-[#8e8e93] dark:placeholder-[#A1A1AA] !outline-none !border-none !ring-0 !shadow-none pl-1.5 pr-2 py-0.5 truncate"
+                        />
+                        {searchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSearchQuery('');
+                              if (searchMeta) {
+                                setSearchMeta(null);
+                                setSearchSpots([]);
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition cursor-pointer shrink-0"
+                            aria-label="Clear search"
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Hairline Divider 1 */}
-                  <div className="h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
+                    {/* Hairline Divider 1 */}
+                    <div className="h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
 
-                  {/* Segment 2: Rate Type */}
-                  <div className="w-[85px] sm:w-[130px] shrink-0 px-2 sm:px-3 flex flex-col justify-center text-left">
-                    <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
-                      Rate
-                    </span>
-                    <SystemSelect
-                      variant="ghost"
-                      id="rate-filter-select"
-                      value={rateFilter}
-                      onChange={(e) => setRateFilter(e.target.value as 'all' | 'daily' | 'monthly')}
-                      aria-label="Filter by rate type"
-                      className="!h-auto text-xs sm:text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
+                    {/* Segment 2: Rate Type */}
+                    <div className="w-[85px] sm:w-[130px] shrink-0 px-2 sm:px-3 flex flex-col justify-center text-left">
+                      <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
+                        Rate
+                      </span>
+                      <SystemSelect
+                        variant="ghost"
+                        id="rate-filter-select"
+                        value={rateFilter}
+                        onChange={(e) => setRateFilter(e.target.value as 'all' | 'daily' | 'monthly')}
+                        aria-label="Filter by rate type"
+                        className="!h-auto text-xs sm:text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
+                      >
+                        <option value="all">All Rates</option>
+                        <option value="daily">Daily</option>
+                        <option value="monthly">Monthly</option>
+                      </SystemSelect>
+                    </div>
+
+                    {/* Hairline Divider 2 */}
+                    <div className="h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
+
+                    {/* Segment 3: Features */}
+                    <div className="w-[95px] sm:w-[140px] shrink-0 px-2 sm:px-3 flex flex-col justify-center text-left">
+                      <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
+                        Features
+                      </span>
+                      <SystemSelect
+                        variant="ghost"
+                        id="feature-filter-select"
+                        value={featureFilter}
+                        onChange={(e) => setFeatureFilter(e.target.value as 'all' | 'covered' | 'ev' | 'cctv' | 'accessible')}
+                        aria-label="Filter by features"
+                        className="!h-auto text-xs sm:text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
+                      >
+                        <option value="all">All Features</option>
+                        <option value="covered">Covered</option>
+                        <option value="ev">EV Ready</option>
+                        <option value="cctv">24/7 CCTV</option>
+                        <option value="accessible">Accessible</option>
+                      </SystemSelect>
+                    </div>
+
+                    {/* Search Action Button (Centered on the same line) */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleParkingSearch(e as any)}
+                      disabled={isSearchLoading}
+                      className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-[#007AFF] hover:bg-[#0066d6] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-blue-500/25 shrink-0 ml-2 cursor-pointer disabled:opacity-70"
+                      aria-label="Search parking"
                     >
-                      <option value="all">All Rates</option>
-                      <option value="daily">Daily</option>
-                      <option value="monthly">Monthly</option>
-                    </SystemSelect>
+                      {isSearchLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} strokeWidth={2.5} />}
+                    </button>
                   </div>
 
-                  {/* Hairline Divider 2 */}
-                  <div className="h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
-
-                  {/* Segment 3: Features */}
-                  <div className="w-[95px] sm:w-[140px] shrink-0 px-2 sm:px-3 flex flex-col justify-center text-left">
-                    <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
-                      Features
-                    </span>
-                    <SystemSelect
-                      variant="ghost"
-                      id="feature-filter-select"
-                      value={featureFilter}
-                      onChange={(e) => setFeatureFilter(e.target.value as 'all' | 'covered' | 'ev' | 'cctv' | 'accessible')}
-                      aria-label="Filter by features"
-                      className="!h-auto text-xs sm:text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
-                    >
-                      <option value="all">All Features</option>
-                      <option value="covered">Covered</option>
-                      <option value="ev">EV Ready</option>
-                      <option value="cctv">24/7 CCTV</option>
-                      <option value="accessible">Accessible</option>
-                    </SystemSelect>
-                  </div>
-
-                  {/* Search Action Button (Centered on the same line) */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleParkingSearch(e as any)}
-                    disabled={isSearchLoading}
-                    className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-[#007AFF] hover:bg-[#0066d6] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-blue-500/25 shrink-0 ml-2 cursor-pointer disabled:opacity-70"
-                    aria-label="Search parking"
-                  >
-                    {isSearchLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} strokeWidth={2.5} />}
-                  </button>
+                  {/* ── Apple-Style Interactive Search Suggestions Dropdown (Directly below search capsule) ── */}
+                  {isSearchFocused && liveSearchSuggestions.length > 0 && (
+                    <div className="absolute top-[calc(100%+8px)] left-2 sm:left-6 right-2 sm:right-auto sm:w-[480px] bg-white/95 dark:bg-[#1E1E20]/95 backdrop-blur-2xl rounded-2xl border border-black/[0.08] dark:border-white/12 shadow-[0_20px_60px_rgba(0,0,0,0.22)] p-2.5 z-50 animate-in fade-in slide-in-from-top-1.5 duration-150">
+                      <div className="px-3 pt-1.5 pb-2 flex items-center justify-between border-b border-black/[0.05] dark:border-white/[0.08] mb-1.5">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase text-[#8e8e93] dark:text-[#71717A]">
+                          <Sparkles size={12} className="text-[#007AFF]" />
+                          <span>{searchQuery.trim() ? 'Matching Destinations' : 'Popular Destinations'}</span>
+                        </div>
+                        {searchQuery.trim() && (
+                          <span className="text-[10px] font-medium text-[#8e8e93] dark:text-[#71717A]">
+                            {liveSearchSuggestions.length} found
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {liveSearchSuggestions.map((item) => (
+                          <button
+                            key={item.title}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleParkingSearch(undefined, item.title);
+                            }}
+                            className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.07] active:scale-[0.99] flex items-center gap-3 transition-all cursor-pointer group"
+                          >
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${
+                              item.type === 'station'
+                                ? 'bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                : 'bg-[#007AFF]/10 dark:bg-[#007AFF]/15 text-[#007AFF] dark:text-[#3894FF]'
+                            }`}>
+                              {item.type === 'station' ? <Train size={16} /> : <Building2 size={16} />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[13px] font-semibold text-[#111] dark:text-white truncate">
+                                  {item.title}
+                                </span>
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.08] text-[#8e8e93] dark:text-[#A1A1AA] shrink-0">
+                                  {item.type === 'station' ? 'Transit' : 'Condo'}
+                                </span>
+                              </div>
+                              <p className="text-[11.5px] text-[#8e8e93] dark:text-[#A1A1AA] truncate mt-0.5">
+                                {item.subtitle}
+                              </p>
+                            </div>
+                            <ChevronRight size={14} className="text-slate-400 dark:text-slate-500 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-1.5 pt-2 border-t border-black/[0.05] dark:border-white/[0.08] px-3 pb-0.5 flex items-center justify-between text-[10.5px] text-[#8e8e93] dark:text-[#71717A]">
+                        <span>Press <kbd className="px-1.5 py-0.5 rounded bg-black/[0.05] dark:bg-white/[0.08] text-[10px] font-mono font-semibold text-[#111] dark:text-white">Enter</kbd> to search</span>
+                        <span className="text-[#007AFF] font-medium">Instant Match</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                {/* ── Apple-Style Interactive Search Suggestions Dropdown ── */}
-                {isSearchFocused && liveSearchSuggestions.length > 0 && (
-                  <div className="absolute top-[calc(100%+8px)] left-0 right-0 sm:right-auto sm:w-[400px] bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-xl rounded-2xl border border-black/[0.08] dark:border-white/12 shadow-[0_12px_40px_rgba(0,0,0,0.18)] p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                    <div className="px-3 py-1.5 flex items-center justify-between text-[10px] font-bold tracking-wider uppercase text-[#8e8e93] dark:text-[#71717A]">
-                      <span>{searchQuery.trim() ? 'Matching Places & Stations' : 'Popular Destinations'}</span>
-                      <Sparkles size={12} className="text-[#007AFF]" />
-                    </div>
-                    <div className="space-y-0.5 mt-1">
-                      {liveSearchSuggestions.map((item) => (
-                        <button
-                          key={item.title}
-                          type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            handleParkingSearch(undefined, item.title);
-                          }}
-                          className="w-full text-left px-3 py-2 rounded-xl hover:bg-black/[0.05] dark:hover:bg-white/[0.08] flex items-center gap-3 transition cursor-pointer group"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-black/[0.04] dark:bg-white/[0.08] flex items-center justify-center shrink-0 text-[#007AFF] group-hover:scale-110 transition-transform">
-                            {item.type === 'station' ? <Train size={15} /> : <Building2 size={15} />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs sm:text-[13px] font-semibold text-[#111] dark:text-white truncate">
-                              {item.title}
-                            </div>
-                            <div className="text-[11px] text-[#8e8e93] dark:text-[#A1A1AA] truncate">
-                              {item.subtitle}
-                            </div>
-                          </div>
-                          <ChevronRight size={14} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* GPS Location Status Bar (Apple Subtitle Polish) */}
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-3 text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
