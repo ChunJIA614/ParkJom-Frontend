@@ -207,7 +207,7 @@ export default function DashboardHeader({
             aria-label={`ParkJom ${meta.portal} home`}
             className={`workspace-brand-button items-center gap-2.5 min-w-0 group !rounded-none !bg-transparent hover:!bg-transparent active:!bg-transparent focus-visible:!ring-0 ${hideDesktopBrand ? 'flex md:hidden' : 'flex'}`}
           >
-            <BrandLogo alt="" className="h-8 w-8 shadow-sm transition-transform group-active:scale-95" />
+            <BrandLogo alt="" className="h-8 w-8 drop-shadow-sm transition-transform group-active:scale-95" />
             <div className="min-w-0 text-left">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-[15px] text-[#111] dark:text-[#f5f5f7] tracking-[-0.02em] truncate">

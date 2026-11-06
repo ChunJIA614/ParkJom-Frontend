@@ -1681,7 +1681,7 @@ html {
   display: block;
   aspect-ratio: 1;
   border-radius: 22%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   flex: 0 0 auto;
 }

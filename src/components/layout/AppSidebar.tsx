@@ -85,7 +85,7 @@ function SidebarNavigation({
                   setOpenMobile(false);
                 }}
               >
-                <BrandLogo alt="" className="size-8.5 shrink-0 shadow-sm rounded-xl" />
+                <BrandLogo alt="" className="size-8.5 shrink-0 drop-shadow-sm" />
                 <span className="grid min-w-0 flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
                   <strong className="truncate text-sm font-semibold tracking-[-0.02em]">ParkJom</strong>
                   <span className="truncate text-[11px] text-sidebar-foreground/60">{workspaceLabel}</span>

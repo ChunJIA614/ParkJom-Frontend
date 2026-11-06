@@ -10,7 +10,7 @@ export default function SplashScreen() {
         transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
         className="flex flex-col items-center gap-4"
       >
-        <BrandLogo className="h-16 w-16 shadow-lg animate-splash-pulse" />
+        <BrandLogo className="h-16 w-16 drop-shadow-xl animate-splash-pulse" />
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
