@@ -63,6 +63,7 @@ import {
   WalletTransactionItem,
 } from '../types';
 import SystemSelect from '@/components/ui/SystemSelect';
+import MyParkingPassesWorkspace from '../components/MyParkingPassesWorkspace';
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
 import JourneyStrip from '../components/JourneyStrip';
@@ -959,16 +960,28 @@ export default function CommuterDashboard() {
   const topUpDialogRef = useRef<HTMLDivElement>(null);
   const qrDialogRef = useRef<HTMLDivElement>(null);
 
+  const allPassBookings = useMemo(() => {
+    const combined = [
+      ...(activeBooking ? [activeBooking] : []),
+      ...upcomingBookings,
+    ];
+    const seen = new Set<string>();
+    return combined.filter((item) => {
+      const key = item.bookingId ? `id-${item.bookingId}` : item.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [activeBooking, upcomingBookings]);
+
   // Filter spots — flexible match stripping LRT/MRT to handle GeoJSON name differences
   const filteredSpots = searchSpots.filter(spot => {
     if (spotTypeFilter !== 'all' && spot.type !== spotTypeFilter) return false;
-    if (activeBooking && (activeBooking.spot.id === spot.id || activeBooking.spot.parkingSpotId === spot.parkingSpotId)) return false;
     return spot.available;
   });
 
   const locationSuggestedSpots = suggestedSpots.filter((spot) => {
     if (spotTypeFilter !== 'all' && spot.type !== spotTypeFilter) return false;
-    if (activeBooking && (activeBooking.spot.id === spot.id || activeBooking.spot.parkingSpotId === spot.parkingSpotId)) return false;
     return spot.available;
   });
 
@@ -1010,7 +1023,6 @@ export default function CommuterDashboard() {
     if (amenityFilters.covered && !spot.isCovered) return false;
     if (amenityFilters.oku && !spot.isHandicapAccessible) return false;
     if (amenityFilters.cctv && !spot.hasCctv) return false;
-    if (activeBooking && (activeBooking.spot.id === spot.id || activeBooking.spot.parkingSpotId === spot.parkingSpotId)) return false;
     return spot.available;
   });
 
@@ -3594,200 +3606,61 @@ export default function CommuterDashboard() {
             </div>
           )}
 
-          {/* ─── TAB: Active Session ─── */}
+          {/* ─── TAB: Active Session (My Parking Pass Square Grid + Bollard Control + Confirmation/Cancel) ─── */}
           {activeTab === 'active' && (
             <div className="flex flex-col gap-5">
-              <JourneyStrip activeStep={journeyStep} />
-              {!activeBooking ? (
-                upcomingBookings.length > 0 ? (
-                  <div className="bg-[#eff6ff] dark:bg-white/[0.06] rounded-2xl border border-blue-200/60 dark:border-white/10 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-1">
-                    <div>
-                      <p className="text-[14px] font-semibold text-[#111] dark:text-white">No parking session in progress right now</p>
-                      <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
-                        You have {upcomingBookings.length} future reservation{upcomingBookings.length > 1 ? 's' : ''} scheduled below.
-                      </p>
-                    </div>
-                    <button onClick={() => setActiveTab('map')} className="shrink-0 px-4 py-2 rounded-xl bg-[#007AFF] text-white text-[12px] font-semibold hover:bg-[#0066d6] transition-colors cursor-pointer">Book another</button>
-                  </div>
-                ) : (
-                <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-8 text-center mt-1">
-                  <Clock size={32} className="mx-auto text-[#dadce0] dark:text-[#71717A] mb-2" />
-                  <p className="text-[15px] font-semibold text-[#111] dark:text-white">No active booking</p>
-                  <p className="text-[13px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">Find and book a parking spot to get started.</p>
-                  <button onClick={() => setActiveTab('map')} className="mt-4 px-5 py-2.5 rounded-xl bg-[#007AFF] text-white text-[13px] font-semibold hover:bg-[#0066d6] transition-colors cursor-pointer">Find a bay</button>
-                </div>
-              )
-              ) : (
-                <>
-                  {/* Session Info */}
-                  <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">Active Session</h3>
-                      <span className="text-[10px] font-mono font-bold bg-[#f0fdf4] dark:bg-emerald-950/60 text-[#16a34a] dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50 px-2 py-0.5 rounded-full">{activeBooking.status}</span>
-                    </div>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                      <img
-                        src={activeBooking.spot.primaryImageUrl || 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80'}
-                        alt={activeBooking.spot.name}
-                        className="w-full sm:w-24 sm:h-20 aspect-[16/9] sm:aspect-auto rounded-xl object-cover ring-1 ring-black/5 dark:ring-white/10 shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[15px] font-bold text-[#111] dark:text-white truncate">{activeBooking.spot.name}</p>
-                        <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">{activeBooking.spot.station} &middot; Plate: {activeBooking.vehiclePlate}</p>
-                        <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-2">
-                          <div className="flex items-center gap-1.5">
-                            <Clock size={14} className="text-[#5f6368] dark:text-[#A1A1AA]" />
-                            <span className="text-[13px] font-semibold text-[#111] dark:text-white">{formatTime(secondsRemaining)}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Wallet size={14} className="text-[#5f6368] dark:text-[#A1A1AA]" />
-                            <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {(activeBooking.totalPaid ?? 0).toFixed(2)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    {showGraceAlert && (
-                      <div className="bg-[#fefce8] dark:bg-amber-950/40 border border-[#fde68a] dark:border-amber-800/50 rounded-xl p-3 text-[12px] text-[#a16207] dark:text-amber-300 flex items-center gap-2">
-                        <AlertCircle size={15} className="shrink-0" /> Session ending in under 5 minutes.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* IoT Bollard Control */}
-                  <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5 space-y-4">
-                    <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">Smart Bollard Control</h3>
-                    <div className="flex items-center gap-4">
-                      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${
-                        bollardAnimationState === 'lowered' ? 'bg-[#f0fdf4] dark:bg-emerald-950/60' : bollardAnimationState === 'lowering' ? 'bg-[#fefce8] dark:bg-amber-950/60' : 'bg-[#f8f9fa] dark:bg-[#1C1C1E]'
-                      }`}>
-                        {bollardAnimationState === 'lowered' ? <Unlock size={28} className="text-[#16a34a] dark:text-emerald-400" /> :
-                         bollardAnimationState === 'lowering' ? <Loader2 size={28} className="text-[#d97706] dark:text-amber-400 animate-spin" /> :
-                         <Lock size={28} className="text-[#9ca3af] dark:text-[#71717A]" />}
-                      </div>
-                      <div>
-                        <p className="text-[13px] font-semibold text-[#111] dark:text-white">
-                          {bollardAnimationState === 'lowered' ? 'Bollard Lowered' : bollardAnimationState === 'lowering' ? 'Lowering...' : 'Bollard Raised'}
-                        </p>
-                        <p className="text-[11px] text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
-                          {alprVerifiedPlate
-                            ? `ALPR verified (${alprVerifiedPlate}) — ready to unlock`
-                            : gpsVerified === 'verified'
-                            ? 'GPS verified — ready to unlock'
-                            : gpsVerified === 'checking'
-                            ? 'Checking your location...'
-                            : gpsVerified === 'unverified'
-                            ? 'Not at this bay — verify again'
-                            : 'Verify via GPS or ALPR camera to unlock'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {!isBollardUnlocked ? (
-                        <>
-                          <button onClick={() => void triggerGPSCheck()}
-                            disabled={gpsVerified === 'checking'}
-                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors ${gpsVerified === 'verified' ? 'bg-[#f0fdf4] dark:bg-emerald-950/60 text-[#16a34a] dark:text-emerald-400' : 'bg-[#f8f9fa] dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#2C2C32] dark:border dark:border-white/10'} disabled:cursor-wait disabled:opacity-60`}>
-                            {gpsVerified === 'verified' ? 'GPS Verified' : gpsVerified === 'checking' ? 'Checking...' : 'Verify GPS'}
-                          </button>
-                          <button onClick={() => setShowQRScanner(true)}
-                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
-                              alprVerifiedPlate
-                                ? 'bg-[#f0fdf4] dark:bg-emerald-950/60 text-[#16a34a] dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/50'
-                                : 'bg-[#f8f9fa] dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] dark:border dark:border-white/10 hover:bg-[#f1f3f4] dark:hover:bg-[#2C2C32]'
-                            }`}>
-                            <Camera size={14} /> {alprVerifiedPlate ? `ALPR: ${alprVerifiedPlate}` : 'ALPR Camera Scan'}
-                          </button>
-                          <button onClick={() => void handleUnlockBollard()}
-                            disabled={(gpsVerified !== 'verified' && !alprVerifiedPlate) || bollardAnimationState === 'lowering'}
-                            className={`w-full px-4 py-2.5 rounded-xl text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 ${(gpsVerified === 'verified' || Boolean(alprVerifiedPlate)) && bollardAnimationState !== 'lowering' ? 'bg-[#007AFF] text-white hover:bg-[#0066d6] cursor-pointer' : 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed'}`}>
-                            {bollardAnimationState === 'lowering' && <Loader2 size={14} className="animate-spin" />}
-                            {bollardAnimationState === 'lowering' ? 'Releasing...' : 'Unlock Bollard'}
-                          </button>
-                        </>
-                      ) : (
-                        <button onClick={handleLockBollard}
-                          className="w-full sm:col-span-3 px-4 py-2.5 rounded-xl bg-[#fef2f2] dark:bg-red-950/60 text-[#dc2626] dark:text-red-400 border border-red-200/50 dark:border-red-900/50 text-[12px] font-semibold hover:bg-[#fee2e2] dark:hover:bg-red-900/60 transition-colors flex items-center justify-center gap-1.5 cursor-pointer">
-                          <Lock size={14} /> Lock Bollard
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleCompleteBooking}
-                    disabled={journeyStage !== 'parked' || bollardAnimationState !== 'raised'}
-                    className={`w-full py-3 rounded-xl text-[13px] font-bold transition-all flex items-center justify-center gap-2 ${
-                      journeyStage === 'parked' && bollardAnimationState === 'raised'
-                        ? 'bg-[#007AFF] hover:bg-[#0071E3] text-white shadow-sm active:scale-[0.99] cursor-pointer'
-                        : 'bg-black/[0.05] dark:bg-white/[0.06] text-[#86868b] dark:text-[#8E8E93] border border-black/[0.06] dark:border-white/[0.08] cursor-not-allowed'
-                    }`}
-                  >
-                    <CheckCircle2 size={17} /> {journeyStage === 'parked' ? 'Complete Booking' : 'Unlock and re-secure the bay to complete'}
-                  </button>
-                </>
-              )}
-
-              {upcomingBookings.length > 0 && (
-                <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">
-                        Upcoming Reservations
-                      </h3>
-                      <span className="text-[10px] font-mono font-bold bg-[#eef5ff] dark:bg-white/10 text-[#007AFF] dark:text-blue-400 px-2 py-0.5 rounded-full">
-                        {upcomingBookings.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">Future bookings</p>
-                  </div>
-
-                  <div className="divide-y divide-[#f1f3f4] dark:divide-white/10">
-                    {upcomingBookings.map((b) => (
-                      <article key={b.bookingId} className="py-3.5 first:pt-1 last:pb-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          <img
-                            src={b.spot.primaryImageUrl || 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80'}
-                            alt={b.spot.name}
-                            className="w-16 h-16 rounded-xl object-cover ring-1 ring-black/5 dark:ring-white/10 shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-[14px] font-bold text-[#111] dark:text-white truncate">{b.spot.name}</p>
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-white/[0.06] text-[#007AFF] dark:text-blue-300 border border-blue-200/50 dark:border-white/10">
-                                Confirmed
-                              </span>
-                            </div>
-                            <p className="text-[12px] text-[#5f6368] dark:text-[#A1A1AA] mt-1">
-                              {b.spot.station} &middot; Plate: {b.vehiclePlate || 'N/A'}
-                            </p>
-                            <div className="flex items-center gap-1.5 mt-1 text-[11px] font-medium text-[#007AFF]">
-                              <Calendar size={13} />
-                              <span>
-                                {b.startTime.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                {' – '}
-                                {b.endTime.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 shrink-0">
-                          <span className="text-[14px] font-bold text-[#111] dark:text-white">
-                            RM {(b.totalPaid ?? 0).toFixed(2)}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={cancelingBookingId === b.bookingId}
-                            onClick={() => void handleCancelBooking(b.bookingId)}
-                            className="text-[11px] font-semibold text-[#dc2626] hover:underline disabled:opacity-50 cursor-pointer"
-                          >
-                            {cancelingBookingId === b.bookingId ? 'Cancelling…' : 'Cancel reservation'}
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <MyParkingPassesWorkspace
+                token={user?.token}
+                bookings={allPassBookings}
+                onRefreshBookings={() => {
+                  setActiveBookingRefreshKey((prev) => prev + 1);
+                  setBookingHistoryRefreshKey((prev) => prev + 1);
+                }}
+                onRefreshWallet={() => void refreshWalletBalance(false)}
+                onNavigateToMap={(booking) => {
+                  setActiveBooking(booking);
+                  setSelectedSpot(booking.spot);
+                  if (booking.spot.latitude && booking.spot.longitude) {
+                    setSelectedStation(booking.spot.stationName || booking.spot.station || '');
+                    setSelectedStationCoords({
+                      lat: booking.spot.latitude,
+                      lng: booking.spot.longitude,
+                    });
+                  }
+                  setActiveTab('map');
+                  setTransitWorkspaceMode('navigation');
+                  setMobileTransitTab('map');
+                }}
+                onOpenSupport={() => {
+                  setActiveTab('support');
+                }}
+                onFindMoreParking={() => {
+                  setActiveTab('home');
+                }}
+                onBookingUnlocked={() => {
+                  setJourneyStage('unlocked');
+                  setIsBollardUnlocked(true);
+                  setBollardAnimationState('lowered');
+                  updateJourneyStage('unlocked', user?.userId);
+                }}
+                onBookingCompleted={(completedBooking) => {
+                  const completed: Booking = {
+                    ...completedBooking,
+                    status: 'Completed',
+                    endTime: new Date(),
+                  };
+                  setHistory((prev) => [
+                    completed,
+                    ...prev.filter((item) => item.id !== completed.id),
+                  ]);
+                  setBookingHistoryRefreshKey((prev) => prev + 1);
+                  setActiveBookingRefreshKey((prev) => prev + 1);
+                }}
+                onReviewSubmitted={() => {
+                  setBookingHistoryRefreshKey((prev) => prev + 1);
+                  setActiveBookingRefreshKey((prev) => prev + 1);
+                }}
+              />
             </div>
           )}
 
@@ -4399,8 +4272,17 @@ export default function CommuterDashboard() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                      {item.canReview && !review && <button type="button" onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })} className="text-[11px] font-semibold text-[#007AFF] hover:underline cursor-pointer">Write a review</button>}
-                      {booking.bookingStatus.toLowerCase() === 'confirmed' && new Date(booking.startDate).setHours(0, 0, 0, 0) > new Date().setHours(0, 0, 0, 0) && (
+                      {(item.canReview || booking.bookingStatus.toLowerCase() === 'completed') && !review && (
+                        <button
+                          type="button"
+                          onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-3 py-1.5 text-[11px] font-bold text-[#007AFF] hover:bg-[#007AFF]/20 transition-colors cursor-pointer"
+                        >
+                          <Star size={12} /> Write a review
+                        </button>
+                      )}
+                      {booking.bookingStatus.toLowerCase() === 'confirmed' &&
+                        (Date.now() - new Date(booking.createdAt).getTime()) <= 24 * 60 * 60 * 1000 && (
                         <button
                           type="button"
                           disabled={cancelingBookingId === booking.bookingId}
@@ -4446,7 +4328,29 @@ export default function CommuterDashboard() {
                   </article>;
                 })}
                 {bookingHistory.length === 0 && history.length === 0 && !isBookingHistoryLoading && !bookingHistoryError && <p className="py-4 text-center text-[11px] text-[#9ca3af] dark:text-[#71717A]">No booking history yet.</p>}
-                {history.map((b) => <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] dark:border-white/10 last:border-0"><div><p className="text-[13px] font-medium text-[#111] dark:text-white">{b.spot.name}</p><p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">{b.spot.station}</p></div><div className="text-right"><span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {(b.totalPaid ?? 0).toFixed(2)}</span><p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p></div></div>)}
+                {history.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] dark:border-white/10 last:border-0 gap-3">
+                    <div>
+                      <p className="text-[13px] font-medium text-[#111] dark:text-white">{b.spot.name}</p>
+                      <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">{b.spot.station}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {b.status === 'Completed' && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/commuter/parking/${b.spot.parkingSpotId}/review`, { state: { booking: b } })}
+                          className="inline-flex items-center gap-1 rounded-xl bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-2.5 py-1 text-[11px] font-bold text-[#007AFF] hover:bg-[#007AFF]/20 transition-colors cursor-pointer"
+                        >
+                          <Star size={11} /> Write a review
+                        </button>
+                      )}
+                      <div className="text-right">
+                        <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {(b.totalPaid ?? 0).toFixed(2)}</span>
+                        <p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
                 {bookingHistoryMeta.totalPages > 1 && <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]"><button type="button" onClick={() => setBookingHistoryPage((value) => Math.max(1, value - 1))} disabled={bookingHistoryPage === 1} className="cursor-pointer">Previous</button><span>Page {bookingHistoryPage} of {bookingHistoryMeta.totalPages}</span><button type="button" onClick={() => setBookingHistoryPage((value) => Math.min(bookingHistoryMeta.totalPages, value + 1))} disabled={bookingHistoryPage === bookingHistoryMeta.totalPages} className="cursor-pointer">Next</button></div>}
               </div>
             </div>

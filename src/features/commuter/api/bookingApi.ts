@@ -273,7 +273,6 @@ export async function cancelBooking(
   return result;
 }
 
-
 export interface ActiveBookingSpotWire {
   parkingSpotId: number;
   parkingLabel?: string | null;
@@ -300,6 +299,15 @@ export interface ActiveBookingData {
   vehiclePlate: string;
   status: string;
   totalPaid: number;
+  bookedDays?: number;
+  ratePerDay?: number;
+  rentalSubtotal?: number;
+  platformFee?: number;
+  createdAt?: string;
+  checkedInAt?: string | null;
+  actualExitAt?: string | null;
+  hasOpenedBollard?: boolean;
+  canCancel?: boolean;
   spot: ActiveBookingSpotWire;
 }
 
@@ -309,6 +317,63 @@ export interface ActiveBookingResponse {
   message: string;
   data: ActiveBookingData | null;
   upcomingBookings?: ActiveBookingData[];
+}
+
+export interface BookingIsCompleteData {
+  bookingId: number;
+  bookingReference: string;
+  bookingStatus: string;
+  checkedLocalDate: string;
+  lastAvailableDate: string;
+  isLastDay: boolean;
+  isComplete: boolean;
+  canReview: boolean;
+}
+
+export function evaluateBookingCancellationEligibility(booking: Booking): {
+  canCancel: boolean;
+  reason: string | null;
+} {
+  const hasOpenedBollard = Boolean(
+    booking.hasOpenedBollard ||
+      booking.checkedInAt ||
+      booking.status === 'Active',
+  );
+  if (hasOpenedBollard) {
+    return {
+      canCancel: false,
+      reason: 'Cancellation is unavailable because the parking bollard has already been unlocked.',
+    };
+  }
+
+  if (booking.status === 'Completed') {
+    return {
+      canCancel: false,
+      reason: 'Completed bookings cannot be cancelled.',
+    };
+  }
+
+  if (booking.createdAt) {
+    const createdMs = new Date(booking.createdAt).getTime();
+    if (!Number.isNaN(createdMs)) {
+      const hoursElapsed = (Date.now() - createdMs) / (1000 * 60 * 60);
+      if (hoursElapsed > 24) {
+        return {
+          canCancel: false,
+          reason: 'Cancellation is only available within 24 hours of booking creation.',
+        };
+      }
+    }
+  }
+
+  if (booking.canCancel === false) {
+    return {
+      canCancel: false,
+      reason: 'Cancellation is only available within 24 hours of booking if the bollard has never been opened.',
+    };
+  }
+
+  return { canCancel: true, reason: null };
 }
 
 export function normalizeActiveBooking(data: ActiveBookingData): Booking {
@@ -342,12 +407,62 @@ export function normalizeActiveBooking(data: ActiveBookingData): Booking {
   return {
     id: `booking-${data.bookingId}`,
     bookingId: data.bookingId,
+    bookingReference: data.bookingReference,
     spot,
     startTime: new Date(data.startTime),
     endTime: new Date(data.endTime),
     vehiclePlate: data.vehiclePlate,
     status: data.status === 'Completed' ? 'Completed' : data.status === 'Confirmed' ? 'Upcoming' : 'Active',
     totalPaid: data.totalPaid,
+    bookedDays: data.bookedDays,
+    ratePerDay: data.ratePerDay,
+    rentalSubtotal: data.rentalSubtotal,
+    platformFee: data.platformFee,
+    createdAt: data.createdAt,
+    checkedInAt: data.checkedInAt ?? null,
+    actualExitAt: data.actualExitAt ?? null,
+    hasOpenedBollard: data.hasOpenedBollard ?? Boolean(data.checkedInAt || data.status === 'Active'),
+    canCancel: data.canCancel,
+  };
+}
+
+export async function getBookingIsLastDay(
+  token: string,
+  bookingNumber: number | string,
+  signal?: AbortSignal,
+): Promise<BookingIsCompleteData> {
+  const response = await apiRequest(
+    `/booking/${encodeURIComponent(String(bookingNumber))}/isComplete`,
+    {
+      method: 'GET',
+      headers: authorizationHeaders(token),
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, 'Unable to verify booking completion status.'));
+  }
+
+  const payload = (await response.json().catch(() => null)) as WireResponse<Record<string, any>> | null;
+  if (!payload) {
+    throw new Error('The booking completion service returned an unreadable response.');
+  }
+
+  const raw = payload.data ?? payload.Data ?? {};
+  const isLastDay = Boolean(raw.isLastDay ?? raw.IsLastDay);
+  const bookingStatus = String(raw.bookingStatus ?? raw.BookingStatus ?? '');
+  const isComplete = Boolean(raw.isComplete ?? raw.IsComplete ?? (bookingStatus === 'Completed' || isLastDay));
+
+  return {
+    bookingId: Number(raw.bookingId ?? raw.BookingId ?? bookingNumber),
+    bookingReference: String(raw.bookingReference ?? raw.BookingReference ?? ''),
+    bookingStatus,
+    checkedLocalDate: String(raw.checkedLocalDate ?? raw.CheckedLocalDate ?? ''),
+    lastAvailableDate: String(raw.lastAvailableDate ?? raw.LastAvailableDate ?? ''),
+    isLastDay,
+    isComplete,
+    canReview: Boolean(raw.canReview ?? raw.CanReview),
   };
 }
 

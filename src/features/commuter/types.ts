@@ -121,12 +121,22 @@ export interface WalletTopUpStatus {
 export interface Booking {
   id: string;
   bookingId?: number;
+  bookingReference?: string;
   spot: ParkingSpot;
   startTime: Date;
   endTime: Date;
   vehiclePlate: string;
   status: 'Active' | 'Completed' | 'Upcoming';
   totalPaid: number;
+  bookedDays?: number;
+  ratePerDay?: number;
+  rentalSubtotal?: number;
+  platformFee?: number;
+  createdAt?: string;
+  checkedInAt?: string | null;
+  actualExitAt?: string | null;
+  hasOpenedBollard?: boolean;
+  canCancel?: boolean;
 }
 
 export interface Vehicle {
