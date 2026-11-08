@@ -2867,10 +2867,7 @@ select option,
 }
 
 .workspace-header__status {
-  position: static;
-  justify-self: center;
-  max-width: min(16rem, 100%);
-  margin-inline: 1rem;
+  position: relative;
   overflow: hidden;
 }
 

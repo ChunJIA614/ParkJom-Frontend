@@ -229,20 +229,19 @@ export default function DashboardHeader({
               </p>
             </div>
           </button>
+
+          {statusText && (
+            <div className="workspace-header__status flex items-center gap-1.5 text-[12px] font-medium text-[#5f6368] dark:text-[#a1a1a6] px-2.5 py-1 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/[0.08] shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#34c759] shrink-0 animate-pulse" />
+              <span className="truncate max-w-[140px] sm:max-w-[200px] lg:max-w-[280px]">{statusText}</span>
+            </div>
+          )}
         </div>
 
         {navigation && (
           <nav className="workspace-header__navigation items-center gap-1" aria-label="Primary">
             {navigation}
           </nav>
-        )}
-
-        {/* Center status — desktop only */}
-        {statusText && (
-          <div className="workspace-header__status hidden xl:flex items-center gap-2 text-[12px] font-medium text-[#5f6368] mx-4">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#34c759] shrink-0" />
-            <span className="truncate">{statusText}</span>
-          </div>
         )}
 
         {/* Right: search + notifications + account */}
