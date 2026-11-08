@@ -6,6 +6,8 @@ import { RequireRole } from './RequireRole';
 import { getDashboardPath } from './roleRouting';
 
 const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
+const ManagementInvitationPage = lazy(() => import('@/features/management/pages/ManagementInvitationPage'));
+const PropertyManagementDashboard = lazy(() => import('@/features/management/pages/PropertyManagementDashboard'));
 const AdminDashboard = lazy(() => import('@/features/admin/pages/AdminDashboard'));
 const CommuterDashboard = lazy(() => import('@/features/commuter/pages/CommuterDashboard'));
 const ParkingDetail = lazy(() => import('@/features/commuter/pages/ParkingDetail'));
@@ -42,6 +44,8 @@ export function AppRoutes() {
             {/* The Login Page is the default main page on initial visit and after logout */}
             <Route path="/" element={<LoginPage />} />
             <Route path="/login" element={<LoginPage />} />
+            {/* Standalone PropertyManagement 14-day single-use invitation link */}
+            <Route path="/management/invitation" element={<ManagementInvitationPage />} />
             {/* Landing Page is reached when user clicks "Back to Home" */}
             <Route path="/home" element={<LandingPage />} />
             <Route path="/landing" element={<LandingPage />} />
@@ -59,11 +63,13 @@ export function AppRoutes() {
       <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
           <Route path="/login" element={<Navigate to={dashboardPath} replace />} />
+          <Route path="/management/invitation" element={<ManagementInvitationPage />} />
           <Route path="/" element={<Navigate to={dashboardPath} replace />} />
           <Route path="/home" element={<Navigate to={dashboardPath} replace />} />
           <Route path="/landing" element={<Navigate to={dashboardPath} replace />} />
           <Route path="/admin" element={<RequireRole role="Admin"><AdminDashboard /></RequireRole>} />
           <Route path="/owner" element={<RequireRole role="Owner"><OwnerDashboard /></RequireRole>} />
+          <Route path="/management" element={<RequireRole role="PropertyManagement"><PropertyManagementDashboard /></RequireRole>} />
           <Route path="/notifications" element={<NotificationCenterPage />} />
           <Route path="/commuter" element={<RequireRole role="Commuter"><CommuterDashboard /></RequireRole>} />
           <Route path="/commuter/parking/:id" element={<RequireRole role="Commuter"><ParkingDetail /></RequireRole>} />

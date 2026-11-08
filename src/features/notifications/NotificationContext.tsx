@@ -133,7 +133,8 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const token = user?.token;
+  const isManagementAccount = user?.role === 'PropertyManagement' || user?.userType === 4;
+  const token = isManagementAccount ? undefined : user?.token;
 
   const [state, dispatch] = useReducer(notificationReducer, {
     items: [],

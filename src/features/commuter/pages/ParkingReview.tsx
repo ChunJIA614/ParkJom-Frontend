@@ -24,7 +24,19 @@ const highlights = [
   'Easy access',
 ];
 
-export default function ParkingReview() {
+export interface ParkingReviewProps {
+  spot?: any;
+  bookingId?: number | null;
+  bookingReference?: string | null;
+  vehiclePlate?: string;
+  bookedAt?: any;
+  totalPaid?: number;
+  token?: string;
+  onBack?: () => void;
+  onSubmitReview?: () => void;
+}
+
+export default function ParkingReview({ onBack, onSubmitReview }: ParkingReviewProps = {}) {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { booking?: Booking } };
   const { user, logout } = useAuth();

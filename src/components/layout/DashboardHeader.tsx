@@ -5,7 +5,7 @@ import ThemeSegmentedControl from '@/components/ui/ThemeSegmentedControl';
 import { showConfirm } from '@/contexts/ModalContext';
 import ProfileDialog from '@/features/profile/components/ProfileDialog';
 
-export type DashboardRole = 'commuter' | 'owner' | 'admin';
+export type DashboardRole = 'commuter' | 'owner' | 'admin' | 'management';
 
 interface DashboardHeaderProps {
   role: DashboardRole;
@@ -52,6 +52,7 @@ const ROLE_META: Record<
   commuter: { portal: 'Transit Parking' },
   owner: { portal: 'Owner Portal' },
   admin: { portal: 'Admin Console' },
+  management: { portal: 'Property Operations' },
 };
 
 const BADGE_STYLES = {
@@ -352,15 +353,17 @@ export default function DashboardHeader({
                     <p className="truncate text-[12px] font-semibold text-zinc-900 dark:text-zinc-100">{displayName}</p>
                     {user.email && <p className="mt-0.5 truncate text-[10px] text-zinc-500 dark:text-zinc-400">{user.email}</p>}
                   </div>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => { setAccountOpen(false); setProfileOpen(true); }}
-                    className="workspace-header__account-menu-item hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[#3a3a3c] dark:text-[#f5f5f7]"
-                  >
-                    <UserRound size={16} aria-hidden="true" />
-                    <span>My profile</span>
-                  </button>
+                  {role !== 'management' && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { setAccountOpen(false); setProfileOpen(true); }}
+                      className="workspace-header__account-menu-item hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[#3a3a3c] dark:text-[#f5f5f7]"
+                    >
+                      <UserRound size={16} aria-hidden="true" />
+                      <span>My profile</span>
+                    </button>
+                  )}
                   <div className="border-t border-b border-[#f1f3f4] dark:border-white/[0.08] px-3 py-2.5 space-y-2">
                     <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#8e8e93] dark:text-[#D4D4D8] tracking-wide">
                       <SunMoon size={14} aria-hidden="true" className="text-[var(--system-primary,#0071e3)] dark:text-[#0a84ff]" />
@@ -378,7 +381,7 @@ export default function DashboardHeader({
           )}
         </div>
       </div>
-      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
+      {role !== 'management' && <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />}
     </header>
   );
 }

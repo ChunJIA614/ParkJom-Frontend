@@ -6,6 +6,8 @@ export function getDashboardPath(role?: UserRole) {
       return '/admin';
     case 'Owner':
       return '/owner';
+    case 'PropertyManagement':
+      return '/management';
     default:
       return '/commuter';
   }

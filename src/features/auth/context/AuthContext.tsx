@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import { apiRequest, AUTH_REJECTED_EVENT } from '@/services/apiClient';
 
 // ---- Types ----
-export type UserRole = 'Commuter' | 'Owner' | 'Admin';
+export type UserRole = 'Commuter' | 'Owner' | 'Admin' | 'PropertyManagement';
 
 export interface AuthUser {
   userId: number;
@@ -11,11 +11,15 @@ export interface AuthUser {
   lastName: string;
   picture: string;       // profilePictureURL from backend
   phoneNumber: string;
-  userType: number;       // enum: Renter=0, Owner=1, Admin=2
+  userType: number;       // enum: Admin=1, PropertyOwner=2, Renter=3, PropertyManagement=4
   role: UserRole;
   token: string;          // backend JWT (jwtToken)
   isProfileComplete: boolean;
   accountStatus?: string;
+  /** Assigned property metadata for standalone PropertyManagement accounts. */
+  propertyId?: number;
+  propertyName?: string;
+  propertyAddress?: string;
 }
 
 interface AuthContextValue {
@@ -75,7 +79,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     if (user?.token) {
-      void apiRequest('/auth/logout', {
+      const logoutPath = user.role === 'PropertyManagement' || user.userType === 4
+        ? '/auth/management/logout'
+        : '/auth/logout';
+      void apiRequest(logoutPath, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${user.token}`,

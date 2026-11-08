@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, ShieldCheck, Radio, AlertOctagon, 
   Landmark, LifeBuoy,
-  ShieldAlert, Lock, Menu, Car, Bell, Users
+  ShieldAlert, Lock, Menu, Car, Bell, Users, Building2
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { NotificationBell } from '@/features/notifications';
@@ -39,8 +39,9 @@ import SystemConfiguration from '../components/SystemConfiguration';
 import VehicleManagement from '../components/VehicleManagement';
 import UserManagement from '../components/UserManagement';
 import AdminNotificationBroadcast from '../components/AdminNotificationBroadcast';
+import PropertyManagementAccounts from '../components/PropertyManagementAccounts';
 
-type ActiveView = 'home' | 'governance' | 'users' | 'vehicles' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system' | 'broadcast';
+type ActiveView = 'home' | 'governance' | 'users' | 'property-managers' | 'vehicles' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system' | 'broadcast';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -67,7 +68,7 @@ export default function AdminDashboard() {
   // App core states — all data fetched from backend
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     const saved = localStorage.getItem('parkjom_admin_view');
-    const validViews: ActiveView[] = ['home', 'governance', 'users', 'vehicles', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system', 'broadcast'];
+    const validViews: ActiveView[] = ['home', 'governance', 'users', 'property-managers', 'vehicles', 'iot', 'settlement', 'enforcement', 'support', 'audit', 'system', 'broadcast'];
     return saved && validViews.includes(saved as ActiveView) ? saved as ActiveView : 'home';
   });
 
@@ -542,6 +543,7 @@ export default function AdminDashboard() {
       items: [
         { id: 'governance', label: 'Listing Governance', icon: ShieldCheck, badge: listings.filter((listing) => listing.status === 'pending').length },
         { id: 'users', label: 'User Governance', icon: Users },
+        { id: 'property-managers', label: 'Property Managers', icon: Building2 },
         { id: 'vehicles', label: 'Vehicle Management', icon: Car },
         { id: 'iot', label: 'IoT Smart Bollards', icon: Radio, badge: bollards.filter((bollard) => bollard.status === 'offline').length, badgeTone: 'danger' as const },
       ],
@@ -602,6 +604,10 @@ export default function AdminDashboard() {
       case 'users':
         return (
           <UserManagement addActivityLog={addActivityLog} />
+        );
+      case 'property-managers':
+        return (
+          <PropertyManagementAccounts addActivityLog={addActivityLog} />
         );
       case 'iot':
         return (
@@ -677,6 +683,7 @@ export default function AdminDashboard() {
     home: { title: 'Operations overview', description: 'Monitor the queues and systems that affect today’s parking journeys.' },
     governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
     users: { title: 'User governance', description: 'Review, inspect, and manage registered ParkJom accounts and roles.' },
+    'property-managers': { title: 'Property management accounts', description: 'Provision standalone building-desk accounts and manage 14-day single-use email invitations.' },
     vehicles: { title: 'Vehicle management', description: 'Review commuter vehicles registered across the platform.' },
     iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
     settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
@@ -770,7 +777,7 @@ export default function AdminDashboard() {
           { id: 'settlement', icon: Landmark, label: 'Finance' },
           { id: 'more', icon: Menu, label: 'More' },
         ]}
-        activeId={['users', 'vehicles', 'enforcement', 'support', 'audit', 'system'].includes(activeView) ? 'more' : activeView}
+        activeId={['users', 'property-managers', 'vehicles', 'enforcement', 'support', 'audit', 'system', 'broadcast'].includes(activeView) ? 'more' : activeView}
         onChange={(id) => {
           if (id === 'more') {
             setSidebarOpen(true);

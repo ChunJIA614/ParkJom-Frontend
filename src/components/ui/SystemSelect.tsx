@@ -94,7 +94,7 @@ export default function SystemSelect({
     const openUpward = spaceBelow < estimatedHeight + 16 && rect.top > estimatedHeight + 16;
 
     const minWidth = Math.max(rect.width, 156);
-    const maxWidth = Math.min(320, viewportWidth - 24);
+    const maxWidth = Math.max(minWidth, Math.min(viewportWidth - 24, 480));
     let left = rect.left;
     if (left + minWidth > viewportWidth - 12) {
       left = Math.max(12, viewportWidth - minWidth - 12);
