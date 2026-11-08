@@ -309,7 +309,7 @@ const formatUserDistance = (distanceKm: number) =>
 export default function CommuterDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, isGuest, promptLogin, logout } = useAuth();
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [visionScannerTarget, setVisionScannerTarget] = useState<'add' | 'edit' | null>(null);
   const [alprVerifiedPlate, setAlprVerifiedPlate] = useState<string | null>(null);
@@ -349,7 +349,37 @@ export default function CommuterDashboard() {
   const returnedCheckoutSessionId = locationParams.get('session_id');
 
   // App Navigation and Module States
-  const [activeTab, setActiveTab] = useState<CommuterTab>(requestedTab || persistedTab || (initialJourney ? 'active' : 'home'));
+  const [activeTab, setActiveTab] = useState<CommuterTab>(() => {
+    if (isGuest && requestedTab && !['home', 'map'].includes(requestedTab)) return 'home';
+    if (isGuest && persistedTab && !['home', 'map'].includes(persistedTab)) return 'home';
+    if (isGuest && initialJourney) return 'home';
+    return requestedTab || persistedTab || (initialJourney ? 'active' : 'home');
+  });
+
+  useEffect(() => {
+    if (isGuest && !['home', 'map'].includes(activeTab)) {
+      setActiveTab('home');
+    }
+  }, [isGuest, activeTab]);
+
+  const handleNavigateTab = (id: CommuterTab) => {
+    if (isGuest && !['home', 'map'].includes(id)) {
+      const tabLabels: Record<string, string> = {
+        active: 'My Parking Pass',
+        wallet: 'Digital Wallet',
+        profile: 'Vehicle Management',
+        favorites: 'Saved Favorites',
+        support: 'Customer Support',
+      };
+      promptLogin(
+        tabLabels[id] || 'This Feature',
+        `Sign in to access ${tabLabels[id] || 'this feature'}, view active bookings, and manage your account.`,
+      );
+      return;
+    }
+    setActiveTab(id);
+    setSelectedSpot(null);
+  };
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('parkjom_commuter_sidebar_collapsed') === 'true',
@@ -816,7 +846,14 @@ export default function CommuterDashboard() {
   }, [user?.token, user?.userId, activeBookingRefreshKey]);
 
   const handleToggleFavorite = async (spot: ParkingSpot) => {
-    if (!user?.userId || !user.token || isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)) return;
+    if (isGuest || !user?.userId || !user?.token) {
+      promptLogin(
+        'Save to Favorites',
+        'Sign in to bookmark this parking spot and access it anytime from your favorites list.',
+      );
+      return;
+    }
+    if (isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)) return;
 
     setFavoriteUpdatingIds((current) => [...current, spot.parkingSpotId]);
     setFavoriteError(null);
@@ -2461,11 +2498,31 @@ export default function CommuterDashboard() {
   })));
 
   const notificationActions = (
-    <NotificationBell
-      onNavigate={(url) => {
-        navigate(url);
+    <div
+      onClickCapture={(e) => {
+        if (isGuest || !user?.token) {
+          e.stopPropagation();
+          e.preventDefault();
+          promptLogin(
+            'Notifications',
+            'Sign in to view your real-time booking alerts and parking notifications.',
+          );
+        }
       }}
-    />
+    >
+      <NotificationBell
+        onNavigate={(url) => {
+          if (isGuest || !user?.token) {
+            promptLogin(
+              'Notifications',
+              'Sign in to view your real-time booking alerts and parking notifications.',
+            );
+            return;
+          }
+          navigate(url);
+        }}
+      />
+    </div>
   );
 
   return (
@@ -2475,7 +2532,7 @@ export default function CommuterDashboard() {
         workspaceLabel="Commuter workspace"
         groups={commuterSidebarGroups}
         activeId={activeTab}
-        onNavigate={(id) => { setActiveTab(id as CommuterTab); setSelectedSpot(null); }}
+        onNavigate={(id) => handleNavigateTab(id as CommuterTab)}
         onBrandClick={handleCommuterBrandClick}
         mobileOpen={sidebarOpen}
         onMobileOpenChange={setSidebarOpen}
@@ -2488,6 +2545,8 @@ export default function CommuterDashboard() {
       <DashboardHeader
         role="commuter"
         user={user}
+        isGuest={Boolean(isGuest || !user)}
+        onSignIn={() => navigate('/login')}
         onSignOut={() => { logout(); navigate('/'); }}
         onBrandClick={handleCommuterBrandClick}
         showMenuButton
@@ -2498,14 +2557,44 @@ export default function CommuterDashboard() {
         hideDesktopBrand
         searchItems={commuterSearchItems}
         onSearchSelect={(id) => {
-          setActiveTab(id as CommuterTab);
-          setSelectedSpot(null);
+          handleNavigateTab(id as CommuterTab);
           setSidebarOpen(false);
         }}
       />
 
       {/* ─── Main Layout ─── */}
       <div className={`commuter-content-grid flex-1 ${activeTab === 'map' || activeTab === 'home' ? 'max-w-[1520px]' : 'max-w-[1180px]'} w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 pb-20 md:pb-8`}>
+
+        {isGuest && (
+          <aside
+            className="mb-4 rounded-2xl border border-[#0071e3]/20 bg-[#0071e3]/[0.06] dark:bg-[#0a84ff]/10 p-3.5 sm:p-4 text-[#1d1d1f] dark:text-[#f5f5f7] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+            aria-label="Guest mode notice"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-xl bg-[#0071e3]/15 dark:bg-[#0a84ff]/25 text-[#0071e3] dark:text-[#0a84ff] flex items-center justify-center shrink-0">
+                <Compass size={20} strokeWidth={2.2} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold tracking-tight">
+                  Guest Mode Preview
+                </p>
+                <p className="text-[12px] text-[#6e6e73] dark:text-[#a1a1a6] truncate sm:whitespace-normal">
+                  You are viewing verified transit bays and live maps (data retrieval only). Sign in to book bays, chat with ParkJom AI, and access passes.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <button
+                type="button"
+                onClick={() => navigate('/login')}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#0071e3] hover:bg-[#0077ed] text-white text-[12px] font-semibold shadow-xs transition-all active:scale-95 cursor-pointer"
+              >
+                <span>Sign In</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </aside>
+        )}
 
         {/* Main Content */}
         <main className="min-h-0">
@@ -4421,8 +4510,7 @@ export default function CommuterDashboard() {
             setSidebarOpen(true);
             return;
           }
-          setActiveTab(id as typeof activeTab);
-          setSelectedSpot(null);
+          handleNavigateTab(id as CommuterTab);
         }}
       />
       </div>

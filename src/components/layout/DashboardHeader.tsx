@@ -30,6 +30,8 @@ interface DashboardHeaderProps {
   searchItems?: DashboardSearchItem[];
   onSearchSelect?: (id: string) => void;
   searchPlaceholder?: string;
+  onSignIn?: () => void;
+  isGuest?: boolean;
 }
 
 export interface DashboardSearchItem {
@@ -78,6 +80,8 @@ export default function DashboardHeader({
   searchItems = [],
   onSearchSelect,
   searchPlaceholder = 'Search dashboard pages',
+  onSignIn,
+  isGuest = false,
 }: DashboardHeaderProps) {
   const meta = ROLE_META[role];
   const [profileImageFailed, setProfileImageFailed] = useState(false);
@@ -309,7 +313,7 @@ export default function DashboardHeader({
 
           {actions}
 
-          {user && (
+          {user ? (
             <div ref={accountRef} className="workspace-header__account relative min-w-0">
               <button
                 type="button"
@@ -376,6 +380,20 @@ export default function DashboardHeader({
                   </button>
                 </div>
               )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-black/[0.05] dark:bg-white/[0.08] text-[#6e6e73] dark:text-[#a1a1a6]">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Guest Mode
+              </span>
+              <button
+                type="button"
+                onClick={onSignIn}
+                className="inline-flex items-center justify-center min-h-8 px-3.5 py-1 rounded-xl text-[12px] font-semibold bg-[#0071e3] hover:bg-[#0077ed] text-white shadow-sm transition-all duration-200 active:scale-95 cursor-pointer"
+              >
+                Sign In
+              </button>
             </div>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Loader2, Mic, RotateCcw, Send, Sparkles, X } from 'lucide-react';
+import { useAuth } from '@/features/auth/context/AuthContext';
 import { useCopilotChat } from '../hooks/useCopilotChat';
 import { CopilotCardView } from './CopilotCards';
 
@@ -31,6 +32,7 @@ const getSpeechRecognition = (): (new () => SpeechRecognitionLike) | null => {
  * a chat panel that renders AI replies with interactive parking/transit cards.
  */
 export default function CopilotLauncher() {
+  const { promptLogin } = useAuth();
   const { messages, isSending, send, reset, isSignedIn } = useCopilotChat();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -58,7 +60,16 @@ export default function CopilotLauncher() {
 
   useEffect(() => () => recognitionRef.current?.stop(), []);
 
-  if (!isSignedIn) return null;
+  const handleLauncherClick = () => {
+    if (!isSignedIn) {
+      promptLogin(
+        'ParkJom AI Copilot',
+        'Sign in to chat with ParkJom AI Copilot for multimodal route planning, live congestion forecasts, and smart bay recommendations.',
+      );
+      return;
+    }
+    setOpen(true);
+  };
 
   const submit = (text: string) => {
     if (!text.trim() || isSending) return;
@@ -101,7 +112,7 @@ export default function CopilotLauncher() {
             initial={reduceMotion ? false : { scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={reduceMotion ? undefined : { scale: 0.8, opacity: 0 }}
-            onClick={() => setOpen(true)}
+            onClick={handleLauncherClick}
             aria-label="Open ParkJom Copilot"
             className="fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 md:right-6 z-[1050] flex items-center gap-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3] pl-3.5 pr-4 h-12 text-white shadow-lg shadow-[#007AFF]/30 hover:bg-[#0066d6] active:scale-95 cursor-pointer"
           >

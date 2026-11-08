@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, useInView, useReducedMotion } from 'motion/react';
-import { CalendarCheck, ChevronDown, ChevronRight, MapPin, TrainFront } from 'lucide-react';
+import { CalendarCheck, ChevronDown, ChevronRight, Compass, MapPin, TrainFront } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
 import { readableTextOn } from '@/lib/contrast';
 import HeroScrollCanvas, { getHeroPinViewports } from '@/components/HeroScrollCanvas';
+import { useAuth } from '@/features/auth/context/AuthContext';
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Apple design tokens used on this page
@@ -126,6 +127,7 @@ function SectionHeader({ title, intro, dark = false }: { title: string; intro: s
 /* ── Local navigation (Apple "localnav" pattern) ────────────────────────────── */
 
 function LocalNav() {
+  const { continueAsGuest } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [overHero, setOverHero] = useState(true);
 
@@ -185,6 +187,13 @@ function LocalNav() {
               </a>
             ))}
             <a
+              href="/commuter"
+              onClick={() => continueAsGuest()}
+              className={`text-[12px] tracking-[-0.01em] transition-colors ${dark ? 'text-[#d2d2d7] hover:text-white' : 'text-[#424245] hover:text-[#1d1d1f]'}`}
+            >
+              Browse as Guest
+            </a>
+            <a
               href="/login"
               className={`text-[12px] tracking-[-0.01em] transition-colors ${dark ? 'text-[#d2d2d7] hover:text-white' : 'text-[#424245] hover:text-[#1d1d1f]'}`}
             >
@@ -218,11 +227,18 @@ function LocalNav() {
           className={`border-t px-5 pb-4 pt-2 md:hidden ${dark ? 'border-white/[0.08]' : 'border-black/[0.08]'}`}
           aria-label="Mobile navigation"
         >
-          {[...navigation, { label: 'Sign in', href: '/login' }].map((item) => (
+          {[
+            ...navigation,
+            { label: 'Browse as Guest', href: '/commuter', isGuestAction: true },
+            { label: 'Sign in', href: '/login' },
+          ].map((item) => (
             <a
               key={item.href}
               href={item.href}
-              onClick={() => setMenuOpen(false)}
+              onClick={() => {
+                if ('isGuestAction' in item && item.isGuestAction) continueAsGuest();
+                setMenuOpen(false);
+              }}
               className={`block border-b py-3 text-[17px] tracking-[-0.022em] last:border-0 ${
                 dark ? 'border-white/[0.08] text-[#f5f5f7]' : 'border-black/[0.08] text-[#1d1d1f]'
               }`}

@@ -7,7 +7,7 @@ import {
   Loader2, Calendar, AlertTriangle,
   Heart, Copy, Check,
   ChevronLeft, ChevronRight, MessageSquare, Pencil, Star, Trash2,
-  Share2, Flag, X, LayoutGrid, RotateCcw, Clock,
+  Share2, Flag, X, LayoutGrid, RotateCcw, Clock, Lock,
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -136,7 +136,7 @@ const getCalendarDateKeys = (month: Date) => {
 export default function ParkingDetail() {
   const navigate = useNavigate();
   const { id: routeId } = useParams<{ id: string }>();
-  const { user, logout } = useAuth();
+  const { user, isGuest, promptLogin, logout } = useAuth();
   const { state } = useLocation() as {
     state?: {
       spot?: MockParkingSpot;
@@ -486,7 +486,7 @@ export default function ParkingDetail() {
   }, [user?.userId, user?.token]);
 
   useEffect(() => {
-    if (!spot || !user?.token) return;
+    if (!spot) return;
 
     const month = toMonthInput(calendarMonth);
     if (availabilityByMonth[month]) return;
@@ -565,7 +565,11 @@ export default function ParkingDetail() {
   }, [spot, user?.token, user?.userId]);
 
   const handleToggleFavorite = async () => {
-    if (!spot || !user?.userId || !user.token || isFavoriteLoading || isFavoriteUpdating) return;
+    if (isGuest || !user?.userId || !user?.token) {
+      promptLogin('Save to Favorites', 'Sign in to save this bay to your favorites for fast rebooking.');
+      return;
+    }
+    if (!spot || isFavoriteLoading || isFavoriteUpdating) return;
 
     setIsFavoriteUpdating(true);
     setFavoriteError(null);
@@ -916,6 +920,10 @@ export default function ParkingDetail() {
   };
 
   const handleBottomAction = () => {
+    if (isGuest || !user?.token) {
+      promptLogin('Reserve Parking Bay', 'Sign in to select dates, book this parking bay, and receive automated gate access clearance.');
+      return;
+    }
     if (activeTab !== 'reserve') {
       setActiveTab('reserve');
       window.scrollTo({ top: 320, behavior: 'smooth' });
@@ -1041,7 +1049,11 @@ export default function ParkingDetail() {
   };
 
   const handleBook = async () => {
-    if (!user?.token || invalidDates || isBookingLoading || isGracePeriodActive) return;
+    if (isGuest || !user?.token) {
+      promptLogin('Reserve Parking Bay', 'Sign in to select dates, book this parking bay, and receive automated gate access clearance.');
+      return;
+    }
+    if (invalidDates || isBookingLoading || isGracePeriodActive) return;
     setBookingError(null);
     setBookingNotice(null);
 
@@ -1238,6 +1250,8 @@ export default function ParkingDetail() {
         role="commuter"
         user={user}
         onSignOut={() => { logout(); navigate('/'); }}
+        onSignIn={() => navigate('/login')}
+        isGuest={Boolean(isGuest || !user)}
         onBrandClick={() => navigate('/commuter', { replace: true, state: { activeTab: 'home' } })}
       />
 
@@ -2599,14 +2613,19 @@ export default function ParkingDetail() {
               {/* Primary Action Button */}
               <button
                 onClick={handleBottomAction}
-                disabled={activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))}
+                disabled={Boolean(user?.token) && activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))}
                 className={`w-full min-h-12 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
                   activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))
                     ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed shadow-none'
                     : 'bg-[#007AFF] hover:bg-[#0066d6] dark:bg-[#0071E3] dark:hover:bg-[#0077ED] text-white active:scale-[0.98]'
                 }`}
               >
-                {activeTab !== 'reserve' ? (
+                {!user?.token ? (
+                  <>
+                    <Lock size={16} />
+                    <span>Sign In to Reserve Bay</span>
+                  </>
+                ) : activeTab !== 'reserve' ? (
                   <>
                     <Calendar size={16} />
                     <span>Return to Reserve Bay</span>
@@ -2834,14 +2853,19 @@ export default function ParkingDetail() {
           </div>
           <button
             onClick={handleBottomAction}
-            disabled={activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))}
+            disabled={Boolean(user?.token) && activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))}
             className={`font-semibold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-1.5 shrink-0 ${
               activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))
                 ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed'
                 : 'bg-[#007AFF] dark:bg-[#0071E3] text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] active:scale-[0.98] cursor-pointer shadow-sm'
             }`}
           >
-            {activeTab !== 'reserve' ? (
+            {!user?.token ? (
+              <>
+                <Lock size={14} />
+                <span>Sign In to Book</span>
+              </>
+            ) : activeTab !== 'reserve' ? (
               <>
                 <Calendar size={14} />
                 <span>Return</span>

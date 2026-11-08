@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Building2, Eye, EyeOff, Loader2, Moon, Sun } from 'lucide-react';
+import { ArrowLeft, Building2, Compass, Eye, EyeOff, Loader2, Moon, Sun } from 'lucide-react';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import BrandLogo from '@/components/ui/BrandLogo';
 import DotWaveBackground from '@/components/canvas/DotWaveBackground';
@@ -13,7 +13,7 @@ type LoginMode = 'commuter' | 'management';
 
 export default function LoginPage() {
   const { isDark, toggleTheme } = useTheme();
-  const { setUser } = useAuth();
+  const { setUser, continueAsGuest } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<LoginMode>('commuter');
@@ -22,6 +22,11 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const handleContinueAsGuest = () => {
+    continueAsGuest();
+    navigate('/commuter', { replace: true });
+  };
 
   const handleManagementSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -143,8 +148,28 @@ export default function LoginPage() {
         </div>
 
         {mode === 'commuter' ? (
-          <div className="pt-1">
+          <div className="pt-1 space-y-3.5">
             <GoogleLoginButton />
+
+            <div className="relative flex items-center py-0.5">
+              <div className="flex-grow border-t border-black/[0.08] dark:border-white/[0.12]" />
+              <span className="flex-shrink mx-3 text-[11px] font-semibold text-[#8e8e93] dark:text-[#a1a1a6] uppercase tracking-wider">
+                Or explore first
+              </span>
+              <div className="flex-grow border-t border-black/[0.08] dark:border-white/[0.12]" />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleContinueAsGuest}
+              className="w-full min-h-11 rounded-xl border border-black/[0.12] dark:border-white/[0.16] bg-white/70 dark:bg-white/[0.06] hover:bg-white dark:hover:bg-white/[0.1] text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] inline-flex items-center justify-center gap-2 shadow-sm transition-all duration-200 active:scale-[0.99] cursor-pointer"
+            >
+              <Compass size={16} className="text-[#0071e3] dark:text-[#0a84ff]" />
+              <span>Browse as Guest</span>
+            </button>
+            <p className="text-[11px] text-[#8e8e93] dark:text-[#a1a1a6] leading-relaxed">
+              Explore available bays &amp; transit lines without signing in.
+            </p>
           </div>
         ) : (
           <form onSubmit={handleManagementSubmit} className="space-y-3.5 text-left pt-1" noValidate>

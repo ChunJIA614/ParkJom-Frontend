@@ -30,7 +30,7 @@ function RouteLoadingFallback() {
 }
 
 export function AppRoutes() {
-  const { isLoggedIn, loading, user } = useAuth();
+  const { isLoggedIn, isGuest, loading, user } = useAuth();
 
   if (loading) {
     return <SplashScreen />;
@@ -42,14 +42,17 @@ export function AppRoutes() {
         <Suspense fallback={<RouteLoadingFallback />}>
           <Routes>
             {/* The Login Page is the default main page on initial visit and after logout */}
-            <Route path="/" element={<LoginPage />} />
+            <Route path="/" element={isGuest ? <Navigate to="/commuter" replace /> : <LoginPage />} />
             <Route path="/login" element={<LoginPage />} />
             {/* Standalone PropertyManagement 14-day single-use invitation link */}
             <Route path="/management/invitation" element={<ManagementInvitationPage />} />
-            {/* Landing Page is reached when user clicks "Back to Home" */}
+            {/* Landing Page */}
             <Route path="/home" element={<LandingPage />} />
             <Route path="/landing" element={<LandingPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* Guest mode allows viewing Commuter dashboard (browse & transit maps) and parking details */}
+            <Route path="/commuter" element={<CommuterDashboard />} />
+            <Route path="/commuter/parking/:id" element={<ParkingDetail />} />
+            <Route path="*" element={<Navigate to={isGuest ? "/commuter" : "/"} replace />} />
           </Routes>
         </Suspense>
       </div>

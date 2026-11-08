@@ -315,7 +315,7 @@ export async function updateOwnerReply(
 }
 
 export async function getParkingReviews(
-  token: string,
+  token: string | undefined | null,
   parkingSpotId: number,
   page = 1,
   pageSize = 10,
@@ -329,7 +329,7 @@ export async function getParkingReviews(
     `/reviews/parking/${encodeURIComponent(String(parkingSpotId))}?${params.toString()}`,
     {
       method: 'GET',
-      headers: authorizationHeaders(token),
+      headers: token ? authorizationHeaders(token) : { Accept: 'application/json' },
       signal,
     },
   );
