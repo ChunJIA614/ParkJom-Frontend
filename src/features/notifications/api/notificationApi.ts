@@ -9,7 +9,7 @@ import {
   UpdatePreferenceItem,
   AdminBroadcastRequest,
   DeliveryStatusRecord,
-} from './types';
+} from '../types';
 
 export async function fetchInbox(
   token: string,

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Check } from 'lucide-react';
-import { fetchNotificationPreferences, updateNotificationPreferences } from '@/features/notifications/api';
+import { fetchNotificationPreferences, updateNotificationPreferences } from '@/features/notifications';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { Building, Sliders, Save, CheckCircle, Wifi, Battery, Radio, ShieldAlert, UserRound, Sparkles } from 'lucide-react';
-import { showAlert } from '@/contexts/ModalContext';
+import { showAlert } from '@/components/common/ModalProvider';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import ProfileDialog from '@/features/profile/components/ProfileDialog';
 

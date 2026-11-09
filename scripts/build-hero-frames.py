@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Rebuild the scroll-driven hero frame sets from a master video.
 
-The landing-page hero (`src/components/HeroScrollCanvas.jsx`) scrubs through an
+The landing-page hero (`src/features/landing/components/HeroScrollCanvas.jsx`) scrubs through an
 image sequence. Those images are *derived* assets: they must be re-extracted
 whenever the master video changes, otherwise the hero keeps showing an
 old, over-compressed copy.
@@ -185,7 +185,7 @@ def main() -> None:
 
     print(f"done     {len(frames)} frames, {total / 1024 / 1024:.1f} MB total")
     print(f"         avg {total / len(frames) / 1024:.1f} KB per frame")
-    print("next     update FRAME_SETS in src/components/HeroScrollCanvas.jsx if the count/width changed")
+    print("next     update FRAME_SETS in src/features/landing/components/HeroScrollCanvas.jsx if the count/width changed")
 
 
 if __name__ == "__main__":

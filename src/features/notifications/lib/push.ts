@@ -1,4 +1,4 @@
-import { fetchVapidPublicKey, registerPushSubscription, unregisterPushSubscription } from './api';
+import { fetchVapidPublicKey, registerPushSubscription, unregisterPushSubscription } from '../api/notificationApi';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);

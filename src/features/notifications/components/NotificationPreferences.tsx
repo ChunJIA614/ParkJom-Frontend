@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { NotificationPreferenceItem } from './types';
+import { NotificationPreferenceItem } from '../types';
 import {
   fetchNotificationPreferences,
   updateNotificationPreferences,
-} from './api';
-import { subscribeToWebPush, unsubscribeFromWebPush } from './push';
+} from '../api/notificationApi';
+import { subscribeToWebPush, unsubscribeFromWebPush } from '../lib/push';
 import { BellRing, Check, Shield, Loader2 } from 'lucide-react';
 
 interface NotificationPreferencesProps {

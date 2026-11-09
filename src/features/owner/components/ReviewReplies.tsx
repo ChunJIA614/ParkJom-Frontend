@@ -20,7 +20,7 @@ import {
   updateOwnerReply,
   reportReview,
 } from '@/features/commuter/api/reviewApi';
-import { showConfirm } from '@/contexts/ModalContext';
+import { showConfirm } from '@/components/common/ModalProvider';
 import SystemSelect from '@/components/ui/SystemSelect';
 import type { ParkingBay } from '../types';
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, LogOut, Menu, Search, Sparkles, SunMoon, UserRound } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
 import ThemeSegmentedControl from '@/components/ui/ThemeSegmentedControl';
-import { showConfirm } from '@/contexts/ModalContext';
+import { showConfirm } from '@/components/common/ModalProvider';
 import ProfileDialog from '@/features/profile/components/ProfileDialog';
 
 export type DashboardRole = 'commuter' | 'owner' | 'admin' | 'management';

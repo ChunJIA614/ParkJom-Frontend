@@ -3,7 +3,7 @@ import { motion, useInView, useReducedMotion } from 'motion/react';
 import { CalendarCheck, ChevronDown, ChevronRight, Compass, MapPin, TrainFront } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
 import { readableTextOn } from '@/lib/contrast';
-import HeroScrollCanvas, { getHeroPinViewports } from '@/components/HeroScrollCanvas';
+import HeroScrollCanvas, { getHeroPinViewports } from '@/features/landing/components/HeroScrollCanvas';
 import { useAuth } from '@/features/auth/context/AuthContext';
 
 /* ────────────────────────────────────────────────────────────────────────────

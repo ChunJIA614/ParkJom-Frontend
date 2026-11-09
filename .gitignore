@@ -1,48 +1,35 @@
-# Build artifacts
-**/[Bb]in/
-**/[Oo]bj/
-
-# User-specific configuration
-appsettings.Development.json
-appsettings.Local.json
-
-# Visual Studio / VS Code
-*.user
-**/.vs/
-**/.vscode/
-
-# Node
+# Dependencies and generated web output
 node_modules/
-
-# Frontend build
-frontend/dist/
 dist/
-/assets/
+coverage/
+*.tsbuildinfo
 
-# Firebase
+# Local environment overrides (.env.production contains public client settings)
+.env
+.env.local
+.env.*.local
+
+# Local editor and operating system files
+.vscode/
+.idea/
+.vs/
+*.user
+.DS_Store
+Thumbs.db
+
+# Hosting and build logs
 .firebase/
-firebase-debug.log
+*.log
 
-# Local AI/design tooling
+# Local tooling and temporary diagnostics
 .agents/
 .codex/
 .impeccable/
 .workbuddy-ai/
-
-# Environment files
-.env
-
-# Hero master video at the repo root (~56 MB). The scroll hero ships the derived
-# frame sets in public/frames*, rebuilt with scripts/build-hero-frames.py — the
-# master itself should not go into git history. Root-anchored so a small video
-# added elsewhere later is still tracked normally.
-/*.mp4
-
-# Node.js
-**/node_modules/
-**/package-lock.json
-!/package-lock.json
-
-# Dark-mode audit output
+.tmp/
 .tmp-shots/
-.tmp-dev.log
+artifacts/
+
+# Local design originals; deployable assets belong in public/ or src/
+/assets/
+/*.mp4

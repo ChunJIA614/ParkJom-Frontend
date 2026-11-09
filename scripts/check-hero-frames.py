@@ -143,7 +143,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Verify the landing hero frame sets.")
     ap.add_argument("--root", default=Path("public"), type=Path,
                     help="directory containing frames/, frames-hd/, frames-sm/ (default: public)")
-    ap.add_argument("--hero", default=Path("src/components/HeroScrollCanvas.jsx"), type=Path,
+    ap.add_argument("--hero", default=Path("src/features/landing/components/HeroScrollCanvas.jsx"), type=Path,
                     help="component that declares FRAME_SETS")
     args = ap.parse_args()
 

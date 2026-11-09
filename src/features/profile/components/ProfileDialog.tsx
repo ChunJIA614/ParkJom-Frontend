@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { showAlert, showConfirm } from '@/contexts/ModalContext';
+import { showAlert, showConfirm } from '@/components/common/ModalProvider';
 import ThemeSegmentedControl from '@/components/ui/ThemeSegmentedControl';
 import { useTheme } from '@/app/theme/ThemeContext';
 import {

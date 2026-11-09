@@ -7,7 +7,7 @@ import { useEffect, type PropsWithChildren } from 'react';
 import { AuthProvider } from '@/features/auth/context/AuthContext';
 import { GOOGLE_WEB_CLIENT_ID } from '@/features/auth/googleAuth';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { ModalProvider } from '@/contexts/ModalContext';
+import { ModalProvider } from '@/components/common/ModalProvider';
 import { ThemeProvider } from '@/app/theme/ThemeContext';
 import { NotificationProvider } from '@/features/notifications';
 

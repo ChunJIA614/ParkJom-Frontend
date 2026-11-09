@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { UploadCloud, CheckCircle, FileText, Landmark, ShieldCheck, HelpCircle, FileCheck, Loader2, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { showAlert } from '@/contexts/ModalContext';
+import { showAlert } from '@/components/common/ModalProvider';
 import { createParking, searchMalaysiaLocations } from '../api/propertyApi';
 import { loadRailStops } from '@/services/transitData';
 

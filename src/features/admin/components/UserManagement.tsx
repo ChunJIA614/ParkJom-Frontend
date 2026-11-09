@@ -21,7 +21,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { showAlert, showConfirm } from '@/contexts/ModalContext';
+import { showAlert, showConfirm } from '@/components/common/ModalProvider';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { adminUpdateUser, getAdminUserDetail, getAdminUsers } from '@/features/profile/api/profileApi';
 import { deleteAdminParkingSpot } from '../api/verificationApi';

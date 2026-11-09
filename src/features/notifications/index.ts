@@ -1,8 +1,8 @@
 export * from './types';
-export * from './api';
-export * from './push';
-export * from './NotificationContext';
-export * from './NotificationBell';
-export * from './NotificationItem';
-export * from './NotificationPreferences';
+export * from './api/notificationApi';
+export * from './lib/push';
+export * from './context/NotificationContext';
+export * from './components/NotificationBell';
+export * from './components/NotificationItem';
+export * from './components/NotificationPreferences';
 export { default as NotificationCenterPage } from './pages/NotificationCenterPage';

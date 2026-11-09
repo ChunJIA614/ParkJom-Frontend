@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { showConfirm } from '@/contexts/ModalContext';
+import { showConfirm } from '@/components/common/ModalProvider';
 import type { Booking, ParkingSpot, PublicParkingSpotImage } from '../types';
 import { loadJourneySession, saveJourneySession } from '../lib/journeySession';
 import { getWalkingRoute } from '@/services/walkingRoutes';

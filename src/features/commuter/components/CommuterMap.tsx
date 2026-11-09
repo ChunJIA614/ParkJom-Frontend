@@ -17,7 +17,7 @@ import stationData from '../data/mrt_lrt_stations.json';
 import { ParkingSpot, Booking } from '../types';
 import { loadRailNetworkData } from '@/services/transitData';
 import { watchDeviceLocation } from '@/services/deviceCapabilities';
-import { showAlert } from '@/contexts/ModalContext';
+import { showAlert } from '@/components/common/ModalProvider';
 import { useTheme } from '@/app/theme/ThemeContext';
 import SystemSelect from '@/components/ui/SystemSelect';
 import StationPickerSheet from './StationPickerSheet';

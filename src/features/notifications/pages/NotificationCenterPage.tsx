@@ -14,10 +14,10 @@ import {
   Info,
   Check,
 } from 'lucide-react';
-import { useNotifications } from '../NotificationContext';
-import { NotificationItem } from '../NotificationItem';
+import { useNotifications } from '../context/NotificationContext';
+import { NotificationItem } from '../components/NotificationItem';
 import { NotificationCategory } from '../types';
-import { NotificationPreferences } from '../NotificationPreferences';
+import { NotificationPreferences } from '../components/NotificationPreferences';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { getDashboardPath } from '@/app/routes/roleRouting';
 

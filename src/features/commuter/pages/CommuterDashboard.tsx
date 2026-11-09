@@ -87,7 +87,7 @@ import {
 import { useAuth } from '@/features/auth/context/AuthContext';
 import CopilotLauncher from '@/features/copilot/components/CopilotLauncher';
 import ProfileDialog from '@/features/profile/components/ProfileDialog';
-import { showConfirm, showAlert } from '@/contexts/ModalContext';
+import { showConfirm, showAlert } from '@/components/common/ModalProvider';
 import {
   clearJourneySession,
   loadJourneySession,

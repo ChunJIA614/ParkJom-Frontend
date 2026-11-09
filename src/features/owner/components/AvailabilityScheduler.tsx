@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { showAlert, showConfirm } from '@/contexts/ModalContext';
+import { showAlert, showConfirm } from '@/components/common/ModalProvider';
 import {
   closeParkingAvailabilityDates,
   createParkingAvailabilityRules,

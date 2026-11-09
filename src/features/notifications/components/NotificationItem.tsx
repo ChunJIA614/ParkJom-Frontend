@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   ShieldAlert
 } from 'lucide-react';
-import { NotificationDto } from './types';
+import { NotificationDto } from '../types';
 
 interface NotificationItemProps {
   notification: NotificationDto;

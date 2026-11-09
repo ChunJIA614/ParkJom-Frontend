@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, SlidersHorizontal, Loader2 } from 'lucide-react';
-import { useNotifications } from './NotificationContext';
+import { useNotifications } from '../context/NotificationContext';
 import { NotificationItem } from './NotificationItem';
 
 interface NotificationBellProps {

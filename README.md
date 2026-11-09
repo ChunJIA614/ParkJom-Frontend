@@ -8,7 +8,7 @@ This repository is frontend-only. The API, auth backend, data persistence, and I
 
 - Public landing page with a cinematic hero and role-based entry points
 - Google OAuth sign-in and persisted client session state
-- Role-aware routing for Commuter, Owner, and Admin users
+- Role-aware routing for Commuter, Owner, Property Management, and Admin users
 - Commuter search, parking detail, journey state, wallet, vehicles, and map browsing
 - Owner onboarding, availability scheduling, support, settings, and parking management views
 - Admin governance, settlement, IoT health, enforcement, support, audit, and configuration views
@@ -38,19 +38,23 @@ Route access is role-aware:
 
 | Route | Access | Screen |
 | --- | --- | --- |
-| `/` | Public | Landing page, or dashboard redirect when signed in |
+| `/` | Public | Login page, or dashboard redirect for guests and signed-in users |
 | `/login` | Public | Google sign-in |
-| `/commuter` | Commuter | Commuter dashboard |
-| `/commuter/parking/:id` | Commuter | Parking detail |
+| `/home`, `/landing` | Public | Landing page |
+| `/commuter` | Guest or Commuter | Commuter dashboard |
+| `/commuter/parking/:id` | Guest or Commuter | Parking detail |
 | `/owner` | Owner | Owner dashboard |
+| `/management` | Property Management | Property management dashboard |
 | `/admin` | Admin | Admin dashboard |
 
 When a signed-in user visits the wrong role route, the app redirects to the correct dashboard.
 
 ## Local Setup
 
+Use Node.js 22 or newer.
+
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -59,6 +63,8 @@ The dev server runs on port 3000. It proxies `/api` requests to the target confi
 ## Configuration
 
 Use Vite environment variables with the `VITE_` prefix.
+
+For a new local setup, copy [.env.example](./.env.example) to `.env.local` and fill in the values you need. Production client defaults live in `.env.production`.
 
 ```env
 VITE_API_BASE=http://localhost:5276/api
@@ -76,58 +82,7 @@ Notes:
 
 ## Mobile Apps
 
-The mobile apps are thin Capacitor wrappers around the existing PWA. Feature screens remain in `src/`; native projects live in `android/` and `ios/`.
-
-The current application ID is `com.parkjom.app`. Confirm this ID before publishing because changing it after release creates a separate store application.
-
-The Android build requires Android Studio and JDK 21. The iOS build requires macOS and Xcode. iOS dependencies, signing, and simulator/device testing cannot be completed on Windows.
-
-After installing dependencies, sync the web build into the native projects:
-
-```bash
-npm install
-npm run mobile:sync
-```
-
-Open a native project with `npm run mobile:android` or `npm run mobile:ios`. Run `npm run mobile:sync` again after web-code changes.
-
-The sync hook also keeps iOS Swift package paths portable between Windows and macOS and checks that each local plugin package exists.
-
-### Build an Android installer
-
-In PowerShell, from the repository root:
-
-```powershell
-$env:JAVA_HOME = 'C:\Program Files\Java\jdk-21'
-$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
-npm run mobile:sync
-Set-Location android
-.\gradlew.bat :app:assembleDebug :app:lintDebug
-```
-
-Adjust `JAVA_HOME` if Java 21 is installed elsewhere. The installable test APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Copy it to an Android phone to install it, or use `adb install -r app/build/outputs/apk/debug/app-debug.apk` from `android/` with a phone or emulator connected. This build uses the development signing certificate; store distribution needs a release signing key.
-
-For Google sign-in on this development machine, register an Android OAuth client in the web client's Google Cloud project with package `com.parkjom.app` and SHA-1 `EC:D5:47:DE:2E:1A:21:F7:C9:54:03:DF:1F:1F:57:BE:3D:38:A2:74`. Other machines and release keys have different fingerprints; read them with `gradlew signingReport`.
-
-### Finish the iOS app on a Mac
-
-The iOS source project is `ios/App/App.xcodeproj`. Windows can sync its web assets and plugin references, but cannot compile or sign an iPhone installer.
-
-1. Create a Google OAuth client of type **iOS**, using bundle ID `com.parkjom.app`, in the same Google Cloud project as the existing web client.
-2. Set `VITE_GOOGLE_IOS_CLIENT_ID` in `.env.production` to that client ID. Add its reversed client ID as another URL scheme in `ios/App/App/Info.plist`, preserving the existing `parkjom` scheme. For example, `123-example.apps.googleusercontent.com` becomes `com.googleusercontent.apps.123-example`.
-3. On the Mac, run `npm ci`, then `npm run mobile:ios` from the repository root.
-4. In Xcode, select the **App** target, choose your Apple development team under **Signing & Capabilities**, then run on an iPhone or simulator.
-5. To distribute through TestFlight or the App Store, archive the app in Xcode and upload it using your Apple Developer account.
-
-iOS Google sign-in remains unavailable until steps 1 and 2 are completed. The repository does not contain an Apple signing identity or a configured development team.
-
-Native configuration still required:
-
-- Android Google sign-in: create an Android OAuth client in the same Google Cloud project as `VITE_GOOGLE_WEB_CLIENT_ID`, using package `com.parkjom.app` and the SHA-1 certificate for each build key. Run `gradlew signingReport` inside `android/` to read the local certificate; release and Play App Signing certificates must be registered separately.
-- iOS Google sign-in: create an iOS OAuth client for bundle ID `com.parkjom.app`, set `VITE_GOOGLE_IOS_CLIENT_ID`, and add its reversed client ID as a URL scheme in `ios/App/App/Info.plist`.
-- App Store distribution: Apple may require Sign in with Apple when Google sign-in is offered. This also needs backend token validation and is not enabled yet.
-- Native wallet checkout: the top-up request sends `returnTarget: "native"`; the API bridge redirects successful and cancelled Stripe sessions to `parkjom://commuter?tab=wallet&topup=success&session_id=...` or `parkjom://commuter?tab=wallet&topup=cancelled`. Web checkout uses the configured Firebase `/commuter` return URL instead.
-- Wallet recovery: the Wallet view reads `GET /api/wallet` and verifies saved Stripe sessions with `GET /api/wallet/topup/status?sessionId=...`. Only an authenticated, owner-matched session that Stripe reports as open can be resumed; completed or expired sessions are reconciled instead of reopening a terminal Checkout page.
+Android and iOS projects live in `android/` and `ios/`. See [the mobile build guide](./docs/mobile.md) for Capacitor sync, Android installers, Google sign-in, and iOS signing.
 
 ## Scripts
 
@@ -136,7 +91,10 @@ Native configuration still required:
 | `npm run dev` | Start the Vite dev server on port 3000. |
 | `npm run preview` | Preview the production build locally. |
 | `npm run build` | Create a production build in `dist/`. |
-| `npm run lint` | Type-check the project with TypeScript. |
+| `npm run typecheck` | Type-check the project with TypeScript. |
+| `npm run lint` | Compatibility alias for `typecheck`. |
+| `npm test` | Run parking-coordinate, vehicle-storage, and native sign-in regression checks. |
+| `npm run check` | Run type checking, regression checks, and the production build. |
 | `npm run mobile:sync` | Build the web app and copy it into Android and iOS projects. |
 | `npm run mobile:android` | Sync and open the Android project in Android Studio. |
 | `npm run mobile:ios` | Sync and open the iOS project in Xcode. |
@@ -146,15 +104,9 @@ Native configuration still required:
 
 Firebase Hosting is configured for SPA routing in [firebase.json](./firebase.json). The default Firebase project is `united-perigee-400000`, defined in [.firebaserc](./.firebaserc).
 
-### GitHub
+### GitHub checks
 
-Commit and push changes to the main branch:
-
-```bash
-git add README.md
-git commit -m "Update README"
-git push origin main
-```
+Open a pull request with your changes. The frontend workflow installs the locked dependencies and runs `npm run check`. It also checks pushes to `main`; publishing remains a separate step.
 
 ### Firebase
 
@@ -170,33 +122,32 @@ That command builds the app and publishes the `dist/` output to Firebase Hosting
 
 ```text
 src/
-├── app/                 # App composition, providers, and routing
-├── features/             # Feature-specific screens, components, and data
-│   ├── admin/
-│   ├── auth/
-│   ├── commuter/
-│   ├── landing/
-│   └── owner/
-├── components/           # Reusable UI, layout, and common components
-│   ├── ui/
-│   ├── layout/
-│   └── common/
-├── services/             # Shared API and external-service clients
-├── app/styles/           # Global styles and theme tokens
-├── types/                # Global TypeScript declarations
-└── main.tsx              # Vite entry point
-
-public/                   # PWA assets, icons, images, service worker, and rail data
-.github/skills/           # Project-local Codex/Copilot architecture skill
+  app/                    # App shell, routes, providers, styles, and theme
+  features/               # Feature-owned pages, components, APIs, and state
+  components/             # Shared UI, layouts, and common components
+  hooks/                  # Shared React hooks
+  lib/                    # Shared utilities
+  services/               # Shared API clients and integrations
+  types/                  # Global TypeScript declarations
+  main.tsx                # Application entry point
+public/                   # Static files served at fixed URLs
+android/                  # Android source project
+ios/                      # iOS source project
+tests/                    # Automated data regression checks
+scripts/                  # Asset maintenance and native build helpers
+  archive/                # Historical, manual browser diagnostics
+docs/                     # Build guides and historical reference material
+.github/workflows/        # Frontend continuous integration
 ```
+
+See [project organization](./docs/project-structure.md) for file placement and cleanup decisions.
 
 ## Build Check
 
 Before publishing changes, run:
 
 ```bash
-npm run lint
-npm run build
+npm run check
 ```
 
-Both commands should finish without errors.
+All checks should finish without errors. The frontend CI workflow runs the same checks for pull requests and pushes to `main`.

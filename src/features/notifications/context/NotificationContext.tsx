@@ -7,14 +7,14 @@ import {
   NotificationInboxResponse,
   UnreadCountDto,
   NotificationQuery
-} from './types';
+} from '../types';
 import {
   fetchInbox,
   fetchUnreadCount,
   markNotificationsAsRead,
   markAllNotificationsAsRead,
   archiveNotification
-} from './api';
+} from '../api/notificationApi';
 
 interface NotificationState {
   items: NotificationDto[];
