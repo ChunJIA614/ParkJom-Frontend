@@ -614,6 +614,7 @@ export default function CommuterDashboard() {
   const handledTopUpReturnRef = useRef<string | null>(null);
   const walletReconciliationRef = useRef(false);
   const localCheckoutWindowRef = useRef<Window | null>(null);
+  const refreshWalletActivityRef = useRef<() => void>(() => {});
 
   // The API is authoritative; the cache keeps the previous list visible while
   // a fresh authenticated request is in flight.
@@ -1513,12 +1514,8 @@ export default function CommuterDashboard() {
       if (status.state === 'completed' && status.isCredited) {
         clearPendingWalletTopUp(user.userId);
         setPendingTopUp(null);
-        setWalletTopUpFeedback({
-          tone: 'success',
-          title: 'Top-up completed',
-          message: `${status.currency} ${status.amount.toFixed(2)} has been credited to your wallet.`,
-          payment: reconciledPayment,
-        });
+        setWalletTopUpFeedback(null);
+        refreshWalletActivityRef.current();
         closeExternalWindow(localCheckoutWindowRef.current);
         localCheckoutWindowRef.current = null;
         return status.state;
@@ -1667,6 +1664,7 @@ export default function CommuterDashboard() {
   }, [user?.token]);
 
   const refreshTopUpHistory = refreshWalletActivity;
+  refreshWalletActivityRef.current = refreshWalletActivity;
 
   const allWalletActivities = useMemo(() => {
     interface ActivityItem {
@@ -3756,28 +3754,24 @@ export default function CommuterDashboard() {
           {/* ─── TAB: Wallet ─── */}
           {activeTab === 'wallet' && (
             <div className="space-y-4">
-              {walletTopUpFeedback && (
+              {walletTopUpFeedback && walletTopUpFeedback.tone !== 'success' && (
                 <section
                   role="status"
                   aria-live="polite"
                   className={`wallet-topup-result wallet-topup-result--${walletTopUpFeedback.tone}`}
                 >
                   <div className="wallet-topup-result__icon" aria-hidden="true">
-                    {walletTopUpFeedback.tone === 'success'
-                      ? <CheckCircle2 size={28} />
-                      : walletTopUpFeedback.tone === 'processing'
-                        ? <Loader2 size={28} className="animate-spin" />
+                    {walletTopUpFeedback.tone === 'processing'
+                      ? <Loader2 size={28} className="animate-spin" />
                       : walletTopUpFeedback.tone === 'warning'
                         ? <AlertCircle size={28} />
                         : <Info size={28} />}
                   </div>
                   <div className="wallet-topup-result__content">
                     <p className="wallet-topup-result__eyebrow">
-                      {walletTopUpFeedback.tone === 'success'
-                        ? 'Payment confirmed'
-                        : walletTopUpFeedback.tone === 'processing'
-                          ? 'Secure payment verification'
-                          : 'Wallet update'}
+                      {walletTopUpFeedback.tone === 'processing'
+                        ? 'Secure payment verification'
+                        : 'Wallet update'}
                     </p>
                     <h2>{walletTopUpFeedback.title}</h2>
                     <p>{walletTopUpFeedback.message}</p>
@@ -3795,11 +3789,9 @@ export default function CommuterDashboard() {
                         <div>
                           <dt>Status</dt>
                           <dd>
-                            {walletTopUpFeedback.tone === 'success'
-                              ? 'Credited'
-                              : walletTopUpFeedback.tone === 'processing'
-                                ? 'Confirming'
-                                : walletTopUpFeedback.title.replace('Top-up ', '')}
+                            {walletTopUpFeedback.tone === 'processing'
+                              ? 'Confirming'
+                              : walletTopUpFeedback.title.replace('Top-up ', '')}
                           </dd>
                         </div>
                       </dl>
