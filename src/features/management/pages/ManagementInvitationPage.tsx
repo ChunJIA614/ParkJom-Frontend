@@ -8,7 +8,7 @@ import { useTheme } from '@/app/theme/ThemeContext';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { activateManagementInvitation, managementSessionFromLogin } from '../api/managementApi';
 
-const MIN_PASSWORD_LENGTH = 12;
+const MIN_PASSWORD_LENGTH = 8;
 
 export default function ManagementInvitationPage() {
   const { isDark, toggleTheme } = useTheme();
@@ -150,7 +150,7 @@ export default function ManagementInvitationPage() {
                 required
                 minLength={MIN_PASSWORD_LENGTH}
                 maxLength={128}
-                placeholder="At least 12 characters"
+                placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                 value={newPassword}
                 onChange={(e) => { setNewPassword(e.target.value); setError(''); }}
                 className="w-full min-h-11 pl-3.5 pr-11 py-2.5 rounded-xl border border-black/[0.1] dark:border-white/[0.14] bg-white/90 dark:bg-[#1c1c1e] text-[14px] text-[#1d1d1f] dark:text-[#f5f5f7] placeholder:text-[#6e6e73] dark:placeholder:text-[#8e8e93] focus:outline-none focus:ring-2 focus:ring-[#0071e3]/35 focus:border-[#0071e3]"
@@ -191,7 +191,7 @@ export default function ManagementInvitationPage() {
           <ul className="space-y-1.5 text-[12px]" aria-live="polite">
             <li className={`flex items-center gap-2 ${lengthMet ? 'text-[#248a3d] dark:text-[#30d158]' : 'text-[#6e6e73] dark:text-[#a1a1a6]'}`}>
               <CheckCircle2 size={14} aria-hidden="true" />
-              <span>12 to 128 characters ({newPassword.length}/{MIN_PASSWORD_LENGTH})</span>
+              <span>{MIN_PASSWORD_LENGTH} to 128 characters ({newPassword.length}/{MIN_PASSWORD_LENGTH})</span>
             </li>
             <li className={`flex items-center gap-2 ${matchMet ? 'text-[#248a3d] dark:text-[#30d158]' : 'text-[#6e6e73] dark:text-[#a1a1a6]'}`}>
               <CheckCircle2 size={14} aria-hidden="true" />
