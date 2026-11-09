@@ -126,6 +126,7 @@ function SidebarNavigation({
                           type="button"
                           isActive={isActive}
                           tooltip={item.label}
+                          data-tour-sidebar-id={item.id}
                           aria-current={isActive ? 'page' : undefined}
                           onClick={() => {
                             onNavigate(item.id);

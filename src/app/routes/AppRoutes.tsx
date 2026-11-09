@@ -1,7 +1,12 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import SplashScreen from '@/components/common/SplashScreen';
+import WelcomeLoadingScreen from '@/components/onboarding/WelcomeLoadingScreen';
+import {
+  markWelcomeScreenCompleted,
+  shouldShowWelcomeScreen,
+} from '@/components/onboarding/onboardingStorage';
 import { RequireRole } from './RequireRole';
 import { getDashboardPath } from './roleRouting';
 
@@ -31,6 +36,15 @@ function RouteLoadingFallback() {
 
 export function AppRoutes() {
   const { isLoggedIn, isGuest, loading, user } = useAuth();
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  useEffect(() => {
+    if (isLoggedIn && user) {
+      setShowWelcome(shouldShowWelcomeScreen(user.userId, user.role));
+    } else {
+      setShowWelcome(false);
+    }
+  }, [isLoggedIn, user?.userId, user?.role]);
 
   if (loading) {
     return <SplashScreen />;
@@ -56,6 +70,18 @@ export function AppRoutes() {
           </Routes>
         </Suspense>
       </div>
+    );
+  }
+
+  if (showWelcome && user && (user.role === 'Commuter' || user.role === 'Owner')) {
+    return (
+      <WelcomeLoadingScreen
+        user={user}
+        onComplete={() => {
+          markWelcomeScreenCompleted(user.userId);
+          setShowWelcome(false);
+        }}
+      />
     );
   }
 

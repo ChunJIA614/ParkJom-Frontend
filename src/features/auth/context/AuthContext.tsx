@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { useNavigate } from 'react-router-dom';
 import { apiRequest, AUTH_REJECTED_EVENT } from '@/services/apiClient';
 import GuestLoginPromptModal from '../components/GuestLoginPromptModal';
+import { clearWelcomeSession } from '@/components/onboarding/onboardingStorage';
 
 // ---- Types ----
 export type UserRole = 'Commuter' | 'Owner' | 'Admin' | 'PropertyManagement';
@@ -151,6 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       }).catch((err) => console.warn('Server logout notice failed:', err));
     }
+    clearWelcomeSession(user?.userId);
     setUser(null);
     setIsGuest(false);
     localStorage.removeItem('parkjom_guest_mode');

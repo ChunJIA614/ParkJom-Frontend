@@ -30,6 +30,7 @@ export default function BottomNav({ items, activeId, onChange }: BottomNavProps)
             <button
               key={id}
               type="button"
+              data-tour-bottomnav-id={id}
               onClick={() => onChange(id)}
               aria-current={active ? 'page' : undefined}
               className={`dashboard-bottom-nav__item ${active ? 'is-active' : ''}`}

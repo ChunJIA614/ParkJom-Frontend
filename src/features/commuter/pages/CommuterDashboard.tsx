@@ -78,6 +78,12 @@ import DashboardHeader from '@/components/layout/DashboardHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
+import FirstTimeIconGuide from '@/components/onboarding/FirstTimeIconGuide';
+import {
+  isFirstTimeUserForTour,
+  markIconTourCompleted,
+  resetIconTourForReplay,
+} from '@/components/onboarding/onboardingStorage';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import CopilotLauncher from '@/features/copilot/components/CopilotLauncher';
 import ProfileDialog from '@/features/profile/components/ProfileDialog';
@@ -615,6 +621,15 @@ export default function CommuterDashboard() {
   const walletReconciliationRef = useRef(false);
   const localCheckoutWindowRef = useRef<Window | null>(null);
   const refreshWalletActivityRef = useRef<() => void>(() => {});
+  const [showIconGuide, setShowIconGuide] = useState(false);
+
+  useEffect(() => {
+    if (isGuest || !user?.userId) return;
+    if (isFirstTimeUserForTour(user.userId, 'Commuter')) {
+      const timer = window.setTimeout(() => setShowIconGuide(true), 450);
+      return () => window.clearTimeout(timer);
+    }
+  }, [isGuest, user?.userId]);
 
   // The API is authoritative; the cache keeps the previous list visible while
   // a fresh authenticated request is in flight.
@@ -2558,6 +2573,14 @@ export default function CommuterDashboard() {
           handleNavigateTab(id as CommuterTab);
           setSidebarOpen(false);
         }}
+        onStartGuide={
+          !isGuest && user
+            ? () => {
+                resetIconTourForReplay(user.userId, 'Commuter');
+                setShowIconGuide(true);
+              }
+            : undefined
+        }
       />
 
       {/* ─── Main Layout ─── */}
@@ -4685,6 +4708,17 @@ export default function CommuterDashboard() {
           setGpsVerified('verified');
           setJourneyStage('arrived');
           updateJourneyStage('arrived', user?.userId);
+        }}
+      />
+
+      <FirstTimeIconGuide
+        open={showIconGuide}
+        role="Commuter"
+        userName={user?.firstName || user?.email?.split('@')[0]}
+        onSelectTab={(tabId) => handleNavigateTab(tabId as CommuterTab)}
+        onComplete={() => {
+          markIconTourCompleted(user?.userId, 'Commuter');
+          setShowIconGuide(false);
         }}
       />
 

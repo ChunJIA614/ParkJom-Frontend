@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, LogOut, Menu, Search, SunMoon, UserRound } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Search, Sparkles, SunMoon, UserRound } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
 import ThemeSegmentedControl from '@/components/ui/ThemeSegmentedControl';
 import { showConfirm } from '@/contexts/ModalContext';
@@ -32,6 +32,8 @@ interface DashboardHeaderProps {
   searchPlaceholder?: string;
   onSignIn?: () => void;
   isGuest?: boolean;
+  /** Optional callback to trigger the interactive first-time icon guide */
+  onStartGuide?: () => void;
 }
 
 export interface DashboardSearchItem {
@@ -82,6 +84,7 @@ export default function DashboardHeader({
   searchPlaceholder = 'Search dashboard pages',
   onSignIn,
   isGuest = false,
+  onStartGuide,
 }: DashboardHeaderProps) {
   const meta = ROLE_META[role];
   const [profileImageFailed, setProfileImageFailed] = useState(false);
@@ -248,7 +251,7 @@ export default function DashboardHeader({
           </nav>
         )}
 
-        {/* Right: search + notifications + account */}
+        {/* Right: search + guide + notifications + account */}
         <div className="workspace-header__actions flex items-center gap-1 sm:gap-2 shrink-0">
           {searchItems.length > 0 && onSearchSelect && (
             <>
@@ -311,6 +314,19 @@ export default function DashboardHeader({
             </>
           )}
 
+          {onStartGuide && (
+            <button
+              type="button"
+              onClick={onStartGuide}
+              title="Interactive Icon Guide"
+              aria-label="Start interactive icon guide"
+              className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-xl border border-[#0071e3]/20 dark:border-[#0a84ff]/25 bg-[#0071e3]/[0.06] dark:bg-[#0a84ff]/12 text-[#0071e3] dark:text-[#409cff] hover:bg-[#0071e3]/12 dark:hover:bg-[#0a84ff]/20 text-[12px] font-semibold transition-all cursor-pointer"
+            >
+              <Sparkles size={14} aria-hidden="true" />
+              <span className="hidden lg:inline">Guide</span>
+            </button>
+          )}
+
           {actions}
 
           {user ? (
@@ -365,6 +381,17 @@ export default function DashboardHeader({
                     >
                       <UserRound size={16} aria-hidden="true" />
                       <span>My profile</span>
+                    </button>
+                  )}
+                  {onStartGuide && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { setAccountOpen(false); onStartGuide(); }}
+                      className="workspace-header__account-menu-item hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[#0071e3] dark:text-[#409cff]"
+                    >
+                      <Sparkles size={16} aria-hidden="true" />
+                      <span>Interactive icon guide</span>
                     </button>
                   )}
                   <div className="border-t border-b border-[#f1f3f4] dark:border-white/[0.08] px-3 py-2.5 space-y-2">

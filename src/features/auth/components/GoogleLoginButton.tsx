@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { completeUserProfile, signInWithGoogle } from '../api/authApi';
 import { isGoogleLoginCancellation, signInWithNativeGoogle } from '../googleAuth';
 import { readApiError } from '@/services/apiClient';
+import { markFreshLoginForWelcome } from '@/components/onboarding/onboardingStorage';
 
 type AuthResponsePayload = {
   success?: boolean;
@@ -200,7 +201,7 @@ export default function GoogleLoginButton() {
       }
 
       const data = await res.json();
-      finishLogin(data);
+      finishLogin(data, true);
     } catch (err: any) {
       console.error('❌ Phone verification failed:', err.message);
       setPhoneError(err.message);
@@ -210,12 +211,16 @@ export default function GoogleLoginButton() {
   };
 
   // ---- Finish login: store user and redirect ----
-  const finishLogin = (data: AuthResponsePayload) => {
+  const finishLogin = (data: AuthResponsePayload, isNewRegistration = false) => {
     // Backend enum: Admin=1, PropertyOwner=2, Renter=3
     const userTypeMap: Record<number, UserRole> = { 1: 'Admin', 2: 'Owner', 3: 'Commuter' };
     const backendUser = data.user!;
     const userType = backendUser.userType!;
     const role = userTypeMap[userType];
+
+    if (backendUser.userId) {
+      markFreshLoginForWelcome(backendUser.userId, isNewRegistration);
+    }
 
     setUser({
       userId: backendUser.userId!,

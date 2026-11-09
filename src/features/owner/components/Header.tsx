@@ -15,6 +15,7 @@ interface HeaderProps {
   isSidebarOpen: boolean;
   searchItems: DashboardSearchItem[];
   onSearchSelect: (id: string) => void;
+  onStartGuide?: () => void;
 }
 
 export default function Header({
@@ -25,6 +26,7 @@ export default function Header({
   isSidebarOpen,
   searchItems,
   onSearchSelect,
+  onStartGuide,
 }: HeaderProps) {
   const notificationActions = (
     <NotificationBell
@@ -48,6 +50,7 @@ export default function Header({
       hideDesktopBrand
       searchItems={searchItems}
       onSearchSelect={onSearchSelect}
+      onStartGuide={onStartGuide}
     />
   );
 }

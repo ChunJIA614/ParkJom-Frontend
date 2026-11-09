@@ -21,6 +21,12 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
+import FirstTimeIconGuide from '@/components/onboarding/FirstTimeIconGuide';
+import {
+  isFirstTimeUserForTour,
+  markIconTourCompleted,
+  resetIconTourForReplay,
+} from '@/components/onboarding/onboardingStorage';
 import DashboardHome from '../components/DashboardHome';
 import AvailabilityScheduler from '../components/AvailabilityScheduler';
 import PropertyOnboarding from '../components/PropertyOnboarding';
@@ -180,6 +186,16 @@ export default function OwnerDashboard() {
   useEffect(() => {
     localStorage.setItem('parkjom_owner_sidebar_collapsed', String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
+
+  const [showIconGuide, setShowIconGuide] = useState(false);
+
+  useEffect(() => {
+    if (!user?.userId) return;
+    if (isFirstTimeUserForTour(user.userId, 'Owner')) {
+      const timer = window.setTimeout(() => setShowIconGuide(true), 450);
+      return () => window.clearTimeout(timer);
+    }
+  }, [user?.userId]);
 
   // 1. Active Registered Parking Bays — fetched from backend
   const [bays, setBays] = useState<ParkingBay[]>([]);
@@ -622,6 +638,14 @@ export default function OwnerDashboard() {
             setActiveView(id as OwnerView);
             setIsSidebarOpen(false);
           }}
+          onStartGuide={
+            user
+              ? () => {
+                  resetIconTourForReplay(user.userId, 'Owner');
+                  setShowIconGuide(true);
+                }
+              : undefined
+          }
         />
 
         {/* Render View Panels */}
@@ -733,6 +757,17 @@ export default function OwnerDashboard() {
             return;
           }
           setActiveView(id as OwnerView);
+        }}
+      />
+
+      <FirstTimeIconGuide
+        open={showIconGuide}
+        role="Owner"
+        userName={user?.firstName || user?.email?.split('@')[0]}
+        onSelectTab={(tabId) => setActiveView(tabId as OwnerView)}
+        onComplete={() => {
+          markIconTourCompleted(user?.userId, 'Owner');
+          setShowIconGuide(false);
         }}
       />
     </div>
