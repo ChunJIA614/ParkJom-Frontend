@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { SocialLogin } from '@capgo/capacitor-social-login';
 
 export const GOOGLE_WEB_CLIENT_ID = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID
-  || '917128720686-vrm50eevjakijmkftq8dj4qj7itl8d5m.apps.googleusercontent.com';
+  || '681911813064-uk2mmra0532rp7gcmq3frfj5h37siq5d.apps.googleusercontent.com';
 
 const GOOGLE_IOS_CLIENT_ID = import.meta.env.VITE_GOOGLE_IOS_CLIENT_ID;
 let nativeGoogleInitialized = false;
