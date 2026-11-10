@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
 
 /**
  * System-wide appearance control for ParkJom.
@@ -97,6 +98,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     applyTheme(resolved);
+    if (Capacitor.isNativePlatform()) {
+      void SystemBars.setStyle({ style: resolved === 'dark' ? SystemBarsStyle.Dark : SystemBarsStyle.Light })
+        .catch(error => console.warn('Unable to update system bar appearance:', error));
+    }
   }, [resolved]);
 
   // Keep multiple tabs/windows of the same account in sync.

@@ -1,24 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
-import { motion, useInView, useReducedMotion } from 'motion/react';
-import { CalendarCheck, ChevronDown, ChevronRight, Compass, MapPin, TrainFront } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CalendarCheck, ChevronDown, ChevronRight, MapPin, TrainFront, Wallet, TicketCheck, Building2, Bell } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
-import { readableTextOn } from '@/lib/contrast';
-import HeroScrollCanvas, { getHeroPinViewports } from '@/features/landing/components/HeroScrollCanvas';
+import TransitCoverage from '../components/TransitCoverage';
+import Reveal from '../components/Reveal';
+import OwnerIntro from '../components/OwnerIntro';
+import HeroScrollCanvas from '@/features/landing/components/HeroScrollCanvas';
 import { useAuth } from '@/features/auth/context/AuthContext';
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Apple design tokens used on this page
- *   text      #1d1d1f / secondary #6e6e73 / tertiary #86868b
- *   surfaces  #ffffff / #f5f5f7 / #000000
- *   action    #0071e3 (button) · #0066cc (link, light) · #2997ff (link, dark)
- * ──────────────────────────────────────────────────────────────────────────── */
 
 const NAV_HEIGHT = 52;
 
 const navigation = [
   { label: 'Overview', href: '#overview' },
   { label: 'How it works', href: '#how-it-works' },
-  { label: 'Stations', href: '#stations' },
+  { label: 'Transit network', href: '#stations' },
 ];
 
 const steps = [
@@ -26,98 +20,31 @@ const steps = [
     icon: MapPin,
     eyebrow: 'Step 1',
     title: 'Pick your station.',
-    description: 'Choose the Kelana Jaya or Ampang Line stop you ride from and see condo bays within a 3‑minute walk.',
+    description: 'Explore rail and bus connections across the Klang Valley, then browse verified parking near your station.',
   },
   {
     icon: CalendarCheck,
     eyebrow: 'Step 2',
-    title: 'Reserve your weekday.',
-    description: 'Lock in an 8AM – 6PM bay by the day or by the month. Pay in the app, and the spot is yours.',
+    title: 'Choose your parking.',
+    description: 'Compare the rate, available dates, and bay features. Select your vehicle and review the booking before you pay.',
   },
   {
     icon: TrainFront,
     eyebrow: 'Step 3',
     title: 'Park. Walk. Ride.',
-    description: 'Show your Parking Pass at the condo gate, follow the walking route, and catch your train on time.',
+    description: 'Keep your Parking Pass, booking details, and supported gate controls together in the app. Then continue your journey.',
   },
 ] as const;
 
-const LINES = {
-  'Kelana Jaya Line': { short: 'KJ', color: '#D50032' },
-  'Ampang Line': { short: 'AG', color: '#E57200' },
-} as const;
-
-type LineName = keyof typeof LINES;
-
-// Sample display data — replace with live availability from the parking API.
-const popularStations: { station: string; line: LineName; walk: number; price: number }[] = [
-  { station: 'Kelana Jaya', line: 'Kelana Jaya Line', walk: 3, price: 10 },
-  { station: 'Taman Bahagia', line: 'Kelana Jaya Line', walk: 2, price: 9 },
-  { station: 'Sri Rampai', line: 'Kelana Jaya Line', walk: 3, price: 8 },
-  { station: 'Wangsa Maju', line: 'Kelana Jaya Line', walk: 3, price: 9 },
-  { station: 'Ampang', line: 'Ampang Line', walk: 3, price: 8 },
-  { station: 'Cahaya', line: 'Ampang Line', walk: 2, price: 8 },
-  { station: 'Cempaka', line: 'Ampang Line', walk: 3, price: 9 },
-  { station: 'Pandan Indah', line: 'Ampang Line', walk: 3, price: 8 },
-];
-
-const lineFilters = ['All', ...Object.keys(LINES)] as const;
-type LineFilter = (typeof lineFilters)[number];
-
 /* ── Primitives ─────────────────────────────────────────────────────────────── */
-
-const btnPrimary =
-  'inline-flex min-h-11 items-center justify-center rounded-xl bg-[#0071e3] px-[22px] text-[17px] tracking-[-0.022em] text-white transition-colors duration-200 hover:bg-[#0077ed]';
-
-function TextLink({ href, children, dark = false }: { href: string; children: React.ReactNode; dark?: boolean }) {
-  return (
-    <a
-      href={href}
-      className={`group inline-flex items-center gap-0.5 text-[17px] tracking-[-0.022em] hover:underline ${dark ? 'text-[#2997ff]' : 'text-[#0066cc]'}`}
-    >
-      {children}
-      <ChevronRight size={17} strokeWidth={2} className="translate-y-px transition-transform group-hover:translate-x-0.5" />
-    </a>
-  );
-}
-
-function Reveal({
-  children,
-  className = '',
-  delay = 0,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  delay?: number;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once: true, margin: '-80px' });
-  const reduceMotion = useReducedMotion();
-
-  return (
-    <motion.div
-      ref={ref}
-      initial={reduceMotion ? false : { opacity: 0, y: 32 }}
-      animate={isInView ? { opacity: 1, y: 0 } : undefined}
-      transition={{
-        duration: reduceMotion ? 0 : 0.9,
-        delay: reduceMotion ? 0 : delay,
-        ease: [0.25, 0.1, 0.25, 1],
-      }}
-      className={className}
-    >
-      {children}
-    </motion.div>
-  );
-}
 
 function SectionHeader({ title, intro, dark = false }: { title: string; intro: string; dark?: boolean }) {
   return (
     <div className="max-w-[820px]">
-      <h2 className={`text-[40px] font-semibold leading-[1.08] tracking-[-0.015em] md:text-[56px] lg:text-[64px] ${dark ? 'text-[#f5f5f7]' : 'text-[#1d1d1f]'}`}>
+      <h2 className={`text-[40px] font-semibold leading-[1.08] tracking-[-0.015em] md:text-[56px] lg:text-[64px] ${dark ? 'text-[#f5f5f7]' : 'text-[#203b55]'}`}>
         {title}
       </h2>
-      <p className={`mt-4 text-[19px] leading-[1.42] tracking-[0.012em] md:text-[21px] ${dark ? 'text-[#86868b]' : 'text-[#6e6e73]'}`}>
+      <p className={`mt-4 text-[19px] leading-[1.42] tracking-[0.012em] md:text-[21px] ${dark ? 'text-[#86868b]' : 'text-[#65717a]'}`}>
         {intro}
       </p>
     </div>
@@ -132,10 +59,10 @@ function LocalNav() {
   const [overHero, setOverHero] = useState(true);
 
   useEffect(() => {
-    // The hero occupies 1 viewport + the pinned scroll distance; stay dark until it releases.
+    // Measure the actual hero so this also follows short screens and reduced motion.
     const update = () => {
-      const heroEnd = window.innerHeight * (1 + getHeroPinViewports()) - NAV_HEIGHT;
-      setOverHero(window.scrollY < heroEnd);
+      const hero = document.getElementById('overview');
+      setOverHero(Boolean(hero && hero.getBoundingClientRect().bottom > NAV_HEIGHT));
     };
     update();
     window.addEventListener('scroll', update, { passive: true });
@@ -159,6 +86,7 @@ function LocalNav() {
 
   return (
     <header
+      style={{ paddingTop: 'var(--parkjom-safe-top)', backgroundColor: menuOpen ? (dark ? '#11191e' : '#fbfbfd') : undefined }}
       className={`fixed top-0 inset-x-0 z-50 border-b transition-all duration-500 ${
         dark
           ? 'bg-gradient-to-b from-slate-950/60 to-transparent backdrop-blur-[2px] border-white/5'
@@ -168,7 +96,7 @@ function LocalNav() {
       <div className="mx-auto flex max-w-[1024px] items-center justify-between px-5 md:px-6" style={{ height: NAV_HEIGHT }}>
         <a
           href="/home"
-          className={`inline-flex items-center gap-2 text-[21px] font-semibold tracking-[0.011em] ${dark ? 'text-[#f5f5f7]' : 'text-[#1d1d1f]'}`}
+          className={`inline-flex min-h-11 items-center gap-2 text-[21px] font-semibold tracking-[0.011em] ${dark ? 'text-[#f5f5f7]' : 'text-[#203b55]'}`}
           aria-label="ParkJom home"
         >
           <BrandLogo alt="" className="h-7 w-7" />
@@ -181,7 +109,7 @@ function LocalNav() {
               <a
                 key={item.href}
                 href={item.href}
-                className={`text-[12px] tracking-[-0.01em] transition-colors ${dark ? 'text-[#d2d2d7] hover:text-white' : 'text-[#424245] hover:text-[#1d1d1f]'}`}
+                className={`text-[12px] tracking-[-0.01em] transition-colors ${dark ? 'text-[#d2d2d7] hover:text-white' : 'text-[#424245] hover:text-[#203b55]'}`}
               >
                 {item.label}
               </a>
@@ -189,13 +117,13 @@ function LocalNav() {
             <a
               href="/commuter"
               onClick={() => continueAsGuest()}
-              className={`text-[12px] tracking-[-0.01em] transition-colors ${dark ? 'text-[#d2d2d7] hover:text-white' : 'text-[#424245] hover:text-[#1d1d1f]'}`}
+              className={`text-[12px] tracking-[-0.01em] transition-colors ${dark ? 'text-[#d2d2d7] hover:text-white' : 'text-[#424245] hover:text-[#203b55]'}`}
             >
               Browse as Guest
             </a>
             <a
               href="/login"
-              className={`text-[12px] tracking-[-0.01em] transition-colors ${dark ? 'text-[#d2d2d7] hover:text-white' : 'text-[#424245] hover:text-[#1d1d1f]'}`}
+              className={`text-[12px] tracking-[-0.01em] transition-colors ${dark ? 'text-[#d2d2d7] hover:text-white' : 'text-[#424245] hover:text-[#203b55]'}`}
             >
               Sign in
             </a>
@@ -203,7 +131,7 @@ function LocalNav() {
 
           <button
             type="button"
-            className={`grid h-8 w-8 place-items-center md:hidden ${dark ? 'text-[#d2d2d7]' : 'text-[#424245]'}`}
+            className={`grid h-11 w-11 place-items-center md:hidden ${dark ? 'text-[#d2d2d7]' : 'text-[#424245]'}`}
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={menuOpen}
             aria-controls="local-nav-menu"
@@ -214,7 +142,7 @@ function LocalNav() {
 
           <a
             href="/login?role=Commuter"
-            className="inline-flex min-h-7 items-center rounded-xl bg-[#0071e3] px-[11px] text-[12px] tracking-[-0.01em] text-white transition-colors hover:bg-[#0077ed]"
+            className="inline-flex min-h-11 items-center rounded-xl bg-[#0071e3] px-[11px] text-[12px] tracking-[-0.01em] text-white transition-colors hover:bg-[#0077ed]"
           >
             Find parking
           </a>
@@ -240,7 +168,7 @@ function LocalNav() {
                 setMenuOpen(false);
               }}
               className={`block border-b py-3 text-[17px] tracking-[-0.022em] last:border-0 ${
-                dark ? 'border-white/[0.08] text-[#f5f5f7]' : 'border-black/[0.08] text-[#1d1d1f]'
+                dark ? 'border-white/[0.08] text-[#f5f5f7]' : 'border-black/[0.08] text-[#203b55]'
               }`}
             >
               {item.label}
@@ -256,10 +184,10 @@ function LocalNav() {
 
 function HowItWorks() {
   return (
-    <section id="how-it-works" className="bg-white px-5 py-24 md:px-6 md:py-36">
+    <section id="how-it-works" className="scroll-mt-24 bg-[#fdfcf8] px-5 py-24 md:px-6 md:py-36">
       <div className="mx-auto max-w-[1180px]">
         <Reveal>
-          <SectionHeader title="How it works." intro="Three steps between your front door and the platform." />
+          <SectionHeader title="How it works." intro="From finding a bay to keeping your Parking Pass handy." />
         </Reveal>
 
         <ol className="mt-14 grid gap-5 md:mt-20 md:grid-cols-3">
@@ -267,136 +195,48 @@ function HowItWorks() {
             const Icon = step.icon;
             return (
               <li key={step.title} className="h-full">
-                <Reveal delay={index * 0.1} className="flex h-full flex-col rounded-3xl bg-[#f5f5f7] p-8 md:p-10">
+                <Reveal delay={index * 0.1} className="flex h-full flex-col rounded-3xl border border-[#e1e6e3] bg-white p-8 md:p-10">
                   <Icon size={40} strokeWidth={1.5} className="text-[#0071e3]" aria-hidden="true" />
-                  <p className="mt-10 text-[14px] font-semibold tracking-[-0.016em] text-[#6e6e73]">{step.eyebrow}</p>
-                  <h3 className="mt-1 text-[28px] font-semibold leading-[1.14] tracking-[0.007em] text-[#1d1d1f]">{step.title}</h3>
-                  <p className="mt-3 text-[17px] leading-[1.47] tracking-[-0.022em] text-[#6e6e73]">{step.description}</p>
+                  <p className="mt-10 text-[14px] font-semibold tracking-[-0.016em] text-[#65717a]">{step.eyebrow}</p>
+                  <h3 className="mt-1 text-[28px] font-semibold leading-[1.14] tracking-[0.007em] text-[#203b55]">{step.title}</h3>
+                  <p className="mt-3 text-[17px] leading-[1.47] tracking-[-0.022em] text-[#65717a]">{step.description}</p>
                 </Reveal>
               </li>
             );
           })}
         </ol>
 
-        {/* Owner bento tile */}
-        <Reveal className="mt-5">
-          <div className="grid overflow-hidden rounded-3xl bg-black text-[#f5f5f7] md:grid-cols-[1.1fr_1fr]">
-            <div className="p-8 md:p-14">
-              <p className="text-[17px] font-semibold tracking-[-0.022em] text-[#30d158]">For owners</p>
-              <h3 className="mt-2 text-[36px] font-semibold leading-[1.1] tracking-[-0.01em] md:text-[48px]">
-                Turn idle hours into income.
-              </h3>
-              <p className="mt-4 max-w-[440px] text-[17px] leading-[1.47] tracking-[-0.022em] text-[#a1a1a6]">
-                Your condo bay sits empty while you're at work. Share it with nearby commuters on weekdays,{' '}
-                <span className="font-semibold text-[#f5f5f7]">and keep it for yourself every evening and weekend.</span>
-              </p>
-              <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-4">
-                <a href="/login?role=Owner" className={btnPrimary}>Become a host</a>
-                <TextLink href="/login?role=Owner" dark>Learn more</TextLink>
-              </div>
-            </div>
-            <dl className="grid grid-cols-1 gap-px border-t border-white/10 bg-white/10 sm:grid-cols-3 md:grid-cols-1 md:border-l md:border-t-0">
-              {[
-                { value: 'RM250–450', label: 'Estimated monthly earnings', note: '1' },
-                { value: '8AM–6PM', label: 'Weekday rental window' },
-                { value: '100%', label: 'Yours on evenings & weekends' },
-              ].map((stat) => (
-                <div key={stat.label} className="flex flex-col justify-center bg-black px-8 py-7 md:px-12">
-                  <dt className="order-2 mt-1 text-[14px] tracking-[-0.016em] text-[#86868b]">
-                    {stat.label}
-                    {stat.note && (
-                      <sup className="ml-0.5">
-                        <a href={`#footnote-${stat.note}`} className="hover:text-white" aria-label={`Footnote ${stat.note}`}>{stat.note}</a>
-                      </sup>
-                    )}
-                  </dt>
-                  <dd className="order-1 bg-gradient-to-r from-[#30d158] to-[#5ac8fa] bg-clip-text text-[32px] font-semibold tracking-[-0.01em] text-transparent md:text-[40px]">
-                    {stat.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </Reveal>
+        <OwnerIntro />
       </div>
     </section>
   );
 }
 
-/* ── Popular stations ───────────────────────────────────────────────────────── */
-
-function PopularStations() {
-  const [filter, setFilter] = useState<LineFilter>('All');
-  const visible = filter === 'All' ? popularStations : popularStations.filter((s) => s.line === filter);
-
+function AppFeatures() {
+  const features = [
+    { icon: TrainFront, title: 'Your transit connections', text: 'Rail lines, stations, and Rapid KL bus routes on one map.' },
+    { icon: TicketCheck, title: 'Your Parking Pass', text: 'Booking details and supported bay access controls, ready when you arrive.' },
+    { icon: Wallet, title: 'Your parking wallet', text: 'Top up, pay for parking, and keep track of your transactions.' },
+    { icon: Bell, title: 'Your booking updates', text: 'Parking and account notifications together in one inbox.' },
+  ];
   return (
-    <section id="stations" className="bg-[#f5f5f7] px-5 py-24 md:px-6 md:py-36">
+    <section id="app-features" className="scroll-mt-24 bg-[#fdfcf8] px-5 py-20 md:px-6 md:py-28">
       <div className="mx-auto max-w-[1180px]">
-        <Reveal className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
-          <SectionHeader
-            title="Find your station."
-            intro="Live at core stations on the Kelana Jaya and Ampang lines, with more on the way."
-          />
-          <TextLink href="/login?role=Commuter">See all stations</TextLink>
-        </Reveal>
-
-        {/* Segmented control */}
-        <div className="mt-12 flex justify-center md:justify-start">
-          <div className="inline-flex rounded-xl bg-[#e8e8ed] p-1" role="group" aria-label="Filter by line">
-            {lineFilters.map((option) => {
-              const active = filter === option;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setFilter(option)}
-                  className={`rounded-lg px-4 py-1.5 text-[14px] tracking-[-0.016em] transition-all duration-300 md:px-5 ${
-                    active ? 'bg-white text-[#1d1d1f] shadow-[0_1px_4px_rgba(0,0,0,0.12)]' : 'text-[#6e6e73] hover:text-[#1d1d1f]'
-                  }`}
-                >
-                  {option === 'All' ? 'All lines' : option.replace(' Line', '')}
-                </button>
-              );
-            })}
-          </div>
+        <div className="grid items-center gap-10 md:grid-cols-2">
+          <Reveal>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#58788c]">Made for the everyday commute</p>
+            <h2 className="mt-4 text-[38px] font-semibold leading-[1.08] tracking-[-0.04em] text-[#203b55] md:text-[56px]">A few less things<br />to think about.</h2>
+            <p className="mt-5 max-w-md text-[17px] leading-relaxed text-[#65717a]">Plan the connection, find your bay, and keep the details close. ParkJom brings the small parts of your journey together.</p>
+          </Reveal>
+          <Reveal delay={0.1}><img src="/illustrations/commute-sketch.png" alt="A blue-ink sketch of a commuter walking from their car to the station." width="1536" height="1024" loading="lazy" className="w-full mix-blend-multiply" /></Reveal>
         </div>
-
-        <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Popular LRT stations">
-          {visible.map((item) => {
-            const line = LINES[item.line];
-            return (
-              <li key={item.station}>
-                <a
-                  href="/login?role=Commuter"
-                  className="group flex h-full flex-col rounded-2xl bg-white p-6 transition-shadow duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)]"
-                >
-                  <span className="inline-flex items-center gap-2 text-[12px] tracking-[-0.01em] text-[#6e6e73]">
-                    <span
-                      className="grid h-5 min-w-7 place-items-center rounded-md px-1 text-[10px] font-semibold"
-                      style={{ backgroundColor: line.color, color: readableTextOn(line.color) }}
-                    >
-                      {line.short}
-                    </span>
-                    {item.line}
-                  </span>
-                  <h3 className="mt-5 text-[24px] font-semibold leading-[1.17] tracking-[0.009em] text-[#1d1d1f]">{item.station}</h3>
-                  <p className="mt-2 text-[14px] leading-[1.43] tracking-[-0.016em] text-[#6e6e73]">
-                    {item.walk} min walk · Weekdays 8AM – 6PM
-                  </p>
-                  <div className="mt-8 flex items-end justify-between">
-                    <p className="text-[14px] tracking-[-0.016em] text-[#6e6e73]">
-                      From <span className="text-[17px] font-semibold tracking-[-0.022em] text-[#1d1d1f]">RM{item.price}</span>/day
-                    </p>
-                    <span className="inline-flex items-center text-[14px] tracking-[-0.016em] text-[#0066cc] group-hover:underline">
-                      Reserve <ChevronRight size={15} strokeWidth={2} />
-                    </span>
-                  </div>
-                </a>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="mt-10 grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
+          {features.map(({icon: Icon, title, text}, index) => <Reveal key={title} delay={index * 0.06} className="border-t border-[#d7dfdf] pt-6"><Icon size={25} strokeWidth={1.5} className="text-[#58788c]" /><h3 className="mt-4 text-lg font-semibold tracking-tight text-[#203b55]">{title}</h3><p className="mt-2 text-sm leading-relaxed text-[#65717a]">{text}</p></Reveal>)}
+        </div>
+        <Reveal className="mt-12 flex flex-col justify-between gap-5 border-t border-[#d7dfdf] pt-7 sm:flex-row sm:items-center">
+          <div className="flex items-start gap-4"><Building2 size={26} strokeWidth={1.5} className="mt-1 shrink-0 text-[#58788c]" /><div><h3 className="font-semibold text-[#203b55]">Looking after a property?</h3><p className="mt-1 text-sm leading-relaxed text-[#65717a]">Property Desk gives building teams their own space for bookings and access operations.</p></div></div>
+          <a href="/login?role=PropertyManagement" className="inline-flex min-h-11 shrink-0 items-center gap-2 text-sm font-medium text-[#244b6a]">Open Property Desk <ChevronRight size={17} /></a>
+        </Reveal>
       </div>
     </section>
   );
@@ -410,7 +250,7 @@ const footerColumns = [
     links: [
       { label: 'Find parking', href: '/login?role=Commuter' },
       { label: 'How it works', href: '#how-it-works' },
-      { label: 'Stations', href: '#stations' },
+      { label: 'Transit network', href: '#stations' },
     ],
   },
   {
@@ -423,39 +263,35 @@ const footerColumns = [
   {
     title: 'Coverage',
     links: [
-      { label: 'Kelana Jaya Line', href: '#stations' },
-      { label: 'Ampang Line', href: '#stations' },
+      { label: 'LRT & MRT lines', href: '#stations' },
+      { label: 'Monorail & BRT', href: '#stations' },
+      { label: 'Bus connections', href: '#stations' },
     ],
   },
   {
     title: 'Account',
-    links: [{ label: 'Sign in', href: '/login' }],
+    links: [{ label: 'Sign in', href: '/login' }, { label: 'Property Desk', href: '/login?role=PropertyManagement' }],
   },
 ];
 
 function Footer() {
   return (
-    <footer className="bg-[#f5f5f7] px-5 pb-6 text-[12px] leading-[1.33] tracking-[-0.01em] text-[#6e6e73] md:px-6">
+    <footer className="bg-[#f4f5f1] px-5 pb-6 text-[12px] leading-[1.33] tracking-[-0.01em] text-[#65717a] md:px-6">
       <div className="mx-auto max-w-[1024px]">
-        <ol className="space-y-2 border-t border-[#d2d2d7] pt-4">
-          <li id="footnote-1">
-            1. Estimated monthly earnings are illustrative and depend on station, demand, number of days listed and platform fees.
-          </li>
-          <li>Walking times are approximate and measured from the condo exit to the station entrance.</li>
-        </ol>
+        <p className="border-t border-[#d2d2d7] pt-4 leading-relaxed">Available parking, rates, and access arrangements vary by property and listing. Review the details in the app before booking.</p>
 
         <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-6 border-t border-[#d2d2d7] pt-6 sm:grid-cols-4">
           {footerColumns.map((col) => (
-            <div key={col.title}>
-              <h3 className="font-semibold text-[#1d1d1f]">{col.title}</h3>
+            <Reveal key={col.title}>
+              <h3 className="font-semibold text-[#203b55]">{col.title}</h3>
               <ul className="mt-2 space-y-2">
                 {col.links.map((link) => (
                   <li key={link.label}>
-                    <a href={link.href} className="text-[#424245] hover:underline">{link.label}</a>
+                    <a href={link.href} className="inline-flex min-h-11 items-center text-[#424245] hover:underline sm:min-h-6">{link.label}</a>
                   </li>
                 ))}
               </ul>
-            </div>
+            </Reveal>
           ))}
         </div>
 
@@ -470,12 +306,13 @@ function Footer() {
 
 export default function LandingPage() {
   return (
-    <div className="landing-page min-h-screen bg-white font-sans text-[#1d1d1f] antialiased">
+    <div className="landing-page min-h-screen bg-white font-sans text-[#203b55] antialiased">
       <LocalNav />
       <main>
         <HeroScrollCanvas />
         <HowItWorks />
-        <PopularStations />
+        <AppFeatures />
+        <TransitCoverage />
       </main>
       <Footer />
     </div>

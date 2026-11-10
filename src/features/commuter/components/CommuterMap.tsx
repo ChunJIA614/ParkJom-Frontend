@@ -3087,8 +3087,8 @@ export default function CommuterMap({
           data-map-control
           className={`absolute z-[1001] animate-slide-up flex flex-col justify-end ${
             isNavigatorMinimized
-              ? 'lg:top-14 lg:left-3.5 lg:bottom-auto lg:right-auto lg:w-[360px] bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-3 left-3 right-3'
-              : 'lg:top-14 lg:left-3.5 lg:bottom-auto lg:right-auto lg:w-[360px] lg:max-h-[calc(100%-4.5rem)] bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:bottom-0 left-0 right-0 w-full max-h-[calc(100%-4.5rem)]'
+              ? 'lg:top-14 lg:left-3.5 lg:bottom-auto lg:right-auto lg:w-[360px] bottom-[calc(4.75rem+var(--parkjom-safe-bottom))] md:bottom-3 left-3 right-3'
+              : 'lg:top-14 lg:left-3.5 lg:bottom-auto lg:right-auto lg:w-[360px] lg:max-h-[calc(100%-4.5rem)] bottom-[calc(4.25rem+var(--parkjom-safe-bottom))] md:bottom-0 left-0 right-0 w-full max-h-[calc(100%-4.5rem)]'
           } ${workspaceMode === 'navigation' ? 'hidden' : ''}`}
         >
           <LinearJourneyNavigator
@@ -3176,7 +3176,7 @@ export default function CommuterMap({
       {!showLinearNavigator && (effectiveBusRoute || (targetSpot && (drivingRoute || linearPlan))) && (
         <div
           data-map-control
-          className="map-bottom-stack absolute bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:bottom-4 left-3 right-14 z-[800] flex flex-col items-start gap-2 pointer-events-none"
+          className="map-bottom-stack absolute bottom-[calc(5.25rem+var(--parkjom-safe-bottom))] md:bottom-4 left-3 right-14 z-[800] flex flex-col items-start gap-2 pointer-events-none"
         >
           {/* 1. Floating Active Bus Route Filter Pill */}
           {effectiveBusRoute && (

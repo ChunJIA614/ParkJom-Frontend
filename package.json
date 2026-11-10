@@ -14,8 +14,9 @@
     "capacitor:sync:after": "node scripts/prepare-native.mjs",
     "deploy": "vite build && firebase deploy --only hosting",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/parking-coordinates.mjs && node tests/vehicle-storage.mjs && node tests/native-google-auth.mjs",
-    "check": "npm run typecheck && npm test && npm run build"
+    "test": "node tests/parking-coordinates.mjs && node tests/vehicle-storage.mjs && node tests/native-google-auth.mjs && node tests/mobile-navigation.mjs && node tests/magnetic-cars.mjs",
+    "check": "npm run typecheck && npm test && npm run build",
+    "test:ui": "node tests/login-browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

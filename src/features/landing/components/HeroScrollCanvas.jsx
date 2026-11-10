@@ -312,7 +312,7 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
     <section
       ref={containerRef}
       id="overview"
-      className="relative h-screen w-full overflow-hidden bg-black text-[#f5f5f7]"
+      className="relative h-[100svh] min-h-[600px] w-full overflow-hidden bg-black text-[#f5f5f7]"
       aria-label="ParkJom overview"
     >
       <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" aria-hidden="true" />
@@ -335,16 +335,16 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
         <div className="-translate-y-6 flex flex-col items-center">
           <span className="inline-flex items-center gap-2 rounded-full bg-slate-950/40 backdrop-blur-md border border-white/20 px-4 py-1.5 text-[12px] font-medium tracking-[-0.01em] text-white shadow-lg">
             <span className="h-2 w-2 rounded-full bg-[#30d158]" />
-            Kuala Lumpur LRT &amp; MRT · Weekdays 8AM – 6PM
+            Parking &amp; transit across the Klang Valley
           </span>
 
           <h1 className="mt-6 max-w-4xl text-[38px] font-semibold leading-[1.06] tracking-[-0.022em] text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.65)] sm:text-[52px] md:text-[64px] lg:text-[72px]">
-            Running late for the LRT?
-            <span className="mt-1 block text-[#64d2ff]">Stop circling for 30&nbsp;minutes.</span>
+            A good day starts
+            <span className="mt-1 block text-[#64d2ff]">with an easier commute.</span>
           </h1>
 
           <p className="mx-auto mt-5 max-w-[560px] text-[17px] leading-[1.47] tracking-[-0.016em] text-white/90 drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)] sm:text-[19px]">
-            Reserve a private condo parking bay just a 3‑minute walk from your station before you leave home.
+            Find a verified parking bay, explore your transit connections, and keep your journey together in ParkJom.
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
@@ -370,11 +370,10 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
         <div className={stepCard}>
           <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#64d2ff]">For commuters</p>
           <h2 className="mt-1.5 text-[24px] font-semibold leading-[1.14] tracking-[-0.015em] text-white md:text-[28px]">
-            Goodbye, full Park&nbsp;&amp;&nbsp;Ride.
+            Find a bay that fits your day.
           </h2>
           <p className="mt-3 text-[15px] leading-[1.5] tracking-[-0.016em] text-white/80">
-            Lock in a covered condo bay right next to the station before you leave home.{' '}
-            <span className="font-semibold text-white">Rain or shine, you clock in on time.</span>
+            Browse verified listings, compare rates and features, and check the available dates before you book.
           </p>
         </div>
       </div>
@@ -384,14 +383,10 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
         <div className={stepCard}>
           <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#30d158]">For owners</p>
           <h2 className="mt-1.5 text-[24px] font-semibold leading-[1.14] tracking-[-0.015em] text-white md:text-[28px]">
-            Your bay sits empty all day anyway.
+            Put your unused bay to work.
           </h2>
           <p className="mt-3 text-[15px] leading-[1.5] tracking-[-0.016em] text-white/80">
-            Rent it to commuters from 8AM to 6PM and{' '}
-            <span className="font-semibold text-white">earn RM250 – RM450 a month in passive income.</span>
-            <sup className="ml-0.5 text-[11px]">
-              <a href="#footnote-1" className="text-white/75 hover:text-white" aria-label="Footnote 1">1</a>
-            </sup>
+            Set your availability and pricing. Manage your listing, bookings, and earnings from your owner dashboard.
           </p>
         </div>
       </div>
@@ -400,13 +395,13 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
       <div className="hero-stage-4 invisible absolute inset-0 flex items-center justify-center px-5 text-center">
         <div className="-translate-y-32 flex max-w-2xl flex-col items-center">
           <span className="inline-flex items-center gap-2 rounded-full bg-slate-950/40 backdrop-blur-md border border-white/20 px-4 py-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-[#64d2ff] shadow-lg">
-            Now live
+            Your next connection
           </span>
           <h2 className="mt-4 text-[32px] font-semibold leading-[1.08] tracking-[-0.02em] text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.65)] sm:text-[44px] md:text-[52px]">
-            Core stations along the Kelana Jaya &amp; Ampang lines.
+            More lines. More ways to get there.
           </h2>
           <p className="mx-auto mt-4 max-w-[480px] text-[16px] leading-[1.5] tracking-[-0.016em] text-white/90 drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)] sm:text-[18px]">
-            Start your morning commute with a guaranteed bay, or list your unused condo spot in minutes.
+            Explore LRT, MRT, Monorail, BRT, and bus connections in the app. Find nearby parking where verified bays are available.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
             <a href="/login?role=Commuter" className={`${btnPrimary} w-full sm:w-auto`}>

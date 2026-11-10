@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, LogOut, Menu, Search, Sparkles, SunMoon, UserRound } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Search, SunMoon, UserRound } from 'lucide-react';
 import BrandLogo from '@/components/ui/BrandLogo';
 import ThemeSegmentedControl from '@/components/ui/ThemeSegmentedControl';
 import { showConfirm } from '@/components/common/ModalProvider';
@@ -32,8 +32,6 @@ interface DashboardHeaderProps {
   searchPlaceholder?: string;
   onSignIn?: () => void;
   isGuest?: boolean;
-  /** Optional callback to trigger the interactive first-time icon guide */
-  onStartGuide?: () => void;
 }
 
 export interface DashboardSearchItem {
@@ -84,7 +82,6 @@ export default function DashboardHeader({
   searchPlaceholder = 'Search dashboard pages',
   onSignIn,
   isGuest = false,
-  onStartGuide,
 }: DashboardHeaderProps) {
   const meta = ROLE_META[role];
   const [profileImageFailed, setProfileImageFailed] = useState(false);
@@ -191,7 +188,7 @@ export default function DashboardHeader({
     <header
       className="workspace-header sticky top-0 z-[1100] shrink-0 glass-bar"
       data-workspace-role={role}
-      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      style={{ paddingTop: 'var(--parkjom-safe-top)' }}
     >
       <div className={`workspace-header__inner relative max-w-screen-2xl mx-auto h-14 px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-2 sm:gap-3 ${navigation ? 'has-navigation' : ''}`}>
         {/* Left: menu + brand */}
@@ -238,7 +235,7 @@ export default function DashboardHeader({
           </button>
 
           {statusText && (
-            <div className="workspace-header__status flex items-center gap-1.5 text-[12px] font-medium text-[#5f6368] dark:text-[#a1a1a6] px-2.5 py-1 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/[0.08] shrink-0">
+            <div className="workspace-header__status hidden sm:flex items-center gap-1.5 text-[12px] font-medium text-[#5f6368] dark:text-[#a1a1a6] px-2.5 py-1 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/[0.08] shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-[#34c759] shrink-0 animate-pulse" />
               <span className="truncate max-w-[140px] sm:max-w-[200px] lg:max-w-[280px]">{statusText}</span>
             </div>
@@ -251,7 +248,7 @@ export default function DashboardHeader({
           </nav>
         )}
 
-        {/* Right: search + guide + notifications + account */}
+        {/* Right: search, notifications, and account */}
         <div className="workspace-header__actions flex items-center gap-1 sm:gap-2 shrink-0">
           {searchItems.length > 0 && onSearchSelect && (
             <>
@@ -314,18 +311,7 @@ export default function DashboardHeader({
             </>
           )}
 
-          {onStartGuide && (
-            <button
-              type="button"
-              onClick={onStartGuide}
-              title="Interactive Icon Guide"
-              aria-label="Start interactive icon guide"
-              className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-xl border border-[#0071e3]/20 dark:border-[#0a84ff]/25 bg-[#0071e3]/[0.06] dark:bg-[#0a84ff]/12 text-[#0071e3] dark:text-[#409cff] hover:bg-[#0071e3]/12 dark:hover:bg-[#0a84ff]/20 text-[12px] font-semibold transition-all cursor-pointer"
-            >
-              <Sparkles size={14} aria-hidden="true" />
-              <span className="hidden lg:inline">Guide</span>
-            </button>
-          )}
+
 
           {actions}
 
@@ -383,17 +369,7 @@ export default function DashboardHeader({
                       <span>My profile</span>
                     </button>
                   )}
-                  {onStartGuide && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => { setAccountOpen(false); onStartGuide(); }}
-                      className="workspace-header__account-menu-item hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[#0071e3] dark:text-[#409cff]"
-                    >
-                      <Sparkles size={16} aria-hidden="true" />
-                      <span>Interactive icon guide</span>
-                    </button>
-                  )}
+
                   <div className="border-t border-b border-[#f1f3f4] dark:border-white/[0.08] px-3 py-2.5 space-y-2">
                     <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[#8e8e93] dark:text-[#D4D4D8] tracking-wide">
                       <SunMoon size={14} aria-hidden="true" className="text-[var(--system-primary,#0071e3)] dark:text-[#0a84ff]" />

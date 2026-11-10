@@ -410,6 +410,7 @@ export const RAPID_KL_LINE_COLORS: Record<string, { name: string; color: string;
   AG: { name: 'Ampang Line', color: '#E57200', badge: 'LRT', category: 'LRT' },
   AGL: { name: 'Ampang Line', color: '#E57200', badge: 'LRT', category: 'LRT' },
   SP: { name: 'Sri Petaling Line', color: '#76232F', badge: 'LRT', category: 'LRT' },
+  PH: { name: 'Sri Petaling Line', color: '#76232F', badge: 'LRT', category: 'LRT' },
   SPL: { name: 'Sri Petaling Line', color: '#76232F', badge: 'LRT', category: 'LRT' },
   MR: { name: 'KL Monorail', color: '#84BD00', badge: 'MR', category: 'Monorail' },
   MRL: { name: 'KL Monorail', color: '#84BD00', badge: 'MR', category: 'Monorail' },

@@ -25,7 +25,6 @@ import FirstTimeIconGuide from '@/components/onboarding/FirstTimeIconGuide';
 import {
   isFirstTimeUserForTour,
   markIconTourCompleted,
-  resetIconTourForReplay,
 } from '@/components/onboarding/onboardingStorage';
 import DashboardHome from '../components/DashboardHome';
 import AvailabilityScheduler from '../components/AvailabilityScheduler';
@@ -219,7 +218,7 @@ export default function OwnerDashboard() {
     try {
       const token = user?.token ?? '';
       if (!token) throw new Error('Your owner session is missing an authorization token.');
-      
+
       const res = await getMyParking(token);
       const body = await res.json().catch(() => null) as MyParkingResponse | null;
       if (!res.ok || !body?.success) {
@@ -612,8 +611,8 @@ export default function OwnerDashboard() {
   return (
     <div className="app-workspace font-sans text-[#1d1d1f] flex" data-workspace-role="owner">
       {/* Responsive Sidebar */}
-      <Sidebar 
-        activeView={activeView} 
+      <Sidebar
+        activeView={activeView}
         onViewChange={(view) => setActiveView(view as OwnerView)}
         onBrandClick={() => { setActiveView('dashboard'); navigate('/owner', { replace: true }); }}
         isOpen={isSidebarOpen}
@@ -638,14 +637,7 @@ export default function OwnerDashboard() {
             setActiveView(id as OwnerView);
             setIsSidebarOpen(false);
           }}
-          onStartGuide={
-            user
-              ? () => {
-                  resetIconTourForReplay(user.userId, 'Owner');
-                  setShowIconGuide(true);
-                }
-              : undefined
-          }
+
         />
 
         {/* Render View Panels */}
@@ -714,7 +706,7 @@ export default function OwnerDashboard() {
           )}
 
           {activeView === 'registration' && (
-            <PropertyOnboarding 
+            <PropertyOnboarding
               onOnboardProperty={handleOnboardProperty}
             />
           )}
@@ -728,7 +720,7 @@ export default function OwnerDashboard() {
           )}
 
           {activeView === 'settings' && (
-            <SettingsPanel 
+            <SettingsPanel
               bank={activeBank}
               onSaveBank={handleSaveBank}
             />

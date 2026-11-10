@@ -73,7 +73,7 @@ function SidebarNavigation({
   return (
     <Sidebar collapsible="icon" className="border-sidebar-border/80">
       <div id={id} className="flex h-full min-h-0 flex-col">
-        <SidebarHeader className="h-14 min-h-14 justify-center border-b border-sidebar-border/80 bg-[rgba(250,250,252,0.82)] dark:bg-[rgba(22,22,26,0.82)] p-2 group-data-[collapsible=icon]:p-0 backdrop-blur-[24px] backdrop-saturate-[180%]">
+        <SidebarHeader className="workspace-sidebar-safe-header h-14 min-h-14 justify-center border-b border-sidebar-border/80 bg-[rgba(250,250,252,0.82)] dark:bg-[rgba(22,22,26,0.82)] p-2 group-data-[collapsible=icon]:p-0 backdrop-blur-[24px] backdrop-saturate-[180%]">
           <SidebarMenu>
             <SidebarMenuItem className="flex justify-center items-center">
               <SidebarMenuButton
@@ -98,6 +98,7 @@ function SidebarNavigation({
             variant="ghost"
             size="icon-sm"
             className="absolute right-3 top-3 md:hidden"
+            style={{ top: 'calc(var(--parkjom-safe-top) + 0.5rem)' }}
             onClick={() => setOpenMobile(false)}
             aria-label={`Close ${workspaceLabel} navigation`}
           >
@@ -160,7 +161,7 @@ function SidebarNavigation({
           ))}
         </SidebarContent>
 
-        <SidebarFooter className="min-h-14 flex-row items-center border-t border-sidebar-border/80 p-2.5 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center">
+        <SidebarFooter className="workspace-sidebar-safe-footer min-h-14 flex-row items-center border-t border-sidebar-border/80 p-2.5 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center">
           {footer && (
             <div className="min-w-0 flex-1 text-[11px] leading-relaxed text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden">
               {footer}

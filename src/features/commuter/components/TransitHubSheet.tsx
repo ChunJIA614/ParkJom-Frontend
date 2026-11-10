@@ -40,6 +40,7 @@ interface TransitHubSheetProps {
   onOpenParkingDetail?: (spot: ParkingSpot) => void;
   className?: string;
   selectedBusRoute?: string | null;
+  initialLineFilter?: string | null;
   onSelectBusRoute?: (routeId: string | null) => void;
 }
 
@@ -52,11 +53,12 @@ export default function TransitHubSheet({
   onOpenParkingDetail,
   className = '',
   selectedBusRoute,
+  initialLineFilter,
   onSelectBusRoute,
 }: TransitHubSheetProps) {
   // Route & Stops state
   const [routes, setRoutes] = useState<TransitRoute[]>([]);
-  const [selectedLineFilter, setSelectedLineFilter] = useState<string>('ALL');
+  const [selectedLineFilter, setSelectedLineFilter] = useState<string>(initialLineFilter || 'ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [stopsList, setStopsList] = useState<TransitStopSummary[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
@@ -359,6 +361,7 @@ export default function TransitHubSheet({
               <button
                 key={route.routeId}
                 type="button"
+                aria-pressed={isSelected}
                 onClick={() => setSelectedLineFilter(route.routeId)}
                 className={`h-6 px-2 rounded-full text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap transition-all border ${
                   isSelected

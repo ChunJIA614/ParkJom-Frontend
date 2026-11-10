@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { getGuideCardPosition } from './guidePosition';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -138,35 +140,21 @@ const OWNER_STEPS: GuideStep[] = [
 ];
 
 function findVisibleTarget(step: GuideStep): TargetRect {
-  const sidebarEl = document.querySelector<HTMLElement>(`[data-tour-sidebar-id="${step.id}"]`);
-  if (sidebarEl) {
-    const rect = sidebarEl.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0) {
-      return {
-        top: rect.top,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
-        source: 'sidebar',
-      };
+  const mobile = window.matchMedia('(max-width: 767px)').matches;
+  const candidates = [
+    { selector: '[data-tour-bottomnav-id="' + (step.mobileId ?? step.id) + '"]', source: 'bottomnav' as const },
+    { selector: '[data-tour-sidebar-id="' + step.id + '"]', source: 'sidebar' as const },
+  ];
+  if (!mobile) candidates.reverse();
+  for (const candidate of candidates) {
+    const element = document.querySelector<HTMLElement>(candidate.selector);
+    if (!element || getComputedStyle(element).visibility === 'hidden') continue;
+    const rect = element.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= window.innerWidth
+        && rect.top >= 0 && rect.bottom <= window.innerHeight) {
+      return { top: rect.top, left: rect.left, width: rect.width, height: rect.height, source: candidate.source };
     }
   }
-
-  const bottomNavId = step.mobileId ?? step.id;
-  const bottomEl = document.querySelector<HTMLElement>(`[data-tour-bottomnav-id="${bottomNavId}"]`);
-  if (bottomEl) {
-    const rect = bottomEl.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      return {
-        top: rect.top,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
-        source: 'bottomnav',
-      };
-    }
-  }
-
   return { top: 0, left: 0, width: 0, height: 0, source: 'none' };
 }
 
@@ -185,6 +173,19 @@ export default function FirstTimeIconGuide({
     height: 0,
     source: 'none',
   });
+
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(280);
+
+  useLayoutEffect(() => {
+    if (!open || !cardRef.current) return;
+    const card = cardRef.current;
+    const measure = () => setCardHeight(card.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [open, currentIndex]);
 
   const currentStep = steps[currentIndex] ?? steps[0];
   const StepIcon = currentStep.icon;
@@ -274,36 +275,14 @@ export default function FirstTimeIconGuide({
     height: targetRect.height + pad * 2,
   };
 
-  const getCardStyle = (): React.CSSProperties => {
-    if (!hasValidTarget) {
-      return {
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-      };
-    }
+  const cardStyle = getGuideCardPosition(
+    window.visualViewport?.width ?? window.innerWidth,
+    window.visualViewport?.height ?? window.innerHeight,
+    targetRect,
+    cardHeight,
+  );
 
-    const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1024;
-    const viewportH = typeof window !== 'undefined' ? window.innerHeight : 768;
-
-    if (targetRect.source === 'sidebar') {
-      const leftPos = Math.min(viewportW - 360, spotlightBox.left + spotlightBox.width + 16);
-      const topPos = Math.max(16, Math.min(viewportH - 240, spotlightBox.top - 8));
-      return {
-        top: `${topPos}px`,
-        left: `${Math.max(16, leftPos)}px`,
-      };
-    }
-
-    const bottomOffset = Math.max(88, viewportH - spotlightBox.top + 14);
-    return {
-      bottom: `${bottomOffset}px`,
-      left: '50%',
-      transform: 'translateX(-50%)',
-    };
-  };
-
-  return (
+  return createPortal(
     <AnimatePresence>
       <div
         className="fixed inset-0 z-[1400] select-none"
@@ -370,18 +349,19 @@ export default function FirstTimeIconGuide({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 4, scale: 0.98 }}
           transition={{ duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
-          style={getCardStyle()}
-          className="fixed z-[1420] w-[calc(100vw-2rem)] max-w-[336px] rounded-2xl border border-black/[0.08] dark:border-white/[0.14] bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-2xl p-5 shadow-[0_20px_48px_rgba(0,0,0,0.28)] text-left space-y-4"
+          ref={cardRef}
+          style={cardStyle}
+          className="icon-guide-card fixed z-[1420] overflow-y-auto overscroll-contain rounded-2xl border border-black/[0.08] dark:border-white/[0.14] bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-2xl p-5 shadow-[0_20px_48px_rgba(0,0,0,0.28)] text-left space-y-4"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium tracking-[0.02em] text-[#6e6e73] dark:text-[#98989d]">
-              {currentIndex + 1} of {steps.length} · Click the highlighted icon
+              {currentIndex + 1} of {steps.length} · Tap the highlighted icon
             </span>
             <button
               type="button"
               onClick={onComplete}
               aria-label="Close guide"
-              className="rounded-lg p-1 -mr-1 text-[#8e8e93] hover:text-[#1d1d1f] dark:hover:text-white transition-colors cursor-pointer"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg -mr-2 text-[#8e8e93] hover:text-[#1d1d1f] dark:hover:text-white transition-colors cursor-pointer"
             >
               <X size={15} aria-hidden="true" />
             </button>
@@ -408,7 +388,7 @@ export default function FirstTimeIconGuide({
             <button
               type="button"
               onClick={onComplete}
-              className="min-h-9 px-2 -ml-2 rounded-lg text-[12px] font-medium text-[#6e6e73] dark:text-[#98989d] hover:text-[#1d1d1f] dark:hover:text-white transition-colors cursor-pointer"
+              className="min-h-11 min-w-11 px-2 -ml-2 rounded-lg text-[12px] font-medium text-[#6e6e73] dark:text-[#98989d] hover:text-[#1d1d1f] dark:hover:text-white transition-colors cursor-pointer"
             >
               Skip
             </button>
@@ -419,7 +399,7 @@ export default function FirstTimeIconGuide({
                   type="button"
                   onClick={handleBackButton}
                   aria-label="Previous icon"
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-black/[0.08] dark:border-white/[0.12] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
+                  className="inline-flex items-center justify-center h-11 w-11 rounded-xl border border-black/[0.08] dark:border-white/[0.12] text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
                 >
                   <ArrowLeft size={14} aria-hidden="true" />
                 </button>
@@ -427,7 +407,7 @@ export default function FirstTimeIconGuide({
               <button
                 type="button"
                 onClick={handleNextButton}
-                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-[#0071e3] hover:bg-[#0066d6] dark:bg-[#0a84ff] dark:hover:bg-[#0071e3] text-white text-[12px] font-semibold transition-all active:scale-95 cursor-pointer"
+                className="inline-flex items-center gap-1.5 h-11 px-3.5 rounded-xl bg-[#0071e3] hover:bg-[#0066d6] dark:bg-[#0a84ff] dark:hover:bg-[#0071e3] text-white text-[12px] font-semibold transition-all active:scale-95 cursor-pointer"
               >
                 <span>{isLastStep ? 'Done' : 'Next'}</span>
                 {!isLastStep && <ArrowRight size={13} aria-hidden="true" />}
@@ -436,6 +416,7 @@ export default function FirstTimeIconGuide({
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

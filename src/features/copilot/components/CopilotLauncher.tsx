@@ -114,7 +114,7 @@ export default function CopilotLauncher() {
             exit={reduceMotion ? undefined : { scale: 0.8, opacity: 0 }}
             onClick={handleLauncherClick}
             aria-label="Open ParkJom Copilot"
-            className="fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 md:right-6 z-[1050] flex items-center gap-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3] pl-3.5 pr-4 h-12 text-white shadow-lg shadow-[#007AFF]/30 hover:bg-[#0066d6] active:scale-95 cursor-pointer"
+            className="fixed right-4 bottom-[calc(5.5rem+var(--parkjom-safe-bottom))] md:bottom-6 md:right-6 z-[1050] flex items-center gap-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3] pl-3.5 pr-4 h-12 text-white shadow-lg shadow-[#007AFF]/30 hover:bg-[#0066d6] active:scale-95 cursor-pointer"
           >
             <Sparkles size={18} />
             <span className="text-[13px] font-semibold">Ask Copilot</span>
@@ -133,7 +133,7 @@ export default function CopilotLauncher() {
             animate={{ y: 0, opacity: 1 }}
             exit={reduceMotion ? undefined : { y: 24, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-            className="copilot-panel fixed z-[1150] inset-x-0 bottom-0 top-[calc(3.75rem+env(safe-area-inset-top,0px))] rounded-t-3xl md:top-auto md:inset-x-auto md:right-6 md:bottom-6 md:h-[min(600px,calc(100dvh-5.75rem))] md:w-[400px] md:rounded-3xl flex flex-col overflow-hidden border border-black/[0.08] dark:border-white/[0.12] shadow-2xl"
+            className="copilot-panel fixed z-[1150] inset-x-0 bottom-0 top-[calc(3.75rem+var(--parkjom-safe-top))] rounded-t-3xl md:top-auto md:inset-x-auto md:right-6 md:bottom-6 md:h-[min(600px,calc(100dvh-5.75rem))] md:w-[400px] md:rounded-3xl flex flex-col overflow-hidden border border-black/[0.08] dark:border-white/[0.12] shadow-2xl"
           >
             {/* Header */}
             <header className="copilot-panel__bar flex items-center gap-3 px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.08]">
@@ -207,7 +207,7 @@ export default function CopilotLauncher() {
             </div>
 
             {/* Composer */}
-            <form onSubmit={onSubmit} className="copilot-panel__bar flex items-end gap-2 px-3 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] md:pb-3 border-t border-black/[0.06] dark:border-white/[0.08]">
+            <form onSubmit={onSubmit} className="copilot-panel__bar flex items-end gap-2 px-3 pt-2.5 pb-[calc(0.75rem+var(--parkjom-safe-bottom))] md:pb-3 border-t border-black/[0.06] dark:border-white/[0.08]">
               <textarea
                 ref={inputRef}
                 value={input}

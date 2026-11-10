@@ -92,12 +92,3 @@ export function markIconTourCompleted(userId?: number, role?: UserRole): void {
     // Ignore storage errors
   }
 }
-
-export function resetIconTourForReplay(userId?: number, role?: UserRole): void {
-  if (!userId || !role) return;
-  try {
-    localStorage.removeItem(`${TOUR_COMPLETED_PREFIX}${role}_${userId}`);
-  } catch {
-    // Ignore storage errors
-  }
-}

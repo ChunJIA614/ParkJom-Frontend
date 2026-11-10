@@ -82,7 +82,6 @@ import FirstTimeIconGuide from '@/components/onboarding/FirstTimeIconGuide';
 import {
   isFirstTimeUserForTour,
   markIconTourCompleted,
-  resetIconTourForReplay,
 } from '@/components/onboarding/onboardingStorage';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import CopilotLauncher from '@/features/copilot/components/CopilotLauncher';
@@ -597,7 +596,7 @@ export default function CommuterDashboard() {
 
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
-  
+
   // The supplied API creates top-up sessions but does not expose a wallet
   // summary endpoint, so an unknown balance is never presented as RM 0.00.
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
@@ -2573,14 +2572,7 @@ export default function CommuterDashboard() {
           handleNavigateTab(id as CommuterTab);
           setSidebarOpen(false);
         }}
-        onStartGuide={
-          !isGuest && user
-            ? () => {
-                resetIconTourForReplay(user.userId, 'Commuter');
-                setShowIconGuide(true);
-              }
-            : undefined
-        }
+
       />
 
       {/* ─── Main Layout ─── */}
@@ -2689,9 +2681,9 @@ export default function CommuterDashboard() {
               <div className="max-w-4xl mx-auto" ref={searchCapsuleRef}>
                 {/* Search Bar Capsule + Dropdown Anchor */}
                 <div className="relative">
-                  <div className="rounded-full border border-black/[0.09] dark:border-white/12 bg-white/95 dark:bg-[#1C1C1E]/95 shadow-[0_4px_20px_rgba(0,0,0,0.06)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all pl-7 sm:pl-8 pr-2.5 sm:pr-3 py-2 sm:py-2.5 min-h-[62px] sm:min-h-[66px] flex items-center">
+                  <div className="parking-search-capsule relative grid grid-cols-2 gap-3 rounded-2xl border border-black/[0.09] dark:border-white/12 bg-white dark:bg-[#1C1C1E] p-3 sm:flex sm:gap-0 sm:rounded-full sm:pl-8 sm:pr-3 sm:py-2.5 sm:min-h-[66px] sm:items-center">
                     {/* Segment 1: Where */}
-                    <div className="flex-1 min-w-0 pr-4 flex flex-col justify-center text-left">
+                    <div className="col-span-2 flex-1 min-w-0 pr-14 sm:pr-4 flex flex-col justify-center text-left">
                       <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
                         Where
                       </span>
@@ -2712,7 +2704,7 @@ export default function CommuterDashboard() {
                             }
                           }}
                           placeholder="Search station, condo, or area..."
-                          className="search-capsule-input w-full bg-transparent text-xs sm:text-[13px] font-medium text-[#1d1d1f] dark:text-white placeholder-[#8e8e93] dark:placeholder-[#A1A1AA] !outline-none !border-none !ring-0 !shadow-none pl-1.5 pr-2 py-0.5 truncate"
+                          className="search-capsule-input min-w-0 w-full bg-transparent text-[16px] sm:text-[13px] font-medium text-[#1d1d1f] dark:text-white placeholder-[#8e8e93] dark:placeholder-[#A1A1AA] !outline-none !border-none !ring-0 !shadow-none pl-1.5 pr-2 py-0.5 truncate"
                         />
                         {searchQuery && (
                           <button
@@ -2734,10 +2726,10 @@ export default function CommuterDashboard() {
                     </div>
 
                     {/* Hairline Divider 1 */}
-                    <div className="h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
+                    <div className="hidden sm:block h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
 
                     {/* Segment 2: Rate Type */}
-                    <div className="w-[85px] sm:w-[130px] shrink-0 px-2 sm:px-3 flex flex-col justify-center text-left">
+                    <div className="min-w-0 sm:w-[130px] shrink-0 px-1 sm:px-3 flex flex-col justify-center text-left">
                       <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
                         Rate
                       </span>
@@ -2747,7 +2739,7 @@ export default function CommuterDashboard() {
                         value={rateFilter}
                         onChange={(e) => setRateFilter(e.target.value as 'all' | 'daily' | 'monthly')}
                         aria-label="Filter by rate type"
-                        className="!h-auto text-xs sm:text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
+                        className="w-full !h-auto min-h-11 sm:min-h-0 text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
                       >
                         <option value="all">All Rates</option>
                         <option value="daily">Daily</option>
@@ -2756,10 +2748,10 @@ export default function CommuterDashboard() {
                     </div>
 
                     {/* Hairline Divider 2 */}
-                    <div className="h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
+                    <div className="hidden sm:block h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
 
                     {/* Segment 3: Features */}
-                    <div className="w-[95px] sm:w-[140px] shrink-0 px-2 sm:px-3 flex flex-col justify-center text-left">
+                    <div className="min-w-0 sm:w-[140px] shrink-0 px-1 sm:px-3 flex flex-col justify-center text-left">
                       <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
                         Features
                       </span>
@@ -2769,7 +2761,7 @@ export default function CommuterDashboard() {
                         value={featureFilter}
                         onChange={(e) => setFeatureFilter(e.target.value as 'all' | 'covered' | 'ev' | 'cctv' | 'accessible')}
                         aria-label="Filter by features"
-                        className="!h-auto text-xs sm:text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
+                        className="w-full !h-auto min-h-11 sm:min-h-0 text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
                       >
                         <option value="all">All Features</option>
                         <option value="covered">Covered</option>
@@ -2784,7 +2776,7 @@ export default function CommuterDashboard() {
                       type="button"
                       onClick={(e) => handleParkingSearch(e as any)}
                       disabled={isSearchLoading}
-                      className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-[#007AFF] hover:bg-[#0066d6] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-blue-500/25 shrink-0 ml-2 cursor-pointer disabled:opacity-70"
+                      className="absolute right-3 top-3 h-11 w-11 sm:static sm:h-12 sm:w-12 rounded-xl sm:rounded-full bg-[#007AFF] hover:bg-[#0066d6] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-blue-500/25 shrink-0 ml-2 cursor-pointer disabled:opacity-70"
                       aria-label="Search parking"
                     >
                       {isSearchLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} strokeWidth={2.5} />}
@@ -2855,7 +2847,7 @@ export default function CommuterDashboard() {
                       <Navigation size={13} className={locationStatus === 'ready' ? 'text-[#007AFF]' : 'text-slate-400'} />
                       <span>
                         {locationStatus === 'ready'
-                          ? `Live GPS active: Showing verified bays within ${Math.round(locationAccuracy ?? 50)}m accuracy`
+                          ? `Using your location · ±${Math.round(locationAccuracy ?? 50)} m`
                           : locationStatus === 'locating'
                           ? 'Locating closest available parking bays...'
                           : 'Showing verified parking bays in Klang Valley'}
@@ -3505,6 +3497,7 @@ export default function CommuterDashboard() {
                     </div>
                   ) : (
                     <TransitHubSheet
+                      initialLineFilter={locationParams.get('line')}
                       userLocation={currentLocation}
                       selectedStationId={selectedStationId}
                       selectedStationName={selectedStation}

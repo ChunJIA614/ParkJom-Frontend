@@ -33,11 +33,23 @@ Adjust `JAVA_HOME` if Java 21 is installed elsewhere. The installable test APK i
 
 For Google sign-in on this development machine, register an Android OAuth client in the web client's Google Cloud project with package `com.parkjom.app` and SHA-1 `EC:D5:47:DE:2E:1A:21:F7:C9:54:03:DF:1F:1F:57:BE:3D:38:A2:74`. Other machines and release keys have different fingerprints; read them with `gradlew signingReport`.
 
-## Troubleshoot Android Google sign-in
+## Google sign-in
+
+### Web origin errors
+
+For web sign-in, Google must also allow the exact origin (scheme, hostname, and port) on the **Web application** client. ParkJom uses `https://localhost:3000` for development and `https://united-perigee-400000.web.app` for hosting. Add those in **Authorized JavaScript origins**, without a trailing path. Keep any other origins that are still in use. An `origin_mismatch` happens before the API receives a token; changing API CORS settings cannot repair it. See [Google's origin configuration](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid).
+
+Production hosting currently retains the legacy `917128720686` client to match the deployed API. Page-design releases keep that configuration. The migration to `681911813064` is pending [backend PR #64](https://github.com/junkerino1/ParkJomV2/pull/64); publish the frontend client change only after the matching API configuration is deployed.
+
+### Client alignment and Android troubleshooting
+
+The pending client configuration and local API use `681911813064-uk2mmra0532rp7gcmq3frfj5h37siq5d.apps.googleusercontent.com`. The API's `GoogleOAuth:ClientId` (or the Azure setting `GoogleOAuth__ClientId`) must accept the same ID as the published frontend. A deployed environment setting overrides `appsettings.json`. Keep ID-token signature and audience validation enabled.
+
+`[28444] Developer console is not set up correctly` indicates that Google rejected this installed application's OAuth setup. Confirm the Android package and certificate below in the same project as the web client. The Android client ID is not the value used for `VITE_GOOGLE_WEB_CLIENT_ID`.
 
 `[16] Account reauth failed` is raised by Google's native sign-in flow before ParkJom receives an ID token or calls `/api/auth/google`. It can result from Android OAuth registration or Google account/consent restrictions; the message alone does not identify which one.
 
-1. Open [Google Auth Platform — Clients](https://console.cloud.google.com/auth/clients) in the project containing the existing web client `917128720686-vrm50eevjakijmkftq8dj4qj7itl8d5m.apps.googleusercontent.com`.
+1. Open [Google Auth Platform — Clients](https://console.cloud.google.com/auth/clients) in the project containing the existing web client `681911813064-uk2mmra0532rp7gcmq3frfj5h37siq5d.apps.googleusercontent.com`.
 2. Check for an OAuth client of type **Android** with package **`com.parkjom.app`** and SHA-1 **`EC:D5:47:DE:2E:1A:21:F7:C9:54:03:DF:1F:1F:57:BE:3D:38:A2:74`**. This fingerprint was verified from the delivered debug APK. Create the client if it is missing, or correct a mismatch. Keep the existing web client ID in the app.
 3. Under **Audience**, check whether access is restricted to an organization or to test users. If the project is in Testing, include the Google account used on the phone.
 4. If registration and audience settings match, check whether the affected account has disabled Sign in with Google for ParkJom or has supervised-account restrictions. Try another permitted Google account to distinguish an account-specific failure.
@@ -47,6 +59,16 @@ The plugin already clears its Credential Manager selection state and retries thi
 Registration changes may take time to propagate. If the error persists, connect the affected phone with USB debugging enabled and inspect `adb logcat -s GoogleProvider` while reproducing sign-in. Compare the logged package, certificate SHA-1, and web client with the Cloud client settings. Do not share ID tokens or account credentials.
 
 See [Google's client-authentication requirements](https://developers.google.com/android/guides/client-auth) and [the plugin's required Cloud setup](https://capgo.app/docs/plugins/social-login/google/android/#required-google-cloud-setup).
+
+## Device safe areas
+
+Capacitor SystemBars handles Android window insets. Shared `--parkjom-safe-*` variables consume its injected values and fall back to the browser/iOS `env()` values. The sidebar header and footer, dashboard header, welcome screen, and edge controls use these shared values. This also handles insets that change on rotation. See [Capacitor SystemBars](https://capacitorjs.com/docs/apis/system-bars).
+
+## Verify the login experience
+
+The login background keeps five equal-sized top-down cars beside the desktop form and three across the mobile background. Cars cruise on their own and steer their headlights toward nearby pointer/touch input. The form stays stationary; reduced-motion settings disable the movement. `npm test` checks car counts, cruising, steering, headlights, and fixed body dimensions without requiring a browser.
+
+`npm run check` runs type checks, regression checks, and the production build. For browser checks, start a local dev server at `https://localhost:4187`, then run `npm run test:ui`. Set `PARKJOM_TEST_BASE_URL` for another local address and `PARKJOM_TEST_BROWSER` for a different browser executable. The browser checks use mock API responses and a test account, and verify magnetic motion, reduced motion, native safe-area spacing, a single welcome screen during a slow route download, and recovery from a failed download. They do not sign into a real Google account.
 
 ## Finish the iOS app on a Mac
 

@@ -1,7 +1,6 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import SplashScreen from '@/components/common/SplashScreen';
 import WelcomeLoadingScreen from '@/components/onboarding/WelcomeLoadingScreen';
 import {
   markWelcomeScreenCompleted,
@@ -14,46 +13,55 @@ const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
 const ManagementInvitationPage = lazy(() => import('@/features/management/pages/ManagementInvitationPage'));
 const PropertyManagementDashboard = lazy(() => import('@/features/management/pages/PropertyManagementDashboard'));
 const AdminDashboard = lazy(() => import('@/features/admin/pages/AdminDashboard'));
-const CommuterDashboard = lazy(() => import('@/features/commuter/pages/CommuterDashboard'));
+const loadCommuterDashboard = () => import('@/features/commuter/pages/CommuterDashboard');
+const CommuterDashboard = lazy(loadCommuterDashboard);
 const ParkingDetail = lazy(() => import('@/features/commuter/pages/ParkingDetail'));
 const ParkingReview = lazy(() => import('@/features/commuter/pages/ParkingReview'));
 const LandingPage = lazy(() => import('@/features/landing/pages/LandingPage'));
-const OwnerDashboard = lazy(() => import('@/features/owner/pages/OwnerDashboard'));
+const loadOwnerDashboard = () => import('@/features/owner/pages/OwnerDashboard');
+const OwnerDashboard = lazy(loadOwnerDashboard);
 const NotificationCenterPage = lazy(() => import('@/features/notifications/pages/NotificationCenterPage'));
-
-function RouteLoadingFallback() {
-  return (
-    <div
-      className="page-shell flex min-h-screen items-center justify-center px-6 text-center"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      <p className="text-sm font-medium text-[#6e6e73]">Loading ParkJom…</p>
-    </div>
-  );
-}
 
 export function AppRoutes() {
   const { isLoggedIn, isGuest, loading, user } = useAuth();
-  const [showWelcome, setShowWelcome] = useState(false);
+  const [welcomeFinished, setWelcomeFinished] = useState(false);
+  const [welcomeError, setWelcomeError] = useState('');
+  const welcomeCompletionPending = useRef(false);
+  const showWelcome = isLoggedIn && user && !welcomeFinished && shouldShowWelcomeScreen(user.userId, user.role);
 
   useEffect(() => {
-    if (isLoggedIn && user) {
-      setShowWelcome(shouldShowWelcomeScreen(user.userId, user.role));
-    } else {
-      setShowWelcome(false);
-    }
-  }, [isLoggedIn, user?.userId, user?.role]);
+    setWelcomeFinished(false);
+    setWelcomeError('');
+    welcomeCompletionPending.current = false;
+  }, [isLoggedIn, user?.userId]);
 
-  if (loading) {
-    return <SplashScreen />;
-  }
+  useEffect(() => {
+    if (!showWelcome || !user) return;
+    const preload = user.role === 'Owner' ? loadOwnerDashboard : loadCommuterDashboard;
+    void preload().catch(() => {}); // Completion below keeps the artwork visible if loading is slow.
+  }, [Boolean(showWelcome), user?.role]);
+
+  const finishWelcome = useCallback(async () => {
+    if (!user || welcomeCompletionPending.current) return;
+    welcomeCompletionPending.current = true;
+    setWelcomeError('');
+    try {
+      await (user.role === 'Owner' ? loadOwnerDashboard() : loadCommuterDashboard());
+      markWelcomeScreenCompleted(user.userId);
+      setWelcomeFinished(true);
+    } catch {
+      setWelcomeError('Your dashboard could not load. Check your connection and try again.');
+    } finally {
+      welcomeCompletionPending.current = false;
+    }
+  }, [user]);
+
+  if (loading) return null;
 
   if (!isLoggedIn) {
     return (
       <div className="font-sans text-[#1d1d1f] page-shell">
-        <Suspense fallback={<RouteLoadingFallback />}>
+        <Suspense fallback={null}>
           <Routes>
             {/* The Login Page is the default main page on initial visit and after logout */}
             <Route path="/" element={isGuest ? <Navigate to="/commuter" replace /> : <LoginPage />} />
@@ -77,10 +85,8 @@ export function AppRoutes() {
     return (
       <WelcomeLoadingScreen
         user={user}
-        onComplete={() => {
-          markWelcomeScreenCompleted(user.userId);
-          setShowWelcome(false);
-        }}
+        onComplete={finishWelcome}
+        loadError={welcomeError}
       />
     );
   }
@@ -89,7 +95,7 @@ export function AppRoutes() {
 
   return (
     <div className="page-shell">
-      <Suspense fallback={<RouteLoadingFallback />}>
+      <Suspense fallback={null}>
         <Routes>
           <Route path="/login" element={<Navigate to={dashboardPath} replace />} />
           <Route path="/management/invitation" element={<ManagementInvitationPage />} />

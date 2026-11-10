@@ -87,26 +87,24 @@ export default function SystemSelect({
     const trigger = triggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
-    const estimatedHeight = Math.min(options.length * 36 + 12, 260);
-    const spaceBelow = viewportHeight - rect.bottom;
-    const openUpward = spaceBelow < estimatedHeight + 16 && rect.top > estimatedHeight + 16;
-
-    const minWidth = Math.max(rect.width, 156);
-    const maxWidth = Math.max(minWidth, Math.min(viewportWidth - 24, 480));
-    let left = rect.left;
-    if (left + minWidth > viewportWidth - 12) {
-      left = Math.max(12, viewportWidth - minWidth - 12);
-    }
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const estimatedHeight = Math.min(options.length * 44 + 12, 260);
+    const spaceBelow = Math.max(0, viewportHeight - rect.bottom - 18);
+    const spaceAbove = Math.max(0, rect.top - 18);
+    const openUpward = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(260, openUpward ? spaceAbove : spaceBelow);
+    const width = Math.min(Math.max(rect.width, 156), viewportWidth - 24);
+    const left = Math.max(12, Math.min(rect.left, viewportWidth - width - 12));
 
     setMenuStyle({
       position: 'fixed',
       top: openUpward ? undefined : `${Math.round(rect.bottom + 6)}px`,
       bottom: openUpward ? `${Math.round(viewportHeight - rect.top + 6)}px` : undefined,
       left: `${Math.round(left)}px`,
-      minWidth: `${Math.round(minWidth)}px`,
-      maxWidth: `${Math.round(maxWidth)}px`,
+      width: `${Math.round(width)}px`,
+      maxWidth: 'calc(100vw - 24px)',
+      maxHeight,
       zIndex: 1350,
     });
   };
@@ -227,7 +225,7 @@ export default function SystemSelect({
                   aria-selected={isSelected}
                   disabled={opt.disabled}
                   onClick={() => handleSelect(opt)}
-                  className={`system-select-option flex w-full items-center justify-between gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition-colors ${
+                  className={`system-select-option flex min-h-11 w-full items-center justify-between gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition-colors ${
                     opt.disabled
                       ? 'cursor-not-allowed opacity-40 text-[#8e8e93] dark:text-[#71717A]'
                       : isSelected
@@ -235,7 +233,7 @@ export default function SystemSelect({
                       : 'font-medium text-[#1d1d1f] dark:text-white hover:bg-black/[0.045] dark:hover:bg-white/[0.06]'
                   }`}
                 >
-                  <span className="truncate">{opt.label}</span>
+                  <span className="min-w-0 break-words">{opt.label}</span>
                   {isSelected && (
                     <Check className="h-3.5 w-3.5 shrink-0 text-[#007aff] dark:text-[#3894FF]" aria-hidden="true" />
                   )}

@@ -7,11 +7,12 @@ import { isFirstTimeUserForTour, isNewRegisteredUser } from './onboardingStorage
 interface WelcomeLoadingScreenProps {
   user: AuthUser;
   onComplete: () => void;
+  loadError?: string;
 }
 
 const HAND_DRAWN_BG_SRC = '/images/welcome-hand-drawn-bg.jpg';
 
-export default function WelcomeLoadingScreen({ user, onComplete }: WelcomeLoadingScreenProps) {
+export default function WelcomeLoadingScreen({ user, onComplete, loadError }: WelcomeLoadingScreenProps) {
   const prefersReducedMotion = useReducedMotion();
   const [progress, setProgress] = useState(prefersReducedMotion ? 100 : 6);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -105,7 +106,7 @@ export default function WelcomeLoadingScreen({ user, onComplete }: WelcomeLoadin
       />
 
       {/* Safe-area layout container */}
-      <div className="relative z-10 flex h-full w-full flex-col justify-between p-6 sm:p-12 md:p-16">
+      <div className="relative z-10 flex h-full w-full flex-col justify-between p-6 sm:p-12 md:p-16" style={{ paddingTop: 'max(24px, var(--parkjom-safe-top))', paddingBottom: 'max(24px, var(--parkjom-safe-bottom))' }}>
         {/* Top bar: Minimal brand mark & quiet Skip action */}
         <header className="flex items-center justify-between">
           <div className="inline-flex items-center gap-2.5">
@@ -160,6 +161,7 @@ export default function WelcomeLoadingScreen({ user, onComplete }: WelcomeLoadin
               />
             </div>
           </div>
+          {loadError && <div role="alert" className="max-w-sm space-y-3 text-sm text-[#203b55]"><p>{loadError}</p><button type="button" onClick={() => window.location.reload()} className="min-h-11 rounded-xl bg-[#244b6a] px-5 font-medium text-white">Try again</button></div>}
         </motion.section>
 
         {/* Bottom spacer to preserve full view of the hand-drawn car & station platform */}

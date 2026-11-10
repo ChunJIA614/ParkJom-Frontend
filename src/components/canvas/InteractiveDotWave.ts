@@ -17,6 +17,11 @@
 export type TransitNodeType = 'node' | 'parking' | 'station' | 'car';
 
 export interface DotWaveOptions {
+  /** Draw over an existing illustration instead of painting an opaque surface. */
+  transparent: boolean;
+  /** Sparse top-down cars, or the original mixed transit network. */
+  mode: 'transit' | 'cars';
+  carScale: number;
   /** 3D Grid density in world units (default: 48 for clean Apple HIG spacing) */
   gap: number;
   /** Unscaled baseline radius of grid dots in CSS px (default: 1.2px) */
@@ -98,6 +103,8 @@ export interface TransitNode3D {
   heading: number;
   targetHeading: number;
   pulseTimer: number;
+  nextTurnAt?: number;
+  cruiseSpeed?: number;
 }
 
 export interface PointerState {
@@ -126,6 +133,9 @@ const AUTHENTIC_STATIONS = [
 ];
 
 export const DEFAULT_DOT_WAVE_OPTIONS: DotWaveOptions = {
+  transparent: false,
+  mode: 'transit',
+  carScale: 1,
   gap: 48,
   baseRadius: 1.2,
   interactionRadius: 180,
@@ -259,7 +269,7 @@ export class InteractiveDotWave {
 
   constructor(canvas: HTMLCanvasElement, options?: Partial<DotWaveOptions>) {
     this.canvas = canvas;
-    const context = canvas.getContext('2d', { alpha: false });
+    const context = canvas.getContext('2d', { alpha: true });
     if (!context) {
       throw new Error('InteractiveDotWave: Unable to obtain 2D rendering context from canvas.');
     }
@@ -275,8 +285,9 @@ export class InteractiveDotWave {
   public updateOptions(newOptions: Partial<DotWaveOptions>): void {
     const oldGap = this.options.gap;
     const oldTilt = this.options.pitchAngleDeg;
+    const oldMode = this.options.mode;
     this.options = mergeDotWaveOptions(this.options, newOptions);
-    if (newOptions.gap !== undefined && (newOptions.gap !== oldGap || newOptions.pitchAngleDeg !== oldTilt)) {
+    if (this.options.gap !== oldGap || this.options.pitchAngleDeg !== oldTilt || this.options.mode !== oldMode) {
       this.rebuild3DTransitGrid(false);
     }
     this.syncThemeColors(false);
@@ -306,6 +317,17 @@ export class InteractiveDotWave {
     }
   }
 
+  public setReducedMotion(reduced: boolean): void {
+    if (reduced) {
+      this.stop();
+      this.pointer.active = false;
+      this.pointer.strength = 0;
+      this.render(0, 0);
+    } else {
+      this.start();
+    }
+  }
+
   public destroy(): void {
     this.isDestroyed = true;
     this.stop();
@@ -326,8 +348,8 @@ export class InteractiveDotWave {
     window.removeEventListener('mousemove', this.handleMouseMove);
     window.removeEventListener('mouseleave', this.handleMouseLeave);
     window.removeEventListener('click', this.handleClick);
-    window.removeEventListener('touchstart', this.handleTouchMove, { capture: true });
-    window.removeEventListener('touchmove', this.handleTouchMove, { capture: true });
+    window.removeEventListener('touchstart', this.handleTouchMove);
+    window.removeEventListener('touchmove', this.handleTouchMove);
     window.removeEventListener('touchend', this.handleTouchEnd);
     window.removeEventListener('touchcancel', this.handleTouchEnd);
 
@@ -525,6 +547,28 @@ export class InteractiveDotWave {
 
   private rebuild3DTransitGrid(preserveVelocities: boolean): void {
     const { gap, pitchAngleDeg, cameraZ } = this.options;
+    if (this.options.mode === 'cars') {
+      // A handful of equal-sized cars in the login background, independent of grid density.
+      const positions = this.width < 600
+        ? [[0.16, 0.17], [0.84, 0.53], [0.24, 0.87]]
+        : [[0.16, 0.17], [0.82, 0.29], [0.4, 0.52], [0.14, 0.78], [0.8, 0.88]];
+      const scale = this.options.fov / cameraZ;
+      this.dots = positions.map(([u, v], i) => {
+        const x = (u - 0.5) * this.width / scale;
+        const y = (v - 0.5) * this.height / scale;
+        const heading = Math.random() * Math.PI * 2;
+        return {
+          col: i, row: 0, type: 'car', label: 'Commuter Car',
+          baseWorldX: x, baseWorldY: y, baseWorldZ: cameraZ,
+          x, y, z: cameraZ, vx: 0, vy: 0, vz: 0,
+          screenX: u * this.width, screenY: v * this.height,
+          scale: 1, radius: this.options.baseRadius, phase: i,
+          depthRatio: 0, heading, targetHeading: heading,
+          pulseTimer: 0, nextTurnAt: 0, cruiseSpeed: 18 + Math.random() * 12,
+        };
+      });
+      return;
+    }
     const tiltRad = (pitchAngleDeg * Math.PI) / 180;
     const sinTilt = Math.sin(tiltRad);
     const cosTilt = Math.cos(tiltRad);
@@ -563,6 +607,9 @@ export class InteractiveDotWave {
         const baseWorldX = gx;
         const key = `${c}_${r}`;
         const existing = existingMap.get(key);
+        const hash = Math.sin(c * 12.9898 + r * 78.233) * 43758.5453;
+        const pseudoRand = hash - Math.floor(hash);
+        const isInterior = c > 2 && c < cols - 3 && r > 2 && r < rows - 2;
 
         if (existing) {
           existing.baseWorldX = baseWorldX;
@@ -573,16 +620,12 @@ export class InteractiveDotWave {
         } else {
           // Elegant sparse distribution:
           // ~3.5% Stations, ~8% Parking, ~6% Cars, remainder clean micro-dots
-          const hash = Math.sin(c * 12.9898 + r * 78.233) * 43758.5453;
-          const pseudoRand = hash - Math.floor(hash);
 
           let type: TransitNodeType = 'node';
           let label = undefined;
           let stationCode = undefined;
           let isAvailable = undefined;
           let heading = (c * 0.4 + r * 0.7) % (Math.PI * 2);
-
-          const isInterior = c > 2 && c < cols - 3 && r > 2 && r < rows - 2;
 
           if (isInterior && pseudoRand < 0.035) {
             type = 'station';
@@ -609,6 +652,8 @@ export class InteractiveDotWave {
             heading,
             targetHeading: heading,
             pulseTimer: 0,
+            nextTurnAt: 0,
+            cruiseSpeed: 18 + pseudoRand * 140,
             baseWorldX,
             baseWorldY,
             baseWorldZ,
@@ -690,8 +735,12 @@ export class InteractiveDotWave {
     const centerY = height * 0.5;
 
     // 1. Draw solid background surface
-    ctx.fillStyle = `rgb(${this.currentBgColor.r | 0},${this.currentBgColor.g | 0},${this.currentBgColor.b | 0})`;
-    ctx.fillRect(0, 0, width, height);
+    if (this.options.transparent) {
+      ctx.clearRect(0, 0, width, height);
+    } else {
+      ctx.fillStyle = `rgb(${this.currentBgColor.r | 0},${this.currentBgColor.g | 0},${this.currentBgColor.b | 0})`;
+      ctx.fillRect(0, 0, width, height);
+    }
 
     const pointerStrength = this.pointer.strength;
     const px = this.pointer.x;
@@ -728,6 +777,38 @@ export class InteractiveDotWave {
 
     for (let i = 0; i < totalDots; i++) {
       const dot = this.dots[i];
+
+      if (this.options.mode === 'cars') {
+        const attracted = pointerStrength > 0.01 && Math.hypot(px - dot.screenX, py - dot.screenY) < interactionRadius;
+        if (!attracted) {
+          if (time >= (dot.nextTurnAt ?? 0)) {
+            dot.targetHeading = Math.random() * Math.PI * 2;
+            dot.nextTurnAt = time + 2500 + Math.random() * 4500;
+          }
+          let turn = dot.targetHeading - dot.heading;
+          while (turn < -Math.PI) turn += Math.PI * 2;
+          while (turn > Math.PI) turn -= Math.PI * 2;
+          dot.heading += turn * Math.min(1, 0.025 * dt);
+        }
+        const travel = (dot.cruiseSpeed ?? 28) * dt / 60 * (attracted ? 0.25 : 1);
+        dot.baseWorldX += Math.cos(dot.heading) * travel;
+        dot.baseWorldY += Math.sin(dot.heading) * travel;
+
+        // Re-enter beyond the opposite edge, so cars never pop into view.
+        const scale = fov / Math.max(50, dot.baseWorldZ);
+        const sx = centerX + dot.baseWorldX * scale;
+        const sy = centerY + dot.baseWorldY * scale;
+        if (sx < -120 || sx > width + 120) {
+          dot.baseWorldX = (sx < 0 ? width / 2 + 120 : -width / 2 - 120) / scale;
+          dot.x = dot.baseWorldX;
+          dot.vx = 0;
+        }
+        if (sy < -120 || sy > height + 120) {
+          dot.baseWorldY = (sy < 0 ? height / 2 + 120 : -height / 2 - 120) / scale;
+          dot.y = dot.baseWorldY;
+          dot.vy = 0;
+        }
+      }
 
       // Idle 3D wave ripples (depth Z + height Y)
       const angle1 =
@@ -932,8 +1013,9 @@ export class InteractiveDotWave {
   ): void {
     const sx = dot.screenX;
     const sy = dot.screenY;
-    const length = Math.max(10, 15 * scale * (1.0 + influence * 0.2));
-    const width = Math.max(6, 9 * scale * (1.0 + influence * 0.2));
+    const size = this.options.mode === 'cars' ? this.options.carScale : scale * this.options.carScale * (1.0 + influence * 0.2);
+    const length = Math.max(10, 15 * size);
+    const width = Math.max(6, 9 * size);
 
     ctx.save();
     ctx.translate(sx, sy);
@@ -941,7 +1023,7 @@ export class InteractiveDotWave {
 
     // Front Photon Headlight Beams (System Blue)
     if (influence > 0.04 || scale > 0.85) {
-      const beamLen = length * 1.3;
+      const beamLen = length * (this.options.mode === 'cars' ? 2.6 : 1.3);
       const beamGrad = ctx.createRadialGradient(length / 2, 0, 0, length / 2 + beamLen * 0.6, 0, beamLen);
       const beamAlpha = (0.35 * Math.max(0.4, influence) * depthAlpha).toFixed(3);
       beamGrad.addColorStop(0, `rgba(${blueCol.r | 0},${blueCol.g | 0},${blueCol.b | 0},${beamAlpha})`);
@@ -963,13 +1045,13 @@ export class InteractiveDotWave {
 
     ctx.fillStyle = `rgba(${this.scratchColor.r | 0},${this.scratchColor.g | 0},${this.scratchColor.b | 0},${alpha.toFixed(3)})`;
     ctx.beginPath();
-    ctx.roundRect(-length / 2, -width / 2, length, width, 2.5 * scale);
+    ctx.roundRect(-length / 2, -width / 2, length, width, 2.5 * size);
     ctx.fill();
 
     // Windshield highlight
     ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.beginPath();
-    ctx.roundRect(-length * 0.2, -width * 0.3, length * 0.45, width * 0.6, 1.2 * scale);
+    ctx.roundRect(-length * 0.2, -width * 0.3, length * 0.45, width * 0.6, 1.2 * size);
     ctx.fill();
 
     ctx.restore();

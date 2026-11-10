@@ -4,6 +4,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+:root {
+  /* Android supplies custom properties; iOS and browsers supply env() values. */
+  --parkjom-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --parkjom-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --parkjom-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --parkjom-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+}
+
+.workspace-sidebar-safe-header {
+  height: calc(3.5rem + var(--parkjom-safe-top));
+  min-height: calc(3.5rem + var(--parkjom-safe-top));
+  padding-top: calc(0.5rem + var(--parkjom-safe-top));
+  padding-left: max(0.5rem, var(--parkjom-safe-left));
+  padding-right: max(0.5rem, var(--parkjom-safe-right));
+}
+.workspace-sidebar-safe-footer { padding-bottom: max(0.625rem, var(--parkjom-safe-bottom)); }
+
 @theme {
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, SFMono-Regular, "JetBrains Mono", monospace;
@@ -54,6 +71,10 @@ body {
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 80px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
 }
 
 .landing-page {
@@ -1080,7 +1101,7 @@ html {
 }
 
 .bottom-nav-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--parkjom-safe-bottom);
 }
 
 .page-shell {
@@ -2705,8 +2726,8 @@ select option,
 
   .wallet-topup-dialog {
     max-width: none;
-    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 1rem);
-    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - var(--parkjom-safe-top) - 1rem);
+    padding-bottom: calc(1.25rem + var(--parkjom-safe-bottom));
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
@@ -3069,7 +3090,7 @@ select option,
 .workspace-header__mobile-search {
   position: fixed;
   z-index: 1110;
-  top: calc(env(safe-area-inset-top, 0px) + 3.7rem);
+  top: calc(var(--parkjom-safe-top) + 3.7rem);
   right: 0.75rem;
   left: 0.75rem;
   padding: 0.5rem;
@@ -3595,7 +3616,7 @@ select option,
 
 .dashboard-bottom-nav {
   min-height: var(--workspace-bottom-nav-height);
-  padding: 0.35rem 0.45rem max(0.35rem, env(safe-area-inset-bottom));
+  padding: 0.35rem 0.45rem max(0.35rem, var(--parkjom-safe-bottom));
   border-top: 0;
   border-bottom: 0;
   background: rgba(250, 250, 252, 0.88);
@@ -4100,7 +4121,7 @@ select option,
 
 .map-relocate-btn {
   position: absolute;
-  bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+  bottom: calc(5.25rem + var(--parkjom-safe-bottom));
   right: 12px;
   z-index: 999;
   width: 36px;
@@ -4305,11 +4326,17 @@ select option,
 
 @media (max-width: 767px) {
   .app-workspace {
-    padding-bottom: calc(var(--workspace-bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--workspace-bottom-nav-height) + var(--parkjom-safe-bottom));
   }
 
   .app-workspace :where(button, [role="button"], input, select, textarea):not(.leaflet-container *) {
     min-height: 2.75rem;
+  }
+
+  /* Keep form text readable and prevent focus zoom on iPhone. */
+  .app-workspace :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea, select) {
+    min-width: 0;
+    font-size: 16px;
   }
 
   .workspace-frame {
@@ -5399,4 +5426,3 @@ select option,
     animation: none !important;
   }
 }
-
