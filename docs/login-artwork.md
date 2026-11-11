@@ -1,8 +1,8 @@
 # Login artwork
 
-The full-page light scene uses `public/illustrations/commute-sketch.png`. Dark mode uses its separately generated night companion, `public/illustrations/commute-sketch-night.png`. The night asset was created with the built-in image generation tool, using the daytime asset as a visual reference and the selected style 10 recipe. The user explicitly requested a dark background, which overrides the recipe's white-paper palette while preserving the sparse pen drawing and orange bag.
+Both login themes use `public/illustrations/commute-sketch.png` so the illustration stays in place when the theme changes. Dark mode uses the app's neutral background color and a CSS filter to adapt the paper and ink.
 
-## Night prompt
+## Previous night illustration prompt
 
 ```text
 一张情绪叙事风格的极简淡彩速写插画,画在干净白纸上,轻盈通透、略带稚拙的手绘感,不是数字精修插画、不是写实照片、不是水彩习作、不是日系动漫。
