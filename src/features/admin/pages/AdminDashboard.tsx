@@ -26,7 +26,7 @@ import { getSystemConfig } from '../api/systemConfigApi';
 import { 
   initialStats
 } from '../data/mockData';
-import { AccessLogDto, AccessLogPaginationState, AdminDashboardData, AdminVehicleDto, IoTBollard, ListingRequest, OwnerPayout, SystemConfig, Transaction, OverstayRecord, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse, VerificationRequestListStatus, VerificationRequestPaginationState } from '../types';
+import { AccessLogDto, AccessLogPaginationState, AdminDashboardData, AdminVehicleDto, ListingRequest, OwnerPayout, SystemConfig, Transaction, OverstayRecord, ParkingVerificationDecision, ParkingVerificationDecisionResponse, ParkingVerificationDecisionResult, ParkingVerificationDocumentDto, ParkingVerificationRequestDto, ParkingVerificationRequestResponse, ParkingVerificationRequestsResponse, VerificationRequestListStatus, VerificationRequestPaginationState } from '../types';
 
 import DashboardHome from '../components/DashboardHome';
 import ListingGovernance from '../components/ListingGovernance';
@@ -77,7 +77,6 @@ export default function AdminDashboard() {
     localStorage.setItem('parkjom_admin_view', activeView);
   }, [activeView]);
   const [stats, setStats] = useState(initialStats);
-  const [bollards, setBollards] = useState<IoTBollard[]>([]);
   const [listings, setListings] = useState<ListingRequest[]>([]);
   const [listingsLoading, setListingsLoading] = useState(false);
   const [listingsError, setListingsError] = useState<string | null>(null);
@@ -534,6 +533,7 @@ export default function AdminDashboard() {
     }
   };
 
+  const offlineBollards = Math.max(0, stats.totalBollards - stats.onlineBollards);
   const adminSidebarGroups = [
     {
       items: [{ id: 'home', label: 'Platform Dashboard', icon: TrendingUp }],
@@ -545,7 +545,7 @@ export default function AdminDashboard() {
         { id: 'users', label: 'User Governance', icon: Users },
         { id: 'property-managers', label: 'Property Managers', icon: Building2 },
         { id: 'vehicles', label: 'Vehicle Management', icon: Car },
-        { id: 'iot', label: 'IoT Smart Bollards', icon: Radio, badge: bollards.filter((bollard) => bollard.status === 'offline').length, badgeTone: 'danger' as const },
+        { id: 'iot', label: 'IoT Smart Bollards', icon: Radio, badge: offlineBollards, badgeTone: 'danger' as const },
       ],
     },
     {
@@ -612,8 +612,9 @@ export default function AdminDashboard() {
       case 'iot':
         return (
           <IotHealthMonitor 
-            bollards={bollards} 
-            setBollards={setBollards}
+            token={token}
+            totalBollards={stats.totalBollards}
+            onlineBollards={stats.onlineBollards}
             addActivityLog={addActivityLog}
           />
         );
@@ -705,8 +706,8 @@ export default function AdminDashboard() {
     listings.filter((listing) => listing.status === 'pending').length > 0
       ? `${listings.filter((listing) => listing.status === 'pending').length} listing reviews are pending.`
       : null,
-    bollards.filter((bollard) => bollard.status === 'offline').length > 0
-      ? `${bollards.filter((bollard) => bollard.status === 'offline').length} smart bollards are offline.`
+    offlineBollards > 0
+      ? `${offlineBollards} smart bollards are offline.`
       : null,
     overstays.filter((overstay) => overstay.status !== 'resolved').length > 0
       ? `${overstays.filter((overstay) => overstay.status !== 'resolved').length} overstay cases need attention.`
@@ -773,7 +774,7 @@ export default function AdminDashboard() {
         items={[
           { id: 'home', icon: TrendingUp, label: 'Dashboard' },
           { id: 'governance', icon: ShieldCheck, label: 'Listings', count: listings.filter((l) => l.status === 'pending').length },
-          { id: 'iot', icon: Radio, label: 'Bollards', count: bollards.filter((b) => b.status === 'offline').length },
+          { id: 'iot', icon: Radio, label: 'Bollards', count: offlineBollards },
           { id: 'settlement', icon: Landmark, label: 'Finance' },
           { id: 'more', icon: Menu, label: 'More' },
         ]}

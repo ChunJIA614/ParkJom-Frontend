@@ -75,8 +75,10 @@ Object.defineProperty(globalThis, 'navigator', { value: {
     async getDevices() { return [{ name: 'ParkJom-unrelated' }, device]; },
     async requestDevice(options) {
       calls.push('chooser');
-      assert.ok(options.filters.some(({ name }) => name === device.name));
-      assert.deepEqual(options.optionalServices, [data.bleServiceUuid]);
+      assert.equal(options.acceptAllDevices, true);
+      assert.equal(options.filters, undefined);
+      assert.ok(options.optionalServices.includes(data.bleServiceUuid));
+      assert.ok(options.optionalServices.includes('6e400001-b5a3-f393-e0a9-e50e24dcca9e'));
       if (cancelChooser) throw new DOMException('Cancelled', 'NotFoundError');
       return device;
     },

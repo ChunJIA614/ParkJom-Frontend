@@ -33,6 +33,7 @@ import SettingsPanel from '../components/SettingsPanel';
 import ReviewReplies from '../components/ReviewReplies';
 import OwnerBookingHistory from '../components/OwnerBookingHistory';
 import OwnerWalletPanel from '../components/OwnerWalletPanel';
+import OwnerIoTManager from '../components/OwnerIoTManager';
 import SupportWorkspace from '@/features/support/components/SupportWorkspace';
 import {
   getOwnerPayoutAccount,
@@ -142,13 +143,14 @@ function mapOwnerBookingToBooking(item: OwnerBookingHistoryItem): Booking | null
   };
 }
 
-type OwnerView = 'dashboard' | 'availability' | 'reviews' | 'registration' | 'wallet' | 'settings' | 'tickets';
+type OwnerView = 'dashboard' | 'availability' | 'reviews' | 'registration' | 'iot' | 'wallet' | 'settings' | 'tickets';
 
 const OWNER_SEARCH_ITEMS = [
   { id: 'dashboard', label: 'Overview', keywords: ['dashboard', 'parking status', 'bookings'] },
   { id: 'availability', label: 'Configure Parking', keywords: ['availability', 'schedule', 'timetable'] },
   { id: 'reviews', label: 'Reviews', keywords: ['feedback', 'owner replies'] },
   { id: 'registration', label: 'Register Property', keywords: ['onboarding', 'new parking', 'bay'] },
+  { id: 'iot', label: 'Smart Bollards', keywords: ['iot', 'device', 'bollard', 'otp', 'pairing', 'unlock'] },
   { id: 'wallet', label: 'Earnings Wallet', keywords: ['wallet', 'earnings', 'payout', 'balance', 'transactions'] },
   { id: 'tickets', label: 'Support', keywords: ['tickets', 'issues', 'help'] },
   { id: 'settings', label: 'Settings', keywords: ['payout', 'bank account', 'preferences'] },
@@ -167,7 +169,7 @@ export default function OwnerDashboard() {
   // Navigation View Router — persist across reloads
   const [activeView, setActiveView] = useState<OwnerView>(() => {
     const saved = localStorage.getItem('parkjom_owner_view');
-    const validViews: OwnerView[] = ['dashboard', 'availability', 'reviews', 'registration', 'wallet', 'settings', 'tickets'];
+    const validViews: OwnerView[] = ['dashboard', 'availability', 'reviews', 'registration', 'iot', 'wallet', 'settings', 'tickets'];
     return saved && validViews.includes(saved as OwnerView) ? saved as OwnerView : 'dashboard';
   });
 
@@ -602,6 +604,7 @@ export default function OwnerDashboard() {
     availability: { title: 'Configure parking', description: 'Keep one-time parking details separate from the availability timetable you manage day to day.' },
     reviews: { title: 'Parking reviews', description: 'Read customer feedback and reply as the parking owner.' },
     registration: { title: 'Register a property', description: 'Submit a bay for verification and configure it for bookings.' },
+    iot: { title: 'Smart bollards', description: 'Pair hardware with your parking spots and securely unlock an assigned bollard.' },
     wallet: { title: 'Earnings wallet', description: 'Track settled payouts, funds on hold, and every commission and refund line.' },
     tickets: { title: 'Support', description: 'Track booking, access, and settlement issues.' },
     settings: { title: 'Settings', description: 'Manage payout details and workspace preferences.' },
@@ -711,6 +714,16 @@ export default function OwnerDashboard() {
             />
           )}
 
+          {activeView === 'iot' && user && (
+            <OwnerIoTManager
+              token={user.token}
+              bays={bays}
+              baysLoading={baysLoading}
+              baysError={baysError}
+              onRefreshBays={() => void fetchMyParking()}
+            />
+          )}
+
           {activeView === 'reviews' && user && (
             <ReviewReplies
               token={user.token}
@@ -742,7 +755,7 @@ export default function OwnerDashboard() {
           { id: 'registration', icon: PlusSquare, label: 'Register' },
           { id: 'more', icon: Menu, label: 'More' },
         ]}
-        activeId={['tickets', 'settings', 'wallet'].includes(activeView) ? 'more' : activeView}
+        activeId={['tickets', 'settings', 'wallet', 'iot'].includes(activeView) ? 'more' : activeView}
         onChange={(id) => {
           if (id === 'more') {
             setIsSidebarOpen(true);

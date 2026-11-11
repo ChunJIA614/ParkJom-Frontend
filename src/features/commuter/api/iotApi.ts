@@ -27,7 +27,11 @@ type BollardDevice = {
 
 type BollardBluetooth = {
   getDevices?(): Promise<BollardDevice[]>;
-  requestDevice(options: { filters: { name: string }[]; optionalServices: string[] }): Promise<BollardDevice>;
+  requestDevice(options: {
+    acceptAllDevices?: boolean;
+    filters?: { name: string }[];
+    optionalServices?: string[];
+  }): Promise<BollardDevice>;
 };
 
 export type UnlockChallenge = {
@@ -181,12 +185,14 @@ export async function completeBollardUnlock(
 ) {
   options.signal.throwIfAborted();
   requireCurrentChallenge(challenge);
-  const suffix = challenge.deviceUuid.slice(-6);
-  const names = new Set([suffix, suffix.toLowerCase(), suffix.toUpperCase()]);
-  // Open the chooser directly from the second tap, before waiting for GPS or a network request.
+  const optionalServices = Array.from(new Set([
+    challenge.bleServiceUuid,
+    SERVICE_UUID,
+  ].filter(Boolean)));
+  // Open the chooser directly from the second tap, showing all nearby Bluetooth devices.
   const device = options.device ?? await requireBluetooth().requestDevice({
-    filters: [...names].map((value) => ({ name: `ParkJom-${value}` })),
-    optionalServices: [challenge.bleServiceUuid],
+    acceptAllDevices: true,
+    optionalServices,
   }).catch((error: unknown) => {
     if (error instanceof DOMException && (error.name === 'NotFoundError' || error.name === 'NotAllowedError')) {
       throw new Error('Choose the assigned bollard in the Bluetooth window to continue.');

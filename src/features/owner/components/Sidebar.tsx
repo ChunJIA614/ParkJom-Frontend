@@ -1,4 +1,4 @@
-import { CalendarDays, ClipboardList, LayoutDashboard, MessageSquare, PlusSquare, Sliders, Wallet } from 'lucide-react';
+import { CalendarDays, ClipboardList, LayoutDashboard, MessageSquare, PlusSquare, Radio, Sliders, Wallet } from 'lucide-react';
 import AppSidebar from '@/components/layout/AppSidebar';
 
 interface SidebarProps {
@@ -39,6 +39,7 @@ export default function Sidebar({
             { id: 'availability', label: 'Configure Parking', icon: CalendarDays },
             { id: 'reviews', label: 'Reviews', icon: MessageSquare },
             { id: 'registration', label: 'Register Property', icon: PlusSquare },
+            { id: 'iot', label: 'Smart Bollards', icon: Radio },
           ],
         },
         {
