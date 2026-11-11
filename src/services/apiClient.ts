@@ -10,7 +10,11 @@ function hasAuthorizationHeader(headers?: HeadersInit) {
   return headers ? new Headers(headers).has('Authorization') : false;
 }
 
-export function apiRequest(path: string, init?: RequestInit): Promise<Response> {
+export function apiRequest(
+  path: string,
+  init?: RequestInit,
+  options?: { preserveSessionOnForbidden?: boolean },
+): Promise<Response> {
   const withLeadingSlash = path.startsWith('/') ? path : `/${path}`;
   const normalizedPath = withLeadingSlash.replace(/^\/api(?=\/|$)/, '') || '/';
   return fetch(`${API_BASE}${normalizedPath}`, init).then(async (response) => {
@@ -18,7 +22,7 @@ export function apiRequest(path: string, init?: RequestInit): Promise<Response> 
     if (isAuthenticatedRequest && (response.status === 401 || response.status === 403)) {
       const message = await response.clone().text().catch(() => '');
       const isSuspendedOrDeactivated = /suspend|deactivat|disabled|account\s+(?:is\s+)?inactive/i.test(message);
-      if (response.status === 401 || isSuspendedOrDeactivated || response.status === 403) {
+      if (response.status === 401 || isSuspendedOrDeactivated || !options?.preserveSessionOnForbidden) {
         const reason = isSuspendedOrDeactivated
           ? (/deactivat/i.test(message) ? 'deactivated' : 'suspended')
           : (response.status === 403 ? 'forbidden' : 'unauthorized');

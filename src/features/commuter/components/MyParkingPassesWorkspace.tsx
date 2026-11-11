@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -29,8 +29,12 @@ import {
   getBookingIsLastDay,
 } from '../api/bookingApi';
 import {
-  performHiddenUnlockFlow,
+  completeBollardUnlock,
+  findRememberedBollard,
+  isUnlockChallengeCurrent,
   performLockBollardCommand,
+  prepareBollardUnlock,
+  type UnlockChallenge,
 } from '../api/iotApi';
 import ParkingReview from '../pages/ParkingReview';
 
@@ -114,11 +118,24 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
 
   // Per-booking bollard state (tracks whether each booking's bollard is currently unlocked/lowered)
-  const [unlockedByBookingId, setUnlockedByBookingId] = useState<Record<string, boolean>>({});
+  const [unlockedByBookingId, setUnlockedByBookingId] = useState<Record<string, boolean | undefined>>({});
   const [openedOnceByBookingId, setOpenedOnceByBookingId] = useState<Record<string, boolean>>({});
   const [bollardMotion, setBollardMotion] = useState<'idle' | 'lowering' | 'raising'>('idle');
   const [iotError, setIotError] = useState<string | null>(null);
   const [iotStatusNote, setIotStatusNote] = useState<string | null>(null);
+  const [pendingUnlock, setPendingUnlock] = useState<UnlockChallenge | null>(null);
+  const activeCommand = useRef<AbortController | null>(null);
+
+  useEffect(() => () => activeCommand.current?.abort(), []);
+
+  useEffect(() => {
+    if (!pendingUnlock) return;
+    const expiresIn = Math.max(0, Date.parse(pendingUnlock.expiresAt) - Date.now());
+    const timeout = window.setTimeout(() => {
+      setPendingUnlock((current) => current === pendingUnlock ? null : current);
+    }, expiresIn);
+    return () => window.clearTimeout(timeout);
+  }, [pendingUnlock]);
 
   // Cancel modal state ("Tell us why?")
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -151,7 +168,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
     setSelectedBookingId(booking.id);
     setIotError(null);
     setIotStatusNote(null);
-    setBollardMotion('idle');
+    setPendingUnlock(null);
     setSubView('bollard');
   };
 
@@ -173,141 +190,87 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
   };
 
   const handleToggleBollard = async (targetUnlock: boolean) => {
-    if (!effectiveBooking || bollardMotion !== 'idle') return;
-    setIotError(null);
-    setIotStatusNote(null);
-
+    if (!effectiveBooking || activeCommand.current) return;
     const numericId = effectiveBooking.bookingId;
-
-    if (targetUnlock) {
-      // Hidden verification + Unlock
-      setBollardMotion('lowering');
-      try {
-        if (!token || !numericId) {
-          throw new Error('Authentication or valid Booking ID is required to unlock the bollard.');
-        }
-
-        const result = await performHiddenUnlockFlow(token, numericId);
-        setUnlockedByBookingId((prev) => ({ ...prev, [effectiveBooking.id]: true }));
-        setOpenedOnceByBookingId((prev) => ({ ...prev, [effectiveBooking.id]: true }));
-        setIotStatusNote(result.message || 'Bollard lowered. You may pull into your reserved bay.');
-        if (numericId && onBookingUnlocked) {
-          onBookingUnlocked(numericId);
-        }
-        await onRefreshBookings();
-      } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : 'Verification failed. Unable to unlock the bollard.';
-        setIotError(message);
-      } finally {
-        setBollardMotion('idle');
-      }
-    } else {
-      // Lock bollard + check if last day (/api/booking/{id}/isComplete)
-      setBollardMotion('raising');
-      try {
-        if (!token || !numericId) {
-          throw new Error('Authentication or valid Booking ID is required to lock the bollard.');
-        }
-
-        const lockResult = await performLockBollardCommand(token, numericId);
-        setUnlockedByBookingId((prev) => ({ ...prev, [effectiveBooking.id]: false }));
-
-        // Check /api/booking/{id}/isComplete
-        const completionCheck = await getBookingIsLastDay(token, numericId).catch(() => null);
-        const inclusiveEnd = formatInclusiveEndDate(
-          effectiveBooking.startTime,
-          effectiveBooking.endTime,
-        );
-        const todayStr = new Date().toLocaleDateString('en-CA');
-        const endStr = inclusiveEnd.toLocaleDateString('en-CA');
-        const isLastDayFallback = todayStr >= endStr;
-
-        const isBookingCompleteNow = completionCheck
-          ? completionCheck.isLastDay || completionCheck.isComplete
-          : isLastDayFallback;
-
-        if (isBookingCompleteNow) {
-          if (onBookingCompleted) {
-            onBookingCompleted(effectiveBooking);
-          }
-          await onRefreshBookings();
-          setSubView('completed_review');
-        } else {
-          setIotStatusNote(
-            lockResult.message ||
-              `Bollard locked and secured for today. Your booking continues until ${formatBookingDate(inclusiveEnd)}.`,
-          );
-          await onRefreshBookings();
-        }
-      } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : 'Unable to lock the bollard. Please check that your vehicle has cleared the bay.';
-        setIotError(message);
-      } finally {
-        setBollardMotion('idle');
-      }
+    if (!token || !numericId) {
+      setIotError('Sign in and select a confirmed booking to control its bollard.');
+      return;
     }
-  };
 
-  // Demo simulation helper when testing on a laptop without physical ESP32 hardware
-  const handleSimulateBollardToggle = async (targetUnlock: boolean) => {
-    if (!effectiveBooking || bollardMotion !== 'idle') return;
+    const controller = new AbortController();
+    activeCommand.current = controller;
+    const { signal } = controller;
+    const bookingKey = effectiveBooking.id;
     setIotError(null);
     setIotStatusNote(null);
+    setBollardMotion(targetUnlock ? 'lowering' : 'raising');
 
-    if (targetUnlock) {
-      setBollardMotion('lowering');
-      await new Promise((r) => setTimeout(r, 900));
-      setUnlockedByBookingId((prev) => ({ ...prev, [effectiveBooking.id]: true }));
-      setOpenedOnceByBookingId((prev) => ({ ...prev, [effectiveBooking.id]: true }));
-      setBollardMotion('idle');
-      setIotStatusNote('Bollard unlocked and lowered into recess.');
-      if (effectiveBooking.bookingId && onBookingUnlocked) {
-        onBookingUnlocked(effectiveBooking.bookingId);
-      }
-    } else {
-      setBollardMotion('raising');
-      await new Promise((r) => setTimeout(r, 900));
-      setUnlockedByBookingId((prev) => ({ ...prev, [effectiveBooking.id]: false }));
-      setBollardMotion('idle');
+    const forgetPosition = () => {
+      setUnlockedByBookingId((previous) => ({ ...previous, [bookingKey]: undefined }));
+    };
 
-      // Check backend /api/booking/{id}/isComplete even in simulation mode
-      let isLastDay = false;
-      if (token && effectiveBooking.bookingId) {
-        const check = await getBookingIsLastDay(token, effectiveBooking.bookingId).catch(() => null);
-        if (check) {
-          isLastDay = check.isLastDay || check.isComplete;
+    try {
+      if (targetUnlock) {
+        let challenge = pendingUnlock?.bookingId === numericId && isUnlockChallengeCurrent(pendingUnlock)
+          ? pendingUnlock
+          : null;
+        let device: Awaited<ReturnType<typeof findRememberedBollard>>;
+        if (!challenge) {
+          challenge = await prepareBollardUnlock(token, numericId, signal);
+          signal.throwIfAborted();
+          setPendingUnlock(challenge);
+          device = await findRememberedBollard(challenge);
+          if (!device) return;
         }
-      }
-      if (!isLastDay) {
-        const inclusiveEnd = formatInclusiveEndDate(
-          effectiveBooking.startTime,
-          effectiveBooking.endTime,
-        );
-        const todayStr = new Date().toLocaleDateString('en-CA');
-        const endStr = inclusiveEnd.toLocaleDateString('en-CA');
-        isLastDay = todayStr >= endStr;
-      }
 
-      if (isLastDay) {
-        if (onBookingCompleted) {
-          onBookingCompleted(effectiveBooking);
-        }
-        setSubView('completed_review');
+        const result = await completeBollardUnlock(token, challenge, {
+          device,
+          signal,
+          onSubmitted: () => {
+            setPendingUnlock(null);
+            forgetPosition();
+          },
+        });
+        signal.throwIfAborted();
+        setUnlockedByBookingId((previous) => ({ ...previous, [bookingKey]: true }));
+        setOpenedOnceByBookingId((previous) => ({ ...previous, [bookingKey]: true }));
+        setIotStatusNote(result.message || 'Bollard lowered. You may pull into your reserved bay.');
+        onBookingUnlocked?.(numericId);
       } else {
-        const inclusiveEnd = formatInclusiveEndDate(
-          effectiveBooking.startTime,
-          effectiveBooking.endTime,
-        );
-        setIotStatusNote(
-          `Bollard locked for today (middle day of pass). Your reservation continues until ${formatBookingDate(inclusiveEnd)}.`,
-        );
+        setPendingUnlock(null);
+        forgetPosition();
+        const result = await performLockBollardCommand(token, numericId);
+        signal.throwIfAborted();
+        setUnlockedByBookingId((previous) => ({ ...previous, [bookingKey]: false }));
+        setIotStatusNote(result.message || 'Bollard locked and secured.');
+
+        const completionCheck = await getBookingIsLastDay(token, numericId).catch(() => null);
+        signal.throwIfAborted();
+        const inclusiveEnd = formatInclusiveEndDate(effectiveBooking.startTime, effectiveBooking.endTime);
+        const isBookingComplete = completionCheck
+          ? completionCheck.isLastDay || completionCheck.isComplete
+          : new Date().toLocaleDateString('en-CA') >= inclusiveEnd.toLocaleDateString('en-CA');
+
+        if (isBookingComplete) {
+          onBookingCompleted?.(effectiveBooking);
+          setSubView('completed_review');
+        }
       }
+
+      try {
+        await onRefreshBookings();
+      } catch {
+        if (!signal.aborted) {
+          setIotStatusNote((message) => `${message ?? ''} Refresh My Passes to update your booking.`.trim());
+        }
+      }
+    } catch (error) {
+      if (!signal.aborted) {
+        setIotError(error instanceof Error ? error.message : 'Unable to control the bollard. Try again.');
+      }
+    } finally {
+      activeCommand.current = null;
+      if (!signal.aborted) setBollardMotion('idle');
     }
   };
 
@@ -820,6 +783,9 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
       effectiveBooking.endTime,
     );
     const isMoving = bollardMotion !== 'idle';
+    const hasConfirmedPosition = unlockedByBookingId[effectiveBooking.id] !== undefined;
+    const canConnect = pendingUnlock !== null && pendingUnlock.bookingId === effectiveBooking.bookingId;
+    const positionLabel = !hasConfirmedPosition ? 'Position unconfirmed' : isSelectedUnlocked ? 'Unlocked (Down)' : 'Locked (Up)';
 
     return (
       <div className="w-full max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200">
@@ -827,7 +793,8 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => setSubView('grid')}
+            disabled={isMoving}
+            onClick={() => { setPendingUnlock(null); setSubView('grid'); }}
             className="inline-flex items-center gap-2 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] px-3.5 py-2 text-xs font-bold text-[#111] dark:text-white hover:bg-slate-50 dark:hover:bg-[#1C1C1E] transition-colors cursor-pointer shadow-xs"
           >
             <ArrowLeft size={15} /> Back to My Passes
@@ -836,6 +803,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
           <div className="flex items-center gap-2">
             <button
               type="button"
+              disabled={isMoving}
               onClick={() => onNavigateToMap(effectiveBooking)}
               className="inline-flex items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-xs font-bold text-[#007AFF] hover:bg-slate-50 dark:hover:bg-[#1C1C1E] transition-colors cursor-pointer"
               title="Bring to map"
@@ -844,6 +812,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
             </button>
             <button
               type="button"
+              disabled={isMoving}
               onClick={() => handleOpenConfirmationView(effectiveBooking)}
               className="inline-flex items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] px-3.5 py-2 text-xs font-bold text-[#111] dark:text-white hover:bg-slate-50 dark:hover:bg-[#1C1C1E] transition-colors cursor-pointer"
               aria-label="Configure booking"
@@ -882,12 +851,10 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                   }`}
                 >
                   {bollardMotion === 'lowering'
-                    ? 'Lowering...'
+                    ? 'Verifying unlock…'
                     : bollardMotion === 'raising'
-                      ? 'Raising...'
-                      : isSelectedUnlocked
-                        ? 'Unlocked (Down)'
-                        : 'Locked (Up)'}
+                      ? 'Locking…'
+                      : positionLabel}
                 </span>
               </div>
 
@@ -907,11 +874,9 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                     />
                     {isMoving
                       ? bollardMotion === 'lowering'
-                        ? 'Verifying & Lowering Smart Bollard...'
-                        : 'Checking Bay Clearance & Raising Bollard...'
-                      : isSelectedUnlocked
-                        ? 'Bollard Lowered (0°) — Bay Open for Vehicle'
-                        : 'Bollard Raised (90°) — Bay Protected & Locked'}
+                        ? 'Verifying access and waiting for the bollard…'
+                        : 'Checking bay clearance and waiting for the bollard…'
+                      : positionLabel}
                   </span>
                   <span className="font-mono text-[10px] text-slate-400">
                     IoT Smart Barrier
@@ -929,7 +894,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                           : 'border-amber-500/40 bg-amber-500/15 text-amber-300'
                       }`}
                     >
-                      {isSelectedUnlocked ? '▼ Lowered Into Ground' : '▲ Raised & Locked'}
+                      {positionLabel}
                     </div>
                   </div>
 
@@ -998,80 +963,43 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                         <p className="mt-0.5 leading-relaxed">{iotError}</p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-200/60 dark:border-rose-800/50">
-                      <button
-                        type="button"
-                        onClick={() => void handleSimulateBollardToggle(!isSelectedUnlocked)}
-                        className="rounded-lg bg-white/80 dark:bg-white/10 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:text-rose-200 hover:bg-white dark:hover:bg-white/20 transition-colors cursor-pointer"
-                      >
-                        Simulate {isSelectedUnlocked ? 'Lock' : 'Unlock'} (Demo Override)
-                      </button>
-                    </div>
                   </div>
                 ) : iotStatusNote ? (
-                  <div className="rounded-2xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/40 p-3.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5">
+                  <div role="status" className="rounded-2xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/40 p-3.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5">
                     <ShieldCheck size={17} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
                     <span>{iotStatusNote}</span>
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-black/10 dark:border-white/10 bg-[#f8f9fa] dark:bg-[#1C1C1E]/60 px-4 py-3 text-center text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
-                    Use the toggle switch below to unlock or lock the bollard. IoT Bluetooth &amp; GPS verification runs automatically in the background.
+                    Unlock verifies your location and connects to the bollard. Clear the bay before locking.
                   </div>
                 )}
               </div>
 
-              {/* 3. LOCK / UNLOCK TOGGLE SWITCH */}
-              <div className="flex flex-col items-center justify-center py-2">
+              <div className="grid gap-3">
                 <button
                   type="button"
-                  role="switch"
-                  aria-checked={isSelectedUnlocked}
                   disabled={isMoving}
-                  onClick={() => void handleToggleBollard(!isSelectedUnlocked)}
-                  className={`relative flex h-16 w-64 items-center rounded-full p-2 transition-all duration-300 shadow-inner cursor-pointer disabled:opacity-60 disabled:cursor-wait ${
-                    isSelectedUnlocked
-                      ? 'bg-emerald-500 text-white shadow-emerald-500/25'
-                      : 'bg-slate-200 dark:bg-[#242429] text-[#111] dark:text-white'
-                  }`}
+                  onClick={() => void handleToggleBollard(true)}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#0071e3] px-4 text-sm font-semibold text-white hover:bg-[#0062c5] disabled:opacity-60"
                 >
-                  {/* Background Labels */}
-                  <div className="flex w-full items-center justify-between px-5 text-xs font-extrabold uppercase tracking-wider select-none">
-                    <span className={isSelectedUnlocked ? 'opacity-90' : 'opacity-0'}>
-                      Unlocked
-                    </span>
-                    <span className={!isSelectedUnlocked ? 'opacity-80' : 'opacity-0'}>
-                      Locked
-                    </span>
-                  </div>
-
-                  {/* Sliding Thumb */}
-                  <div
-                    className={`absolute top-2 bottom-2 w-28 rounded-full bg-white dark:bg-[#141417] shadow-lg flex items-center justify-center gap-1.5 text-xs font-extrabold transition-transform duration-300 ${
-                      isSelectedUnlocked
-                        ? 'translate-x-32 text-emerald-600 dark:text-emerald-400'
-                        : 'translate-x-0 text-[#111] dark:text-white'
-                    }`}
-                  >
-                    {isMoving ? (
-                      <Loader2 size={16} className="animate-spin text-[#007AFF]" />
-                    ) : isSelectedUnlocked ? (
-                      <>
-                        <Unlock size={16} />
-                        <span>UNLOCK</span>
-                      </>
-                    ) : (
-                      <>
-                        <Lock size={16} />
-                        <span>LOCK</span>
-                      </>
-                    )}
-                  </div>
+                  {bollardMotion === 'lowering' ? <Loader2 size={17} className="animate-spin" /> : <Unlock size={17} />}
+                  {canConnect ? 'Connect Bluetooth and unlock' : 'Unlock bollard'}
                 </button>
-                <p className="mt-2.5 text-[11px] font-medium text-[#6e6e73] dark:text-[#A1A1AA]">
-                  {isSelectedUnlocked
-                    ? 'Tap toggle to lock bollard when leaving the bay'
-                    : 'Tap toggle to verify & unlock bollard'}
-                </p>
+                {canConnect && !isMoving && (
+                  <p role="status" className="text-xs text-[#5f6368] dark:text-[#A1A1AA]">
+                    Tap Connect Bluetooth and unlock, then select your bollard.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  disabled={isMoving}
+                  onClick={() => void handleToggleBollard(false)}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-black/10 px-4 text-sm font-semibold dark:border-white/15 disabled:opacity-60"
+                >
+                  {bollardMotion === 'raising' ? <Loader2 size={17} className="animate-spin" /> : <Lock size={17} />}
+                  Lock bollard
+                </button>
               </div>
 
               {/* 4. BOTTOM SUPPORT BUTTON & QUICK ACTIONS */}
