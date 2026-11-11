@@ -64,6 +64,7 @@
 .login-management-form input { width: 100%; min-width: 0; min-height: 48px; padding: 12px 14px; border: 1px solid var(--login-line); border-radius: 11px; background: var(--login-surface); color: var(--login-ink); font-size: 16px; }
 .login-password-field { position: relative; }
 .login-password-field input { padding-right: 48px; }
+.login-password-field input::-ms-reveal { display: none; }
 .login-password-field button { position: absolute; inset: 2px 3px 2px auto; width: 44px; display: grid; place-items: center; color: var(--login-muted); cursor: pointer; }
 .login-submit-button { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; border-radius: 11px; background: #244b6a; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
 .dark .login-submit-button { background: #86b2d3; color: #122630; }
