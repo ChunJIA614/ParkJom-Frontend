@@ -34,6 +34,7 @@ import ReviewReplies from '../components/ReviewReplies';
 import OwnerBookingHistory from '../components/OwnerBookingHistory';
 import OwnerWalletPanel from '../components/OwnerWalletPanel';
 import OwnerIoTManager from '../components/OwnerIoTManager';
+import { OwnerPublicParkingManager } from '@/features/publicParking/components/OwnerPublicParkingManager';
 import SupportWorkspace from '@/features/support/components/SupportWorkspace';
 import {
   getOwnerPayoutAccount,
@@ -143,10 +144,11 @@ function mapOwnerBookingToBooking(item: OwnerBookingHistoryItem): Booking | null
   };
 }
 
-type OwnerView = 'dashboard' | 'availability' | 'reviews' | 'registration' | 'iot' | 'wallet' | 'settings' | 'tickets';
+type OwnerView = 'dashboard' | 'publicParking' | 'availability' | 'reviews' | 'registration' | 'iot' | 'wallet' | 'settings' | 'tickets';
 
 const OWNER_SEARCH_ITEMS = [
   { id: 'dashboard', label: 'Overview', keywords: ['dashboard', 'parking status', 'bookings'] },
+  { id: 'publicParking', label: 'Public Drive-In Lots', keywords: ['public parking', 'drive-in', 'hourly', 'carplate', 'turnover', 'capacity'] },
   { id: 'availability', label: 'Configure Parking', keywords: ['availability', 'schedule', 'timetable'] },
   { id: 'reviews', label: 'Reviews', keywords: ['feedback', 'owner replies'] },
   { id: 'registration', label: 'Register Property', keywords: ['onboarding', 'new parking', 'bay'] },
@@ -168,8 +170,10 @@ export default function OwnerDashboard() {
   }) : null, [user]);
   // Navigation View Router — persist across reloads
   const [activeView, setActiveView] = useState<OwnerView>(() => {
+    const urlView = new URLSearchParams(window.location.search).get('view') as OwnerView | null;
+    const validViews: OwnerView[] = ['dashboard', 'publicParking', 'availability', 'reviews', 'registration', 'iot', 'wallet', 'settings', 'tickets'];
+    if (urlView && validViews.includes(urlView)) return urlView;
     const saved = localStorage.getItem('parkjom_owner_view');
-    const validViews: OwnerView[] = ['dashboard', 'availability', 'reviews', 'registration', 'iot', 'wallet', 'settings', 'tickets'];
     return saved && validViews.includes(saved as OwnerView) ? saved as OwnerView : 'dashboard';
   });
 
@@ -671,6 +675,10 @@ export default function OwnerDashboard() {
               />
               {user && <OwnerBookingHistory token={user.token} bays={bays} />}
             </div>
+          )}
+
+          {activeView === 'publicParking' && (
+            <OwnerPublicParkingManager />
           )}
 
           {activeView === 'wallet' && user && (

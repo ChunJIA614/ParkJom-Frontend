@@ -87,7 +87,7 @@ const COMMUTER_STEPS: GuideStep[] = [
     label: 'Vehicles',
     title: 'Saved Vehicles',
     description:
-      'Register your car plate number in advance for seamless barrier entry.',
+      'Save your vehicle license plate in advance so the barrier gate opens on arrival.',
   },
 ];
 

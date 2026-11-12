@@ -199,7 +199,7 @@ export default function ParkingReview({ onBack, onSubmitReview }: ParkingReviewP
             <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#34C759]">Review Published</p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-[#111] dark:text-white">Thanks for helping commuters</h1>
             <p className="mx-auto mt-2 max-w-xs text-xs text-[#86868b] leading-relaxed">
-              Your verified review is now live and helps fellow commuters find safe, seamless parking.
+              Your review is live and helps other commuters find parking.
             </p>
             <div className="mt-5 flex justify-center gap-1.5 text-[#ff9500]">
               {Array.from({ length: 5 }, (_, i) => (

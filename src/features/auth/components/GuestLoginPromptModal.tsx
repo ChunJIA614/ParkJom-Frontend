@@ -107,7 +107,7 @@ export default function GuestLoginPromptModal({
                   {featureName ? `Sign in for ${featureName}` : 'Sign in Required'}
                 </span>
                 <h2 id="guest-modal-title" className="text-[20px] sm:text-[22px] font-bold tracking-tight">
-                  {featureName ? `Ready to use ${featureName}?` : 'Unlock the Full ParkJom Experience'}
+                  {featureName ? `Sign in to use ${featureName}` : 'Sign in to ParkJom'}
                 </h2>
               </div>
 

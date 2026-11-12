@@ -1,9 +1,10 @@
 import SystemSelect from '@/components/ui/SystemSelect';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertOctagon, CheckCircle, XCircle, Search, Eye, BadgeAlert,
-  RefreshCw, Clock3, FileText, Download, ChevronLeft, ChevronRight, Trash2
+  RefreshCw, Clock3, FileText, Download, ChevronLeft, ChevronRight, Trash2,
+  ExternalLink, Layers, MapPin, Radio, Camera
 } from 'lucide-react';
 import { showConfirm } from '@/components/common/ModalProvider';
 import {
@@ -14,6 +15,8 @@ import {
   VerificationRequestPaginationState,
 } from '../types';
 import type { SuspendedAccount } from '../api/accountSuspensionApi';
+import { fetchPublicLots, reviewOwnerPublicLot, deletePublicLot } from '@/features/publicParking/api/publicParkingApi';
+import type { PublicParkingLot } from '@/features/publicParking/types';
 
 interface ListingGovernanceProps {
   listings: ListingRequest[];
@@ -66,6 +69,41 @@ export default function ListingGovernance({
   const [customRejectionNote, setCustomRejectionNote] = useState('');
   const [decisionLoadingId, setDecisionLoadingId] = useState<string | null>(null);
   const [decisionFeedback, setDecisionFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Public Drive-In Facilities governance state
+  const [facilityType, setFacilityType] = useState<'all' | 'personal' | 'public'>('all');
+  const [publicLots, setPublicLots] = useState<PublicParkingLot[]>([]);
+  const [publicLotsLoading, setPublicLotsLoading] = useState(false);
+  const [selectedPublicLot, setSelectedPublicLot] = useState<PublicParkingLot | null>(null);
+  const [rejectingPublicLot, setRejectingPublicLot] = useState<PublicParkingLot | null>(null);
+  const [deletingPublicLot, setDeletingPublicLot] = useState<PublicParkingLot | null>(null);
+  const [publicRejectionReason, setPublicRejectionReason] = useState('Commercial parking license expired or invalid');
+  const [customPublicRejectionNote, setCustomPublicRejectionNote] = useState('');
+  const [publicDecisionLoadingId, setPublicDecisionLoadingId] = useState<number | null>(null);
+
+  const publicRejectionOptions = [
+    'Commercial parking license expired or invalid',
+    'Land grant / title does not authorize commercial parking operations',
+    'Location / entrance coordinates mismatch',
+    'Incomplete safety or fire clearance documentation',
+    'Invalid operator tenancy or authorization deed',
+  ];
+
+  const loadPublicLots = React.useCallback(async () => {
+    setPublicLotsLoading(true);
+    try {
+      const data = await fetchPublicLots(true);
+      setPublicLots(data);
+    } catch {
+      // ignore
+    } finally {
+      setPublicLotsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPublicLots();
+  }, [loadPublicLots]);
   
   const [suspendedAccounts, setSuspendedAccounts] = useState<SuspendedAccount[]>([]);
   const [newBlacklistEmail, setNewBlacklistEmail] = useState('');
@@ -221,6 +259,125 @@ export default function ListingGovernance({
 
   const rejectingListing = listings.find((listing) => listing.id === rejectingListingId);
 
+  const handleApprovePublicLot = async (lot: PublicParkingLot) => {
+    setPublicDecisionLoadingId(lot.publicParkingLotId);
+    setDecisionFeedback(null);
+    try {
+      const updated = await reviewOwnerPublicLot(lot.publicParkingLotId, {
+        status: 2,
+        iotDeviceUuid: lot.iotDeviceUuid || `IOT-GATE-${lot.publicParkingLotId.toString().padStart(4, '0')}`,
+        reviewNotes: 'Verified commercial parking license & compliance approved.',
+      });
+      setPublicLots((prev) => prev.map((l) => (l.publicParkingLotId === updated.publicParkingLotId ? updated : l)));
+      setDecisionFeedback({
+        success: true,
+        message: `Public drive-in facility "${lot.lotName}" approved! IoT barrier device ${updated.iotDeviceUuid || 'activated'} is now online and available to commuters.`,
+      });
+      if (selectedPublicLot?.publicParkingLotId === lot.publicParkingLotId) {
+        setSelectedPublicLot(null);
+      }
+    } catch (err) {
+      setDecisionFeedback({
+        success: false,
+        message: err instanceof Error ? err.message : 'Failed to approve public parking lot.',
+      });
+    } finally {
+      setPublicDecisionLoadingId(null);
+    }
+  };
+
+  const handleRejectPublicLot = async () => {
+    if (!rejectingPublicLot) return;
+    const lotId = rejectingPublicLot.publicParkingLotId;
+    const note = publicRejectionReason === 'custom' ? customPublicRejectionNote.trim() : publicRejectionReason;
+    if (!note) {
+      setDecisionFeedback({ success: false, message: 'Review notes are required when rejecting a request.' });
+      return;
+    }
+    setPublicDecisionLoadingId(lotId);
+    setDecisionFeedback(null);
+    try {
+      const updated = await reviewOwnerPublicLot(lotId, {
+        status: 3,
+        reviewNotes: note,
+      });
+      setPublicLots((prev) => prev.map((l) => (l.publicParkingLotId === updated.publicParkingLotId ? updated : l)));
+      setDecisionFeedback({
+        success: true,
+        message: `Public drive-in facility "${rejectingPublicLot.lotName}" rejected.`,
+      });
+      setRejectingPublicLot(null);
+      if (selectedPublicLot?.publicParkingLotId === lotId) {
+        setSelectedPublicLot(null);
+      }
+    } catch (err) {
+      setDecisionFeedback({
+        success: false,
+        message: err instanceof Error ? err.message : 'Failed to reject public parking lot.',
+      });
+    } finally {
+      setPublicDecisionLoadingId(null);
+    }
+  };
+
+  const handleDeletePublicLot = async () => {
+    if (!deletingPublicLot) return;
+    const lotId = deletingPublicLot.publicParkingLotId;
+    setPublicDecisionLoadingId(lotId);
+    setDecisionFeedback(null);
+    try {
+      await deletePublicLot(lotId);
+      setPublicLots((prev) => prev.filter((l) => l.publicParkingLotId !== lotId));
+      setDecisionFeedback({
+        success: true,
+        message: `Public commercial facility "${deletingPublicLot.lotName}" deleted successfully.`,
+      });
+      setDeletingPublicLot(null);
+      if (selectedPublicLot?.publicParkingLotId === lotId) {
+        setSelectedPublicLot(null);
+      }
+    } catch (err) {
+      setDecisionFeedback({
+        success: false,
+        message: err instanceof Error ? err.message : 'Failed to delete public parking lot.',
+      });
+    } finally {
+      setPublicDecisionLoadingId(null);
+    }
+  };
+
+  const filteredPublicLots = publicLots.filter((lot) => {
+    const isLotPending =
+      !lot.verificationStatus ||
+      lot.verificationStatus === 1 ||
+      lot.verificationStatus === 'Pending';
+    const isLotModerated =
+      lot.verificationStatus === 2 ||
+      lot.verificationStatus === 3 ||
+      lot.verificationStatus === 'Approved' ||
+      lot.verificationStatus === 'Rejected';
+
+    const matchesTab = activeTab === 'pending' ? isLotPending : isLotModerated;
+    if (!matchesTab) return false;
+
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.trim().toLowerCase();
+    return (
+      lot.lotName.toLowerCase().includes(q) ||
+      lot.address.toLowerCase().includes(q) ||
+      (lot.ownerName && lot.ownerName.toLowerCase().includes(q)) ||
+      (lot.nearestStationName && lot.nearestStationName.toLowerCase().includes(q)) ||
+      String(lot.publicParkingLotId).includes(q)
+    );
+  });
+
+  const pendingPublicLotsCount = publicLots.filter(
+    (l) => !l.verificationStatus || l.verificationStatus === 1 || l.verificationStatus === 'Pending'
+  ).length;
+  const moderatedPublicLotsCount = publicLots.filter(
+    (l) => l.verificationStatus === 2 || l.verificationStatus === 3 || l.verificationStatus === 'Approved' || l.verificationStatus === 'Rejected'
+  ).length;
+
   const openRejectDialog = (id: string) => {
     setRejectingListingId(id);
     setCustomRejectionNote('');
@@ -336,6 +493,20 @@ export default function ListingGovernance({
     account.lockedParkingSpotCount,
   ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSuspensionSearch)));
 
+  const showPersonalListings = facilityType === 'all' || facilityType === 'personal';
+  const showPublicLots = facilityType === 'all' || facilityType === 'public';
+  const currentPersonalCount = activeTab === 'pending'
+    ? listings.filter((l) => l.status === 'pending').length
+    : listings.filter((l) => l.status !== 'pending').length;
+  const currentPublicCount = activeTab === 'pending'
+    ? pendingPublicLotsCount
+    : moderatedPublicLotsCount;
+  const currentTotalCount = currentPersonalCount + currentPublicCount;
+  const isListLoading = isLoading || publicLotsLoading;
+  const hasAnyItems =
+    (showPersonalListings && visibleListings.length > 0) ||
+    (showPublicLots && filteredPublicLots.length > 0);
+
   return (
     <div id="listing-governance" className="space-y-6">
       {/* Header */}
@@ -347,12 +518,15 @@ export default function ListingGovernance({
           </div>
           <button
             type="button"
-            onClick={onRefresh}
-            disabled={isLoading}
+            onClick={() => {
+              void onRefresh();
+              void loadPublicLots();
+            }}
+            disabled={isLoading || publicLotsLoading}
             className="inline-flex items-center justify-center gap-2 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Refreshing…' : 'Refresh requests'}
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading || publicLotsLoading ? 'animate-spin' : ''}`} />
+            {isLoading || publicLotsLoading ? 'Refreshing…' : 'Refresh requests'}
           </button>
         </div>
       </div>
@@ -384,24 +558,63 @@ export default function ListingGovernance({
         {/* Main Moderate Listing Column (takes 2 cols) */}
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm flex flex-col justify-between min-h-[620px] space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-slate-100">
-            {/* Tabs */}
-            <div className="flex bg-slate-100 p-1 rounded-lg self-start">
-              <button 
-                type="button"
-                onClick={() => changeStatusTab('pending')}
-                aria-pressed={activeTab === 'pending'}
-                className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${activeTab === 'pending' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                Pending Review
-              </button>
-              <button 
-                type="button"
-                onClick={() => changeStatusTab('completed')}
-                aria-pressed={activeTab === 'moderated'}
-                className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${activeTab === 'moderated' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                Moderation History
-              </button>
+            {/* Tabs & Facility Filter */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex bg-slate-100 p-1 rounded-lg self-start">
+                <button 
+                  type="button"
+                  onClick={() => changeStatusTab('pending')}
+                  aria-pressed={activeTab === 'pending'}
+                  className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${activeTab === 'pending' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  Pending Review
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => changeStatusTab('completed')}
+                  aria-pressed={activeTab === 'moderated'}
+                  className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${activeTab === 'moderated' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}
+                >
+                  Moderation History
+                </button>
+              </div>
+
+              {/* Facility category filter pills */}
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-lg text-xs">
+                <button
+                  type="button"
+                  onClick={() => setFacilityType('all')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                    facilityType === 'all'
+                      ? 'bg-slate-800 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All ({currentTotalCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFacilityType('personal')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                    facilityType === 'personal'
+                      ? 'bg-[#2563EB] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Personal Bays ({currentPersonalCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFacilityType('public')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                    facilityType === 'public'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Public Lots ({currentPublicCount})
+                </button>
+              </div>
             </div>
 
             {/* Search Input */}
@@ -415,21 +628,24 @@ export default function ListingGovernance({
                 className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs w-full sm:w-64 focus:outline-hidden focus:ring-1 focus:ring-[#2563EB]"
               />
             </div>
-          </div>          {/* Table list of listings */}
+          </div>
+
+          {/* Table list of listings */}
           <div className="flex-1 min-h-[420px]">
-            {isLoading && listings.length === 0 ? (
+            {isListLoading ? (
               <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
                 <RefreshCw className="h-4 w-4 animate-spin" /> Loading verification requests…
               </div>
-            ) : visibleListings.length === 0 ? (
+            ) : !hasAnyItems ? (
               <div className="py-16 text-center text-slate-400 text-sm">
-                No property listings found matching the current criteria.
+                No verification requests or parking facilities found matching the current criteria.
               </div>
             ) : (
               <>
                 {/* Mobile Card List (zero horizontal scrolling) */}
                 <div className="space-y-3 sm:hidden">
-                  {visibleListings.map((listing) => (
+                  {/* Personal listings */}
+                  {showPersonalListings && visibleListings.map((listing) => (
                     <div key={listing.id} className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2.5 shadow-xs">
                       <div className="flex items-start justify-between gap-2">
                         <div>
@@ -513,6 +729,107 @@ export default function ListingGovernance({
                       </div>
                     </div>
                   ))}
+
+                  {/* Public facility cards */}
+                  {showPublicLots && filteredPublicLots.map((lot) => {
+                    const isPending = !lot.verificationStatus || lot.verificationStatus === 1 || lot.verificationStatus === 'Pending';
+                    const isApproved = lot.verificationStatus === 2 || lot.verificationStatus === 'Approved';
+                    const isRejected = lot.verificationStatus === 3 || lot.verificationStatus === 'Rejected';
+
+                    return (
+                      <div key={`pub-${lot.publicParkingLotId}`} className="rounded-xl border border-emerald-200/80 bg-white p-3.5 space-y-2.5 shadow-xs">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">PUB-{lot.publicParkingLotId}</span>
+                              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded">Public Lot</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-1">
+                              <Clock3 className="h-3 w-3" /> {formatSubmittedAt(lot.createdAt || '')}
+                            </div>
+                          </div>
+                          <div>
+                            {isPending && (
+                              <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Pending Review</span>
+                            )}
+                            {isApproved && (
+                              <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Approved & Live</span>
+                            )}
+                            {isRejected && (
+                              <span className="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Rejected</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-xs space-y-1 pt-1 border-t border-slate-100">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] text-slate-400 shrink-0">Facility:</span>
+                            <span className="font-semibold text-slate-800 truncate text-right">{lot.lotName}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] text-slate-400 shrink-0">Operator:</span>
+                            <span className="text-slate-700 truncate text-right">{lot.ownerName || `Owner #${lot.ownerId}`}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] text-slate-400 shrink-0">Capacity:</span>
+                            <span className="text-[10px] text-emerald-700 font-mono font-bold bg-emerald-50 px-1.5 py-0.5 rounded">
+                              {lot.totalCapacity} bays · RM{lot.hourlyRate.toFixed(2)}/hr
+                            </span>
+                          </div>
+                          {lot.nearestStationName && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] text-slate-400 shrink-0">Transit:</span>
+                              <span className="text-[10px] text-[#0071e3] font-semibold flex items-center gap-1 truncate">
+                                <MapPin className="h-3 w-3 shrink-0" /> {lot.nearestStationName} (~{lot.distanceToStation || 0}m)
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPublicLot(lot)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Details
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingPublicLot(lot)}
+                            disabled={publicDecisionLoadingId !== null}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg text-xs font-semibold text-rose-700 transition disabled:opacity-50 cursor-pointer"
+                            title="Delete this public parking facility"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </button>
+                          {isPending && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApprovePublicLot(lot)}
+                                disabled={publicDecisionLoadingId !== null}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 rounded-lg text-xs font-semibold text-emerald-700 transition disabled:opacity-50 cursor-pointer"
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" /> Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRejectingPublicLot(lot);
+                                  setCustomPublicRejectionNote('');
+                                }}
+                                disabled={publicDecisionLoadingId !== null}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg text-xs font-semibold text-rose-700 transition disabled:opacity-50 cursor-pointer"
+                              >
+                                <XCircle className="w-3.5 h-3.5" /> Reject
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Desktop Table View */}
@@ -522,13 +839,14 @@ export default function ListingGovernance({
                       <tr className="border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                         <th className="py-3 px-2 w-[22%]">Verification</th>
                         <th className="py-3 px-2 w-[24%]">Submitted By</th>
-                        <th className="py-3 px-2 w-[24%]">Property & Bay</th>
+                        <th className="py-3 px-2 w-[24%]">Property / Facility</th>
                         <th className="py-3 px-2 w-[18%]">Status</th>
                         <th className="py-3 px-2 w-[12%]">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
-                      {visibleListings.map((listing) => (
+                      {/* Personal bay rows */}
+                      {showPersonalListings && visibleListings.map((listing) => (
                         <tr key={listing.id} className="hover:bg-slate-50/60 dark:hover:bg-white/[0.04] transition-colors">
                           <td className="py-3.5 px-2">
                             <div className="font-mono font-bold text-[#2563EB]">VR-{listing.verificationRequestId}</div>
@@ -626,6 +944,124 @@ export default function ListingGovernance({
                           </td>
                         </tr>
                       ))}
+
+                      {/* Public Lot rows */}
+                      {showPublicLots && filteredPublicLots.map((lot) => {
+                        const isPending = !lot.verificationStatus || lot.verificationStatus === 1 || lot.verificationStatus === 'Pending';
+                        const isApproved = lot.verificationStatus === 2 || lot.verificationStatus === 'Approved';
+                        const isRejected = lot.verificationStatus === 3 || lot.verificationStatus === 'Rejected';
+
+                        return (
+                          <tr key={`pub-desk-${lot.publicParkingLotId}`} className="hover:bg-emerald-50/30 dark:hover:bg-white/[0.04] transition-colors">
+                            <td className="py-3.5 px-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-bold text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                  PUB-{lot.publicParkingLotId}
+                                </span>
+                                <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                  Public Lot
+                                </span>
+                              </div>
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                                <Clock3 className="h-3 w-3" /> {formatSubmittedAt(lot.createdAt || '')}
+                              </div>
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                                <FileText className="h-3 w-3" /> {lot.verificationDocumentUrl ? 'License uploaded' : 'No license'}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-2">
+                              <div className="font-semibold text-slate-800">{lot.ownerName || 'Commercial Operator'}</div>
+                              <div className="text-[10px] text-slate-400">Owner #{lot.ownerId}</div>
+                              <div className="mt-0.5 text-[10px] text-slate-500 font-mono">
+                                RM{lot.hourlyRate.toFixed(2)}/hr {lot.dailyCapRate ? `(Cap RM${lot.dailyCapRate.toFixed(2)})` : ''}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-2">
+                              <div className="text-slate-700 font-medium line-clamp-1">{lot.lotName}</div>
+                              <div className="text-[10px] text-slate-400 line-clamp-1">{lot.address}</div>
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-[#0071e3] font-semibold">
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                {lot.nearestStationName ? `${lot.nearestStationName} (~${lot.distanceToStation || 0}m)` : `${lot.latitude.toFixed(4)}, ${lot.longitude.toFixed(4)}`}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                Capacity: {lot.totalCapacity} bays
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-2">
+                              {isPending && (
+                                <div>
+                                  <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Pending Review</span>
+                                  <p className="mt-1 text-[9px] font-mono text-slate-400">Needs Admin Approval</p>
+                                </div>
+                              )}
+                              {isApproved && (
+                                <div>
+                                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Approved & Live</span>
+                                  <p className="mt-1 text-[9px] font-mono text-slate-400">{lot.iotDeviceUuid || 'IoT Gateway Active'}</p>
+                                </div>
+                              )}
+                              {isRejected && (
+                                <div>
+                                  <span className="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded-full text-[10px] font-medium">Rejected</span>
+                                  <p className="mt-1 text-[9px] text-slate-400 truncate max-w-[120px]">{lot.adminReviewNotes || 'Failed verification'}</p>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-2">
+                              <div className="flex items-center justify-start gap-1.5">
+                                <button 
+                                  type="button"
+                                  onClick={() => setSelectedPublicLot(lot)}
+                                  className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-[#2563EB] transition-colors cursor-pointer"
+                                  title="View public lot details & license"
+                                  aria-label={`View public parking lot ${lot.publicParkingLotId}`}
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+
+                                {isPending && (
+                                  <>
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleApprovePublicLot(lot)}
+                                      disabled={publicDecisionLoadingId !== null}
+                                      className="p-1.5 hover:bg-emerald-50 rounded text-slate-400 hover:text-emerald-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                                      title="Approve Public Parking & Bind IoT Barrier"
+                                    >
+                                      {publicDecisionLoadingId === lot.publicParkingLotId
+                                        ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                        : <CheckCircle className="w-4 h-4" />}
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        setRejectingPublicLot(lot);
+                                        setCustomPublicRejectionNote('');
+                                      }}
+                                      disabled={publicDecisionLoadingId !== null}
+                                      className="p-1.5 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                                      title="Reject Public Parking"
+                                    >
+                                      <XCircle className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingPublicLot(lot)}
+                                  disabled={publicDecisionLoadingId !== null}
+                                  className="p-1.5 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                                  title="Delete public parking facility"
+                                  aria-label={`Delete public parking lot ${lot.publicParkingLotId}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -635,15 +1071,21 @@ export default function ListingGovernance({
 
           <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-[11px] text-slate-500" aria-live="polite">
-              {pagination.totalCount !== null ? (
+              {facilityType === 'public' ? (
+                <>
+                  Showing <span className="font-semibold text-slate-700">{filteredPublicLots.length}</span> public drive-in facilit{filteredPublicLots.length === 1 ? 'y' : 'ies'}
+                </>
+              ) : pagination.totalCount !== null ? (
                 <>
                   Showing <span className="font-semibold text-slate-700">{firstResult}-{Math.min(lastResult, pagination.totalCount)}</span>
-                  {' '}of <span className="font-semibold text-slate-700">{pagination.totalCount}</span> requests
+                  {' '}of <span className="font-semibold text-slate-700">{pagination.totalCount}</span> personal requests
+                  {showPublicLots && filteredPublicLots.length > 0 && ` + ${filteredPublicLots.length} public lot${filteredPublicLots.length === 1 ? '' : 's'}`}
                 </>
               ) : (
                 <>
                   Page <span className="font-semibold text-slate-700">{pagination.page}</span>
                   {' '}· {listings.length} request{listings.length === 1 ? '' : 's'} returned
+                  {showPublicLots && filteredPublicLots.length > 0 && ` + ${filteredPublicLots.length} public lot${filteredPublicLots.length === 1 ? '' : 's'}`}
                 </>
               )}
             </div>
@@ -972,6 +1414,333 @@ export default function ListingGovernance({
                     </button>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Public Lot details modal */}
+      <AnimatePresence>
+        {selectedPublicLot && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-[1300]">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200 dark:border-white/[0.12] p-4 sm:p-6 shadow-2xl max-w-2xl w-full space-y-4 max-h-[85vh] overflow-y-auto"
+            >
+              <div className="flex items-start justify-between border-b border-slate-100 dark:border-white/[0.08] pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-emerald-700 font-bold bg-emerald-50 dark:bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-200">
+                      PUB-{selectedPublicLot.publicParkingLotId}
+                    </span>
+                    <span className="rounded-full border border-emerald-100 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 dark:text-emerald-300">
+                      Public Drive-In Facility
+                    </span>
+                    {(!selectedPublicLot.verificationStatus || selectedPublicLot.verificationStatus === 1 || selectedPublicLot.verificationStatus === 'Pending') && (
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">Pending Review</span>
+                    )}
+                    {(selectedPublicLot.verificationStatus === 2 || selectedPublicLot.verificationStatus === 'Approved') && (
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Approved & Live</span>
+                    )}
+                    {(selectedPublicLot.verificationStatus === 3 || selectedPublicLot.verificationStatus === 'Rejected') && (
+                      <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-700">Rejected</span>
+                    )}
+                  </div>
+                  <h3 className="text-md font-bold text-slate-800 dark:text-[#f5f5f7] mt-1">
+                    {selectedPublicLot.lotName}
+                  </h3>
+                </div>
+                <button 
+                  onClick={() => setSelectedPublicLot(null)}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-white/[0.08] rounded-full text-slate-400 dark:text-[#8e8e93] hover:text-slate-600 dark:hover:text-[#f5f5f7] transition-colors"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Specification Grid */}
+              <div className="grid grid-cols-1 gap-3 sm:gap-4 bg-slate-50 dark:bg-white/[0.04] p-3.5 sm:p-4 rounded-xl border border-slate-100 dark:border-white/[0.08] text-xs sm:grid-cols-2">
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Facility Name:</span>
+                  <p className="text-slate-800 dark:text-[#f5f5f7] font-semibold">{selectedPublicLot.lotName}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Registered Operator:</span>
+                  <p className="text-slate-800 dark:text-[#f5f5f7] font-semibold">{selectedPublicLot.ownerName || 'Commercial Operator'} (ID #{selectedPublicLot.ownerId})</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Physical Address:</span>
+                  <p className="text-slate-700 dark:text-[#f5f5f7]">{selectedPublicLot.address}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Entrance Coordinates:</span>
+                  <p className="text-[#0071e3] font-mono font-semibold">{selectedPublicLot.latitude.toFixed(6)}, {selectedPublicLot.longitude.toFixed(6)}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Linked Transit Station:</span>
+                  <p className="text-slate-800 dark:text-[#f5f5f7] font-semibold">
+                    {selectedPublicLot.nearestStationName ? `${selectedPublicLot.nearestStationName} (~${selectedPublicLot.distanceToStation || 0}m)` : 'None'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Total Capacity:</span>
+                  <p className="text-slate-800 dark:text-[#f5f5f7] font-bold font-mono">{selectedPublicLot.totalCapacity} bays</p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Operating Schedule:</span>
+                  <p className="text-slate-800 dark:text-[#f5f5f7]">
+                    {selectedPublicLot.operatingType === 1 ? '24 Hours / 7 Days' : `Limited: ${selectedPublicLot.openingTime || '07:00'} - ${selectedPublicLot.closingTime || '23:00'}`}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Hourly Tariff:</span>
+                  <p className="text-emerald-700 dark:text-emerald-400 font-bold font-mono">RM {selectedPublicLot.hourlyRate.toFixed(2)} / hour</p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Daily Cap:</span>
+                  <p className="text-slate-800 dark:text-[#f5f5f7] font-mono">
+                    {selectedPublicLot.dailyCapRate ? `RM ${selectedPublicLot.dailyCapRate.toFixed(2)} / day` : 'No daily cap'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">IoT Barrier Gateway:</span>
+                  <p className="text-[#0071e3] font-mono font-semibold">
+                    {selectedPublicLot.iotDeviceUuid || `IOT-GATE-${selectedPublicLot.publicParkingLotId.toString().padStart(4, '0')}`}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-slate-400 dark:text-[#a1a1a6] font-medium">Initial Grace Period:</span>
+                  <p className="text-slate-800 dark:text-[#f5f5f7]">{selectedPublicLot.initialGraceMinutes || 15} minutes free</p>
+                </div>
+              </div>
+
+              {/* Commercial Documents Section */}
+              <section className="space-y-3 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] p-3.5 sm:p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/15 p-2 text-emerald-600 dark:text-emerald-400">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-[#f5f5f7]">
+                      Commercial Verification & Compliance
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-[#a1a1a6]">
+                      Commercial license or land grant uploaded by the parking operator.
+                    </p>
+                  </div>
+                </div>
+
+                {selectedPublicLot.verificationDocumentUrl ? (
+                  <div className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.04] p-3 text-xs flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-slate-800 dark:text-[#f5f5f7]">
+                        {selectedPublicLot.verificationDocumentType || 'Commercial Parking License'}
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Uploaded verification document</p>
+                    </div>
+                    <a
+                      href={selectedPublicLot.verificationDocumentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0071e3] text-white rounded-lg text-xs font-semibold hover:bg-blue-600 transition"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> View document
+                    </a>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.04] p-3 text-center text-xs text-slate-500">
+                    No license document attached with this registration.
+                  </div>
+                )}
+
+                {selectedPublicLot.facilityPhotoUrl && (
+                  <div className="space-y-1.5 pt-2">
+                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Facility / Bay Layout Photo:</span>
+                    <img
+                      src={selectedPublicLot.facilityPhotoUrl}
+                      alt="Facility bay layout"
+                      className="max-h-48 w-full rounded-lg border border-slate-200 object-cover"
+                    />
+                  </div>
+                )}
+              </section>
+
+              {/* Action bar inside modal */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-4 border-t border-slate-100 dark:border-white/[0.08]">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeletingPublicLot(selectedPublicLot)}
+                    disabled={publicDecisionLoadingId !== null}
+                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded-lg text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                    title="Delete this facility"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Facility</span>
+                  </button>
+                  {selectedPublicLot.adminReviewNotes && (
+                    <span className="text-xs text-slate-400">Notes: {selectedPublicLot.adminReviewNotes}</span>
+                  )}
+                </div>
+                {(!selectedPublicLot.verificationStatus || selectedPublicLot.verificationStatus === 1 || selectedPublicLot.verificationStatus === 'Pending') && (
+                  <div className="flex justify-end gap-2.5">
+                    <button 
+                      onClick={() => {
+                        setRejectingPublicLot(selectedPublicLot);
+                        setCustomPublicRejectionNote('');
+                      }}
+                      disabled={publicDecisionLoadingId !== null}
+                      className="px-4 py-2 bg-rose-50 text-rose-700 font-semibold rounded-lg text-xs hover:bg-rose-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                    >
+                      Reject Facility
+                    </button>
+                    <button 
+                      onClick={() => handleApprovePublicLot(selectedPublicLot)}
+                      disabled={publicDecisionLoadingId !== null}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                    >
+                      {publicDecisionLoadingId === selectedPublicLot.publicParkingLotId ? 'Submitting…' : 'Approve & Activate IoT'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Public Lot Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deletingPublicLot && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1400]">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200 dark:border-white/[0.12] p-6 shadow-2xl max-w-md w-full space-y-4"
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-3 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+                  <Trash2 className="w-6 h-6" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                    Delete Public Parking Facility?
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                    Are you sure you want to permanently delete <strong>{deletingPublicLot.lotName}</strong> (PUB-{deletingPublicLot.publicParkingLotId})? This will remove all associated drive-in sessions and barrier gate connections.
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeletingPublicLot(null)}
+                  disabled={publicDecisionLoadingId !== null}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-white/10 dark:hover:bg-white/15 dark:text-white rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeletePublicLot}
+                  disabled={publicDecisionLoadingId !== null}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                >
+                  {publicDecisionLoadingId === deletingPublicLot.publicParkingLotId ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Facility</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Public Lot Rejection Modal */}
+      <AnimatePresence>
+        {rejectingPublicLot && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[1350]">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-slate-200 dark:border-white/[0.12] p-5 shadow-2xl max-w-md w-full space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 text-rose-600">
+                  <BadgeAlert className="w-4.5 h-4.5" /> Reject Public Facility Verification
+                </h3>
+                <button 
+                  onClick={() => setRejectingPublicLot(null)}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <p className="font-semibold text-slate-700">
+                  Facility: {rejectingPublicLot.lotName} (PUB-{rejectingPublicLot.publicParkingLotId})
+                </p>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Rejection Reason</label>
+                  <SystemSelect 
+                    value={publicRejectionReason}
+                    onChange={(e) => setPublicRejectionReason(e.target.value)}
+                    className="w-full mt-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-rose-500"
+                  >
+                    {publicRejectionOptions.map((opt, i) => (
+                      <option key={i} value={opt}>{opt}</option>
+                    ))}
+                    <option value="custom">-- Custom Reason --</option>
+                  </SystemSelect>
+                </div>
+
+                {publicRejectionReason === 'custom' && (
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Custom Explanatory Note</label>
+                    <textarea 
+                      placeholder="Write exact legal or compliance reason why this public facility was rejected..."
+                      value={customPublicRejectionNote}
+                      onChange={(e) => setCustomPublicRejectionNote(e.target.value)}
+                      className="w-full mt-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 h-20 focus:outline-hidden focus:ring-1 focus:ring-rose-500"
+                    />
+                  </div>
+                )}
+
+                <p className="text-[10px] text-slate-400 leading-relaxed bg-slate-50 p-2.5 rounded border border-slate-100">
+                  Submitting a rejection sets the lot to rejected status and notifies {rejectingPublicLot.ownerName || 'the operator'}.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button 
+                  onClick={() => setRejectingPublicLot(null)}
+                  disabled={publicDecisionLoadingId !== null}
+                  className="px-3.5 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleRejectPublicLot}
+                  disabled={publicDecisionLoadingId !== null}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                >
+                  {publicDecisionLoadingId === rejectingPublicLot.publicParkingLotId ? 'Submitting…' : 'Confirm Rejection'}
+                </button>
               </div>
             </motion.div>
           </div>

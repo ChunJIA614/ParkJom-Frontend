@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import SystemSelect from '@/components/ui/SystemSelect';
 import {
   Send,
   Radio,
@@ -166,31 +167,33 @@ export default function AdminNotificationBroadcast() {
                 <label className="block text-xs font-semibold text-[#6e6e73] dark:text-[#a1a1aa] mb-1">
                   Target Audience
                 </label>
-                <select
+                <SystemSelect
                   value={targetRole}
                   onChange={(e) => setTargetRole(e.target.value as 'Renter' | 'PropertyOwner' | '')}
-                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#121214] px-3.5 py-2 text-xs text-[#1d1d1f] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="">All Platform Users (Commuters + Owners)</option>
-                  <option value="Renter">Commuters Only</option>
-                  <option value="PropertyOwner">Parking Spot Owners Only</option>
-                </select>
+                  options={[
+                    { value: '', label: 'All Platform Users (Commuters + Owners)' },
+                    { value: 'Renter', label: 'Commuters Only' },
+                    { value: 'PropertyOwner', label: 'Parking Spot Owners Only' },
+                  ]}
+                  placeholder="Select target audience"
+                />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[#6e6e73] dark:text-[#a1a1aa] mb-1">
                   Urgency / Priority
                 </label>
-                <select
+                <SystemSelect
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as NotificationPriority)}
-                  className="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#121214] px-3.5 py-2 text-xs text-[#1d1d1f] dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="Normal">Normal (Standard App Banner)</option>
-                  <option value="High">High (Elevated Visibility)</option>
-                  <option value="Critical">Critical (Emergency / Service Alert)</option>
-                  <option value="Low">Low (Informational)</option>
-                </select>
+                  options={[
+                    { value: 'Normal', label: 'Normal (Standard App Banner)' },
+                    { value: 'High', label: 'High Priority' },
+                    { value: 'Critical', label: 'Critical (Emergency Alert)' },
+                    { value: 'Low', label: 'Low (Informational)' },
+                  ]}
+                  placeholder="Select priority"
+                />
               </div>
             </div>
 
@@ -310,17 +313,18 @@ export default function AdminNotificationBroadcast() {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#6e6e73] dark:text-[#a1a1aa]">Filter Status:</span>
-              <select
+              <span className="text-xs text-[#6e6e73] dark:text-[#a1a1aa] shrink-0">Filter Status:</span>
+              <SystemSelect
                 value={deliveryFilter}
                 onChange={(e) => setDeliveryFilter(e.target.value)}
-                className="rounded-lg border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#121214] px-2.5 py-1 text-xs text-[#1d1d1f] dark:text-white"
-              >
-                <option value="">All Statuses</option>
-                <option value="Sent">Sent (Success)</option>
-                <option value="Pending">Pending / Retrying</option>
-                <option value="Failed">Failed</option>
-              </select>
+                options={[
+                  { value: '', label: 'All Statuses' },
+                  { value: 'Sent', label: 'Sent (Success)' },
+                  { value: 'Pending', label: 'Pending / Retrying' },
+                  { value: 'Failed', label: 'Failed' },
+                ]}
+                className="w-44"
+              />
             </div>
           </div>
 

@@ -105,7 +105,7 @@ export default function SystemSelect({
       width: `${Math.round(width)}px`,
       maxWidth: 'calc(100vw - 24px)',
       maxHeight,
-      zIndex: 1350,
+      zIndex: 2500,
     });
   };
 

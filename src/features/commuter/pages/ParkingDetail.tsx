@@ -1839,10 +1839,10 @@ export default function ParkingDetail() {
                 ABOUT THIS SPACE
               </h2>
               <p className="text-sm text-[#333] dark:text-[#D4D4D8] leading-relaxed">
-                Welcome to {spot.propertyName || spot.name || 'this premier commuter parking space'}. Strategically located near {stationName || 'the transit interchange'}, this private parking bay offers commuters seamless park-and-ride accessibility.
+                {spot.propertyName || spot.name || 'Private parking bay'} near {stationName || 'the station'}.
               </p>
               <p className="text-sm text-[#5f6368] dark:text-[#A1A1AA] leading-relaxed">
-                ParkJom coordinates reservation confirmation, calendar synchronization, and automated IoT barrier clearance so your bay is guaranteed and ready when you arrive.
+                Your reservation reserves this bay and connects directly to the barrier gate so it opens when you arrive.
               </p>
             </div>
 

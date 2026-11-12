@@ -15,6 +15,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import stationData from '../data/mrt_lrt_stations.json';
 import { ParkingSpot, Booking } from '../types';
+import type { PublicParkingLot } from '@/features/publicParking/types';
+import { DEFAULT_PUBLIC_PARKING_PHOTO, getPublicLotPhotoUrl } from '@/features/publicParking/types';
 import { loadRailNetworkData } from '@/services/transitData';
 import { watchDeviceLocation } from '@/services/deviceCapabilities';
 import { showAlert } from '@/components/common/ModalProvider';
@@ -39,6 +41,7 @@ import {
   Zap,
   Car,
   ExternalLink,
+  MapPin,
   X,
 } from 'lucide-react';
 import {
@@ -264,6 +267,34 @@ const activeReservedParkingIcon = L.divIcon({
 });
 
 // Modern user location pulsing dot icon
+function createPublicLotMarkerIcon(available: number, isSelected: boolean): L.DivIcon {
+  const isFull = available <= 0;
+  const isLow = available > 0 && available <= 5;
+  const bg = isFull
+    ? '#ef4444'
+    : isLow
+    ? '#f59e0b'
+    : isSelected
+    ? '#0071e3'
+    : '#6366f1';
+
+  return L.divIcon({
+    className: 'custom-public-lot-marker',
+    html: `
+      <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+        <div style="display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 9999px; background: ${bg}; color: white; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3), 0 0 0 2px white; white-space: nowrap; font-size: 11px; font-weight: 800;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/></svg>
+          <span>${isFull ? 'FULL' : `${available} bays`}</span>
+        </div>
+        <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid ${bg}; margin-top: -1px;"></div>
+      </div>
+    `,
+    iconSize: [84, 30],
+    iconAnchor: [42, 30],
+    popupAnchor: [0, -30],
+  });
+}
+
 const userLocationIcon = L.divIcon({
   className: 'custom-user-location-icon',
   html: `
@@ -481,6 +512,9 @@ interface CommuterMapProps {
     linearPlan: MultimodalPlanResult | null;
     targetSpot: ParkingSpot | null;
   }) => void;
+  publicLots?: PublicParkingLot[];
+  selectedPublicLot?: PublicParkingLot | null;
+  onPublicLotClick?: (lot: PublicParkingLot) => void;
 }
 
 interface MapTarget {
@@ -893,6 +927,9 @@ export default function CommuterMap({
   onNavigate,
   onExitNavigation,
   onRoutesCalculated,
+  publicLots,
+  selectedPublicLot,
+  onPublicLotClick,
 }: CommuterMapProps) {
   const klCenter: [number, number] = [3.1390, 101.6869];
   // Basemap follows the app appearance: CARTO ships matched light/dark styles,
@@ -2721,6 +2758,120 @@ export default function CommuterMap({
                     >
                       Book Bay
                     </button>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+
+        {/* Public Drive-In Parking Lots (Approved & Pinned) */}
+        {publicLots?.map((lot) => {
+          const isSelected = selectedPublicLot?.publicParkingLotId === lot.publicParkingLotId;
+          const isFull = lot.availableSpaces <= 0;
+          const isLow = lot.availableSpaces > 0 && lot.availableSpaces <= 5;
+          const icon = createPublicLotMarkerIcon(lot.availableSpaces, isSelected);
+
+          return (
+            <Marker
+              key={`public-lot-${lot.publicParkingLotId}`}
+              position={[lot.latitude, lot.longitude]}
+              icon={icon}
+              zIndexOffset={isSelected ? 860 : 530}
+              eventHandlers={{
+                click: () => {
+                  setActiveStationPopup(null);
+                  onPublicLotClick?.(lot);
+                },
+              }}
+            >
+              <Popup autoPan={false}>
+                <div className="w-[230px] text-[11px] leading-snug select-none space-y-2 p-0.5">
+                  {/* Public Facility Photo */}
+                  <div className="w-full h-24 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-white/10 shadow-xs">
+                    <img
+                      src={getPublicLotPhotoUrl(lot.facilityPhotoUrl)}
+                      alt={lot.lotName}
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (target.src !== DEFAULT_PUBLIC_PARKING_PHOTO) {
+                          target.src = DEFAULT_PUBLIC_PARKING_PHOTO;
+                        }
+                      }}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+
+                  <div className="flex items-start justify-between gap-1.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1 text-[9.5px] uppercase font-bold text-indigo-600 dark:text-indigo-400">
+                        <Layers className="w-3 h-3 shrink-0" />
+                        <span>Public Drive-In</span>
+                      </div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-[12px] truncate mt-0.5" title={lot.lotName}>
+                        {lot.lotName}
+                      </h4>
+                    </div>
+                    <span
+                      className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-full shrink-0 flex items-center gap-1 ${
+                        isFull
+                          ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                          : isLow
+                          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                          : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      {isFull ? 'FULL' : `${lot.availableSpaces} bays`}
+                    </span>
+                  </div>
+
+                  <div className="text-slate-500 dark:text-slate-400 text-[10px] flex items-center gap-1 truncate">
+                    <MapPin className="w-3 h-3 shrink-0 text-[#0071e3]" />
+                    <span className="truncate">{lot.address}</span>
+                  </div>
+
+                  <div className="bg-slate-100/90 dark:bg-[#1E1E24] rounded-xl p-2 border border-slate-200/80 dark:border-white/10 space-y-1 text-[10px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">Tariff:</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                        {lot.flatRatePerEntry
+                          ? `Flat RM ${lot.flatRatePerEntry.toFixed(2)}/entry`
+                          : `RM ${lot.hourlyRate.toFixed(2)}/hr`}
+                      </span>
+                    </div>
+                    {lot.nearestStationName && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Transit:</span>
+                        <span className="font-medium text-[#0071e3] truncate max-w-[120px]">
+                          {lot.nearestStationName} {lot.distanceToStation ? `(~${lot.distanceToStation}m)` : ''}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">Capacity:</span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {lot.totalCapacity} total bays
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => onPublicLotClick?.(lot)}
+                      className="flex-1 h-7 rounded-lg bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 text-slate-800 dark:text-white font-medium text-[10px] flex items-center justify-center transition cursor-pointer"
+                    >
+                      <span>View Details</span>
+                    </button>
+                    <a
+                      href={`/public-pay?lot=${lot.publicParkingLotId}`}
+                      className="flex-1 h-7 rounded-lg bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-[10px] flex items-center justify-center gap-1 transition shadow-xs"
+                    >
+                      <span>Drive-In</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
                   </div>
                 </div>
               </Popup>

@@ -21,6 +21,7 @@ const LandingPage = lazy(() => import('@/features/landing/pages/LandingPage'));
 const loadOwnerDashboard = () => import('@/features/owner/pages/OwnerDashboard');
 const OwnerDashboard = lazy(loadOwnerDashboard);
 const NotificationCenterPage = lazy(() => import('@/features/notifications/pages/NotificationCenterPage'));
+const PublicParkingPayPage = lazy(() => import('@/features/publicParking/pages/PublicParkingPayPage'));
 
 export function AppRoutes() {
   const { isLoggedIn, isGuest, loading, user } = useAuth();
@@ -74,6 +75,9 @@ export function AppRoutes() {
             {/* Guest mode allows viewing Commuter dashboard (browse & transit maps) and parking details */}
             <Route path="/commuter" element={<CommuterDashboard />} />
             <Route path="/commuter/parking/:id" element={<ParkingDetail />} />
+            {/* Public Drive-In Parking Checkout & Payment */}
+            <Route path="/public-pay" element={<PublicParkingPayPage />} />
+            <Route path="/commuter/public-pay" element={<PublicParkingPayPage />} />
             <Route path="*" element={<Navigate to={isGuest ? "/commuter" : "/"} replace />} />
           </Routes>
         </Suspense>
@@ -109,6 +113,9 @@ export function AppRoutes() {
           <Route path="/commuter" element={<RequireRole role="Commuter"><CommuterDashboard /></RequireRole>} />
           <Route path="/commuter/parking/:id" element={<RequireRole role="Commuter"><ParkingDetail /></RequireRole>} />
           <Route path="/commuter/parking/:id/review" element={<RequireRole role="Commuter"><ParkingReview /></RequireRole>} />
+          {/* Public Drive-In Parking Checkout & Payment */}
+          <Route path="/public-pay" element={<PublicParkingPayPage />} />
+          <Route path="/commuter/public-pay" element={<PublicParkingPayPage />} />
           <Route path="*" element={<Navigate to={dashboardPath} replace />} />
         </Routes>
       </Suspense>

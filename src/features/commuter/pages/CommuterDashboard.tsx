@@ -50,6 +50,8 @@ import {
   ChevronLeft,
   Zap,
   Accessibility,
+  ExternalLink,
+  Layers,
 } from 'lucide-react';
 import {
   ParkingSpot,
@@ -95,6 +97,10 @@ import {
 } from '../lib/journeySession';
 import type { JourneyStage } from '../lib/journeySession';
 import { getNearbyParking, searchParking } from '../api/parkingApi';
+import { fetchPublicLots } from '@/features/publicParking/api/publicParkingApi';
+import type { PublicParkingLot } from '@/features/publicParking/types';
+import { DEFAULT_PUBLIC_PARKING_PHOTO, getPublicLotPhotoUrl } from '@/features/publicParking/types';
+import { PublicLotDetailModal } from '@/features/publicParking/components/PublicLotDetailModal';
 import { fuzzyFilterSpots, getFuzzySuggestions, normalizeCompact, similarityRatio } from '../lib/fuzzySearch';
 import {
   favoriteParkingSpotToParkingSpot,
@@ -327,7 +333,7 @@ export default function CommuterDashboard() {
   }) : null, [user]);
   const prefersReducedMotion = useReducedMotion();
   const [initialJourney] = useState(() => loadJourneySession(user?.userId));
-  type CommuterTab = 'home' | 'active' | 'wallet' | 'profile' | 'map' | 'favorites' | 'support';
+  type CommuterTab = 'home' | 'active' | 'wallet' | 'profile' | 'map' | 'favorites' | 'support' | 'publicPay';
   const locationParams = new URLSearchParams(location.search);
   const queryTab = locationParams.get('tab');
   const requestedTabFromQuery: CommuterTab | undefined = queryTab === 'home'
@@ -368,6 +374,10 @@ export default function CommuterDashboard() {
   }, [isGuest, activeTab]);
 
   const handleNavigateTab = (id: CommuterTab) => {
+    if (id === 'publicPay') {
+      navigate('/public-pay');
+      return;
+    }
     if (isGuest && !['home', 'map'].includes(id)) {
       const tabLabels: Record<string, string> = {
         active: 'My Parking Pass',
@@ -438,6 +448,25 @@ export default function CommuterDashboard() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationRequestKey, setLocationRequestKey] = useState(0);
   const [suggestedSpots, setSuggestedSpots] = useState<ParkingSpot[]>([]);
+  const [publicLots, setPublicLots] = useState<PublicParkingLot[]>([]);
+  const [selectedPublicLot, setSelectedPublicLot] = useState<PublicParkingLot | null>(null);
+  const [inspectingPublicLot, setInspectingPublicLot] = useState<PublicParkingLot | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPublicLots() {
+      try {
+        const data = await fetchPublicLots();
+        if (active) setPublicLots(data);
+      } catch {
+        // Fallback silently if public lots cannot load
+      }
+    }
+    void loadPublicLots();
+    return () => {
+      active = false;
+    };
+  }, []);
   type RealCategory = 'all' | 'transit' | 'covered' | 'ev' | 'cctv' | 'monthly' | 'accessible';
   const [activeCategory, setActiveCategory] = useState<RealCategory>('all');
   const [rateFilter, setRateFilter] = useState<'all' | 'daily' | 'monthly'>('all');
@@ -1063,6 +1092,17 @@ export default function CommuterDashboard() {
   }, [discoverySpots, activeCategory, rateFilter, featureFilter]);
 
   const hasActiveFilters = activeCategory !== 'all' || rateFilter !== 'all' || featureFilter !== 'all' || Boolean(searchMeta) || searchQuery.trim() !== '';
+
+  const matchingPublicLots = useMemo(() => {
+    if (!searchQuery.trim() && !searchMeta) return publicLots;
+    const q = searchQuery.trim().toLowerCase();
+    return publicLots.filter(
+      (lot) =>
+        lot.lotName.toLowerCase().includes(q) ||
+        lot.address.toLowerCase().includes(q) ||
+        (lot.nearestStationName && lot.nearestStationName.toLowerCase().includes(q))
+    );
+  }, [publicLots, searchQuery, searchMeta]);
 
 
   const mapNearbySpots = nearbySpots.filter((spot) => {
@@ -2474,6 +2514,7 @@ export default function CommuterDashboard() {
     profile: { title: 'Vehicles', description: 'Choose the vehicle attached to your next parking session.' },
     support: { title: 'Support', description: 'Report booking, access, wallet, payment, or account issues.' },
     favorites: { title: 'Favorites', description: 'Keep parking spaces you are interested in within easy reach.' },
+    publicPay: { title: 'Express Drive-Out', description: 'Pay for drive-in public parking tickets instantly without queuing.' },
   } as const;
   const commuterSidebarGroups = [
     {
@@ -2487,6 +2528,7 @@ export default function CommuterDashboard() {
       label: 'My Parking',
       items: [
         { id: 'active', icon: Unlock, label: 'My Pass', dot: Boolean(activeBooking) },
+        { id: 'publicPay', icon: CreditCard, label: 'Express Drive-Out' },
         { id: 'favorites', icon: Heart, label: 'Favorites', badge: favoriteSpots.length },
       ],
     },
@@ -2506,7 +2548,9 @@ export default function CommuterDashboard() {
       ? ['browse', 'parking near me', 'search parking']
       : item.id === 'active'
         ? ['parking pass', 'booking', 'reservation']
-        : [commuterViewMeta[item.id as CommuterTab].title],
+        : item.id === 'publicPay'
+          ? ['express drive-out', 'public parking', 'ticket', 'pay parking']
+          : [commuterViewMeta[item.id as CommuterTab]?.title || item.label],
   })));
 
   const notificationActions = (
@@ -2614,8 +2658,8 @@ export default function CommuterDashboard() {
           {activeTab !== 'home' && (
             <div className="workspace-heading workspace-heading--compact">
               <div>
-                <h1>{commuterViewMeta[activeTab].title}</h1>
-                <p>{commuterViewMeta[activeTab].description}</p>
+                <h1>{commuterViewMeta[activeTab]?.title || ''}</h1>
+                <p>{commuterViewMeta[activeTab]?.description || ''}</p>
               </div>
             </div>
           )}
@@ -3086,6 +3130,123 @@ export default function CommuterDashboard() {
                 </div>
               ) : (
                 <div className="space-y-10 pt-2">
+                  {/* ─── Featured Section: Public Commercial Parking Facilities ─── */}
+                  {publicLots.length > 0 && (
+                    <section className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111] dark:text-white flex items-center gap-2">
+                              <span>Public Drive-In Facilities</span>
+                              <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                Real-Time Bays
+                              </span>
+                            </h2>
+                          </div>
+                          <p className="text-xs text-[#6e6e73] dark:text-[#A1A1AA] mt-0.5">
+                            Drive in immediately without prior booking. Barrier gate reads your plate automatically.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {publicLots.map((lot) => {
+                          const isFull = lot.availableSpaces <= 0;
+                          return (
+                            <div
+                              key={`browse-pub-${lot.publicParkingLotId}`}
+                              onClick={() => setInspectingPublicLot(lot)}
+                              className="group cursor-pointer rounded-3xl bg-white dark:bg-[#1c1c1e] border border-black/[0.08] dark:border-white/10 shadow-xs hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col"
+                            >
+                              {/* Facility Picture */}
+                              <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                                {lot.facilityPhotoUrl ? (
+                                  <img
+                                    src={getPublicLotPhotoUrl(lot.facilityPhotoUrl)}
+                                    alt={lot.lotName}
+                                    onError={(e) => {
+                                      const target = e.currentTarget;
+                                      if (target.src !== DEFAULT_PUBLIC_PARKING_PHOTO) {
+                                        target.src = DEFAULT_PUBLIC_PARKING_PHOTO;
+                                      }
+                                    }}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-br from-blue-600/20 to-indigo-600/30 flex items-center justify-center">
+                                    <Layers className="w-10 h-10 text-[#0071e3] opacity-60" />
+                                  </div>
+                                )}
+
+                                {/* Badges */}
+                                <div className="absolute top-3 left-3">
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-black/75 text-white backdrop-blur-md shadow-sm border border-white/15">
+                                    <Layers className="w-3 h-3 text-[#0071e3]" />
+                                    <span>Public Commercial</span>
+                                  </span>
+                                </div>
+
+                                <div className="absolute top-3 right-3">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold backdrop-blur-md shadow-sm border ${
+                                      isFull
+                                        ? 'bg-rose-500/90 text-white border-rose-400/30'
+                                        : 'bg-emerald-600/90 text-white border-emerald-400/30'
+                                    }`}
+                                  >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                    <span>{isFull ? 'FULL' : `${lot.availableSpaces} of ${lot.totalCapacity} bays left`}</span>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Card Content */}
+                              <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                                <div>
+                                  <h3 className="font-bold text-sm text-[#111] dark:text-white group-hover:text-[#007AFF] transition-colors truncate">
+                                    {lot.lotName}
+                                  </h3>
+                                  <p className="text-xs text-[#6e6e73] dark:text-[#A1A1AA] line-clamp-1 mt-0.5">
+                                    {lot.address}
+                                  </p>
+                                  {lot.nearestStationName && (
+                                    <div className="flex items-center gap-1.5 text-[11px] text-[#007AFF] font-medium mt-1.5 truncate">
+                                      <Train className="w-3.5 h-3.5 shrink-0" />
+                                      <span className="truncate">Near {lot.nearestStationName} (~{lot.distanceToStation || 0}m direct)</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between">
+                                  <div>
+                                    <span className="text-[10px] text-neutral-400 block font-medium">Hourly Tariff</span>
+                                    <span className="font-bold text-sm text-neutral-900 dark:text-white font-mono">
+                                      RM {lot.hourlyRate.toFixed(2)}
+                                      <span className="text-[10px] font-normal text-neutral-400">/hr</span>
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setInspectingPublicLot(lot);
+                                    }}
+                                    className="h-8 px-3.5 rounded-xl bg-[#0071e3] hover:bg-[#0077ed] text-white font-semibold text-xs transition flex items-center gap-1 shadow-xs cursor-pointer"
+                                  >
+                                    <span>Details</span>
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+
                   {/* ── Standard Multi-Carousel Display (Apple HIG Polish) ── */}
                   {/* ─── Section 1: Popular Parking in Kuala Lumpur ─── */}
                   <section>
@@ -3540,6 +3701,12 @@ export default function CommuterDashboard() {
                     }}
                     onExitNavigation={() => setTransitWorkspaceMode('explore')}
                     onRoutesCalculated={setNavigationRoutes}
+                    publicLots={publicLots}
+                    selectedPublicLot={selectedPublicLot}
+                    onPublicLotClick={(lot) => {
+                      setSelectedPublicLot(lot);
+                      setInspectingPublicLot(lot);
+                    }}
                   />
 
                   {/* Desktop Parking Pass Card Overlay (Apple Maps Style) */}
@@ -3565,6 +3732,95 @@ export default function CommuterDashboard() {
                           onSelectBusRoute={setSelectedBusRoute}
                           isNearbyLoading={isNearbyLoading}
                         />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Desktop Public Parking Pass Card Overlay */}
+                  {!selectedSpot && selectedPublicLot && (
+                    <div className="hidden lg:block absolute bottom-4 left-4 z-[1000] w-84 max-w-[calc(100%-2rem)] shadow-2xl animate-in fade-in-0 duration-200">
+                      <div className="relative rounded-3xl bg-white dark:bg-[#1c1c1e] border border-black/[0.08] dark:border-white/10 overflow-hidden shadow-2xl">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPublicLot(null)}
+                          className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-black/50 hover:bg-black/70 text-white transition cursor-pointer backdrop-blur-md"
+                          aria-label="Close public parking card"
+                        >
+                          <X size={14} />
+                        </button>
+                        <div className="w-full h-32 overflow-hidden bg-slate-100 dark:bg-slate-800">
+                          <img
+                            src={getPublicLotPhotoUrl(selectedPublicLot.facilityPhotoUrl)}
+                            alt={selectedPublicLot.lotName}
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              if (target.src !== DEFAULT_PUBLIC_PARKING_PHOTO) {
+                                target.src = DEFAULT_PUBLIC_PARKING_PHOTO;
+                              }
+                            }}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-bold tracking-wider uppercase text-indigo-600 dark:text-indigo-400">
+                                Public Commercial Bay
+                              </span>
+                              <h3 className="font-bold text-sm text-[#111] dark:text-white mt-0.5 line-clamp-1">
+                                {selectedPublicLot.lotName}
+                              </h3>
+                              <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] line-clamp-1 mt-0.5">
+                                {selectedPublicLot.address}
+                              </p>
+                            </div>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                                selectedPublicLot.availableSpaces <= 0
+                                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                  : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                              }`}
+                            >
+                              {selectedPublicLot.availableSpaces} bays left
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-50 dark:bg-white/5 rounded-2xl p-2.5 text-xs space-y-1 border border-black/[0.04] dark:border-white/5">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500 dark:text-slate-400">Hourly Tariff:</span>
+                              <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                {selectedPublicLot.flatRatePerEntry
+                                  ? `Flat RM ${selectedPublicLot.flatRatePerEntry.toFixed(2)}/entry`
+                                  : `RM ${selectedPublicLot.hourlyRate.toFixed(2)}/hr`}
+                              </span>
+                            </div>
+                            {selectedPublicLot.nearestStationName && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-slate-500 dark:text-slate-400">Transit:</span>
+                                <span className="font-medium text-[#0071e3]">
+                                  {selectedPublicLot.nearestStationName} (~{selectedPublicLot.distanceToStation || 0}m)
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setInspectingPublicLot(selectedPublicLot)}
+                              className="flex-1 h-9 rounded-xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-800 dark:text-white font-medium text-xs transition flex items-center justify-center cursor-pointer"
+                            >
+                              View Details
+                            </button>
+                            <a
+                              href={`/public-pay?lot=${selectedPublicLot.publicParkingLotId}`}
+                              className="flex-1 h-9 rounded-xl bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-xs transition flex items-center justify-center gap-1 shadow-xs"
+                            >
+                              <span>Drive-In</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -4714,6 +4970,14 @@ export default function CommuterDashboard() {
           setShowIconGuide(false);
         }}
       />
+
+      {/* Public Parking Lot Detail Modal */}
+      {inspectingPublicLot && (
+        <PublicLotDetailModal
+          lot={inspectingPublicLot}
+          onClose={() => setInspectingPublicLot(null)}
+        />
+      )}
 
     </div>
   );
