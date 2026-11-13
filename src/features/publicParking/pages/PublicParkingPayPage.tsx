@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
   CreditCard,
@@ -11,13 +11,37 @@ import {
   Camera,
   Search,
   ArrowLeft,
-  Sparkles,
   QrCode,
   AlertCircle,
   Car,
 } from 'lucide-react';
+import AppSidebar from '@/components/layout/AppSidebar';
+import BottomNav from '@/components/layout/BottomNav';
+import DashboardHeader, { type DashboardRole } from '@/components/layout/DashboardHeader';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { NotificationBell } from '@/features/notifications';
+import {
+  buildAdminBottomNavItems,
+  buildAdminSearchItems,
+  buildAdminSidebarGroups,
+} from '@/features/admin/lib/adminNavigation';
+import {
+  buildCommuterBottomNavItems,
+  buildCommuterSearchItems,
+  buildCommuterSidebarGroups,
+  COMMUTER_RESTRICTED_TAB_LABELS,
+} from '@/features/commuter/lib/commuterNavigation';
 import { getWalletSummary } from '@/features/commuter/api/walletApi';
+import {
+  MANAGEMENT_BOTTOM_NAV_ITEMS,
+  MANAGEMENT_SEARCH_ITEMS,
+  MANAGEMENT_SIDEBAR_GROUPS,
+} from '@/features/management/lib/managementNavigation';
+import {
+  OWNER_BOTTOM_NAV_ITEMS,
+  OWNER_SEARCH_ITEMS,
+  OWNER_SIDEBAR_GROUPS,
+} from '@/features/owner/lib/ownerNavigation';
 import {
   lookupPublicSession,
   checkoutPublicWallet,
@@ -26,12 +50,43 @@ import {
 } from '../api/publicParkingApi';
 import type { PublicParkingSession } from '../types';
 import { AppleScannerView } from '../components/AppleScannerView';
-import { AppleCapacityBadge } from '../components/AppleCapacityBadge';
 
 export default function PublicParkingPayPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, isLoggedIn } = useAuth();
+  const { user, isLoggedIn, isGuest, continueAsGuest, promptLogin, logout } = useAuth();
+
+  const role = user?.role;
+  const headerRole: DashboardRole =
+    role === 'Owner'
+      ? 'owner'
+      : role === 'Admin'
+      ? 'admin'
+      : role === 'PropertyManagement'
+      ? 'management'
+      : 'commuter';
+
+  const collapsedStorageKey =
+    headerRole === 'owner'
+      ? 'parkjom_owner_sidebar_collapsed'
+      : headerRole === 'admin'
+      ? 'parkjom_admin_sidebar_collapsed'
+      : headerRole === 'management'
+      ? 'parkjom_management_sidebar_collapsed'
+      : 'parkjom_commuter_sidebar_collapsed';
+
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem(collapsedStorageKey) === 'true',
+  );
+
+  useEffect(() => {
+    setSidebarCollapsed(localStorage.getItem(collapsedStorageKey) === 'true');
+  }, [collapsedStorageKey]);
+
+  useEffect(() => {
+    localStorage.setItem(collapsedStorageKey, String(sidebarCollapsed));
+  }, [collapsedStorageKey, sidebarCollapsed]);
 
   const queryPlateOrCode = searchParams.get('plate') || searchParams.get('session') || searchParams.get('sessionCode') || '';
   const stripePaidFlag = searchParams.get('public_paid') === 'true';
@@ -165,85 +220,260 @@ export default function PublicParkingPayPage() {
     }
   };
 
+  const sidebarNavConfig = useMemo(() => {
+    if (headerRole === 'owner') {
+      return {
+        id: 'owner-workspace-navigation',
+        workspaceLabel: 'Owner workspace',
+        groups: OWNER_SIDEBAR_GROUPS,
+        activeId: 'publicParking',
+        footer: 'Parking supply and availability in one workspace.',
+        searchItems: OWNER_SEARCH_ITEMS,
+        bottomNavItems: OWNER_BOTTOM_NAV_ITEMS,
+        bottomActiveId: 'more',
+        defaultReturnPath: '/owner',
+      };
+    }
+    if (headerRole === 'admin') {
+      const groups = buildAdminSidebarGroups();
+      return {
+        id: 'admin-workspace-navigation',
+        workspaceLabel: 'Admin workspace',
+        groups,
+        activeId: '',
+        footer: 'Platform operations and governance.',
+        searchItems: buildAdminSearchItems(groups),
+        bottomNavItems: buildAdminBottomNavItems(),
+        bottomActiveId: 'more',
+        defaultReturnPath: '/admin',
+      };
+    }
+    if (headerRole === 'management') {
+      const propertyName = user?.propertyName || (user?.propertyId ? `Property #${user.propertyId}` : 'Assigned Property');
+      return {
+        id: 'management-workspace-navigation',
+        workspaceLabel: propertyName,
+        groups: MANAGEMENT_SIDEBAR_GROUPS,
+        activeId: '',
+        footer: user?.propertyAddress || 'Property-scoped bookings & vehicle access.',
+        searchItems: MANAGEMENT_SEARCH_ITEMS,
+        bottomNavItems: MANAGEMENT_BOTTOM_NAV_ITEMS,
+        bottomActiveId: '',
+        defaultReturnPath: '/management',
+      };
+    }
+    const groups = buildCommuterSidebarGroups({
+      walletBalance: isLoggedIn ? walletBalance : null,
+    });
+    return {
+      id: 'commuter-workspace-navigation',
+      workspaceLabel: 'Commuter workspace',
+      groups,
+      activeId: 'publicPay',
+      footer: 'Find, book, and manage transit parking.',
+      searchItems: buildCommuterSearchItems(groups),
+      bottomNavItems: buildCommuterBottomNavItems(false),
+      bottomActiveId: 'more',
+      defaultReturnPath: '/commuter?tab=home',
+    };
+  }, [headerRole, isLoggedIn, user?.propertyAddress, user?.propertyId, user?.propertyName, walletBalance]);
+
+  const handleWorkspaceNavigate = (id: string) => {
+    setSidebarOpen(false);
+    if (headerRole === 'owner') {
+      try { localStorage.setItem('parkjom_owner_view', id); } catch {}
+      navigate(`/owner?view=${encodeURIComponent(id)}`);
+      return;
+    }
+    if (headerRole === 'admin') {
+      try { localStorage.setItem('parkjom_admin_view', id); } catch {}
+      navigate('/admin');
+      return;
+    }
+    if (headerRole === 'management') {
+      try { localStorage.setItem('parkjom_management_view', id); } catch {}
+      navigate('/management');
+      return;
+    }
+
+    if (id === 'publicPay') return;
+
+    if (!isLoggedIn && !['home', 'map'].includes(id)) {
+      const featureLabel = COMMUTER_RESTRICTED_TAB_LABELS[id] || 'This Feature';
+      promptLogin(
+        featureLabel,
+        `Sign in to access ${featureLabel}, view active bookings, and manage your account.`,
+      );
+      return;
+    }
+
+    if (!isLoggedIn && !isGuest) {
+      continueAsGuest();
+    }
+    try { localStorage.setItem('parkjom_commuter_tab', id); } catch {}
+    navigate(`/commuter?tab=${encodeURIComponent(id)}`);
+  };
+
+  const handleBrandClick = () => {
+    setSidebarOpen(false);
+    if (headerRole === 'commuter' && !isLoggedIn && !isGuest) {
+      continueAsGuest();
+    }
+    navigate(sidebarNavConfig.defaultReturnPath, { replace: true });
+  };
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    handleBrandClick();
+  };
+
+  const notificationActions = (
+    <div
+      onClickCapture={(e) => {
+        if (!isLoggedIn || !user?.token) {
+          e.stopPropagation();
+          e.preventDefault();
+          promptLogin(
+            'Notifications',
+            'Sign in to view your real-time booking alerts and parking notifications.',
+          );
+        }
+      }}
+    >
+      <NotificationBell
+        onNavigate={(url) => {
+          if (!isLoggedIn || !user?.token) {
+            promptLogin(
+              'Notifications',
+              'Sign in to view your real-time booking alerts and parking notifications.',
+            );
+            return;
+          }
+          navigate(url);
+        }}
+      />
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-[#f5f5f7] dark:bg-[#000000] text-[#1d1d1f] dark:text-[#f5f5f7] flex flex-col font-sans transition-colors duration-300">
-      {/* Apple-styled Frosted Header */}
-      <header className="sticky top-0 z-30 backdrop-blur-xl bg-white/70 dark:bg-[#161617]/70 border-b border-black/[0.06] dark:border-white/[0.08] transition-colors">
-        <div className="max-w-2xl mx-auto px-6 h-16 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#0071e3]" />
-            <h1 className="text-base font-semibold tracking-tight">ParkJom Express Pay</h1>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowScanner(true)}
-            className="p-2 rounded-full bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-all text-neutral-700 dark:text-neutral-200"
-            title="Scan Plate"
-          >
-            <Camera className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
+    <div
+      className="app-workspace commuter-workspace page-shell text-[#1d1d1f] flex"
+      data-workspace-role={headerRole}
+    >
+      <AppSidebar
+        id={sidebarNavConfig.id}
+        workspaceLabel={sidebarNavConfig.workspaceLabel}
+        groups={sidebarNavConfig.groups}
+        activeId={sidebarNavConfig.activeId}
+        onNavigate={handleWorkspaceNavigate}
+        onBrandClick={handleBrandClick}
+        mobileOpen={sidebarOpen}
+        onMobileOpenChange={setSidebarOpen}
+        collapsed={sidebarCollapsed}
+        onCollapsedChange={setSidebarCollapsed}
+        footer={sidebarNavConfig.footer}
+      />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* Search Bar / Input Card if no session loaded */}
-        {(!session || !queryPlateOrCode) && (
-          <div className="rounded-3xl bg-white/80 dark:bg-[#1c1c1e]/80 border border-black/[0.06] dark:border-white/[0.08] p-6 shadow-sm backdrop-blur-xl space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-[#0071e3]/10 text-[#0071e3]">
-                <Car className="w-6 h-6" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight">Public Parking Checkout</h2>
-                <p className="text-xs text-neutral-500">First-come first-serve • Pay only upon exit</p>
-              </div>
+      <div className="workspace-main flex min-h-screen min-w-0 flex-1 flex-col">
+        <DashboardHeader
+          role={headerRole}
+          user={user}
+          isGuest={!isLoggedIn}
+          onSignIn={() => navigate('/login')}
+          onSignOut={() => { logout(); navigate('/'); }}
+          onBrandClick={handleBrandClick}
+          showMenuButton
+          onMenuClick={() => setSidebarOpen(true)}
+          menuExpanded={sidebarOpen}
+          menuControls={sidebarNavConfig.id}
+          actions={notificationActions}
+          hideDesktopBrand
+          searchItems={sidebarNavConfig.searchItems}
+          onSearchSelect={(id) => {
+            handleWorkspaceNavigate(id);
+          }}
+        />
+
+        <div className="commuter-content-grid flex-1 max-w-[1180px] w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 pb-24 md:pb-10">
+          <div className="workspace-heading workspace-heading--compact">
+            <div>
+              <h1>Express Drive-Out</h1>
+              <p>Look up a vehicle plate or ticket code and settle drive-in public parking instantly.</p>
             </div>
-
-            <form onSubmit={handleSearchSubmit} className="space-y-3">
-              <label className="block text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                Enter Vehicle Plate Number or Ticket Code
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={inputQuery}
-                  onChange={(e) => setInputQuery(e.target.value.toUpperCase())}
-                  placeholder="e.g. VAA 1234 or PUB-..."
-                  className="flex-1 h-12 px-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 border border-transparent focus:border-[#0071e3] focus:bg-white dark:focus:bg-black font-mono text-base uppercase tracking-wider focus:outline-none transition-all"
-                />
-                <button
-                  type="submit"
-                  disabled={loading || !inputQuery.trim()}
-                  className="h-12 px-5 rounded-2xl bg-[#0071e3] hover:bg-[#0077ed] active:scale-95 text-white font-medium text-sm transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                >
-                  <Search className="w-4 h-4" />
-                  <span>Find</span>
-                </button>
-              </div>
-            </form>
-
-            <div className="pt-2 flex items-center justify-between text-xs text-neutral-400">
-              <span>Have physical barcode or plate?</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-black/[0.08] dark:border-white/[0.12] bg-white dark:bg-[#1c1c1e] px-3.5 text-xs font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-neutral-50 dark:hover:bg-[#2c2c2e] transition cursor-pointer shadow-xs"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setShowScanner(true)}
-                className="text-[#0071e3] hover:underline flex items-center gap-1 font-medium"
+                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#0071e3] hover:bg-[#0077ed] active:scale-95 px-4 text-xs font-semibold text-white transition shadow-xs cursor-pointer"
               >
                 <Camera className="w-3.5 h-3.5" />
-                <span>Open Scanner View</span>
+                <span>Scan Plate</span>
               </button>
             </div>
           </div>
-        )}
+
+          {/* Main Container */}
+          <main className="min-h-0 max-w-xl mx-auto w-full space-y-6">
+            {/* Search Bar / Input Card if no session loaded */}
+            {(!session || !queryPlateOrCode) && (
+              <div className="rounded-3xl bg-white dark:bg-[#1c1c1e] border border-black/[0.06] dark:border-white/[0.08] p-6 shadow-sm space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-[#0071e3]/10 text-[#0071e3]">
+                    <Car className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold tracking-tight">Public Parking Checkout</h2>
+                    <p className="text-xs text-neutral-500">First-come first-serve • Pay only upon exit</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSearchSubmit} className="space-y-3">
+                  <label className="block text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                    Enter Vehicle Plate Number or Ticket Code
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={inputQuery}
+                      onChange={(e) => setInputQuery(e.target.value.toUpperCase())}
+                      placeholder="e.g. VAA 1234 or PUB-..."
+                      className="flex-1 h-12 px-4 rounded-2xl bg-neutral-100 dark:bg-[#2c2c2e] border border-black/[0.06] dark:border-white/[0.08] focus:border-[#0071e3] focus:bg-white dark:focus:bg-[#141417] font-mono text-base uppercase tracking-wider focus:outline-none transition-all"
+                    />
+                    <button
+                      type="submit"
+                      disabled={loading || !inputQuery.trim()}
+                      className="h-12 px-5 rounded-2xl bg-[#0071e3] hover:bg-[#0077ed] active:scale-95 text-white font-medium text-sm transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                    >
+                      <Search className="w-4 h-4" />
+                      <span>Find</span>
+                    </button>
+                  </div>
+                </form>
+
+                <div className="pt-2 flex items-center justify-between text-xs text-neutral-400">
+                  <span>Have physical barcode or plate?</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowScanner(true)}
+                    className="text-[#0071e3] hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Open Scanner View</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
         {/* Error message */}
         {error && (
@@ -503,7 +733,21 @@ export default function PublicParkingPayPage() {
             </div>
           </div>
         )}
-      </main>
+          </main>
+        </div>
+      </div>
+
+      <BottomNav
+        items={sidebarNavConfig.bottomNavItems}
+        activeId={sidebarNavConfig.bottomActiveId}
+        onChange={(id) => {
+          if (id === 'more') {
+            setSidebarOpen(true);
+            return;
+          }
+          handleWorkspaceNavigate(id);
+        }}
+      />
 
       {/* Optical Scanner Modal */}
       {showScanner && (

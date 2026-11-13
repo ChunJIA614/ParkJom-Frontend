@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   X,
   MapPin,
@@ -206,13 +207,14 @@ export const PublicLotDetailModal: React.FC<PublicLotDetailModalProps> = ({ lot,
             <span>Waze</span>
           </a>
 
-          <a
-            href={`/public-pay?lot=${lot.publicParkingLotId}`}
+          <Link
+            to={`/public-pay?lot=${lot.publicParkingLotId}`}
+            onClick={onClose}
             className="w-full sm:w-auto sm:flex-1 h-11 px-6 rounded-2xl bg-[#0071e3] hover:bg-[#0077ed] active:scale-95 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
           >
             <span>Drive-In & Pay Now</span>
             <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+          </Link>
         </div>
       </div>
     </div>

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  TrendingUp, ShieldCheck, Radio, AlertOctagon, 
-  Landmark, LifeBuoy,
-  ShieldAlert, Lock, Menu, Car, Bell, Users, Building2
-} from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { NotificationBell } from '@/features/notifications';
 import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import PageTransition from '@/components/ui/PageTransition';
+import {
+  ADMIN_VIEW_META,
+  buildAdminBottomNavItems,
+  buildAdminSearchItems,
+  buildAdminSidebarGroups,
+  type AdminActiveView as ActiveView,
+} from '../lib/adminNavigation';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
@@ -40,8 +42,6 @@ import VehicleManagement from '../components/VehicleManagement';
 import UserManagement from '../components/UserManagement';
 import AdminNotificationBroadcast from '../components/AdminNotificationBroadcast';
 import PropertyManagementAccounts from '../components/PropertyManagementAccounts';
-
-type ActiveView = 'home' | 'governance' | 'users' | 'property-managers' | 'vehicles' | 'iot' | 'settlement' | 'enforcement' | 'support' | 'audit' | 'system' | 'broadcast';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -534,37 +534,12 @@ export default function AdminDashboard() {
   };
 
   const offlineBollards = Math.max(0, stats.totalBollards - stats.onlineBollards);
-  const adminSidebarGroups = [
-    {
-      items: [{ id: 'home', label: 'Platform Dashboard', icon: TrendingUp }],
-    },
-    {
-      label: 'Operations',
-      items: [
-        { id: 'governance', label: 'Listing Governance', icon: ShieldCheck, badge: listings.filter((listing) => listing.status === 'pending').length },
-        { id: 'users', label: 'User Governance', icon: Users },
-        { id: 'property-managers', label: 'Property Managers', icon: Building2 },
-        { id: 'vehicles', label: 'Vehicle Management', icon: Car },
-        { id: 'iot', label: 'IoT Smart Bollards', icon: Radio, badge: offlineBollards, badgeTone: 'danger' as const },
-      ],
-    },
-    {
-      label: 'Finance & Safety',
-      items: [
-        { id: 'settlement', label: 'Financial Settlement', icon: Landmark, badge: payouts.filter((payout) => payout.status === 'pending').length },
-        { id: 'enforcement', label: 'Overstay Enforcement', icon: AlertOctagon, badge: overstays.filter((overstay) => overstay.status !== 'resolved').length, badgeTone: 'danger' as const },
-        { id: 'support', label: 'Disputes & Tickets', icon: LifeBuoy },
-      ],
-    },
-    {
-      label: 'System',
-      items: [
-        { id: 'broadcast', label: 'Broadcast & Alerts', icon: Radio },
-        { id: 'audit', label: 'System Audit', icon: ShieldAlert },
-        { id: 'system', label: 'System Configuration', icon: Lock },
-      ],
-    },
-  ];
+  const adminSidebarGroups = buildAdminSidebarGroups({
+    pendingListings: listings.filter((listing) => listing.status === 'pending').length,
+    offlineBollards,
+    pendingPayouts: payouts.filter((payout) => payout.status === 'pending').length,
+    openOverstays: overstays.filter((overstay) => overstay.status !== 'resolved').length,
+  });
 
   const renderActiveView = () => {
     switch (activeView) {
@@ -680,28 +655,8 @@ export default function AdminDashboard() {
     }
   };
 
-  const viewMeta: Record<ActiveView, { title: string; description: string }> = {
-    home: { title: 'Operations overview', description: 'Monitor the queues and systems that affect today’s parking journeys.' },
-    governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
-    users: { title: 'User governance', description: 'Review, inspect, and manage registered ParkJom accounts and roles.' },
-    'property-managers': { title: 'Property management accounts', description: 'Provision standalone building-desk accounts and manage 14-day single-use email invitations.' },
-    vehicles: { title: 'Vehicle management', description: 'Review commuter vehicles registered across the platform.' },
-    iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
-    settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
-    enforcement: { title: 'Overstay enforcement', description: 'Resolve sessions that exceeded their confirmed parking window.' },
-    support: { title: 'Disputes and support', description: 'Keep commuter and owner issues moving toward a clear resolution.' },
-    audit: { title: 'System audit', description: 'Review operational actions and changes across the platform.' },
-    broadcast: { title: 'Broadcast & notifications', description: 'Publish system alerts and audit delivery channels.' },
-    system: { title: 'System configuration', description: 'Manage the controls that affect platform-wide behavior.' },
-  };
-  const currentViewMeta = viewMeta[activeView];
-  const adminSearchItems = adminSidebarGroups.flatMap((group) => group.items.map((item) => ({
-    id: item.id,
-    label: item.label,
-    keywords: item.id === 'settlement'
-      ? ['finance', 'settlement', 'payouts', 'transactions']
-      : [viewMeta[item.id as ActiveView].title],
-  })));
+  const currentViewMeta = ADMIN_VIEW_META[activeView];
+  const adminSearchItems = buildAdminSearchItems(adminSidebarGroups);
   const adminNotifications = [
     listings.filter((listing) => listing.status === 'pending').length > 0
       ? `${listings.filter((listing) => listing.status === 'pending').length} listing reviews are pending.`
@@ -771,13 +726,10 @@ export default function AdminDashboard() {
       </div>
 
       <BottomNav
-        items={[
-          { id: 'home', icon: TrendingUp, label: 'Dashboard' },
-          { id: 'governance', icon: ShieldCheck, label: 'Listings', count: listings.filter((l) => l.status === 'pending').length },
-          { id: 'iot', icon: Radio, label: 'Bollards', count: offlineBollards },
-          { id: 'settlement', icon: Landmark, label: 'Finance' },
-          { id: 'more', icon: Menu, label: 'More' },
-        ]}
+        items={buildAdminBottomNavItems({
+          pendingListings: listings.filter((l) => l.status === 'pending').length,
+          offlineBollards,
+        })}
         activeId={['users', 'property-managers', 'vehicles', 'enforcement', 'support', 'audit', 'system', 'broadcast'].includes(activeView) ? 'more' : activeView}
         onChange={(id) => {
           if (id === 'more') {

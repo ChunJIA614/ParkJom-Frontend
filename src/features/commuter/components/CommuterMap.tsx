@@ -2865,13 +2865,14 @@ export default function CommuterMap({
                     >
                       <span>View Details</span>
                     </button>
-                    <a
-                      href={`/public-pay?lot=${lot.publicParkingLotId}`}
-                      className="flex-1 h-7 rounded-lg bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-[10px] flex items-center justify-center gap-1 transition shadow-xs"
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/public-pay?lot=${lot.publicParkingLotId}`)}
+                      className="flex-1 h-7 rounded-lg bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-[10px] flex items-center justify-center gap-1 transition shadow-xs cursor-pointer"
                     >
                       <span>Drive-In</span>
                       <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
+                    </button>
                   </div>
                 </div>
               </Popup>

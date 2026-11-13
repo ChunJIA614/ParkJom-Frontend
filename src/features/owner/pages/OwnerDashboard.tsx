@@ -1,11 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   AlertCircle,
-  CalendarDays,
-  LayoutDashboard,
-  Menu,
-  MessageSquare,
-  PlusSquare,
   RefreshCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +15,11 @@ import {
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import BottomNav from '@/components/layout/BottomNav';
+import {
+  OWNER_BOTTOM_NAV_ITEMS,
+  OWNER_SEARCH_ITEMS,
+  type OwnerView,
+} from '../lib/ownerNavigation';
 import PageTransition from '@/components/ui/PageTransition';
 import FirstTimeIconGuide from '@/components/onboarding/FirstTimeIconGuide';
 import {
@@ -143,20 +143,6 @@ function mapOwnerBookingToBooking(item: OwnerBookingHistoryItem): Booking | null
     status,
   };
 }
-
-type OwnerView = 'dashboard' | 'publicParking' | 'availability' | 'reviews' | 'registration' | 'iot' | 'wallet' | 'settings' | 'tickets';
-
-const OWNER_SEARCH_ITEMS = [
-  { id: 'dashboard', label: 'Overview', keywords: ['dashboard', 'parking status', 'bookings'] },
-  { id: 'publicParking', label: 'Public Drive-In Lots', keywords: ['public parking', 'drive-in', 'hourly', 'carplate', 'turnover', 'capacity'] },
-  { id: 'availability', label: 'Configure Parking', keywords: ['availability', 'schedule', 'timetable'] },
-  { id: 'reviews', label: 'Reviews', keywords: ['feedback', 'owner replies'] },
-  { id: 'registration', label: 'Register Property', keywords: ['onboarding', 'new parking', 'bay'] },
-  { id: 'iot', label: 'Smart Bollards', keywords: ['iot', 'device', 'bollard', 'otp', 'pairing', 'unlock'] },
-  { id: 'wallet', label: 'Earnings Wallet', keywords: ['wallet', 'earnings', 'payout', 'balance', 'transactions'] },
-  { id: 'tickets', label: 'Support', keywords: ['tickets', 'issues', 'help'] },
-  { id: 'settings', label: 'Settings', keywords: ['payout', 'bank account', 'preferences'] },
-] satisfies Array<{ id: OwnerView; label: string; keywords: string[] }>;
 
 export default function OwnerDashboard() {
   const navigate = useNavigate();
@@ -756,14 +742,8 @@ export default function OwnerDashboard() {
       </div>
 
       <BottomNav
-        items={[
-          { id: 'dashboard', icon: LayoutDashboard, label: 'Overview' },
-          { id: 'availability', icon: CalendarDays, label: 'Configure' },
-          { id: 'reviews', icon: MessageSquare, label: 'Reviews' },
-          { id: 'registration', icon: PlusSquare, label: 'Register' },
-          { id: 'more', icon: Menu, label: 'More' },
-        ]}
-        activeId={['tickets', 'settings', 'wallet', 'iot'].includes(activeView) ? 'more' : activeView}
+        items={OWNER_BOTTOM_NAV_ITEMS}
+        activeId={['tickets', 'settings', 'wallet', 'iot', 'publicParking'].includes(activeView) ? 'more' : activeView}
         onChange={(id) => {
           if (id === 'more') {
             setIsSidebarOpen(true);

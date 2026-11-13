@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { NotificationBell } from '@/features/notifications';
 import {
   MapPin,
@@ -41,9 +41,7 @@ import {
   Pencil,
   Star,
   Trash2,
-  ClipboardList,
   Heart,
-  Menu,
   Calendar,
   Globe,
   Building2,
@@ -79,6 +77,14 @@ import { calculateWalkingMinutes } from '@/services/pedestrianWalkingService';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
+import {
+  buildCommuterBottomNavItems,
+  buildCommuterSearchItems,
+  buildCommuterSidebarGroups,
+  COMMUTER_RESTRICTED_TAB_LABELS,
+  COMMUTER_VIEW_META,
+  type CommuterTab,
+} from '../lib/commuterNavigation';
 import PageTransition from '@/components/ui/PageTransition';
 import FirstTimeIconGuide from '@/components/onboarding/FirstTimeIconGuide';
 import {
@@ -333,7 +339,6 @@ export default function CommuterDashboard() {
   }) : null, [user]);
   const prefersReducedMotion = useReducedMotion();
   const [initialJourney] = useState(() => loadJourneySession(user?.userId));
-  type CommuterTab = 'home' | 'active' | 'wallet' | 'profile' | 'map' | 'favorites' | 'support' | 'publicPay';
   const locationParams = new URLSearchParams(location.search);
   const queryTab = locationParams.get('tab');
   const requestedTabFromQuery: CommuterTab | undefined = queryTab === 'home'
@@ -379,16 +384,10 @@ export default function CommuterDashboard() {
       return;
     }
     if (isGuest && !['home', 'map'].includes(id)) {
-      const tabLabels: Record<string, string> = {
-        active: 'My Parking Pass',
-        wallet: 'Digital Wallet',
-        profile: 'Vehicle Management',
-        favorites: 'Saved Favorites',
-        support: 'Customer Support',
-      };
+      const featureLabel = COMMUTER_RESTRICTED_TAB_LABELS[id] || 'This Feature';
       promptLogin(
-        tabLabels[id] || 'This Feature',
-        `Sign in to access ${tabLabels[id] || 'this feature'}, view active bookings, and manage your account.`,
+        featureLabel,
+        `Sign in to access ${featureLabel}, view active bookings, and manage your account.`,
       );
       return;
     }
@@ -2506,52 +2505,13 @@ export default function CommuterDashboard() {
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  const commuterViewMeta = {
-    home: { title: 'Parking near you', description: 'Compare verified bays around your route and choose with confidence.' },
-    map: { title: 'Transit map', description: 'Choose a rail station and compare nearby verified parking bays.' },
-    active: { title: 'My parking pass', description: 'Everything you need to arrive, unlock, park, and leave.' },
-    wallet: { title: 'Wallet', description: 'Top up securely and keep track of every parking payment.' },
-    profile: { title: 'Vehicles', description: 'Choose the vehicle attached to your next parking session.' },
-    support: { title: 'Support', description: 'Report booking, access, wallet, payment, or account issues.' },
-    favorites: { title: 'Favorites', description: 'Keep parking spaces you are interested in within easy reach.' },
-    publicPay: { title: 'Express Drive-Out', description: 'Pay for drive-in public parking tickets instantly without queuing.' },
-  } as const;
-  const commuterSidebarGroups = [
-    {
-      label: 'Discover',
-      items: [
-        { id: 'home', icon: Compass, label: 'Browse' },
-        { id: 'map', icon: Map, label: 'Transit Map' },
-      ],
-    },
-    {
-      label: 'My Parking',
-      items: [
-        { id: 'active', icon: Unlock, label: 'My Pass', dot: Boolean(activeBooking) },
-        { id: 'publicPay', icon: CreditCard, label: 'Express Drive-Out' },
-        { id: 'favorites', icon: Heart, label: 'Favorites', badge: favoriteSpots.length },
-      ],
-    },
-    {
-      label: 'Account',
-      items: [
-        { id: 'wallet', icon: Wallet, label: 'Wallet', badge: walletBalance === null ? null : `RM ${walletBalance.toFixed(2)}` },
-        { id: 'profile', icon: Car, label: 'Vehicles', badge: vehicles.length },
-        { id: 'support', icon: ClipboardList, label: 'Support' },
-      ],
-    },
-  ];
-  const commuterSearchItems = commuterSidebarGroups.flatMap((group) => group.items.map((item) => ({
-    id: item.id,
-    label: item.label,
-    keywords: item.id === 'home'
-      ? ['browse', 'parking near me', 'search parking']
-      : item.id === 'active'
-        ? ['parking pass', 'booking', 'reservation']
-        : item.id === 'publicPay'
-          ? ['express drive-out', 'public parking', 'ticket', 'pay parking']
-          : [commuterViewMeta[item.id as CommuterTab]?.title || item.label],
-  })));
+  const commuterSidebarGroups = buildCommuterSidebarGroups({
+    hasActiveBooking: Boolean(activeBooking),
+    favoritesCount: favoriteSpots.length,
+    walletBalance,
+    vehiclesCount: vehicles.length,
+  });
+  const commuterSearchItems = buildCommuterSearchItems(commuterSidebarGroups);
 
   const notificationActions = (
     <div
@@ -2658,8 +2618,8 @@ export default function CommuterDashboard() {
           {activeTab !== 'home' && (
             <div className="workspace-heading workspace-heading--compact">
               <div>
-                <h1>{commuterViewMeta[activeTab]?.title || ''}</h1>
-                <p>{commuterViewMeta[activeTab]?.description || ''}</p>
+                <h1>{COMMUTER_VIEW_META[activeTab]?.title || ''}</h1>
+                <p>{COMMUTER_VIEW_META[activeTab]?.description || ''}</p>
               </div>
             </div>
           )}
@@ -3812,13 +3772,13 @@ export default function CommuterDashboard() {
                             >
                               View Details
                             </button>
-                            <a
-                              href={`/public-pay?lot=${selectedPublicLot.publicParkingLotId}`}
+                            <Link
+                              to={`/public-pay?lot=${selectedPublicLot.publicParkingLotId}`}
                               className="flex-1 h-9 rounded-xl bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-xs transition flex items-center justify-center gap-1 shadow-xs"
                             >
                               <span>Drive-In</span>
                               <ExternalLink className="w-3 h-3" />
-                            </a>
+                            </Link>
                           </div>
                         </div>
                       </div>
@@ -4761,14 +4721,8 @@ export default function CommuterDashboard() {
       {!['support', 'wallet', 'profile'].includes(activeTab) && <CopilotLauncher />}
 
       <BottomNav
-        items={[
-          { id: 'map', icon: Map, label: 'Transit' },
-          { id: 'home', icon: Compass, label: 'Browse' },
-          { id: 'active', icon: Unlock, label: 'Pass', dot: !!activeBooking || upcomingBookings.length > 0 },
-          { id: 'wallet', icon: Wallet, label: 'Wallet' },
-          { id: 'more', icon: Menu, label: 'More' },
-        ]}
-        activeId={['profile', 'favorites', 'support'].includes(activeTab) ? 'more' : activeTab}
+        items={buildCommuterBottomNavItems(!!activeBooking || upcomingBookings.length > 0)}
+        activeId={['profile', 'favorites', 'support', 'publicPay'].includes(activeTab) ? 'more' : activeTab}
         onChange={(id) => {
           if (id === 'more') {
             setSidebarOpen(true);

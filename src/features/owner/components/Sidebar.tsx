@@ -1,5 +1,5 @@
-import { CalendarDays, ClipboardList, LayoutDashboard, Layers, MessageSquare, PlusSquare, Radio, Sliders, Wallet } from 'lucide-react';
 import AppSidebar from '@/components/layout/AppSidebar';
+import { OWNER_SIDEBAR_GROUPS } from '../lib/ownerNavigation';
 
 interface SidebarProps {
   activeView: string;
@@ -31,27 +31,7 @@ export default function Sidebar({
       onMobileOpenChange={setIsOpen}
       collapsed={isCollapsed}
       onCollapsedChange={setIsCollapsed}
-      groups={[
-        {
-          label: 'Parking',
-          items: [
-            { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-            { id: 'publicParking', label: 'Public Drive-In', icon: Layers },
-            { id: 'availability', label: 'Configure Parking', icon: CalendarDays },
-            { id: 'reviews', label: 'Reviews', icon: MessageSquare },
-            { id: 'registration', label: 'Register Property', icon: PlusSquare },
-            { id: 'iot', label: 'Smart Bollards', icon: Radio },
-          ],
-        },
-        {
-          label: 'Account',
-          items: [
-            { id: 'wallet', label: 'Earnings Wallet', icon: Wallet },
-            { id: 'tickets', label: 'Support', icon: ClipboardList },
-            { id: 'settings', label: 'Settings', icon: Sliders },
-          ],
-        },
-      ]}
+      groups={OWNER_SIDEBAR_GROUPS}
       footer="Parking supply and availability in one workspace."
     />
   );

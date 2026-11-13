@@ -1,45 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, DoorOpen, LayoutDashboard, ScanLine } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
-import DashboardHeader, { type DashboardSearchItem } from '@/components/layout/DashboardHeader';
+import DashboardHeader from '@/components/layout/DashboardHeader';
 import PageTransition from '@/components/ui/PageTransition';
 import ManagementOverview from '../components/ManagementOverview';
 import ManagementPlateScanner from '../components/ManagementPlateScanner';
 import ManagementBookingsPanel from '../components/ManagementBookingsPanel';
 import ManagementAccessEventsPanel from '../components/ManagementAccessEventsPanel';
-
-type ManagementView = 'overview' | 'scanner' | 'bookings' | 'access';
-
-const VALID_VIEWS: ManagementView[] = ['overview', 'scanner', 'bookings', 'access'];
-
-const SEARCH_ITEMS: DashboardSearchItem[] = [
-  { id: 'overview', label: 'Property Overview', keywords: ['today', 'summary', 'building', 'desk'] },
-  { id: 'scanner', label: 'Plate Scanner', keywords: ['camera', 'verify', 'license plate', 'jpj', 'gate'] },
-  { id: 'bookings', label: 'Property Bookings', keywords: ['reservations', 'roster', 'schedule', 'vehicle'] },
-  { id: 'access', label: 'Gate Entry Log', keywords: ['iot', 'bollard', 'entry', 'access events'] },
-];
-
-const VIEW_META: Record<ManagementView, { title: string; description: string }> = {
-  overview: {
-    title: 'Property operations',
-    description: 'Live vehicle arrivals, active bookings, and gatehouse verification for your assigned building.',
-  },
-  scanner: {
-    title: 'Plate scanner',
-    description: 'Scan or upload a Malaysian vehicle number plate to verify an eligible booking right now.',
-  },
-  bookings: {
-    title: 'Property bookings',
-    description: 'Inspect and filter every parking reservation scheduled at your assigned property.',
-  },
-  access: {
-    title: 'Gate entry log',
-    description: 'Review physical entry events confirmed by smart-bollard hardware across your property.',
-  },
-};
+import {
+  MANAGEMENT_BOTTOM_NAV_ITEMS,
+  MANAGEMENT_SEARCH_ITEMS,
+  MANAGEMENT_SIDEBAR_GROUPS,
+  MANAGEMENT_VIEW_META,
+  VALID_MANAGEMENT_VIEWS,
+  type ManagementView,
+} from '../lib/managementNavigation';
 
 export default function PropertyManagementDashboard() {
   const navigate = useNavigate();
@@ -48,7 +25,7 @@ export default function PropertyManagementDashboard() {
 
   const [activeView, setActiveView] = useState<ManagementView>(() => {
     const saved = localStorage.getItem('parkjom_management_view');
-    return saved && VALID_VIEWS.includes(saved as ManagementView) ? (saved as ManagementView) : 'overview';
+    return saved && VALID_MANAGEMENT_VIEWS.includes(saved as ManagementView) ? (saved as ManagementView) : 'overview';
   });
 
   useEffect(() => {
@@ -88,26 +65,14 @@ export default function PropertyManagementDashboard() {
 
   const propertyName = user?.propertyName || (user?.propertyId ? `Property #${user.propertyId}` : 'Assigned Property');
   const propertyAddress = user?.propertyAddress || '';
-  const currentMeta = VIEW_META[activeView];
-
-  const sidebarGroups = [
-    {
-      label: 'Gatehouse Desk',
-      items: [
-        { id: 'overview', label: 'Property Overview', icon: LayoutDashboard },
-        { id: 'scanner', label: 'Plate Scanner', icon: ScanLine },
-        { id: 'bookings', label: 'Property Bookings', icon: CalendarDays },
-        { id: 'access', label: 'Gate Entry Log', icon: DoorOpen },
-      ],
-    },
-  ];
+  const currentMeta = MANAGEMENT_VIEW_META[activeView];
 
   return (
     <div className="app-workspace font-sans text-[#1d1d1f] flex" data-workspace-role="management">
       <AppSidebar
         id="management-workspace-navigation"
         workspaceLabel={propertyName}
-        groups={sidebarGroups}
+        groups={MANAGEMENT_SIDEBAR_GROUPS}
         activeId={activeView}
         onNavigate={(id) => setActiveView(id as ManagementView)}
         onBrandClick={() => { setActiveView('overview'); navigate('/management', { replace: true }); }}
@@ -131,7 +96,7 @@ export default function PropertyManagementDashboard() {
           statusText={propertyName}
           badge={{ label: 'On Duty', variant: 'success' }}
           hideDesktopBrand
-          searchItems={SEARCH_ITEMS}
+          searchItems={MANAGEMENT_SEARCH_ITEMS}
           onSearchSelect={(id) => {
             setActiveView(id as ManagementView);
             setSidebarOpen(false);
@@ -190,12 +155,7 @@ export default function PropertyManagementDashboard() {
 
       {/* 4 top-level tabs — no More overflow needed */}
       <BottomNav
-        items={[
-          { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-          { id: 'scanner', icon: ScanLine, label: 'Scanner' },
-          { id: 'bookings', icon: CalendarDays, label: 'Bookings' },
-          { id: 'access', icon: DoorOpen, label: 'Entries' },
-        ]}
+        items={MANAGEMENT_BOTTOM_NAV_ITEMS}
         activeId={activeView}
         onChange={(id) => setActiveView(id as ManagementView)}
       />
