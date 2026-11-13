@@ -11,7 +11,6 @@ export function signInWithGoogle(googleToken: string): Promise<Response> {
 export function completeUserProfile(input: {
   userId: number | null;
   phoneNumber: string;
-  userType: number;
   token?: string | null;
 }): Promise<Response> {
   const { token, ...payload } = input;

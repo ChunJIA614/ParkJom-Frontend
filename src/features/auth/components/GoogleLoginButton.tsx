@@ -186,7 +186,6 @@ export default function GoogleLoginButton() {
       const res = await completeUserProfile({
         userId: pendingUserId,
         phoneNumber: trimmed,
-        userType: selectedRole, // 2=Owner, 3=Commuter
         token: pendingToken,
       });
 
