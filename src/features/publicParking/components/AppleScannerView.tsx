@@ -1,11 +1,34 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Flashlight, RefreshCw, X, CheckCircle2, AlertTriangle, Upload, Sparkles, Car } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Camera,
+  Flashlight,
+  RefreshCw,
+  SwitchCamera,
+  X,
+  CheckCircle2,
+  AlertTriangle,
+  Upload,
+  Sparkles,
+  Car,
+  Loader2,
+} from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
   compressFileToDataUrl,
   scanVehicleWithVision,
   type VehicleVisionScanData,
 } from '@/features/commuter/api/vehicleVisionApi';
+import {
+  attachStreamToVideo,
+  captureVideoFrameDataUrl,
+  describeCameraError,
+  hasMultipleVideoInputs,
+  openCameraStream,
+  setTrackTorch,
+  stopMediaStream,
+  supportsTrackTorch,
+  type CameraFacingMode,
+} from '@/services/cameraStream';
 
 interface AppleScannerViewProps {
   onScanPlate: (plate: string) => void;
@@ -13,6 +36,8 @@ interface AppleScannerViewProps {
   title?: string;
   subtitle?: string;
 }
+
+type CameraStatus = 'starting' | 'ready' | 'error';
 
 export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
   onScanPlate,
@@ -31,43 +56,103 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
   })();
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [manualPlate, setManualPlate] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
-  const [cameraActive, setCameraActive] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [facingMode, setFacingMode] = useState<CameraFacingMode>('environment');
+  const [canSwitchCamera, setCanSwitchCamera] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>('starting');
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<VehicleVisionScanData | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    async function startCamera() {
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-          });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            setCameraActive(true);
-          }
-        }
-      } catch {
-        setCameraActive(false);
-      }
-    }
-
-    startCamera();
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
+  const releaseCamera = useCallback(() => {
+    stopMediaStream(streamRef.current, videoRef.current);
+    streamRef.current = null;
+    setTorchOn(false);
+    setTorchSupported(false);
   }, []);
+
+  const startCamera = useCallback(
+    async (preferredFacing: CameraFacingMode) => {
+      const requestId = ++cameraRequestRef.current;
+      releaseCamera();
+      setCameraStatus('starting');
+      setCameraError(null);
+
+      try {
+        const stream = await openCameraStream(preferredFacing);
+        if (requestId !== cameraRequestRef.current || !videoRef.current) {
+          stopMediaStream(stream);
+          return;
+        }
+
+        streamRef.current = stream;
+        const videoEl = videoRef.current;
+        await attachStreamToVideo(videoEl, stream);
+
+        if (requestId !== cameraRequestRef.current) {
+          stopMediaStream(stream, videoEl);
+          return;
+        }
+
+        const primaryTrack = stream.getVideoTracks()[0];
+        primaryTrack?.addEventListener(
+          'ended',
+          () => {
+            if (streamRef.current === stream) {
+              streamRef.current = null;
+              setTorchOn(false);
+              setTorchSupported(false);
+              setCameraStatus('error');
+              setCameraError('Camera stream ended unexpectedly. Tap Retry Camera to reconnect.');
+            }
+          },
+          { once: true },
+        );
+
+        setTorchSupported(supportsTrackTorch(stream));
+        setCameraStatus('ready');
+        void hasMultipleVideoInputs().then((multi) => {
+          if (requestId === cameraRequestRef.current) {
+            setCanSwitchCamera(multi);
+          }
+        });
+      } catch (err) {
+        if (requestId !== cameraRequestRef.current) return;
+        releaseCamera();
+        setCameraStatus('error');
+        setCameraError(describeCameraError(err));
+      }
+    },
+    [releaseCamera],
+  );
+
+  useEffect(() => {
+    void startCamera(facingMode);
+    return () => {
+      cameraRequestRef.current += 1;
+      releaseCamera();
+    };
+  }, [facingMode, releaseCamera, startCamera]);
+
+  const handleToggleTorch = async () => {
+    if (!streamRef.current || !torchSupported) return;
+    const next = !torchOn;
+    const applied = await setTrackTorch(streamRef.current, next);
+    if (applied) {
+      setTorchOn(next);
+    } else {
+      setTorchSupported(false);
+    }
+  };
 
   // Run AI Vision ALPR on compressed image data URL
   const runAiVisionScan = async (dataUrl: string) => {
@@ -92,18 +177,18 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
 
   // Snapshot frame from live video feed
   const handleCaptureFromCamera = async () => {
-    if (!videoRef.current) return;
     const video = videoRef.current;
-    const canvas = canvasRef.current || document.createElement('canvas');
-    canvas.width = video.videoWidth || 960;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!video) return;
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-    setCapturedPhotoUrl(dataUrl);
-    await runAiVisionScan(dataUrl);
+    try {
+      const dataUrl = captureVideoFrameDataUrl(video, canvasRef.current, 1280, 0.88);
+      setCapturedPhotoUrl(dataUrl);
+      await runAiVisionScan(dataUrl);
+    } catch (err) {
+      setScanError(
+        err instanceof Error ? err.message : 'Camera frame is not ready yet. Please wait a moment and try again.',
+      );
+    }
   };
 
   // Upload photo from device
@@ -133,8 +218,20 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
     onScanPlate(cleaned);
   };
 
+  const handleRetake = () => {
+    setCapturedPhotoUrl(null);
+    setScanResult(null);
+    setScanError(null);
+    if (cameraStatus !== 'ready') {
+      void startCamera(facingMode);
+    }
+  };
+
+  const showLiveVideo = cameraStatus === 'ready' && !capturedPhotoUrl;
+  const showReticle = Boolean(capturedPhotoUrl) || cameraStatus === 'ready';
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95 text-white backdrop-blur-2xl select-none animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1600] flex flex-col bg-black text-white select-none animate-in fade-in duration-200">
       {/* Hidden file input for vehicle photos */}
       <input
         ref={fileInputRef}
@@ -145,144 +242,211 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
       />
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Top Apple Navigation Bar */}
-      <div className="flex items-center justify-between px-6 pt-10 pb-3 border-b border-white/10">
-        <div>
+      {/* Top Navigation Bar */}
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-black/80 px-4 pt-6 pb-3 backdrop-blur-xl sm:px-6 sm:pt-8">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold tracking-tight text-white flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#0071e3]" /> {title}
+            <h2 className="flex items-center gap-2 truncate text-base font-semibold tracking-tight text-white sm:text-lg">
+              <Sparkles className="h-4 w-4 shrink-0 text-[#0a84ff]" />
+              <span className="truncate">{title}</span>
             </h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#0071e3]/20 text-[#0071e3] border border-[#0071e3]/30">
+            <span className="shrink-0 rounded-full border border-[#0a84ff]/35 bg-[#0a84ff]/15 px-2 py-0.5 text-[10px] font-bold text-[#409cff]">
               Gemini ALPR
             </span>
           </div>
-          <p className="text-xs text-neutral-400 mt-0.5">{subtitle}</p>
+          <p className="mt-0.5 truncate text-xs text-neutral-400">{subtitle}</p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-xs font-semibold text-white flex items-center gap-1.5 transition-all cursor-pointer"
+            className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/12 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-all hover:bg-white/20 active:scale-95"
           >
-            <Upload className="w-3.5 h-3.5" />
+            <Upload className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Upload Photo</span>
           </button>
 
+          {canSwitchCamera && !capturedPhotoUrl && (
+            <button
+              type="button"
+              onClick={() => setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))}
+              className="cursor-pointer rounded-xl border border-white/12 bg-white/10 p-2 text-white transition-all hover:bg-white/20 active:scale-90"
+              title="Switch Camera"
+              aria-label="Switch Camera"
+            >
+              <SwitchCamera className="h-4 w-4" />
+            </button>
+          )}
+
           <button
             type="button"
-            onClick={() => setTorchOn(!torchOn)}
-            className={`p-2 rounded-xl transition-all duration-200 active:scale-90 cursor-pointer ${
+            onClick={() => void handleToggleTorch()}
+            disabled={!showLiveVideo || !torchSupported}
+            className={`rounded-xl border p-2 transition-all duration-200 ${
               torchOn
-                ? 'bg-amber-400 text-black shadow-[0_0_15px_rgba(251,191,36,0.5)]'
-                : 'bg-white/10 text-white hover:bg-white/20'
+                ? 'cursor-pointer border-amber-300 bg-amber-400 text-black shadow-[0_0_15px_rgba(251,191,36,0.5)] active:scale-90'
+                : 'border-white/12 bg-white/10 text-white hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40'
             }`}
-            title="Toggle Flashlight"
+            title={torchSupported ? 'Toggle Flashlight' : 'Flashlight not available on this camera'}
+            aria-label="Toggle Flashlight"
           >
-            <Flashlight className="w-4 h-4" />
+            <Flashlight className="h-4 w-4" />
           </button>
 
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 active:scale-90 transition-all cursor-pointer"
+              className="cursor-pointer rounded-xl border border-white/12 bg-white/10 p-2 text-white transition-all hover:bg-white/20 active:scale-90"
+              aria-label="Close scanner"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           )}
         </div>
       </div>
 
       {/* Main Viewfinder Section */}
-      <div className="relative flex-1 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
-        {/* Real Live Video Feed or Captured Photo Preview */}
-        {capturedPhotoUrl ? (
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-neutral-950 p-4 sm:p-6">
+        {/* Live video element stays mounted so stream attachment never races against state */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          onPlaying={() => setCameraStatus('ready')}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
+            showLiveVideo ? 'opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+        />
+
+        {/* Captured Photo / Uploaded File Preview */}
+        {capturedPhotoUrl && (
           <img
             src={capturedPhotoUrl}
             alt="Captured vehicle"
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
           />
-        ) : cameraActive ? (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-b from-neutral-900 via-neutral-950 to-black flex items-center justify-center">
-            <div className="text-center px-4 max-w-xs text-neutral-500 space-y-2">
-              <Camera className="w-12 h-12 mx-auto opacity-40 animate-pulse" />
-              <p className="text-xs font-medium text-neutral-400">Camera ready</p>
-              <p className="text-[11px] text-neutral-500">Tap Capture below or Upload a photo of the car</p>
-            </div>
+        )}
+
+        {/* Camera Starting / Unavailable Overlay (shown only when no photo & no active stream) */}
+        {!capturedPhotoUrl && cameraStatus !== 'ready' && (
+          <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/12 bg-[#141417]/95 p-6 text-center shadow-2xl">
+            {cameraStatus === 'starting' ? (
+              <div className="space-y-3">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0a84ff]/15 text-[#0a84ff]">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+                <p className="text-sm font-semibold text-white">Starting live camera…</p>
+                <p className="text-xs leading-relaxed text-neutral-400">
+                  Allow camera access if prompted by your browser, or upload a car photo below.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#ff9f0a]/15 text-[#ff9f0a]">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold text-white">Live camera unavailable</p>
+                  <p className="text-xs leading-relaxed text-neutral-300">
+                    {cameraError || 'Could not start the camera stream. Check permissions or upload a photo.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => void startCamera(facingMode)}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-xl bg-[#0a84ff] px-4 text-xs font-semibold text-white transition hover:bg-[#2491ff] active:scale-95"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Retry Camera
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-4 text-xs font-semibold text-white transition hover:bg-white/20 active:scale-95"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Upload Photo
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Apple Scanner Reticle */}
-        <div className="relative w-full max-w-sm aspect-[16/9] rounded-3xl border-2 border-white/25 p-2 shadow-2xl overflow-hidden backdrop-blur-xs">
-          {/* Corner Guides */}
-          <div className="absolute top-3 left-3 w-6 h-6 border-t-3 border-l-3 border-white rounded-tl-xl" />
-          <div className="absolute top-3 right-3 w-6 h-6 border-t-3 border-r-3 border-white rounded-tr-xl" />
-          <div className="absolute bottom-3 left-3 w-6 h-6 border-b-3 border-l-3 border-white rounded-bl-xl" />
-          <div className="absolute bottom-3 right-3 w-6 h-6 border-b-3 border-r-3 border-white rounded-br-xl" />
+        {/* Clear Viewfinder Reticle (never blurred over the live camera stream) */}
+        {showReticle && (
+          <div className="relative z-10 aspect-[16/9] w-full max-w-md overflow-hidden rounded-3xl border-2 border-white/30 bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.42)]">
+            {/* Corner Guides */}
+            <div className="pointer-events-none absolute top-3 left-3 h-6 w-6 rounded-tl-xl border-t-3 border-l-3 border-white" />
+            <div className="pointer-events-none absolute top-3 right-3 h-6 w-6 rounded-tr-xl border-t-3 border-r-3 border-white" />
+            <div className="pointer-events-none absolute bottom-3 left-3 h-6 w-6 rounded-bl-xl border-b-3 border-l-3 border-white" />
+            <div className="pointer-events-none absolute right-3 bottom-3 h-6 w-6 rounded-br-xl border-r-3 border-b-3 border-white" />
 
-          {/* Animated Laser Scanning Line */}
-          {isScanning && (
-            <div className="absolute inset-x-4 h-0.5 bg-gradient-to-r from-transparent via-[#0071e3] to-transparent shadow-[0_0_14px_#0071e3] animate-[scan_1.5s_ease-in-out_infinite]" />
-          )}
-
-          {/* Recognition Feedback Overlay */}
-          {scanResult && !isScanning && (
-            <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center text-center p-4 backdrop-blur-md animate-in zoom-in-95">
-              <CheckCircle2 className="w-8 h-8 text-[#30d158] mb-1.5" />
-              {/* Authentic Malaysian JPJ Plate Design */}
-              <div className="px-5 py-2 rounded-xl bg-black border-2 border-neutral-700 shadow-xl inline-block my-1">
-                <span className="font-mono text-2xl font-black tracking-widest text-white">
-                  {scanResult.formattedPlate || scanResult.numberPlate}
+            {/* Live framing hint */}
+            {!isScanning && !scanResult && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-3 text-center">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/65 px-3 py-1 text-[11px] font-medium text-white/90">
+                  Align license plate inside frame
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-neutral-300 mt-1">
-                <Car className="w-3.5 h-3.5 text-[#0071e3]" />
-                <span>
-                  {scanResult.brand} {scanResult.model} • {scanResult.color}
+            )}
+
+            {/* Animated Laser Scanning Line */}
+            {isScanning && (
+              <div className="pointer-events-none absolute inset-x-4 h-0.5 animate-[scan-line_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-[#0a84ff] to-transparent shadow-[0_0_14px_#0a84ff]" />
+            )}
+
+            {/* Recognition Feedback Overlay */}
+            {scanResult && !isScanning && (
+              <div className="animate-in zoom-in-95 absolute inset-0 flex flex-col items-center justify-center bg-black/75 p-4 text-center backdrop-blur-md">
+                <CheckCircle2 className="mb-1.5 h-8 w-8 text-[#30d158]" />
+                {/* Authentic Malaysian JPJ Plate Design */}
+                <div className="my-1 inline-block rounded-xl border-2 border-neutral-700 bg-black px-5 py-2 shadow-xl">
+                  <span className="font-mono text-2xl font-black tracking-widest text-white">
+                    {scanResult.formattedPlate || scanResult.numberPlate}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-300">
+                  <Car className="h-3.5 w-3.5 text-[#0a84ff]" />
+                  <span>
+                    {scanResult.brand} {scanResult.model} • {scanResult.color}
+                  </span>
+                </div>
+                <span className="mt-0.5 text-[10px] text-[#30d158]">
+                  AI Confidence: {Math.round(scanResult.confidence * 100)}%
                 </span>
               </div>
-              <span className="text-[10px] text-emerald-400 mt-0.5">
-                AI Confidence: {Math.round(scanResult.confidence * 100)}%
-              </span>
-            </div>
-          )}
+            )}
 
-          {/* Scanning Progress Banner */}
-          {isScanning && (
-            <div className="absolute inset-x-0 bottom-3 text-center">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-black/80 text-white backdrop-blur-md border border-white/10 shadow-lg">
-                <RefreshCw className="w-3 h-3 animate-spin text-[#0071e3]" />
-                Analyzing license plate with Gemini AI…
-              </span>
-            </div>
-          )}
-        </div>
+            {/* Scanning Progress Banner */}
+            {isScanning && (
+              <div className="absolute inset-x-0 bottom-3 text-center">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/80 px-3 py-1 text-[11px] font-semibold text-white shadow-lg backdrop-blur-md">
+                  <RefreshCw className="h-3 w-3 animate-spin text-[#0a84ff]" />
+                  Analyzing license plate with Gemini AI…
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Control Tray: Shutter Capture + Confirmation */}
-      <div className="p-5 bg-gradient-to-t from-black via-black/90 to-transparent pb-8 space-y-3.5">
+      <div className="space-y-3.5 border-t border-white/10 bg-black/90 px-4 pt-4 pb-6 sm:px-5 sm:pb-8">
         {scanError && (
-          <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2">
+          <div className="mx-auto flex max-w-xl items-center justify-between gap-2 rounded-2xl border border-[#ff453a]/30 bg-[#ff453a]/15 p-3 text-xs text-[#ff8980]">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+              <AlertTriangle className="h-4 w-4 shrink-0 text-[#ff453a]" />
               <span>{scanError}</span>
             </div>
             <button
               type="button"
-              onClick={() => {
-                setCapturedPhotoUrl(null);
-                setScanError(null);
-              }}
-              className="text-[11px] underline font-semibold text-rose-300 hover:text-white"
+              onClick={handleRetake}
+              className="shrink-0 cursor-pointer text-[11px] font-semibold underline hover:text-white"
             >
               Retry
             </button>
@@ -290,28 +454,24 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
         )}
 
         {/* Camera Shutter / Retake Actions */}
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3">
           {capturedPhotoUrl ? (
             <button
               type="button"
-              onClick={() => {
-                setCapturedPhotoUrl(null);
-                setScanResult(null);
-                setScanError(null);
-              }}
-              className="h-11 px-5 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-xs font-semibold text-white flex items-center gap-2 transition cursor-pointer"
+              onClick={handleRetake}
+              className="flex h-11 cursor-pointer items-center gap-2 rounded-2xl border border-white/12 bg-white/10 px-5 text-xs font-semibold text-white transition hover:bg-white/20 active:scale-95"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="h-3.5 w-3.5" />
               <span>Retake / Rescan</span>
             </button>
           ) : (
             <button
               type="button"
-              onClick={handleCaptureFromCamera}
-              disabled={isScanning || !cameraActive}
-              className="h-13 px-8 rounded-full bg-[#0071e3] hover:bg-[#0077ed] active:scale-95 text-white font-semibold text-xs transition-all flex items-center gap-2 shadow-[0_4px_20px_rgba(0,113,227,0.4)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              onClick={() => void handleCaptureFromCamera()}
+              disabled={isScanning || cameraStatus !== 'ready'}
+              className="flex h-12 cursor-pointer items-center gap-2 rounded-full bg-[#0071e3] px-7 text-xs font-semibold text-white shadow-[0_4px_20px_rgba(0,113,227,0.38)] transition-all hover:bg-[#0077ed] active:scale-95 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40 disabled:shadow-none dark:bg-[#0a84ff] dark:hover:bg-[#2491ff]"
             >
-              <Camera className="w-4 h-4" />
+              <Camera className="h-4 w-4" />
               <span>{isScanning ? 'Scanning Plate…' : 'Scan Live Plate with AI'}</span>
             </button>
           )}
@@ -319,9 +479,9 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-xs font-semibold text-white flex items-center gap-1.5 transition cursor-pointer"
+            className="flex h-11 cursor-pointer items-center gap-1.5 rounded-2xl border border-white/12 bg-white/10 px-4 text-xs font-semibold text-white transition hover:bg-white/20 active:scale-95"
           >
-            <Upload className="w-3.5 h-3.5" />
+            <Upload className="h-3.5 w-3.5" />
             <span>Upload Photo</span>
           </button>
         </div>
@@ -332,7 +492,7 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
             e.preventDefault();
             handleConfirmPlate();
           }}
-          className="flex gap-2 max-w-xl mx-auto"
+          className="mx-auto flex max-w-xl flex-col gap-2 sm:flex-row"
         >
           <div className="relative flex-1">
             <input
@@ -340,16 +500,16 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
               value={manualPlate}
               onChange={(e) => setManualPlate(e.target.value.toUpperCase())}
               placeholder="Enter or verify plate (e.g. VEE 8492)"
-              className="w-full h-11 px-4 rounded-2xl bg-white/10 border border-white/15 text-white placeholder-neutral-500 font-mono text-sm uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-[#0071e3] focus:border-transparent transition-all"
+              className="h-11 w-full rounded-2xl border border-white/15 bg-white/10 px-4 font-mono text-sm uppercase tracking-wider text-white placeholder-neutral-400 transition-all focus:border-[#0a84ff] focus:ring-2 focus:ring-[#0a84ff]/30 focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={!manualPlate.trim() && !scanResult}
-            className="h-11 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-semibold text-xs transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_4px_16px_rgba(16,185,129,0.3)] cursor-pointer flex items-center gap-1.5 shrink-0"
+            className="flex h-11 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-2xl bg-[#248a3d] px-6 text-xs font-semibold text-white shadow-[0_4px_16px_rgba(48,209,88,0.28)] transition-all duration-200 hover:bg-[#30d158] hover:text-black active:scale-95 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40 disabled:shadow-none"
           >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Confirm & Open Barrier</span>
+            <CheckCircle2 className="h-4 w-4" />
+            <span>Confirm &amp; Open Barrier</span>
           </button>
         </form>
       </div>

@@ -238,7 +238,7 @@ export const OwnerPublicParkingManager: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Actions */}
-      <div className="rounded-3xl bg-white/80 dark:bg-[#1c1c1e]/80 border border-black/[0.06] dark:border-white/[0.08] p-6 shadow-sm backdrop-blur-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="relative z-30 rounded-3xl bg-white/80 dark:bg-[#1c1c1e]/80 border border-black/[0.06] dark:border-white/[0.08] p-6 shadow-sm backdrop-blur-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
             <span className="p-2.5 rounded-2xl bg-[#0071e3]/10 text-[#0071e3]">
@@ -298,7 +298,7 @@ export const OwnerPublicParkingManager: React.FC = () => {
                 <div
                   role="listbox"
                   aria-labelledby="owner-public-lot-selector"
-                  className="absolute right-0 top-full mt-2 w-72 sm:w-80 z-50 rounded-2xl bg-white/98 dark:bg-[#18181C] border border-black/[0.08] dark:border-white/10 p-1.5 shadow-[0_16px_36px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-150 space-y-1"
+                  className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] z-50 rounded-2xl bg-white/98 dark:bg-[#18181C] border border-black/[0.08] dark:border-white/15 p-1.5 shadow-[0_16px_36px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl animate-in fade-in slide-in-from-top-1 duration-150 space-y-1"
                 >
                   <div className="px-3 py-2 text-[10px] font-bold text-neutral-400 uppercase tracking-wider border-b border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between">
                     <span>Switch Facility</span>
@@ -471,7 +471,7 @@ export const OwnerPublicParkingManager: React.FC = () => {
 
       {/* Active Lot Dashboard */}
       {selectedLot && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="relative z-0 grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left 2 Cols: Live Status & Active Vehicles */}
           <div className="lg:col-span-2 space-y-6">
             {/* Live Occupancy Gauge Card */}

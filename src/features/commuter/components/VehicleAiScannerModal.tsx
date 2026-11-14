@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Camera,
   Upload,
@@ -18,6 +18,13 @@ import {
   type VehicleVisionScanData,
   type BarrierPlateVerifyData,
 } from '../api/vehicleVisionApi';
+import {
+  attachStreamToVideo,
+  captureVideoFrameDataUrl,
+  describeCameraError,
+  openCameraStream,
+  stopMediaStream,
+} from '@/services/cameraStream';
 
 interface VehicleAiScannerModalProps {
   open: boolean;
@@ -57,35 +64,45 @@ export default function VehicleAiScannerModal({
   const [barrierResult, setBarrierResult] = useState<BarrierPlateVerifyData | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach((track) => track.stop());
-      videoRef.current.srcObject = null;
-    }
+  const stopCamera = useCallback(() => {
+    cameraRequestRef.current += 1;
+    stopMediaStream(streamRef.current, videoRef.current);
+    streamRef.current = null;
     setCameraStreamActive(false);
-  };
+  }, []);
 
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
+    const requestId = ++cameraRequestRef.current;
+    stopMediaStream(streamRef.current, videoRef.current);
+    streamRef.current = null;
     setCameraError(null);
     setScanError(null);
+    setCameraStreamActive(false);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      const stream = await openCameraStream('environment');
+      if (requestId !== cameraRequestRef.current || !videoRef.current) {
+        stopMediaStream(stream);
+        return;
+      }
+      streamRef.current = stream;
+      await attachStreamToVideo(videoRef.current, stream);
+      if (requestId !== cameraRequestRef.current) {
+        stopMediaStream(stream, videoRef.current);
+        return;
       }
       setCameraStreamActive(true);
-    } catch {
+    } catch (err) {
+      if (requestId !== cameraRequestRef.current) return;
+      stopMediaStream(streamRef.current, videoRef.current);
+      streamRef.current = null;
       setCameraStreamActive(false);
-      setCameraError(
-        'Live camera is unavailable or permission was denied. Please use Photo Upload above.',
-      );
+      setCameraError(describeCameraError(err));
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -103,7 +120,7 @@ export default function VehicleAiScannerModal({
       stopCamera();
     }
     return () => stopCamera();
-  }, [open, activeInputTab]);
+  }, [open, activeInputTab, startCamera, stopCamera]);
 
   if (!open) return null;
 
@@ -138,17 +155,17 @@ export default function VehicleAiScannerModal({
   };
 
   const handleCaptureCameraFrame = () => {
-    if (!videoRef.current) return;
     const video = videoRef.current;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 800;
-    canvas.height = video.videoHeight || 520;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    stopCamera();
-    void runVisionAnalysis(dataUrl);
+    if (!video) return;
+    try {
+      const dataUrl = captureVideoFrameDataUrl(video, null, 1280, 0.85);
+      stopCamera();
+      void runVisionAnalysis(dataUrl);
+    } catch (err) {
+      setScanError(
+        err instanceof Error ? err.message : 'Camera feed is still initializing. Please try again.',
+      );
+    }
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -285,9 +302,17 @@ export default function VehicleAiScannerModal({
                   </span>
                 </div>
                 {cameraError && (
-                  <div className="absolute inset-0 bg-black/85 p-4 flex flex-col items-center justify-center text-center">
-                    <AlertTriangle size={24} className="text-amber-400 mb-2" />
+                  <div className="absolute inset-0 bg-black/85 p-4 flex flex-col items-center justify-center gap-2.5 text-center">
+                    <AlertTriangle size={24} className="text-amber-400" />
                     <p className="text-xs text-white/90 leading-relaxed">{cameraError}</p>
+                    <button
+                      type="button"
+                      onClick={() => void startCamera()}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] hover:bg-[#0066d6] px-3 py-1.5 text-[11px] font-semibold text-white transition cursor-pointer"
+                    >
+                      <RefreshCw size={12} />
+                      Retry Camera
+                    </button>
                   </div>
                 )}
               </div>

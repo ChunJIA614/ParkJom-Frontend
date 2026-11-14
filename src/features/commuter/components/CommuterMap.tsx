@@ -56,7 +56,6 @@ import {
   findRoutesServingStation,
   distanceMetersBetween,
   RapidBusRoute,
-  ConnectingBusRouteResult,
 } from '@/services/rapidBusService';
 import {
   planMultimodalJourney,
@@ -1555,29 +1554,17 @@ export default function CommuterMap({
     });
   }, [spots]);
 
-  // Map of parking spot ID -> connecting Rapid Bus routes that pass near the bay and serve the selected station
-  const spotConnectingRoutesMap = useMemo(() => {
-    const map = new Map<string, ConnectingBusRouteResult[]>();
-    spots.forEach((s) => {
-      const results = findConnectingBusRoutes(
-        { lat: s.lat, lng: s.lng },
-        selectedStationCoords,
-        selectedStation,
-        800,
-        800,
-      );
-      if (results.length > 0) {
-        map.set(String(s.id), results);
-      }
-    });
-    return map;
-  }, [spots, selectedStationCoords, selectedStation]);
-
-  // Connecting routes specifically for the currently selected spot
+  // Connecting routes specifically for the currently selected spot (used only on demand in Bus Routes filter)
   const selectedSpotConnectingRoutes = useMemo(() => {
     if (!selectedSpot) return [];
-    return spotConnectingRoutesMap.get(String(selectedSpot.id)) || [];
-  }, [selectedSpot, spotConnectingRoutesMap]);
+    return findConnectingBusRoutes(
+      { lat: selectedSpot.lat, lng: selectedSpot.lng },
+      selectedStationCoords,
+      selectedStation,
+      800,
+      800,
+    );
+  }, [selectedSpot, selectedStationCoords, selectedStation]);
 
   // Rapid Bus KL routes directly serving the currently selected station
   const stationServingRoutes = useMemo(() => {
@@ -2602,7 +2589,6 @@ export default function CommuterMap({
         {/* Render ALL available parking spots in range of selected station */}
         {shouldShowParking && displaySpots.map((spot) => {
           const isThisSelected = selectedSpot?.id === spot.id;
-          const spotRoutes = spotConnectingRoutesMap.get(String(spot.id)) || [];
           const aiForecast = buildFallbackCongestionForecast({
             parkingSpotId: spot.id,
             stationName: spot.station || selectedStation,
@@ -2666,42 +2652,6 @@ export default function CommuterMap({
                       {aiForecast.riskLevel}
                     </span>
                   </div>
-
-                  {/* Connecting Rapid KL Bus Route to Station */}
-                  {spotRoutes.length > 0 && (
-                    <div className="mt-1.5 p-1.5 bg-emerald-50/80 dark:bg-emerald-950/60 rounded-md border border-emerald-200/80 dark:border-emerald-800/50 text-[10px]">
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1 font-bold text-emerald-900 dark:text-emerald-200 text-[10px] truncate">
-                          <Bus className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                          <span className="truncate">Feeder Bus</span>
-                        </div>
-                        <span className="text-[9.5px] bg-emerald-600 text-white font-mono font-bold px-1 py-0.2 rounded shrink-0">
-                          {spotRoutes[0].route.shortName}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectRoute(
-                            effectiveBusRoute === spotRoutes[0].route.shortName ? null : spotRoutes[0].route.shortName
-                          );
-                        }}
-                        className={`mt-1 w-full py-1 px-1.5 rounded font-semibold text-[9.5px] transition-colors flex items-center justify-center gap-1 ${
-                          effectiveBusRoute === spotRoutes[0].route.shortName
-                            ? 'bg-emerald-800 dark:bg-emerald-700 text-white'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
-                        }`}
-                      >
-                        <Bus className="w-2.5 h-2.5" />
-                        <span>
-                          {effectiveBusRoute === spotRoutes[0].route.shortName
-                            ? '✕ Hide Bus Route'
-                            : `Show ${spotRoutes[0].route.shortName} Route`}
-                        </span>
-                      </button>
-                    </div>
-                  )}
 
                   {/* Action Buttons */}
                   <div className="mt-1.5 grid grid-cols-2 gap-1">

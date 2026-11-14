@@ -42,14 +42,8 @@ import {
   Star,
   Trash2,
   Heart,
-  Calendar,
-  Globe,
-  Building2,
-  ChevronLeft,
-  Zap,
-  Accessibility,
+  List,
   ExternalLink,
-  Layers,
 } from 'lucide-react';
 import {
   ParkingSpot,
@@ -62,14 +56,22 @@ import {
   WalletTopUpHistoryItem,
   WalletTransactionItem,
 } from '../types';
-import SystemSelect from '@/components/ui/SystemSelect';
 import MyParkingPassesWorkspace from '../components/MyParkingPassesWorkspace';
+import CommuterBrowseView from '../components/CommuterBrowseView';
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
-import JourneyStrip from '../components/JourneyStrip';
+import ParkingSearchSheet from '../components/ParkingSearchSheet';
 import TransitHubSheet from '../components/TransitHubSheet';
 import LinearJourneyNavigator from '../components/LinearJourneyNavigator';
-import { formatShortSpotName, formatShortAddress } from '../lib/formatUtils';
+import {
+  DEFAULT_BROWSE_FILTERS,
+  countActiveBrowseFilters,
+  matchesBrowseSpotFilters,
+  matchesPublicLotFilters,
+  sortBrowseSpots,
+  type BrowseFiltersState,
+  type BrowseSortBy,
+} from '../lib/browseFilters';
 import type { DrivingRouteResult } from '@/services/drivingRouteService';
 import type { MultimodalPlanResult } from '@/services/multimodalRoutingService';
 import type { StationNearbyParkingSpot } from '@/services/gtfsApi';
@@ -107,7 +109,7 @@ import { fetchPublicLots } from '@/features/publicParking/api/publicParkingApi';
 import type { PublicParkingLot } from '@/features/publicParking/types';
 import { DEFAULT_PUBLIC_PARKING_PHOTO, getPublicLotPhotoUrl } from '@/features/publicParking/types';
 import { PublicLotDetailModal } from '@/features/publicParking/components/PublicLotDetailModal';
-import { fuzzyFilterSpots, getFuzzySuggestions, normalizeCompact, similarityRatio } from '../lib/fuzzySearch';
+import { fuzzyFilterSpots, getFuzzySuggestions } from '../lib/fuzzySearch';
 import {
   favoriteParkingSpotToParkingSpot,
   getFavoriteParking,
@@ -152,13 +154,6 @@ import {
 } from '@/services/externalNavigation';
 
 type ParkingResultDto = ParkingSearchResponse['data'][number];
-
-const BROWSE_FALLBACK_PHOTOS = [
-  'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1590674899484-d5640e854abe?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1621929747188-0b4dc28498d2?auto=format&fit=crop&w=800&q=80',
-];
 
 const normalizePropertyAddress = (propertyName?: string, address?: string) => {
   if (!address) return '';
@@ -439,8 +434,7 @@ export default function CommuterDashboard() {
     suggestions?: string[];
     didYouMean?: string | null;
   } | null>(null);
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const searchCapsuleRef = useRef<HTMLDivElement>(null);
+  const [isSearchSheetOpen, setIsSearchSheetOpen] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<StationCoordinates | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('locating');
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
@@ -466,125 +460,10 @@ export default function CommuterDashboard() {
       active = false;
     };
   }, []);
-  type RealCategory = 'all' | 'transit' | 'covered' | 'ev' | 'cctv' | 'monthly' | 'accessible';
-  const [activeCategory, setActiveCategory] = useState<RealCategory>('all');
-  const [rateFilter, setRateFilter] = useState<'all' | 'daily' | 'monthly'>('all');
-  const [featureFilter, setFeatureFilter] = useState<'all' | 'covered' | 'ev' | 'cctv' | 'accessible'>('all');
-  const carouselRef1 = useRef<HTMLDivElement>(null);
-  const carouselRef2 = useRef<HTMLDivElement>(null);
-  const carouselRef3 = useRef<HTMLDivElement>(null);
-
-  const scrollCarousel = (ref: React.RefObject<HTMLDivElement | null>, direction: 'left' | 'right') => {
-    if (ref.current) {
-      const scrollAmount = ref.current.clientWidth * 0.75;
-      ref.current.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
-    }
-  };
+  const [browseFilters, setBrowseFilters] = useState<BrowseFiltersState>(DEFAULT_BROWSE_FILTERS);
+  const [browseSortBy, setBrowseSortBy] = useState<BrowseSortBy>('latest');
 
   const [spotRatings, setSpotRatings] = useState<Record<number, { averageRating: number; totalCount: number }>>({});
-
-  const renderSpotRating = (spotId: number) => {
-    const ratingData = spotRatings[spotId];
-    if (ratingData && ratingData.totalCount > 0 && ratingData.averageRating > 0) {
-      return (
-        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#111] dark:text-white shrink-0">
-          <Star size={12} className="text-[#ff9500] fill-[#ff9500]" />
-          <span>{ratingData.averageRating.toFixed(1)}</span>
-          <span className="text-[11px] font-normal text-[#8e8e93] dark:text-[#71717A]">({ratingData.totalCount})</span>
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#8e8e93] dark:text-[#71717A] shrink-0">
-        <Star size={11} className="text-[#8e8e93] dark:text-[#71717A]" />
-        <span>New</span>
-      </span>
-    );
-  };
-
-  useEffect(() => {
-    const handleDocumentClick = (e: MouseEvent) => {
-      if (searchCapsuleRef.current && !searchCapsuleRef.current.contains(e.target as Node)) {
-        setIsSearchFocused(false);
-      }
-    };
-    document.addEventListener('mousedown', handleDocumentClick);
-    return () => document.removeEventListener('mousedown', handleDocumentClick);
-  }, []);
-
-  const liveSearchSuggestions = useMemo(() => {
-    const q = searchQuery.trim();
-    const allKnown = [...suggestedSpots, ...nearbySpots];
-    const candidateMap: Record<string, { title: string; subtitle: string; type: 'property' | 'station' }> = {};
-
-    const defaultSuggestions: Array<{ title: string; subtitle: string; type: 'property' | 'station' }> = [
-      { title: 'PV128', subtitle: 'Near WANGSA MAJU · Setapak', type: 'property' },
-      { title: 'PV18 Residences', subtitle: 'Near TAMAN MELATI · Setapak', type: 'property' },
-      { title: 'PV 9 Setapak', subtitle: 'Near TAMAN MELATI · Setapak', type: 'property' },
-      { title: 'USJ One Avenue Condominium', subtitle: 'Near USJ 7 · Subang Jaya', type: 'property' },
-      { title: 'M Vertica Residences', subtitle: 'Near MALURI · Cheras', type: 'property' },
-      { title: 'Wangsa Maju', subtitle: 'LRT Kelana Jaya Line', type: 'station' },
-      { title: 'Taman Melati', subtitle: 'LRT Kelana Jaya Line', type: 'station' },
-      { title: 'USJ 7', subtitle: 'LRT & BRT Interchange', type: 'station' },
-      { title: 'Maluri', subtitle: 'MRT Kajang & LRT Ampang Line', type: 'station' },
-    ];
-
-    defaultSuggestions.forEach((item) => {
-      candidateMap[item.title.toLowerCase()] = item;
-    });
-
-    allKnown.forEach((spot) => {
-      const name = spot.propertyName || spot.name;
-      if (name) {
-        candidateMap[name.toLowerCase()] = {
-          title: name,
-          subtitle: spot.stationName ? `Near ${spot.stationName} · ${spot.address || 'Klang Valley'}` : (spot.address || 'Parking Bay'),
-          type: 'property',
-        };
-      }
-      if (spot.stationName) {
-        candidateMap[spot.stationName.toLowerCase()] = {
-          title: spot.stationName,
-          subtitle: 'LRT / MRT Transit Hub',
-          type: 'station',
-        };
-      }
-    });
-
-    const candidates = Object.values(candidateMap);
-    if (!q) {
-      return candidates.slice(0, 5);
-    }
-
-    const qCompact = normalizeCompact(q);
-    const results: Array<{ title: string; subtitle: string; type: 'property' | 'station'; score: number }> = [];
-
-    candidates.forEach((item) => {
-      const tCompact = normalizeCompact(item.title);
-      const subCompact = normalizeCompact(item.subtitle);
-      let score = 0;
-
-      if (item.title.toLowerCase() === q.toLowerCase()) score = 100;
-      else if (tCompact === qCompact) score = 98;
-      else if (tCompact.startsWith(qCompact)) score = 92;
-      else if (tCompact.includes(qCompact)) score = 86;
-      else if (subCompact.includes(qCompact)) score = 76;
-      else {
-        const sim = Math.max(
-          similarityRatio(q.toLowerCase(), item.title.toLowerCase()),
-          similarityRatio(qCompact, tCompact),
-        );
-        if (sim >= 0.65) score = Math.round(sim * 70);
-      }
-
-      if (score >= 40) {
-        results.push({ ...item, score });
-      }
-    });
-
-    results.sort((a, b) => b.score - a.score);
-    return results.slice(0, 5);
-  }, [searchQuery, suggestedSpots, nearbySpots]);
 
   useEffect(() => {
     if (!user?.token) return;
@@ -1066,42 +945,77 @@ export default function CommuterDashboard() {
   });
 
   const discoverySpots = searchMeta ? filteredSpots : locationSuggestedSpots;
+  const allKnownBrowseSpots = useMemo(() => {
+    const seenIds = new Set<number>();
+    const list: ParkingSpot[] = [];
+    for (const spot of [...suggestedSpots, ...nearbySpots]) {
+      if (spotTypeFilter !== 'all' && spot.type !== spotTypeFilter) continue;
+      if (!spot.available) continue;
+      if (!seenIds.has(spot.parkingSpotId)) {
+        seenIds.add(spot.parkingSpotId);
+        list.push(spot);
+      }
+    }
+    return list;
+  }, [nearbySpots, spotTypeFilter, suggestedSpots]);
+
   const filteredBrowseSpots = useMemo(() => {
-    return discoverySpots.filter((spot) => {
-      // 1. Real Category Filter
-      if (activeCategory === 'transit' && !(spot.stationName && (spot.distanceToStation > 0 || spot.timeToStationInMinutes > 0))) return false;
-      if (activeCategory === 'covered' && !spot.isCovered) return false;
-      if (activeCategory === 'ev' && !spot.hasEvCharging) return false;
-      if (activeCategory === 'cctv' && !spot.hasCctv) return false;
-      if (activeCategory === 'monthly' && !(spot.monthlyRate > 0)) return false;
-      if (activeCategory === 'accessible' && !spot.isHandicapAccessible) return false;
-
-      // 2. Real Rate Filter
-      if (rateFilter === 'daily' && spot.dailyRate === null) return false;
-      if (rateFilter === 'monthly' && !(spot.monthlyRate > 0)) return false;
-
-      // 3. Real Feature Filter
-      if (featureFilter === 'covered' && !spot.isCovered) return false;
-      if (featureFilter === 'ev' && !spot.hasEvCharging) return false;
-      if (featureFilter === 'cctv' && !spot.hasCctv) return false;
-      if (featureFilter === 'accessible' && !spot.isHandicapAccessible) return false;
-
-      return true;
-    });
-  }, [discoverySpots, activeCategory, rateFilter, featureFilter]);
-
-  const hasActiveFilters = activeCategory !== 'all' || rateFilter !== 'all' || featureFilter !== 'all' || Boolean(searchMeta) || searchQuery.trim() !== '';
-
-  const matchingPublicLots = useMemo(() => {
-    if (!searchQuery.trim() && !searchMeta) return publicLots;
-    const q = searchQuery.trim().toLowerCase();
-    return publicLots.filter(
-      (lot) =>
-        lot.lotName.toLowerCase().includes(q) ||
-        lot.address.toLowerCase().includes(q) ||
-        (lot.nearestStationName && lot.nearestStationName.toLowerCase().includes(q))
+    const base = discoverySpots.filter((spot) =>
+      matchesBrowseSpotFilters(spot, browseFilters),
     );
-  }, [publicLots, searchQuery, searchMeta]);
+    return sortBrowseSpots(base, browseSortBy, {
+      currentLocation,
+      spotRatings,
+      distanceKmFn: distanceFromUser,
+    });
+  }, [browseFilters, browseSortBy, currentLocation, discoverySpots, spotRatings]);
+
+  const activeFilterCount = useMemo(
+    () => countActiveBrowseFilters(browseFilters, searchQuery, Boolean(searchMeta)),
+    [browseFilters, searchQuery, searchMeta],
+  );
+  const hasActiveFilters = activeFilterCount > 0;
+
+  const matchingPublicLots = useMemo(
+    () =>
+      publicLots.filter((lot) =>
+        matchesPublicLotFilters(lot, browseFilters, searchQuery),
+      ),
+    [browseFilters, publicLots, searchQuery],
+  );
+
+  const handleClearBrowseFilters = () => {
+    setBrowseFilters(DEFAULT_BROWSE_FILTERS);
+    setSearchQuery('');
+    setSearchSpots([]);
+    setSearchMeta(null);
+    setSearchError(null);
+  };
+
+  const handleApplySearchSheet = ({
+    filters,
+    query,
+    triggerSearchApi,
+  }: {
+    filters: BrowseFiltersState;
+    query: string;
+    triggerSearchApi: boolean;
+  }) => {
+    setBrowseFilters(filters);
+    setIsSearchSheetOpen(false);
+    if (!query) {
+      setSearchQuery('');
+      setSearchSpots([]);
+      setSearchMeta(null);
+      setSearchError(null);
+      return;
+    }
+    if (triggerSearchApi) {
+      void handleParkingSearch(undefined, query);
+    } else {
+      setSearchQuery(query);
+    }
+  };
 
 
   const mapNearbySpots = nearbySpots.filter((spot) => {
@@ -1121,15 +1035,6 @@ export default function CommuterDashboard() {
   const lensSelectedSpot = selectedSpot ?? lensSpots[0] ?? null;
   const getStationCacheKey = (stationName: string, lat: number, lng: number, radius: number = 3000) =>
     `${stationName.trim().toLowerCase()}::${lat.toFixed(5)}:${lng.toFixed(5)}::${radius}`;
-  const journeyStep = activeBooking
-    ? journeyStage === 'parked'
-      ? 3
-      : journeyStage === 'unlocked'
-        ? 2
-        : journeyStage === 'arrived'
-          ? 1
-          : 0
-    : 0;
 
   useEffect(() => {
     if (topUpReturnStatus !== 'success' && topUpReturnStatus !== 'cancelled' && topUpReturnStatus !== 'cancel') {
@@ -1354,7 +1259,6 @@ export default function CommuterDashboard() {
     if (directQuery !== undefined) {
       setSearchQuery(directQuery);
     }
-    setIsSearchFocused(false);
     setIsSearchLoading(true);
     setSearchError(null);
     setSearchMeta(null);
@@ -2616,7 +2520,7 @@ export default function CommuterDashboard() {
         {/* Main Content */}
         <main className="min-h-0">
           {activeTab !== 'home' && (
-            <div className="workspace-heading workspace-heading--compact">
+            <div className={`workspace-heading workspace-heading--compact ${activeTab === 'map' ? 'hidden lg:flex' : ''}`}>
               <div>
                 <h1>{COMMUTER_VIEW_META[activeTab]?.title || ''}</h1>
                 <p>{COMMUTER_VIEW_META[activeTab]?.description || ''}</p>
@@ -2635,946 +2539,61 @@ export default function CommuterDashboard() {
             </div>
           )}
 
-          {/* ─── TAB: Home / Browse (Apple HIG System Design) ─── */}
+          {/* ─── TAB: Home / Browse (Hidmo-Inspired Mobile-First UI) ─── */}
           {activeTab === 'home' && (
-            <div className="space-y-8 pb-12">
-              {/* ── Minimalist Category Tabs (Airbnb / Apple Design: Unboxed, spacious, underline indicator) ── */}
-              <div className="flex items-center justify-start sm:justify-center gap-6 sm:gap-8 overflow-x-auto no-scrollbar pt-1 pb-1">
-                {[
-                  { id: 'all', label: 'All Bays', icon: Globe },
-                  { id: 'transit', label: 'Near Transit', icon: Train },
-                  { id: 'covered', label: 'Covered', icon: Building2 },
-                  { id: 'ev', label: 'EV Charging', icon: Zap },
-                  { id: 'cctv', label: 'CCTV Security', icon: ShieldCheck },
-                  { id: 'monthly', label: 'Monthly Pass', icon: Calendar },
-                  { id: 'accessible', label: 'Accessible', icon: Accessibility },
-                ].map((cat) => {
-                  const Icon = cat.icon;
-                  const isActive = activeCategory === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setActiveCategory(cat.id as RealCategory)}
-                      className={`group relative flex flex-col items-center gap-1.5 pb-2 text-xs font-semibold transition-all cursor-pointer shrink-0 ${
-                        isActive
-                          ? 'text-[#111] dark:text-white'
-                          : 'text-[#717171] dark:text-[#8E8E93] hover:text-[#111] dark:hover:text-white opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                      <Icon
-                        size={20}
-                        strokeWidth={isActive ? 2.4 : 1.8}
-                        className={
-                          isActive
-                            ? 'text-[#007AFF] dark:text-[#3894FF]'
-                            : 'text-[#8e8e93] dark:text-[#71717A] group-hover:text-[#111] dark:group-hover:text-white transition-colors'
-                        }
-                      />
-                      <span className="whitespace-nowrap tracking-tight">{cat.label}</span>
-                      {/* Active Indicator Underline */}
-                      {isActive && (
-                        <span className="absolute bottom-0 left-0 right-0 h-[2.5px] rounded-full bg-[#007AFF] dark:bg-[#3894FF]" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* ── Apple / Airbnb 1-Line Seamless Search Capsule (Zero Redundant Layers) ── */}
-              <div className="max-w-4xl mx-auto" ref={searchCapsuleRef}>
-                {/* Search Bar Capsule + Dropdown Anchor */}
-                <div className="relative">
-                  <div className="parking-search-capsule relative grid grid-cols-2 gap-3 rounded-2xl border border-black/[0.09] dark:border-white/12 bg-white dark:bg-[#1C1C1E] p-3 sm:flex sm:gap-0 sm:rounded-full sm:pl-8 sm:pr-3 sm:py-2.5 sm:min-h-[66px] sm:items-center">
-                    {/* Segment 1: Where */}
-                    <div className="col-span-2 flex-1 min-w-0 pr-14 sm:pr-4 flex flex-col justify-center text-left">
-                      <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
-                        Where
-                      </span>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Search size={15} className="text-[#8e8e93] dark:text-[#A1A1AA] shrink-0" />
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          onFocus={() => setIsSearchFocused(true)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              setIsSearchFocused(false);
-                              handleParkingSearch(e as any);
-                            } else if (e.key === 'Escape') {
-                              setIsSearchFocused(false);
-                            }
-                          }}
-                          placeholder="Search station, condo, or area..."
-                          className="search-capsule-input min-w-0 w-full bg-transparent text-[16px] sm:text-[13px] font-medium text-[#1d1d1f] dark:text-white placeholder-[#8e8e93] dark:placeholder-[#A1A1AA] !outline-none !border-none !ring-0 !shadow-none pl-1.5 pr-2 py-0.5 truncate"
-                        />
-                        {searchQuery && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSearchQuery('');
-                              if (searchMeta) {
-                                setSearchMeta(null);
-                                setSearchSpots([]);
-                              }
-                            }}
-                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition cursor-pointer shrink-0"
-                            aria-label="Clear search"
-                          >
-                            <X size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Hairline Divider 1 */}
-                    <div className="hidden sm:block h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
-
-                    {/* Segment 2: Rate Type */}
-                    <div className="min-w-0 sm:w-[130px] shrink-0 px-1 sm:px-3 flex flex-col justify-center text-left">
-                      <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
-                        Rate
-                      </span>
-                      <SystemSelect
-                        variant="ghost"
-                        id="rate-filter-select"
-                        value={rateFilter}
-                        onChange={(e) => setRateFilter(e.target.value as 'all' | 'daily' | 'monthly')}
-                        aria-label="Filter by rate type"
-                        className="w-full !h-auto min-h-11 sm:min-h-0 text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
-                      >
-                        <option value="all">All Rates</option>
-                        <option value="daily">Daily</option>
-                        <option value="monthly">Monthly</option>
-                      </SystemSelect>
-                    </div>
-
-                    {/* Hairline Divider 2 */}
-                    <div className="hidden sm:block h-8 w-px bg-black/[0.08] dark:bg-white/10 shrink-0 mx-2 sm:mx-3" />
-
-                    {/* Segment 3: Features */}
-                    <div className="min-w-0 sm:w-[140px] shrink-0 px-1 sm:px-3 flex flex-col justify-center text-left">
-                      <span className="text-[10px] font-bold tracking-wider uppercase text-[#111] dark:text-white leading-none mb-1.5 pl-0.5">
-                        Features
-                      </span>
-                      <SystemSelect
-                        variant="ghost"
-                        id="feature-filter-select"
-                        value={featureFilter}
-                        onChange={(e) => setFeatureFilter(e.target.value as 'all' | 'covered' | 'ev' | 'cctv' | 'accessible')}
-                        aria-label="Filter by features"
-                        className="w-full !h-auto min-h-11 sm:min-h-0 text-[13px] font-medium text-[#8e8e93] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white"
-                      >
-                        <option value="all">All Features</option>
-                        <option value="covered">Covered</option>
-                        <option value="ev">EV Ready</option>
-                        <option value="cctv">24/7 CCTV</option>
-                        <option value="accessible">Accessible</option>
-                      </SystemSelect>
-                    </div>
-
-                    {/* Search Action Button (Centered on the same line) */}
-                    <button
-                      type="button"
-                      onClick={(e) => handleParkingSearch(e as any)}
-                      disabled={isSearchLoading}
-                      className="absolute right-3 top-3 h-11 w-11 sm:static sm:h-12 sm:w-12 rounded-xl sm:rounded-full bg-[#007AFF] hover:bg-[#0066d6] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-blue-500/25 shrink-0 ml-2 cursor-pointer disabled:opacity-70"
-                      aria-label="Search parking"
-                    >
-                      {isSearchLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} strokeWidth={2.5} />}
-                    </button>
-                  </div>
-
-                  {/* ── Apple-Style Interactive Search Suggestions Dropdown (Directly below search capsule) ── */}
-                  {isSearchFocused && liveSearchSuggestions.length > 0 && (
-                    <div className="absolute top-[calc(100%+8px)] left-2 sm:left-6 right-2 sm:right-auto sm:w-[480px] bg-white/95 dark:bg-[#1E1E20]/95 backdrop-blur-2xl rounded-2xl border border-black/[0.08] dark:border-white/12 shadow-[0_20px_60px_rgba(0,0,0,0.22)] p-2.5 z-50 animate-in fade-in slide-in-from-top-1.5 duration-150">
-                      <div className="px-3 pt-1.5 pb-2 flex items-center justify-between border-b border-black/[0.05] dark:border-white/[0.08] mb-1.5">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase text-[#8e8e93] dark:text-[#71717A]">
-                          <Sparkles size={12} className="text-[#007AFF]" />
-                          <span>{searchQuery.trim() ? 'Matching Destinations' : 'Popular Destinations'}</span>
-                        </div>
-                        {searchQuery.trim() && (
-                          <span className="text-[10px] font-medium text-[#8e8e93] dark:text-[#71717A]">
-                            {liveSearchSuggestions.length} found
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        {liveSearchSuggestions.map((item) => (
-                          <button
-                            key={item.title}
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              handleParkingSearch(undefined, item.title);
-                            }}
-                            className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.07] active:scale-[0.99] flex items-center gap-3 transition-all cursor-pointer group"
-                          >
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${
-                              item.type === 'station'
-                                ? 'bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                                : 'bg-[#007AFF]/10 dark:bg-[#007AFF]/15 text-[#007AFF] dark:text-[#3894FF]'
-                            }`}>
-                              {item.type === 'station' ? <Train size={16} /> : <Building2 size={16} />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[13px] font-semibold text-[#111] dark:text-white truncate">
-                                  {item.title}
-                                </span>
-                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.08] text-[#8e8e93] dark:text-[#A1A1AA] shrink-0">
-                                  {item.type === 'station' ? 'Transit' : 'Condo'}
-                                </span>
-                              </div>
-                              <p className="text-[11.5px] text-[#8e8e93] dark:text-[#A1A1AA] truncate mt-0.5">
-                                {item.subtitle}
-                              </p>
-                            </div>
-                            <ChevronRight size={14} className="text-slate-400 dark:text-slate-500 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                      <div className="mt-1.5 pt-2 border-t border-black/[0.05] dark:border-white/[0.08] px-3 pb-0.5 flex items-center justify-between text-[10.5px] text-[#8e8e93] dark:text-[#71717A]">
-                        <span>Press <kbd className="px-1.5 py-0.5 rounded bg-black/[0.05] dark:bg-white/[0.08] text-[10px] font-mono font-semibold text-[#111] dark:text-white">Enter</kbd> to search</span>
-                        <span className="text-[#007AFF] font-medium">Instant Match</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* GPS Location Status Bar (Apple Subtitle Polish) */}
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-3 text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 font-medium">
-                      <Navigation size={13} className={locationStatus === 'ready' ? 'text-[#007AFF]' : 'text-slate-400'} />
-                      <span>
-                        {locationStatus === 'ready'
-                          ? `Using your location · ±${Math.round(locationAccuracy ?? 50)} m`
-                          : locationStatus === 'locating'
-                          ? 'Locating closest available parking bays...'
-                          : 'Showing verified parking bays in Klang Valley'}
-                      </span>
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setLocationRequestKey((k) => k + 1)}
-                    className="text-[11px] font-semibold text-[#007AFF] hover:underline cursor-pointer"
-                  >
-                    {locationStatus === 'ready' ? 'Refresh location' : 'Enable precise GPS'}
-                  </button>
-                </div>
-              </div>
-
-              {/* ── Filtered Results Mode (When Search or Active Filters are Applied) ── */}
-              {hasActiveFilters ? (
-                <div className="space-y-4 pt-2">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.06] dark:border-white/10 pb-4">
-                    <div>
-                      <h2 className="text-xl sm:text-2xl font-bold text-[#111] dark:text-white">
-                        {searchMeta ? `Search Results for "${searchQuery}"` : 'Filtered Parking Bays'}
-                        <span className="ml-2 text-sm font-normal text-[#6e6e73] dark:text-[#A1A1AA]">
-                          ({filteredBrowseSpots.length} {filteredBrowseSpots.length === 1 ? 'bay' : 'bays'} found)
-                        </span>
-                      </h2>
-
-                      {/* Fuzzy / Did You Mean Suggestions Bar */}
-                      {searchMeta?.suggestions && searchMeta.suggestions.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5 text-xs">
-                          <span className="text-[#6e6e73] dark:text-[#A1A1AA] font-medium flex items-center gap-1 shrink-0">
-                            <Sparkles size={12} className="text-[#007AFF]" />
-                            Related suggestions:
-                          </span>
-                          {searchMeta.suggestions.map((sug) => (
-                            <button
-                              key={sug}
-                              type="button"
-                              onClick={() => handleParkingSearch(undefined, sug)}
-                              className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-[#007AFF] hover:bg-blue-100 dark:hover:bg-blue-900/50 font-semibold transition cursor-pointer border border-blue-200/50 dark:border-blue-800/50 text-[11px]"
-                            >
-                              {sug}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
-                        {activeCategory !== 'all' && (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-[#007AFF] border border-blue-200/50 dark:border-blue-800/50">
-                            Category: {activeCategory}
-                          </span>
-                        )}
-                        {rateFilter !== 'all' && (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-white/10 text-[#111] dark:text-white border border-black/5 dark:border-white/10">
-                            Rate: {rateFilter === 'daily' ? 'Daily' : 'Monthly'}
-                          </span>
-                        )}
-                        {featureFilter !== 'all' && (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-white/10 text-[#111] dark:text-white border border-black/5 dark:border-white/10">
-                            Feature: {featureFilter}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveCategory('all');
-                        setRateFilter('all');
-                        setFeatureFilter('all');
-                        setSearchMeta(null);
-                        setSearchQuery('');
-                        setSearchSpots([]);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-xs font-semibold text-[#111] dark:text-white transition-all cursor-pointer"
-                    >
-                      <X size={14} /> Reset all filters
-                    </button>
-                  </div>
-
-                  {filteredBrowseSpots.length === 0 ? (
-                    <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 p-8 sm:p-12 text-center max-w-xl mx-auto shadow-sm">
-                      <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-[#007AFF] flex items-center justify-center mx-auto mb-3">
-                        <Search size={26} />
-                      </div>
-                      <p className="text-sm sm:text-base font-bold text-[#111] dark:text-white">
-                        {searchMeta ? `No bays matched "${searchQuery}"` : 'No parking bays match your criteria'}
-                      </p>
-                      <p className="text-xs text-[#717171] dark:text-[#A1A1AA] mt-1 max-w-sm mx-auto">
-                        {searchMeta
-                          ? 'Try one of our flexible suggestions below, or search a nearby transit station.'
-                          : 'Try resetting the filters or searching a broader station or area.'}
-                      </p>
-
-                      {/* Suggested Matches */}
-                      {searchMeta?.suggestions && searchMeta.suggestions.length > 0 && (
-                        <div className="mt-5 p-3.5 rounded-2xl bg-slate-50 dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/5 text-left">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-[#8e8e93] dark:text-[#71717A] mb-2 flex items-center gap-1">
-                            <Sparkles size={11} className="text-[#007AFF]" />
-                            Suggested Matches
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {searchMeta.suggestions.map((sug) => (
-                              <button
-                                key={sug}
-                                type="button"
-                                onClick={() => handleParkingSearch(undefined, sug)}
-                                className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#2C2C2E] text-[#007AFF] text-xs font-semibold shadow-xs border border-black/[0.06] dark:border-white/10 hover:border-blue-500 hover:scale-[1.02] active:scale-95 transition-all cursor-pointer"
-                              >
-                                {sug}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Popular Quick Pills */}
-                      <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5 text-xs">
-                        <span className="text-[#8e8e93] dark:text-[#71717A] text-[11px] font-medium mr-1">Popular:</span>
-                        {['PV128', 'PV18 Residences', 'PV 9 Setapak', 'Wangsa Maju', 'USJ One', 'M Vertica'].map((pop) => (
-                          <button
-                            key={pop}
-                            type="button"
-                            onClick={() => handleParkingSearch(undefined, pop)}
-                            className="px-2.5 py-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.12] text-[#111] dark:text-white text-[11px] font-medium transition cursor-pointer"
-                          >
-                            {pop}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="mt-6 flex items-center justify-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveCategory('all');
-                            setRateFilter('all');
-                            setFeatureFilter('all');
-                            setSearchMeta(null);
-                            setSearchQuery('');
-                            setSearchSpots([]);
-                          }}
-                          className="px-4 py-2 rounded-xl bg-[#007AFF] text-white text-xs font-semibold hover:bg-[#0066d6] transition cursor-pointer"
-                        >
-                          Show all verified bays
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pt-2">
-                      {filteredBrowseSpots.map((spot, index) => {
-                        const isSaved = favoriteSpots.some((f) => f.parkingSpotId === spot.parkingSpotId);
-                        return (
-                          <div
-                            key={spot.id}
-                            onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
-                            className="group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2 -m-2 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                          >
-                            <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
-                              <img
-                                src={spot.primaryImageUrl || BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length]}
-                                alt={spot.propertyName || spot.name}
-                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                                loading="lazy"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).src = BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length];
-                                }}
-                              />
-                              <div className="absolute top-3 left-3 pointer-events-none">
-                                {spot.hasEvCharging ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md">
-                                    <Zap size={11} /> EV Ready
-                                  </span>
-                                ) : spot.isCovered ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
-                                    <Building2 size={11} className="text-[#007AFF]" /> Covered
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
-                                    <CheckCircle2 size={11} className="text-[#34C759]" /> Verified Bay
-                                  </span>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleToggleFavorite(spot);
-                                }}
-                                disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
-                                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-sm"
-                                aria-label="Save to favorites"
-                              >
-                                <Heart
-                                  size={16}
-                                  strokeWidth={2}
-                                  className={isSaved ? 'text-rose-500 fill-rose-500' : 'text-white fill-none'}
-                                />
-                              </button>
-                            </div>
-
-                            <div className="pt-3 px-1 space-y-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[13px] font-bold text-[#111] dark:text-white truncate">
-                                  {spot.type === 'Condo Bay' ? 'Condo Bay' : 'Driveway'} · {spot.stationName ? spot.stationName.replace(' LRT', '').replace(' MRT', '') : 'Kuala Lumpur'}
-                                </span>
-                                {renderSpotRating(spot.parkingSpotId)}
-                              </div>
-                              <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] truncate">
-                                {spot.propertyName || spot.address}
-                              </p>
-                              <div className="flex items-center gap-1 text-[11px] text-[#8e8e93] dark:text-[#71717A] truncate">
-                                <MapPin size={11} className="text-[#007AFF] shrink-0" />
-                                <span className="truncate">Near {spot.stationName || 'Rail Station'} · {spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(1)} km` : 'Walking distance'}</span>
-                              </div>
-                              <div className="pt-1 flex items-baseline justify-between text-[13px]">
-                                <span className="font-bold text-[#111] dark:text-white">
-                                  RM {spot.dailyRate ? spot.dailyRate.toFixed(2) : (spot.monthlyRate / 30).toFixed(2)}
-                                  <span className="font-normal text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
-                                </span>
-                                {spot.monthlyRate > 0 && (
-                                  <span className="text-[11px] font-medium text-[#007AFF]">
-                                    RM {spot.monthlyRate.toFixed(0)}/mo
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-10 pt-2">
-                  {/* ─── Featured Section: Public Commercial Parking Facilities ─── */}
-                  {publicLots.length > 0 && (
-                    <section className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#111] dark:text-white flex items-center gap-2">
-                              <span>Public Drive-In Facilities</span>
-                              <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                Real-Time Bays
-                              </span>
-                            </h2>
-                          </div>
-                          <p className="text-xs text-[#6e6e73] dark:text-[#A1A1AA] mt-0.5">
-                            Drive in immediately without prior booking. Barrier gate reads your plate automatically.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {publicLots.map((lot) => {
-                          const isFull = lot.availableSpaces <= 0;
-                          return (
-                            <div
-                              key={`browse-pub-${lot.publicParkingLotId}`}
-                              onClick={() => setInspectingPublicLot(lot)}
-                              className="group cursor-pointer rounded-3xl bg-white dark:bg-[#1c1c1e] border border-black/[0.08] dark:border-white/10 shadow-xs hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col"
-                            >
-                              {/* Facility Picture */}
-                              <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
-                                {lot.facilityPhotoUrl ? (
-                                  <img
-                                    src={getPublicLotPhotoUrl(lot.facilityPhotoUrl)}
-                                    alt={lot.lotName}
-                                    onError={(e) => {
-                                      const target = e.currentTarget;
-                                      if (target.src !== DEFAULT_PUBLIC_PARKING_PHOTO) {
-                                        target.src = DEFAULT_PUBLIC_PARKING_PHOTO;
-                                      }
-                                    }}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                    loading="lazy"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full bg-gradient-to-br from-blue-600/20 to-indigo-600/30 flex items-center justify-center">
-                                    <Layers className="w-10 h-10 text-[#0071e3] opacity-60" />
-                                  </div>
-                                )}
-
-                                {/* Badges */}
-                                <div className="absolute top-3 left-3">
-                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-black/75 text-white backdrop-blur-md shadow-sm border border-white/15">
-                                    <Layers className="w-3 h-3 text-[#0071e3]" />
-                                    <span>Public Commercial</span>
-                                  </span>
-                                </div>
-
-                                <div className="absolute top-3 right-3">
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold backdrop-blur-md shadow-sm border ${
-                                      isFull
-                                        ? 'bg-rose-500/90 text-white border-rose-400/30'
-                                        : 'bg-emerald-600/90 text-white border-emerald-400/30'
-                                    }`}
-                                  >
-                                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                                    <span>{isFull ? 'FULL' : `${lot.availableSpaces} of ${lot.totalCapacity} bays left`}</span>
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Card Content */}
-                              <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                                <div>
-                                  <h3 className="font-bold text-sm text-[#111] dark:text-white group-hover:text-[#007AFF] transition-colors truncate">
-                                    {lot.lotName}
-                                  </h3>
-                                  <p className="text-xs text-[#6e6e73] dark:text-[#A1A1AA] line-clamp-1 mt-0.5">
-                                    {lot.address}
-                                  </p>
-                                  {lot.nearestStationName && (
-                                    <div className="flex items-center gap-1.5 text-[11px] text-[#007AFF] font-medium mt-1.5 truncate">
-                                      <Train className="w-3.5 h-3.5 shrink-0" />
-                                      <span className="truncate">Near {lot.nearestStationName} (~{lot.distanceToStation || 0}m direct)</span>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between">
-                                  <div>
-                                    <span className="text-[10px] text-neutral-400 block font-medium">Hourly Tariff</span>
-                                    <span className="font-bold text-sm text-neutral-900 dark:text-white font-mono">
-                                      RM {lot.hourlyRate.toFixed(2)}
-                                      <span className="text-[10px] font-normal text-neutral-400">/hr</span>
-                                    </span>
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setInspectingPublicLot(lot);
-                                    }}
-                                    className="h-8 px-3.5 rounded-xl bg-[#0071e3] hover:bg-[#0077ed] text-white font-semibold text-xs transition flex items-center gap-1 shadow-xs cursor-pointer"
-                                  >
-                                    <span>Details</span>
-                                    <ChevronRight className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  )}
-
-                  {/* ── Standard Multi-Carousel Display (Apple HIG Polish) ── */}
-                  {/* ─── Section 1: Popular Parking in Kuala Lumpur ─── */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('map');
-                          setMobileTransitTab('transit');
-                        }}
-                        className="group inline-flex items-center gap-2 text-xl sm:text-2xl font-bold tracking-tight text-[#111] dark:text-white hover:text-[#007AFF] transition-colors cursor-pointer"
-                      >
-                        <span>Popular Parking in Kuala Lumpur</span>
-                        <ChevronRight size={20} className="text-[#8e8e93] dark:text-[#71717A] group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-transform" />
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => scrollCarousel(carouselRef1, 'left')}
-                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
-                          aria-label="Previous items"
-                        >
-                          <ChevronLeft size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => scrollCarousel(carouselRef1, 'right')}
-                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
-                          aria-label="Next items"
-                        >
-                          <ChevronRight size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div
-                      ref={carouselRef1}
-                      className="flex gap-4 sm:gap-5 overflow-x-auto scroll-smooth no-scrollbar py-2 px-1"
-                    >
-                      {filteredBrowseSpots.slice(0, 10).map((spot, index) => {
-                        const isSaved = favoriteSpots.some((f) => f.parkingSpotId === spot.parkingSpotId);
-                        return (
-                          <div
-                            key={spot.id}
-                            onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
-                            className="w-[240px] sm:w-[260px] shrink-0 group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2 -m-2 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                          >
-                            <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
-                              <img
-                                src={spot.primaryImageUrl || BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length]}
-                                alt={spot.propertyName || spot.name}
-                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                                loading="lazy"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).src = BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length];
-                                }}
-                              />
-                              <div className="absolute top-3 left-3 pointer-events-none">
-                                {spot.hasEvCharging ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md">
-                                    <Zap size={11} /> EV Ready
-                                  </span>
-                                ) : spot.isCovered ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
-                                    <Building2 size={11} className="text-[#007AFF]" /> Covered
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
-                                    <CheckCircle2 size={11} className="text-[#34C759]" /> Verified Bay
-                                  </span>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleToggleFavorite(spot);
-                                }}
-                                disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
-                                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-sm"
-                                aria-label="Save to favorites"
-                              >
-                                <Heart
-                                  size={16}
-                                  strokeWidth={2}
-                                  className={isSaved ? 'text-rose-500 fill-rose-500' : 'text-white fill-none'}
-                                />
-                              </button>
-                            </div>
-
-                            <div className="pt-3 px-1 space-y-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[13px] font-bold text-[#111] dark:text-white truncate">
-                                  {spot.type === 'Condo Bay' ? 'Condo Bay' : 'Driveway'} · {spot.stationName ? spot.stationName.replace(' LRT', '').replace(' MRT', '') : 'Kuala Lumpur'}
-                                </span>
-                                {renderSpotRating(spot.parkingSpotId)}
-                              </div>
-                              <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] truncate">
-                                {spot.propertyName || spot.address}
-                              </p>
-                              <div className="flex items-center gap-1 text-[11px] text-[#8e8e93] dark:text-[#71717A] truncate">
-                                <MapPin size={11} className="text-[#007AFF] shrink-0" />
-                                <span className="truncate">Near {spot.stationName || 'Rail Station'} · {spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(1)} km` : 'Walking distance'}</span>
-                              </div>
-                              <div className="pt-1 flex items-baseline justify-between text-[13px]">
-                                <span className="font-bold text-[#111] dark:text-white">
-                                  RM {spot.dailyRate ? spot.dailyRate.toFixed(2) : (spot.monthlyRate / 30).toFixed(2)}
-                                  <span className="font-normal text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
-                                </span>
-                                {spot.monthlyRate > 0 && (
-                                  <span className="text-[11px] font-medium text-[#007AFF]">
-                                    RM {spot.monthlyRate.toFixed(0)}/mo
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  {/* ─── Section 2: Transit-Connected Bays ─── */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('map');
-                          setMobileTransitTab('transit');
-                        }}
-                        className="group inline-flex items-center gap-2 text-xl sm:text-2xl font-bold tracking-tight text-[#111] dark:text-white hover:text-[#007AFF] transition-colors cursor-pointer"
-                      >
-                        <span>Transit-Connected Parking (Near LRT & MRT)</span>
-                        <ChevronRight size={20} className="text-[#8e8e93] dark:text-[#71717A] group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-transform" />
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => scrollCarousel(carouselRef2, 'left')}
-                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
-                          aria-label="Previous items"
-                        >
-                          <ChevronLeft size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => scrollCarousel(carouselRef2, 'right')}
-                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
-                          aria-label="Next items"
-                        >
-                          <ChevronRight size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div
-                      ref={carouselRef2}
-                      className="flex gap-4 sm:gap-5 overflow-x-auto scroll-smooth no-scrollbar py-2 px-1"
-                    >
-                      {filteredBrowseSpots.slice(2, 12).map((spot, index) => {
-                        const isSaved = favoriteSpots.some((f) => f.parkingSpotId === spot.parkingSpotId);
-                        return (
-                          <div
-                            key={`transit-${spot.id}`}
-                            onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
-                            className="w-[240px] sm:w-[260px] shrink-0 group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2 -m-2 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                          >
-                            <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
-                              <img
-                                src={spot.primaryImageUrl || BROWSE_FALLBACK_PHOTOS[(index + 2) % BROWSE_FALLBACK_PHOTOS.length]}
-                                alt={spot.propertyName || spot.name}
-                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                                loading="lazy"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).src = BROWSE_FALLBACK_PHOTOS[(index + 2) % BROWSE_FALLBACK_PHOTOS.length];
-                                }}
-                              />
-                              <div className="absolute top-3 left-3 pointer-events-none">
-                                {spot.hasEvCharging ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md">
-                                    <Zap size={11} /> EV Ready
-                                  </span>
-                                ) : spot.isCovered ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
-                                    <Building2 size={11} className="text-[#007AFF]" /> Covered
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white px-2.5 py-1 text-[10px] font-bold shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
-                                    <CheckCircle2 size={11} className="text-[#34C759]" /> Verified Bay
-                                  </span>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleToggleFavorite(spot);
-                                }}
-                                disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
-                                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-sm"
-                                aria-label="Save to favorites"
-                              >
-                                <Heart
-                                  size={16}
-                                  strokeWidth={2}
-                                  className={isSaved ? 'text-rose-500 fill-rose-500' : 'text-white fill-none'}
-                                />
-                              </button>
-                            </div>
-
-                            <div className="pt-3 px-1 space-y-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[13px] font-bold text-[#111] dark:text-white truncate">
-                                  Condo Bay · {spot.stationName ? spot.stationName.replace(' LRT', '').replace(' MRT', '') : 'Transit Hub'}
-                                </span>
-                                {renderSpotRating(spot.parkingSpotId)}
-                              </div>
-                              <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] truncate">
-                                {spot.propertyName || spot.address}
-                              </p>
-                              <div className="flex items-center gap-1 text-[11px] text-[#8e8e93] dark:text-[#71717A] truncate">
-                                <MapPin size={11} className="text-[#007AFF] shrink-0" />
-                                <span className="truncate">Near {spot.stationName || 'Station'} · {spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(1)} km` : 'Walking distance'}</span>
-                              </div>
-                              <div className="pt-1 flex items-baseline justify-between text-[13px]">
-                                <span className="font-bold text-[#111] dark:text-white">
-                                  RM {spot.dailyRate ? spot.dailyRate.toFixed(2) : (spot.monthlyRate / 30).toFixed(2)}
-                                  <span className="font-normal text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
-                                </span>
-                                {spot.monthlyRate > 0 && (
-                                  <span className="text-[11px] font-medium text-[#007AFF]">
-                                    RM {spot.monthlyRate.toFixed(0)}/mo
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  {/* ─── Section 3: Monthly & Long-Term Parking ─── */}
-                  <section>
-                    <div className="flex items-center justify-between mb-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab('map');
-                          setMobileTransitTab('transit');
-                        }}
-                        className="group inline-flex items-center gap-2 text-xl sm:text-2xl font-bold tracking-tight text-[#111] dark:text-white hover:text-[#007AFF] transition-colors cursor-pointer"
-                      >
-                        <span>Monthly & Long-Term Reserved Bays</span>
-                        <ChevronRight size={20} className="text-[#8e8e93] dark:text-[#71717A] group-hover:text-[#007AFF] group-hover:translate-x-0.5 transition-transform" />
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => scrollCarousel(carouselRef3, 'left')}
-                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
-                          aria-label="Previous items"
-                        >
-                          <ChevronLeft size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => scrollCarousel(carouselRef3, 'right')}
-                          className="h-8 w-8 rounded-full border border-black/[0.08] dark:border-white/10 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-md flex items-center justify-center text-[#111] dark:text-white shadow-xs hover:bg-white dark:hover:bg-[#2C2C2E] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all cursor-pointer"
-                          aria-label="Next items"
-                        >
-                          <ChevronRight size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div
-                      ref={carouselRef3}
-                      className="flex gap-4 sm:gap-5 overflow-x-auto scroll-smooth no-scrollbar py-2 px-1"
-                    >
-                      {filteredBrowseSpots.slice(1, 11).map((spot, index) => {
-                        const isSaved = favoriteSpots.some((f) => f.parkingSpotId === spot.parkingSpotId);
-                        return (
-                          <div
-                            key={`monthly-${spot.id}`}
-                            onClick={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
-                            className="w-[240px] sm:w-[260px] shrink-0 group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2 -m-2 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                          >
-                            <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
-                              <img
-                                src={spot.primaryImageUrl || BROWSE_FALLBACK_PHOTOS[(index + 4) % BROWSE_FALLBACK_PHOTOS.length]}
-                                alt={spot.propertyName || spot.name}
-                                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                                loading="lazy"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).src = BROWSE_FALLBACK_PHOTOS[(index + 4) % BROWSE_FALLBACK_PHOTOS.length];
-                                }}
-                              />
-                              <div className="absolute top-3 left-3 pointer-events-none">
-                                <span className="inline-flex items-center gap-1 rounded-full bg-white/95 dark:bg-[#1C1C1E]/95 px-2.5 py-1 text-[10px] font-bold text-[#111] dark:text-white shadow-md backdrop-blur-md border border-black/5 dark:border-white/10">
-                                  <Calendar size={11} className="text-[#007AFF]" /> Monthly Reserved
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleToggleFavorite(spot);
-                                }}
-                                disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)}
-                                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-110 active:scale-90 cursor-pointer shadow-sm"
-                                aria-label="Save to favorites"
-                              >
-                                <Heart
-                                  size={16}
-                                  strokeWidth={2}
-                                  className={isSaved ? 'text-rose-500 fill-rose-500' : 'text-white fill-none'}
-                                />
-                              </button>
-                            </div>
-
-                            <div className="pt-3 px-1 space-y-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[13px] font-bold text-[#111] dark:text-white truncate">
-                                  Monthly Bay · {spot.stationName ? spot.stationName.replace(' LRT', '').replace(' MRT', '') : 'Kuala Lumpur'}
-                                </span>
-                                {renderSpotRating(spot.parkingSpotId)}
-                              </div>
-                              <p className="text-[12px] text-[#6e6e73] dark:text-[#A1A1AA] truncate">
-                                {spot.propertyName || spot.address}
-                              </p>
-                              <div className="flex items-center gap-1 text-[11px] text-[#8e8e93] dark:text-[#71717A] truncate">
-                                <MapPin size={11} className="text-[#007AFF] shrink-0" />
-                                <span className="truncate">Monthly Pass · RM {spot.monthlyRate.toFixed(2)} / mo</span>
-                              </div>
-                              <div className="pt-1 flex items-baseline justify-between text-[13px]">
-                                <span className="font-bold text-[#111] dark:text-white">
-                                  RM {(spot.monthlyRate / 30).toFixed(2)}
-                                  <span className="font-normal text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
-                                </span>
-                                <span className="text-[11px] font-medium text-[#007AFF]">
-                                  RM {spot.monthlyRate.toFixed(0)}/mo
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-                </div>
-              )}
-            </div>
+            <CommuterBrowseView
+              searchQuery={searchQuery}
+              searchMeta={searchMeta}
+              searchError={searchError}
+              browseFilters={browseFilters}
+              browseSortBy={browseSortBy}
+              activeFilterCount={activeFilterCount}
+              hasActiveFilters={hasActiveFilters}
+              filteredBrowseSpots={filteredBrowseSpots}
+              matchingPublicLots={matchingPublicLots}
+              favoriteSpots={favoriteSpots}
+              isFavoritesLoading={isFavoritesLoading}
+              isClearingFavorites={isClearingFavorites}
+              favoriteUpdatingIds={favoriteUpdatingIds}
+              spotRatings={spotRatings}
+              locationStatus={locationStatus}
+              locationAccuracy={locationAccuracy}
+              currentLocation={currentLocation}
+              distanceFromUser={distanceFromUser}
+              onOpenSearchSheet={() => setIsSearchSheetOpen(true)}
+              onChangeSort={setBrowseSortBy}
+              onUpdateFilters={(updater) => setBrowseFilters((prev) => updater(prev))}
+              onClearSearchQuery={() => {
+                setSearchQuery('');
+                setSearchMeta(null);
+                setSearchSpots([]);
+                setSearchError(null);
+              }}
+              onClearAllFilters={handleClearBrowseFilters}
+              onQuickSearchSuggestion={(q) => void handleParkingSearch(undefined, q)}
+              onRequestLocation={() => setLocationRequestKey((k) => k + 1)}
+              onOpenParkingDetail={(spot, station) => openParkingDetail(spot, null, station)}
+              onToggleFavorite={(spot) => void handleToggleFavorite(spot)}
+              onInspectPublicLot={(lot) => setInspectingPublicLot(lot)}
+              onSwitchToMap={() => {
+                setActiveTab('map');
+                setMobileTransitTab('map');
+              }}
+            />
           )}
 
           {/* ─── TAB: Map ─── */}
           {activeTab === 'map' && (
             <div className="space-y-3">
               {/* Mobile View Switcher */}
-              <div className="flex lg:hidden bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+              <div className="flex lg:hidden bg-black/[0.05] dark:bg-[#1C1C1F] border border-black/[0.05] dark:border-white/[0.09] p-1 rounded-full text-xs font-semibold">
                 <button
                   type="button"
                   onClick={() => setMobileTransitTab('transit')}
-                  className={`flex-1 py-1.5 px-2 rounded-lg transition-all ${
+                  className={`flex-1 py-1.5 px-2 rounded-full transition-all ${
                     mobileTransitTab === 'transit'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-white dark:bg-[#2C2C2E] text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
                   {transitWorkspaceMode === 'navigation' ? 'Directions' : 'Transit Hub'}
@@ -3582,10 +2601,10 @@ export default function CommuterDashboard() {
                 <button
                   type="button"
                   onClick={() => setMobileTransitTab('map')}
-                  className={`flex-1 py-1.5 px-2 rounded-lg transition-all ${
+                  className={`flex-1 py-1.5 px-2 rounded-full transition-all ${
                     mobileTransitTab === 'map'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-white dark:bg-[#2C2C2E] text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
                   Transit Map
@@ -3593,10 +2612,10 @@ export default function CommuterDashboard() {
                 <button
                   type="button"
                   onClick={() => setMobileTransitTab('bays')}
-                  className={`flex-1 py-1.5 px-2 rounded-lg transition-all ${
+                  className={`flex-1 py-1.5 px-2 rounded-full transition-all ${
                     mobileTransitTab === 'bays'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-white dark:bg-[#2C2C2E] text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
                   Nearby Bays ({lensSpots.length})
@@ -3688,8 +2707,6 @@ export default function CommuterDashboard() {
                           compact
                           stationName={selectedStation}
                           stationCoords={selectedStationCoords}
-                          selectedBusRoute={selectedBusRoute}
-                          onSelectBusRoute={setSelectedBusRoute}
                           isNearbyLoading={isNearbyLoading}
                         />
                       </div>
@@ -3912,16 +2929,30 @@ export default function CommuterDashboard() {
                         compact
                         stationName={selectedStation}
                         stationCoords={selectedStationCoords}
-                        selectedBusRoute={selectedBusRoute}
-                        onSelectBusRoute={setSelectedBusRoute}
                         isNearbyLoading={isNearbyLoading}
                       />
                     </div>
                   </div>
                 )}
-
-                {activeBooking && <JourneyStrip activeStep={journeyStep} />}
               </div>
+
+              {/* Hidmo-Style Mobile Floating "List" Pill */}
+              {mobileTransitTab === 'map' &&
+                transitWorkspaceMode !== 'navigation' &&
+                !selectedSpot &&
+                !selectedBusRoute && (
+                  <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5.65rem+var(--parkjom-safe-bottom))] z-[1040] lg:hidden pointer-events-auto">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('home')}
+                      aria-label="Back to parking bay list"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#111111] dark:bg-white text-white dark:text-[#111111] px-5 py-2.5 text-[13px] font-bold shadow-[0_10px_28px_rgba(0,0,0,0.28)] border border-black/15 dark:border-white/25 active:scale-95 transition-transform cursor-pointer"
+                    >
+                      <List size={15} strokeWidth={2.2} />
+                      <span>List</span>
+                    </button>
+                  </div>
+                )}
             </div>
           )}
 
@@ -4932,6 +3963,23 @@ export default function CommuterDashboard() {
           onClose={() => setInspectingPublicLot(null)}
         />
       )}
+
+      {/* Search & Filters Bottom Sheet / Modal */}
+      <ParkingSearchSheet
+        open={isSearchSheetOpen}
+        onClose={() => setIsSearchSheetOpen(false)}
+        appliedFilters={browseFilters}
+        appliedQuery={searchQuery}
+        allKnownSpots={allKnownBrowseSpots}
+        searchSpots={filteredSpots}
+        hasSearchMeta={Boolean(searchMeta)}
+        publicLots={publicLots}
+        locationStatus={locationStatus}
+        onRequestLocation={() => setLocationRequestKey((k) => k + 1)}
+        isSearching={isSearchLoading}
+        onApply={handleApplySearchSheet}
+        onClearAll={handleClearBrowseFilters}
+      />
 
     </div>
   );

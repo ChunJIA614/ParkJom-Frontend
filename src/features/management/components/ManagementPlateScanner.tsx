@@ -17,6 +17,13 @@ import {
 } from 'lucide-react';
 import { compressFileToDataUrl } from '@/features/commuter/api/vehicleVisionApi';
 import {
+  attachStreamToVideo,
+  captureVideoFrameDataUrl,
+  describeCameraError,
+  openCameraStream,
+  stopMediaStream,
+} from '@/services/cameraStream';
+import {
   checkVehiclePlate,
   getPlateCheckHistory,
   parsePlateCheckDetails,
@@ -69,6 +76,7 @@ export default function ManagementPlateScanner({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Plate check audit history
@@ -97,43 +105,36 @@ export default function ManagementPlateScanner({
   }, [historyPage, loadHistory]);
 
   const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    cameraRequestRef.current += 1;
+    stopMediaStream(streamRef.current, videoRef.current);
+    streamRef.current = null;
     setCameraActive(false);
   }, []);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
   const startCamera = async () => {
+    const requestId = ++cameraRequestRef.current;
+    stopMediaStream(streamRef.current, videoRef.current);
+    streamRef.current = null;
     setCameraError(null);
     setScanError(null);
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Camera access is not supported in this browser. Upload a photo instead.');
+      const stream = await openCameraStream('environment');
+      if (requestId !== cameraRequestRef.current || !videoRef.current) {
+        stopMediaStream(stream);
+        return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
       streamRef.current = stream;
+      await attachStreamToVideo(videoRef.current, stream);
+      if (requestId !== cameraRequestRef.current) {
+        stopMediaStream(stream, videoRef.current);
+        return;
+      }
       setCameraActive(true);
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play().catch(() => undefined);
-        }
-      });
     } catch (err) {
-      setCameraError(
-        err instanceof Error
-          ? err.message
-          : 'Camera permission was denied. Allow camera access or upload a photo.',
-      );
+      if (requestId !== cameraRequestRef.current) return;
+      setCameraError(describeCameraError(err));
       stopCamera();
     }
   };
@@ -161,26 +162,16 @@ export default function ManagementPlateScanner({
 
   const captureCameraFrame = async () => {
     const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) {
-      setScanError('Camera frame is not ready yet. Wait a moment and try again.');
-      return;
+    if (!video) return;
+    try {
+      const dataUrl = captureVideoFrameDataUrl(video, null, 960, 0.85);
+      stopCamera();
+      await runPlateCheck(dataUrl, 'image/jpeg');
+    } catch (err) {
+      setScanError(
+        err instanceof Error ? err.message : 'Camera frame is not ready yet. Wait a moment and try again.',
+      );
     }
-    const maxDim = 960;
-    let { videoWidth: width, videoHeight: height } = video;
-    if (width > maxDim || height > maxDim) {
-      const ratio = Math.min(maxDim / width, maxDim / height);
-      width = Math.round(width * ratio);
-      height = Math.round(height * ratio);
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, width, height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    stopCamera();
-    await runPlateCheck(dataUrl, 'image/jpeg');
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,24 +237,27 @@ export default function ManagementPlateScanner({
 
           {/* Camera / Image Viewport */}
           <div className="relative overflow-hidden rounded-2xl border border-black/[0.08] dark:border-white/[0.1] bg-[#0b0d12] aspect-[16/10] flex items-center justify-center">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
+                cameraActive ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+            />
             {cameraActive ? (
-              <>
-                <video
-                  ref={videoRef}
-                  playsInline
-                  muted
-                  className="h-full w-full object-cover"
-                />
-                {/* Framing guide */}
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-6 sm:inset-10 rounded-2xl border-2 border-dashed border-white/60 flex items-end justify-center pb-3"
-                >
+              /* Framing guide */
+              <div
+                aria-hidden="true"
+                className="pointer-events-none relative z-10 h-full w-full p-6 sm:p-10 flex items-end justify-center pb-3"
+              >
+                <div className="h-full w-full rounded-2xl border-2 border-dashed border-white/60 flex items-end justify-center pb-3">
                   <span className="rounded-full bg-black/65 px-3 py-1 text-[11px] font-semibold text-white">
                     Center Malaysian plate inside frame
                   </span>
                 </div>
-              </>
+              </div>
             ) : previewUrl ? (
               <img
                 src={previewUrl}

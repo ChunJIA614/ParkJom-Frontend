@@ -2695,7 +2695,7 @@ select option,
 
 @media (max-width: 640px) {
   .workspace-heading { align-items: flex-start; flex-direction: column; }
-  .map-lens__map { height: clamp(30rem, 64dvh, 36rem); min-height: 30rem; }
+  .map-lens__map { height: clamp(30rem, calc(100dvh - 13.5rem - var(--parkjom-safe-top) - var(--parkjom-safe-bottom)), 44rem); min-height: 28rem; }
   .nearby-sheet__list { max-height: 12rem; }
   .parking-pass__price { display: none; }
   .journey-strip strong { font-size: 0.68rem; }
