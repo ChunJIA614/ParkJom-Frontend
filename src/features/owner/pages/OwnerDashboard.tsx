@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { apiRequest } from '@/services/apiClient';
 import {
   deleteParkingSpot,
   getMyParking,
@@ -157,7 +156,7 @@ export default function OwnerDashboard() {
   // Navigation View Router — persist across reloads
   const [activeView, setActiveView] = useState<OwnerView>(() => {
     const urlView = new URLSearchParams(window.location.search).get('view') as OwnerView | null;
-    const validViews: OwnerView[] = ['dashboard', 'publicParking', 'availability', 'reviews', 'registration', 'iot', 'wallet', 'settings', 'tickets'];
+    const validViews: OwnerView[] = ['dashboard', 'bookingHistory', 'publicParking', 'availability', 'reviews', 'registration', 'iot', 'wallet', 'settings', 'tickets'];
     if (urlView && validViews.includes(urlView)) return urlView;
     const saved = localStorage.getItem('parkjom_owner_view');
     return saved && validViews.includes(saved as OwnerView) ? saved as OwnerView : 'dashboard';
@@ -220,49 +219,32 @@ export default function OwnerDashboard() {
         throw new Error('The parking response did not contain a data list.');
       }
 
-      // Preload property lookup map from /api/property to ensure real building/condo names
-      const propertyMap = new Map<number, { name: string; station: string }>();
-      try {
-        const propRes = await apiRequest('/property');
-        if (propRes.ok) {
-          const propList = (await propRes.json().catch(() => null)) as any[];
-          if (Array.isArray(propList)) {
-            propList.forEach((p) => {
-              if (p?.propertyId) {
-                propertyMap.set(p.propertyId, {
-                  name: p.propertyName || p.address || `Property #${p.propertyId}`,
-                  station: p.stationName || '—',
-                });
-              }
-            });
-          }
-        }
-      } catch {
-        // Non-blocking fallback
-      }
-
       const mapped: ParkingBay[] = body.data.map((ps) => {
-        const [labelBay = '', labelLevel = ''] = String(ps.parkingLabel ?? '').split('/', 2);
-        const propInfo = propertyMap.get(ps.propertyId);
-        const resolvedPropName =
-          ps.propertyName && !ps.propertyName.startsWith('Property #')
-            ? ps.propertyName
-            : propInfo?.name || ps.propertyName || `Property #${ps.propertyId}`;
-        const resolvedStationName =
-          ps.stationName && ps.stationName !== '—'
-            ? ps.stationName
-            : propInfo?.station || '—';
+        const [labelBay = '', labelLevel = ''] = (ps.parkingLabel ?? '').split('/', 2);
+        const { property, configuration } = ps;
+        const { dailyRate, monthlyRate } = configuration.rates;
+        const images = (ps.images ?? []).filter((image) => image.secureUrl?.trim());
+        const cover = images.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.displayOrder - b.displayOrder)[0];
 
         return {
           ...ps,
+          ...configuration.amenities,
           availabilityStatus: normalizeParkingAvailability(ps.availabilityStatus),
           id: `b-${ps.parkingSpotId}`,
-          propertyName: resolvedPropName,
-          stationName: resolvedStationName,
+          propertyId: property.propertyId,
+          propertyName: property.propertyName || property.address || `Property #${property.propertyId}`,
+          stationName: property.nearestStation?.stationName || '—',
+          imageUrl: cover?.secureUrl,
+          isConfigurationComplete: configuration.isConfigurationComplete,
+          configurationDescription: configuration.description,
+          hasAvailabilityRules: Boolean(configuration.availability?.rules.length),
+          parkingLabel: ps.parkingLabel ?? '',
+          dailyRate,
+          monthlyRate: monthlyRate ?? 0,
           bayNumber: labelBay || ps.parkingLabel || `Spot #${ps.parkingSpotId}`,
           level: labelLevel ? `Level ${labelLevel}` : 'Level —',
           status: deriveParkingStatus(ps.verificationStatus, ps.isPublished),
-          hourlyRate: ps.dailyRate ?? 0,
+          hourlyRate: dailyRate ?? 0,
           verificationSubmittedAt: ps.createdAt,
         };
       });
@@ -275,7 +257,7 @@ export default function OwnerDashboard() {
 
   // Overview, configuration, and owner reviews share Get My Parking as their source of truth.
   useEffect(() => {
-    if (activeView === 'dashboard' || activeView === 'availability' || activeView === 'reviews') {
+    if (activeView === 'dashboard' || activeView === 'bookingHistory' || activeView === 'availability' || activeView === 'reviews') {
       void fetchMyParking();
     }
   }, [activeView, fetchMyParking]);
@@ -589,8 +571,10 @@ export default function OwnerDashboard() {
     setActiveView('availability');
   };
 
-  const viewMeta: Record<string, { title: string; description: string }> = {
+  const viewMeta: Record<OwnerView, { title: string; description: string }> = {
     dashboard: { title: 'Parking status', description: 'See the current booking readiness and today’s status for every property parking spot.' },
+    bookingHistory: { title: 'Booking History', description: 'Review reservations and payouts for your parking spots.' },
+    publicParking: { title: 'Public Drive-In', description: 'Manage your drive-in facilities, live bay counts, and barrier gates.' },
     availability: { title: 'Configure parking', description: 'Keep one-time parking details separate from the availability timetable you manage day to day.' },
     reviews: { title: 'Parking reviews', description: 'Read customer feedback and reply as the parking owner.' },
     registration: { title: 'Register a property', description: 'Submit a bay for verification and configure it for bookings.' },
@@ -599,7 +583,7 @@ export default function OwnerDashboard() {
     tickets: { title: 'Support', description: 'Track booking, access, and settlement issues.' },
     settings: { title: 'Settings', description: 'Manage payout details and workspace preferences.' },
   };
-  const currentViewMeta = viewMeta[activeView] ?? viewMeta.dashboard;
+  const currentViewMeta = viewMeta[activeView];
 
   return (
     <div className="app-workspace font-sans text-[#1d1d1f] flex" data-workspace-role="owner">
@@ -635,14 +619,12 @@ export default function OwnerDashboard() {
 
         {/* Render View Panels */}
         <main className="workspace-frame flex-1">
-          {activeView === 'dashboard' && (
-            <div className="workspace-heading">
-              <div>
-                <h1>{currentViewMeta.title}</h1>
-                <p>{currentViewMeta.description}</p>
-              </div>
+          <header className="workspace-heading">
+            <div>
+              <h1 id="owner-page-heading">{currentViewMeta.title}</h1>
+              <p>{currentViewMeta.description}</p>
             </div>
-          )}
+          </header>
           <PageTransition transitionKey={activeView}>
           {activeView === 'dashboard' && (
             <div>
@@ -658,9 +640,13 @@ export default function OwnerDashboard() {
 
                 onConfigureParking={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'setup')}
                 onOpenTimetable={(parkingSpotId) => openParkingWorkspace(parkingSpotId, 'timetable')}
+                onOpenSupport={() => setActiveView('tickets')}
               />
-              {user && <OwnerBookingHistory token={user.token} bays={bays} />}
             </div>
+          )}
+
+          {activeView === 'bookingHistory' && user && (
+            <OwnerBookingHistory token={user.token} bays={bays} />
           )}
 
           {activeView === 'publicParking' && (
@@ -734,7 +720,7 @@ export default function OwnerDashboard() {
           )}
 
           {activeView === 'tickets' && (
-            supportViewer && <SupportWorkspace mode="user" viewer={supportViewer} />
+            supportViewer && <SupportWorkspace mode="user" viewer={supportViewer} hidePageHeading />
           )}
           </PageTransition>
         </main>
@@ -743,7 +729,7 @@ export default function OwnerDashboard() {
 
       <BottomNav
         items={OWNER_BOTTOM_NAV_ITEMS}
-        activeId={['tickets', 'settings', 'wallet', 'iot', 'publicParking'].includes(activeView) ? 'more' : activeView}
+        activeId={OWNER_BOTTOM_NAV_ITEMS.some((item) => item.id === activeView) ? activeView : 'more'}
         onChange={(id) => {
           if (id === 'more') {
             setIsSidebarOpen(true);

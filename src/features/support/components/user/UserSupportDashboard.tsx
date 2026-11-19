@@ -41,6 +41,7 @@ interface UserSupportDashboardProps {
   userName?: string;
   userRole?: string;
   ticketWorkspace?: React.ReactNode;
+  hidePageHeading?: boolean;
 }
 
 const COMMUTER_FALLBACK_TEMPLATES: QuickIssueTemplate[] = [
@@ -184,6 +185,7 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
   token: propToken,
   userRole: propUserRole,
   ticketWorkspace,
+  hidePageHeading = false,
 }) => {
   const token = viewer?.token || propToken || '';
   const userRole = viewer?.role || propUserRole || '';
@@ -759,14 +761,18 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                   </span>
                 )}
               </div>
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1D1D1F] dark:text-white">
-                Support & Assistance
-              </h1>
-              <p className="text-xs text-[#6E6E73] dark:text-[#A1A1AA]">
-                {isOwner
-                  ? 'Manage renter overstays, IoT lock status, payout inquiries, and support tickets.'
-                  : '1-click issue reporting, status tracking, and live ticket updates.'}
-              </p>
+              {!hidePageHeading && (
+                <>
+                  <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#1D1D1F] dark:text-white">
+                    Support & Assistance
+                  </h1>
+                  <p className="text-xs text-[#6E6E73] dark:text-[#A1A1AA]">
+                    {isOwner
+                      ? 'Manage renter overstays, IoT lock status, payout inquiries, and support tickets.'
+                      : '1-click issue reporting, status tracking, and live ticket updates.'}
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">

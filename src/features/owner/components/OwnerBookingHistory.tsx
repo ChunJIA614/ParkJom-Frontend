@@ -126,11 +126,10 @@ export default function OwnerBookingHistory({ token, bays }: Props) {
   );
 
   return (
-    <section className="mt-6 space-y-3">
+    <section className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-extrabold text-slate-900">Booking history</h2>
-          <p className="mt-1 text-[11px] text-slate-500">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             {totalCount} booking{totalCount === 1 ? '' : 's'} · RM {payoutTotal.toFixed(2)} owner payout
           </p>
         </div>

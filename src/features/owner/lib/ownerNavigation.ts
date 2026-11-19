@@ -1,6 +1,7 @@
 import {
   CalendarDays,
   ClipboardList,
+  History,
   LayoutDashboard,
   Layers,
   Menu,
@@ -16,6 +17,7 @@ import type { DashboardSearchItem } from '@/components/layout/DashboardHeader';
 
 export type OwnerView =
   | 'dashboard'
+  | 'bookingHistory'
   | 'publicParking'
   | 'availability'
   | 'reviews'
@@ -30,6 +32,7 @@ export const OWNER_SIDEBAR_GROUPS: AppSidebarGroup[] = [
     label: 'Parking',
     items: [
       { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+      { id: 'bookingHistory', label: 'Booking History', icon: History },
       { id: 'publicParking', label: 'Public Drive-In', icon: Layers },
       { id: 'availability', label: 'Configure Parking', icon: CalendarDays },
       { id: 'reviews', label: 'Reviews', icon: MessageSquare },
@@ -48,7 +51,8 @@ export const OWNER_SIDEBAR_GROUPS: AppSidebarGroup[] = [
 ];
 
 export const OWNER_SEARCH_ITEMS: DashboardSearchItem[] = [
-  { id: 'dashboard', label: 'Overview', keywords: ['dashboard', 'parking status', 'bookings'] },
+  { id: 'dashboard', label: 'Overview', keywords: ['dashboard', 'parking status'] },
+  { id: 'bookingHistory', label: 'Booking History', keywords: ['bookings', 'reservations', 'past bookings'] },
   { id: 'publicParking', label: 'Public Drive-In Lots', keywords: ['public parking', 'drive-in', 'hourly', 'carplate', 'turnover', 'capacity'] },
   { id: 'availability', label: 'Configure Parking', keywords: ['availability', 'schedule', 'timetable'] },
   { id: 'reviews', label: 'Reviews', keywords: ['feedback', 'owner replies'] },

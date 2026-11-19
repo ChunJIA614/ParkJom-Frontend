@@ -1,3 +1,4 @@
+import { Popover } from '@base-ui/react/popover';
 import SystemSelect from '@/components/ui/SystemSelect';
 import DateRangePicker from '@/components/ui/DateRangePicker';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -9,14 +10,13 @@ import {
   Car,
   Check,
   CheckCircle2,
+  CircleHelp,
   ChevronLeft,
   ChevronRight,
   FileText,
   GripVertical,
-  ImagePlus,
   Info,
   Lock,
-  MapPin,
   Minus,
   Plus,
   RefreshCw,
@@ -50,6 +50,7 @@ import type {
   ParkingAvailabilityCalendarHours,
   ParkingAvailabilityCalendarResponse,
   ParkingAvailabilityRulesResponse,
+  ParkingConfigurationPayload,
   ParkingConfigurationResponse,
   ParkingImagesResponse,
   ParkingSpotImage,
@@ -221,7 +222,7 @@ function emptySetup(bay?: ParkingBay): OwnerParkingSetup {
   return {
     photos: [],
     images: [],
-    description: '',
+    description: bay?.configurationDescription ?? '',
     accessInstructions: '',
     dailyRate: bay && safeNumber(bay.dailyRate) && (bay.dailyRate ?? 0) > 0 ? bay.dailyRate : null,
     monthlyRate: bay && safeNumber(bay.monthlyRate) && bay.monthlyRate > 0 ? bay.monthlyRate : null,
@@ -269,7 +270,9 @@ function normaliseSetup(value: unknown, bay?: ParkingBay): OwnerParkingSetup {
   return {
     photos,
     images,
-    description: typeof candidate.description === 'string' ? candidate.description : fallback.description,
+    description: bay?.configurationDescription !== undefined
+      ? fallback.description
+      : typeof candidate.description === 'string' ? candidate.description : fallback.description,
     accessInstructions: typeof candidate.accessInstructions === 'string'
       ? candidate.accessInstructions
       : fallback.accessInstructions,
@@ -463,12 +466,43 @@ function bayLabel(bay: ParkingBay): string {
   return `${bay.bayNumber || bay.parkingLabel || `Spot #${bay.parkingSpotId}`} · ${bay.propertyName || `Property #${bay.propertyId}`}`;
 }
 
+function ParkingSectionHeading({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="space-y-1">
+      <h2 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">{title}</h2>
+      <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 sm:text-sm">{description}</p>
+    </div>
+  );
+}
+
+function SaveTick({ message }: { message: string }) {
+  return (
+    <span role="status" className="inline-flex size-7 shrink-0 items-center justify-center text-emerald-700 dark:text-emerald-400">
+      <CheckCircle2 className="size-4" aria-hidden="true" />
+      <span className="sr-only">{message}</span>
+    </span>
+  );
+}
+
 function statusFor(spot: OwnerParkingWorkspaceSpot | undefined, date: string): OwnerParkingDay {
   return spot?.days[date] ?? { status: 'unavailable' };
 }
 
 function setupFromSpot(spot: OwnerParkingWorkspaceSpot | undefined, bay?: ParkingBay): OwnerParkingSetup {
   return spot?.setup ?? emptySetup(bay);
+}
+
+function toConfigurationPayload(setup: OwnerParkingSetup): ParkingConfigurationPayload {
+  return {
+    description: setup.description.trim(),
+    dailyRate: setup.dailyRate ?? 0,
+    monthlyRate: setup.monthlyRate ?? 0,
+    hasEvCharging: setup.hasEvCharging,
+    evChargingSpeed: setup.hasEvCharging ? setup.evChargingSpeed : null,
+    isCovered: setup.isCovered,
+    isHandicapAccessible: setup.isHandicapAccessible,
+    hasCctv: setup.hasCctv,
+  };
 }
 
 function rateText(value: number | null): string {
@@ -515,6 +549,7 @@ export default function AvailabilityScheduler({
   });
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [setupStep, setSetupStep] = useState<SetupStep>(1);
+  const [completedSetupSteps, setCompletedSetupSteps] = useState<Set<SetupStep>>(() => new Set());
   const [setupForm, setSetupForm] = useState<{
     photos: string[];
     description: string;
@@ -532,6 +567,7 @@ export default function AvailabilityScheduler({
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSaving, setSetupSaving] = useState(false);
+  const savedConfigurations = useRef(new Map<number, { sourceUpdatedAt: string; payload: ParkingConfigurationPayload }>());
   const [imagesUploading, setImagesUploading] = useState(false);
   const [imageUpdatingId, setImageUpdatingId] = useState<number | null>(null);
   const [imageDeletingId, setImageDeletingId] = useState<number | null>(null);
@@ -622,6 +658,7 @@ export default function AvailabilityScheduler({
     });
     setPhotoPreviews((current) => ({ ...current, [selectedBayId]: [...setup.photos] }));
     setSetupStep(1);
+    setCompletedSetupSteps(new Set());
     setSetupMessage(null);
     setSetupError(null);
     setPendingPhotoCount(0);
@@ -930,19 +967,19 @@ export default function AvailabilityScheduler({
     return true;
   };
 
-  const saveConfiguration = async (): Promise<boolean> => {
+  const hasConfigurationChanges = (bay: ParkingBay, payload: ParkingConfigurationPayload): boolean => {
+    const saved = savedConfigurations.current.get(bay.parkingSpotId);
+    // Use the acknowledged save until a newer spot snapshot arrives from the API.
+    const baseline = saved && saved.sourceUpdatedAt === bay.updatedAt
+      ? saved.payload
+      : bay.configurationDescription !== undefined ? toConfigurationPayload(emptySetup(bay)) : null;
+    return baseline === null || JSON.stringify(payload) !== JSON.stringify(baseline);
+  };
+
+  const saveConfiguration = async (payload: ParkingConfigurationPayload): Promise<boolean> => {
     if (!activeBay) return false;
     if (pendingPhotoCount > 0) {
       setSetupError('Please wait for the photo previews to finish loading.');
-      return false;
-    }
-
-    const dailyRateText = setupForm.dailyRate.trim();
-    const monthlyRateText = setupForm.monthlyRate.trim();
-    const dailyRate = dailyRateText === '' ? 0 : Number(dailyRateText);
-    const monthlyRate = monthlyRateText === '' ? 0 : Number(monthlyRateText);
-    if ((dailyRateText !== '' && (!Number.isFinite(dailyRate) || dailyRate < 1)) || (monthlyRateText !== '' && (!Number.isFinite(monthlyRate) || monthlyRate < 1))) {
-      setSetupError('Each entered rate must be at least RM 1.');
       return false;
     }
 
@@ -956,21 +993,13 @@ export default function AvailabilityScheduler({
     setSetupMessage(null);
     setSetupError(null);
     try {
-      const response = await updateParkingConfiguration(token, activeBay.parkingSpotId, {
-        description: setupForm.description.trim(),
-        dailyRate,
-        monthlyRate,
-        hasEvCharging: setupForm.hasEvCharging,
-        evChargingSpeed: setupForm.hasEvCharging ? setupForm.evChargingSpeed : null,
-        isCovered: setupForm.isCovered,
-        isHandicapAccessible: setupForm.isHandicapAccessible,
-        hasCctv: setupForm.hasCctv,
-      });
+      const response = await updateParkingConfiguration(token, activeBay.parkingSpotId, payload);
       const body = await response.json().catch(() => null) as ParkingConfigurationResponse | null;
       if (!response.ok || !body?.success) {
         throw new Error(body?.message || `Unable to save parking configuration (${response.status}).`);
       }
 
+      savedConfigurations.current.set(activeBay.parkingSpotId, { sourceUpdatedAt: activeBay.updatedAt, payload });
       activeBay.hasEvCharging = setupForm.hasEvCharging;
       activeBay.evChargingSpeed = setupForm.hasEvCharging ? setupForm.evChargingSpeed : null;
       activeBay.isCovered = setupForm.isCovered;
@@ -1011,6 +1040,8 @@ export default function AvailabilityScheduler({
     setPhotoPreviews((current) => ({ ...current, [activeSpotId]: secureUrls }));
     setSetupMessage(message);
   };
+
+  const hasNewPhotos = setupForm.photos.some((photo) => photo.startsWith('data:image/'));
 
   const uploadImages = async (): Promise<boolean> => {
     if (!activeBay) return false;
@@ -1141,15 +1172,19 @@ export default function AvailabilityScheduler({
     published: activeSetup.published,
   });
 
-  const continueFromPhotos = async () => {
+  const markSetupStepComplete = (step: SetupStep) => {
+    setCompletedSetupSteps((current) => current.has(step) ? current : new Set(current).add(step));
+  };
+
+  const continueFromPhotos = async (allowSave: boolean) => {
     if (setupForm.photos.length === 0) {
       setSetupError('Add at least one clear parking photo to continue.');
       return;
     }
-    if (await uploadImages()) {
-      setSetupError(null);
-      setSetupStep(2);
-    }
+    if (hasNewPhotos && (!allowSave || !(await uploadImages()))) return;
+    setSetupError(null);
+    markSetupStepComplete(1);
+    setSetupStep(2);
   };
 
   const continueFromDescription = () => {
@@ -1158,10 +1193,11 @@ export default function AvailabilityScheduler({
       return;
     }
     setSetupError(null);
+    markSetupStepComplete(2);
     setSetupStep(3);
   };
 
-  const continueFromPricing = async () => {
+  const continueFromPricing = async (allowSave: boolean) => {
     const candidate = currentSetupCandidate();
     const rates = [candidate.dailyRate, candidate.monthlyRate];
     if (rates.some((rate) => rate !== null && (!Number.isFinite(rate) || rate < 1))) {
@@ -1172,10 +1208,15 @@ export default function AvailabilityScheduler({
       setSetupError('Set a daily or monthly rate to continue.');
       return;
     }
-    if (await saveConfiguration()) {
-      setSetupError(null);
-      setSetupStep(4);
-    }
+    if (!activeBay) return;
+    const payload = toConfigurationPayload(candidate);
+    const needsSave = hasConfigurationChanges(activeBay, payload);
+    if (needsSave && (!allowSave || !(await saveConfiguration(payload)))) return;
+    if (!needsSave) setSetupMessage(null);
+
+    setSetupError(null);
+    markSetupStepComplete(3);
+    setSetupStep(4);
   };
 
   const continueToPublish = () => {
@@ -1185,6 +1226,7 @@ export default function AvailabilityScheduler({
       return;
     }
     setSetupError(null);
+    markSetupStepComplete(4);
     setSetupStep(5);
   };
 
@@ -1399,7 +1441,7 @@ export default function AvailabilityScheduler({
       return;
     }
     if (currentDay.status === nextStatus) {
-      setDayMessage(`${formatShortDate(selectedDate)} is already ${statusMeta[nextStatus].shortLabel.toLowerCase()}.`);
+      setDayMessage(null);
       setDayError(null);
       return;
     }
@@ -1534,43 +1576,74 @@ export default function AvailabilityScheduler({
   }
 
   const setupPhotos = photoPreviews[activeSpotId] ?? setupForm.photos;
-  const setupCandidate: OwnerParkingSetup = {
-    photos: setupForm.photos,
-    images: activeSetup.images,
-    description: setupForm.description,
-    accessInstructions: setupForm.accessInstructions,
-    dailyRate: setupForm.dailyRate.trim() === '' ? null : Number(setupForm.dailyRate),
-    monthlyRate: setupForm.monthlyRate.trim() === '' ? null : Number(setupForm.monthlyRate),
-    hasEvCharging: setupForm.hasEvCharging,
-    evChargingSpeed: setupForm.evChargingSpeed,
-    isCovered: setupForm.isCovered,
-    isHandicapAccessible: setupForm.isHandicapAccessible,
-    hasCctv: setupForm.hasCctv,
-    published: activeSetup.published,
-  };
+  const setupCandidate = currentSetupCandidate();
   const setupIsComplete = setupCompletion(setupCandidate).complete;
+  const publishedAndConfigured = activeSetup.published && activeBay.isConfigurationComplete === true;
+  const completedSteps = (publishedAndConfigured ? 4 : completedSetupSteps.size) + Number(activeSetup.published);
+  const advanceSetupStep = {
+    1: continueFromPhotos,
+    2: continueFromDescription,
+    3: continueFromPricing,
+    4: continueToPublish,
+  };
+
+  const nextStepRequiresSave = (setupStep === 1 && hasNewPhotos)
+    || (setupStep === 3 && hasConfigurationChanges(activeBay, toConfigurationPayload(setupCandidate)));
+
+  const openSetupStep = (step: SetupStep) => {
+    if (setupBusy || pendingPhotoCount > 0) return;
+    if (step < setupStep) {
+      setSetupError(null);
+      setSetupStep(step);
+    } else if (setupStep < 5 && step === setupStep + 1 && !nextStepRequiresSave) {
+      void advanceSetupStep[setupStep as Exclude<SetupStep, 5>](false);
+    }
+  };
+
+  const setupNavigationBusy = setupBusy || pendingPhotoCount > 0;
+  const isPublishStep = setupStep === 5;
+  const showTimetableAction = isPublishStep && activeSetup.published;
+  const SetupActionIcon = isPublishStep ? (showTimetableAction ? CalendarRange : Send) : ChevronRight;
+  const setupActionLabel = {
+    1: imagesUploading ? 'Uploading photos…' : hasNewPhotos ? 'Upload & continue' : 'Continue',
+    2: 'Continue',
+    3: setupSaving ? 'Saving…' : nextStepRequiresSave ? 'Save & review' : 'Review',
+    4: 'Continue',
+    5: showTimetableAction ? 'Set availability' : publishing ? 'Publishing…' : 'Publish listing',
+  }[setupStep];
+
+  const handleSetupAction = () => {
+    if (showTimetableAction) setSection('timetable');
+    else if (isPublishStep) void handlePublish();
+    else void advanceSetupStep[setupStep as Exclude<SetupStep, 5>](true);
+  };
 
   return (
     <div className="space-y-3 sm:space-y-5 md:space-y-6">
-      <div className="rounded-3xl border border-white/80 dark:border-white/10 bg-white/90 dark:bg-[#141417] p-2 shadow-[0_12px_36px_-28px_rgba(15,23,42,0.38)] md:p-3">
-        <div className="flex flex-col gap-1.5 sm:gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-2 px-1 sm:gap-3 sm:px-2 sm:py-1">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm sm:h-10 sm:w-10 sm:rounded-xl"><CalendarDays className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" /></div>
-             <div className="min-w-0"><p className="hidden text-xs font-semibold text-blue-600 sm:block">Owner workspace</p><h1 className="truncate text-base font-extrabold tracking-tight text-slate-950 sm:text-lg">Configure parking</h1><p className="hidden truncate text-xs text-slate-500 md:block">Set up your listing, then choose when commuters can book it.</p></div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div role="tablist" aria-label="Configure parking sections" className="grid h-10 shrink-0 self-end grid-cols-2 gap-1 rounded-xl bg-slate-200/65 p-1 sm:h-11 sm:order-2 sm:min-w-[190px] sm:self-start">
+          <button id="parking-setup-tab" type="button" role="tab" aria-selected={section === 'setup'} aria-controls="parking-setup-panel" onClick={() => setSection('setup')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'setup' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" aria-hidden="true" /> Setup</span></button>
+          <button id="parking-timetable-tab" type="button" role="tab" aria-selected={section === 'timetable'} aria-controls="parking-timetable-panel" onClick={() => setSection('timetable')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'timetable' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><CalendarRange className="h-3.5 w-3.5" aria-hidden="true" /> Timetable</span></button>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:order-1">
+          <div className="min-w-32 flex-1 sm:flex-none">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Editing parking spot</p>
+            <p className="mt-0.5 break-words text-sm font-semibold text-slate-900 dark:text-white sm:text-base">
+              {activeBay.propertyName || `Property #${activeBay.propertyId}`} · {activeBay.parkingLabel || activeBay.bayNumber || `Spot #${activeBay.parkingSpotId}`}
+            </p>
           </div>
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-            <div className="flex min-w-0 items-center sm:min-w-[260px]">
-              <SystemSelect
-                value={selectedBayId}
-                onChange={(event) => setSelectedBayId(event.target.value)}
-                disabled={pendingPhotoCount > 0 || setupBusy}
-                leadingIcon={<MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />}
-                className="w-full text-xs font-bold"
-                aria-label="Parking spot"
-              >
-                {bays.map((bay) => <option key={bay.id || bay.parkingSpotId} value={String(bay.parkingSpotId)}>{bayLabel(bay)}</option>)}
-              </SystemSelect>
-            </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <SystemSelect
+              value={selectedBayId}
+              onChange={(event) => setSelectedBayId(event.target.value)}
+              disabled={setupNavigationBusy || deletingSpot || bays.length < 2}
+              triggerLabel="Change"
+              menuMinWidth={260}
+              className="min-h-11 px-4!"
+              aria-label="Change parking spot"
+            >
+              {bays.map((bay) => <option key={bay.id || bay.parkingSpotId} value={String(bay.parkingSpotId)}>{bayLabel(bay)}</option>)}
+            </SystemSelect>
             {onDeleteParking && activeBay && (() => {
               const activeCount = activeBay.activeBookingCount ?? 0;
               const hasActiveBooking = Boolean(
@@ -1614,7 +1687,7 @@ export default function AvailabilityScheduler({
                     }
                   }}
                   title={hasActiveBooking ? `Cannot remove parking spot while an active or upcoming booking exists (${activeCount > 0 ? `${activeCount} booking(s)` : 'active reservation'})` : 'Remove this parking spot'}
-                  className={`inline-flex h-10 sm:h-11 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-colors ${
+                  className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-4 text-xs font-bold transition-colors ${
                     hasActiveBooking
                       ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-500 cursor-not-allowed opacity-60'
                       : 'border-rose-200 dark:border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 cursor-pointer'
@@ -1625,126 +1698,128 @@ export default function AvailabilityScheduler({
                 </button>
               );
             })()}
-            <div role="tablist" aria-label="Configure parking sections" className="grid h-10 grid-cols-2 gap-1 rounded-xl bg-slate-200/65 p-1 sm:h-11 sm:min-w-[250px]">
-              <button id="parking-setup-tab" type="button" role="tab" aria-selected={section === 'setup'} aria-controls="parking-setup-panel" onClick={() => setSection('setup')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'setup' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" aria-hidden="true" /> Setup</span></button>
-              <button id="parking-timetable-tab" type="button" role="tab" aria-selected={section === 'timetable'} aria-controls="parking-timetable-panel" onClick={() => setSection('timetable')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'timetable' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><CalendarRange className="h-3.5 w-3.5" aria-hidden="true" /> Timetable</span></button>
-            </div>
           </div>
         </div>
       </div>
 
       <AnimatePresence mode="wait" initial={false}>
       {section === 'setup' ? (
-        <motion.section id="parking-setup-panel" role="tabpanel" aria-labelledby="parking-setup-tab" key="setup" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition}>
-          <div className="space-y-3 rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white/90 dark:bg-[#141417] p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] sm:space-y-5 sm:p-4 md:p-6 overflow-hidden">
-            <div className="hidden flex-col gap-2 sm:flex sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white">Parking setup</h2>
-                <p className="mt-0.5 text-[11px] text-slate-500">Set the information commuters see before they choose a date.</p>
-              </div>
-              <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold ${activeSetup.published ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                {activeSetup.published ? <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> : <Info className="h-3 w-3" aria-hidden="true" />}
-                {activeSetup.published ? 'Published' : 'Draft'}
-              </span>
+        <motion.section id="parking-setup-panel" role="tabpanel" aria-labelledby="parking-setup-tab" key="setup" className="overflow-hidden rounded-2xl border border-slate-200 bg-[var(--setup-surface)] shadow-sm [--setup-surface:white] dark:border-white/10 dark:[--setup-surface:#141417]" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition}>
+          <nav aria-label="Parking setup steps" className="bg-stone-100/80 px-2 pt-2 dark:bg-white/[0.035] sm:px-4 sm:pt-2.5">
+            <div className="mb-1.5 flex justify-end px-1">
+              <span className="text-[11px] font-medium tabular-nums text-stone-600 dark:text-stone-400">{completedSteps} of {SETUP_STEPS.length} complete</span>
             </div>
+            <ol className="grid grid-cols-5 items-end gap-0.5 sm:gap-1.5">
+              {SETUP_STEPS.map((label, index) => {
+                const step = (index + 1) as SetupStep;
+                const selected = setupStep === step;
+                const complete = step === 5 ? activeSetup.published : publishedAndConfigured || completedSetupSteps.has(step);
+                const saveRequired = step === setupStep + 1 && nextStepRequiresSave;
+                const disabled = !selected && (step > setupStep + 1 || setupNavigationBusy || saveRequired);
 
-            <div className="rounded-2xl bg-slate-50 dark:bg-[#18181C] p-2.5 sm:p-3.5 border border-slate-200/50 dark:border-white/10" aria-label="Setup progress">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold text-blue-600">Step {setupStep} of {SETUP_STEPS.length}</p>
-                  <p className="mt-0.5 text-sm font-bold text-slate-900">{SETUP_STEPS[setupStep - 1]}</p>
-                </div>
-                <span className="text-[11px] font-semibold tabular-nums text-slate-500">{Math.round((setupStep / SETUP_STEPS.length) * 100)}%</span>
-              </div>
-              <div
-                role="progressbar"
-                aria-valuemin={1}
-                aria-valuemax={SETUP_STEPS.length}
-                aria-valuenow={setupStep}
-                aria-valuetext={`${SETUP_STEPS[setupStep - 1]}, step ${setupStep} of ${SETUP_STEPS.length}`}
-                className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200"
-              >
-                <span className="block h-full rounded-full bg-blue-600 transition-[width] duration-300" style={{ width: `${(setupStep / SETUP_STEPS.length) * 100}%` }} />
-              </div>
-              <ol className="mt-2 grid grid-cols-5 gap-1" aria-hidden="true">
-                {SETUP_STEPS.map((label, index) => (
-                  <li key={label} className={`truncate text-center text-[9px] font-semibold ${setupStep === index + 1 ? 'text-blue-600' : setupStep > index + 1 ? 'text-slate-600' : 'text-slate-400'}`}>{label}</li>
-                ))}
-              </ol>
-            </div>
-
-            {setupMessage && <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[11px] font-medium text-emerald-700"><CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />{setupMessage}</div>}
+                return (
+                  <li key={label} className="min-w-0">
+                    <button
+                      type="button"
+                      aria-current={selected ? 'step' : undefined}
+                      disabled={disabled}
+                      title={saveRequired ? 'Save your changes to continue' : undefined}
+                      onClick={() => openSetupStep(step)}
+                      className={`relative grid w-full min-w-0 grid-cols-[1fr_auto_1fr] content-center items-center gap-x-0.5 gap-y-0.5 rounded-t-lg border px-1 py-1.5 text-center focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-indigo-500 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-x-1.5 sm:px-2.5 sm:text-left ${selected
+                        ? 'z-10 min-h-12 border-stone-200 border-b-0! bg-[var(--setup-surface)]! font-semibold text-indigo-950 shadow-none! transition-none! dark:border-white/10 dark:text-indigo-200'
+                        : 'min-h-11 border-transparent! font-medium text-stone-600 enabled:hover:bg-white/65 dark:text-stone-300 dark:enabled:hover:bg-white/5'}`}>
+                      <span className={`col-start-2 row-start-1 grid size-4 place-items-center rounded-md font-mono text-[10px] leading-none sm:col-start-1 sm:size-5 ${selected
+                        ? 'bg-indigo-100 font-semibold text-indigo-800 dark:bg-indigo-400/20 dark:text-indigo-200'
+                        : 'text-stone-500 dark:text-stone-400'}`} aria-hidden="true">
+                        {step}
+                      </span>
+                      <span className="col-span-3 row-start-2 min-w-0 text-[10px] leading-tight sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:text-xs">
+                        {label === 'Description' ? (
+                          <><span className="sm:hidden">Details</span><span className="hidden sm:inline">Description</span></>
+                        ) : label}
+                      </span>
+                      <Check
+                        className={`col-start-3 row-start-1 size-3 justify-self-end text-emerald-700 dark:text-emerald-400 sm:size-3.5 ${complete ? '' : 'invisible'}`}
+                        strokeWidth={2.5}
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">{complete ? ' complete' : ' incomplete'}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+          <div className="space-y-4 p-4 sm:space-y-5 sm:p-6">
             {setupError && <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] font-medium text-rose-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{setupError}</div>}
 
             {setupStep === 1 && (
               <motion.div key="photos-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
-                <div>
-                  <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Show commuters the exact spot</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">
-                    Add photos of your parking bay. <strong className="font-semibold text-slate-900 dark:text-white">Uploading 5 photos is recommended</strong> for the best multi-picture showcase on the booking page (not compulsory — at least 1 photo required).
-                  </p>
-                </div>
+                <ParkingSectionHeading
+                  title="Add some photos!"
+                  description="Give commuters a look at your parking spot so they know what to look for when they arrive. Start with one clear photo and add more angles if you can."
+                />
                 <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={handlePhotoChange} className="hidden" />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={handlePhotoFileDrop}
-                  disabled={pendingPhotoCount > 0 || setupPhotos.length >= MAX_PHOTOS || setupBusy}
-                  className="photo-upload-dropzone flex min-h-24 w-full flex-col items-center justify-center gap-1.5 rounded-2xl px-4 text-center disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-36 sm:gap-2 sm:px-5"
-                >
-                  <span className="photo-upload-icon-circle grid h-11 w-11 place-items-center rounded-full"><UploadCloud className="h-5 w-5" aria-hidden="true" /></span>
-                  <span className="photo-upload-title text-sm">Tap to add photos</span>
-                  <span className="photo-upload-subtext text-[11px]">or drop JPG, PNG, WEBP here · {setupPhotos.length}/{MAX_PHOTOS} (5 photos recommended)</span>
-                </button>
-                {setupPhotos.length > 0 && (
-                  <div>
-                    <div className="mb-2 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-[#A1A1AA]"><GripVertical className="h-3.5 w-3.5" aria-hidden="true" />Drag to reorder, or tap one photo then another to swap.</div>
-                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                      {setupPhotos.map((photo, index) => {
-                        const uploadedImage = activeSetup.images.find((image) => image.secureUrl === photo);
-                        const selected = selectedPhotoIndex === index;
-                        return (
-                          <div
-                            key={uploadedImage?.parkingSpotImageId ?? `${photo.slice(0, 24)}-${index}`}
-                            role="button"
-                            tabIndex={0}
-                            draggable={!setupBusy}
-                            aria-pressed={selected}
-                            aria-label={`Parking photo ${index + 1}. ${selected ? 'Selected. Choose another photo to move it.' : 'Select to reorder.'}`}
-                            onClick={() => handlePhotoTap(index)}
-                            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handlePhotoTap(index); } }}
-                            onDragStart={(event) => { setDraggedPhotoIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)); }}
-                            onDragEnd={() => setDraggedPhotoIndex(null)}
-                            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
-                            onDrop={(event) => { event.preventDefault(); const from = draggedPhotoIndex ?? Number(event.dataTransfer.getData('text/plain')); if (Number.isInteger(from)) void swapPhotos(from, index); setDraggedPhotoIndex(null); setSelectedPhotoIndex(null); }}
-                            className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-2xl bg-slate-100 dark:bg-white/5 shadow-sm outline-none transition ${selected ? 'ring-4 ring-blue-500/25 ring-offset-2' : 'ring-1 ring-black/5 dark:ring-white/10'} ${draggedPhotoIndex === index ? 'opacity-50' : ''}`}
-                          >
-                            <img src={photo} alt="" className="h-full w-full object-cover" draggable={false} />
-                            <span className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm ${index === 0 ? 'bg-white text-slate-900' : 'bg-slate-950/70 text-white'}`}>{index === 0 ? 'Cover' : index + 1}</span>
-                            <span className="absolute bottom-2 left-2 grid h-8 w-8 place-items-center rounded-full bg-slate-950/65 text-white backdrop-blur"><GripVertical className="h-4 w-4" aria-hidden="true" /></span>
-                            <button type="button" onClick={(event) => { event.stopPropagation(); if (uploadedImage) void deleteImage(uploadedImage); else removePhoto(index); }} disabled={setupBusy} className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-slate-950/70 text-white backdrop-blur hover:bg-rose-600 disabled:opacity-50" aria-label={`Remove parking photo ${index + 1}`}><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
-                            {imageUpdatingId === uploadedImage?.parkingSpotImageId && <span className="absolute inset-0 grid place-items-center bg-slate-950/55 text-[11px] font-bold text-white">Reordering…</span>}
-                            {imageDeletingId === uploadedImage?.parkingSpotImageId && <span className="absolute inset-0 grid place-items-center bg-rose-950/65 text-[11px] font-bold text-white">Removing…</span>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                <div className="grid grid-cols-3 gap-2 sm:gap-3" role="group" aria-label="Parking photo gallery">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={handlePhotoFileDrop}
+                    disabled={pendingPhotoCount > 0 || setupPhotos.length >= MAX_PHOTOS || setupBusy}
+                    className="photo-upload-dropzone flex aspect-[4/3] min-w-0 w-full flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl p-1 text-center focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:p-3"
+                  >
+                    <span className="photo-upload-icon-circle grid size-6 shrink-0 place-items-center rounded-full sm:size-10">
+                      <UploadCloud className="size-3.5 sm:size-5" aria-hidden="true" />
+                    </span>
+                    <span className="photo-upload-title text-[10px] leading-tight sm:text-sm">{setupPhotos.length >= MAX_PHOTOS ? 'Photo limit reached' : 'Add photos'}</span>
+                    <span className="photo-upload-subtext text-[9px] tabular-nums leading-tight sm:text-[11px]">{setupPhotos.length}/{MAX_PHOTOS}</span>
+                  </button>
+                  {setupPhotos.map((photo, index) => {
+                    const uploadedImage = activeSetup.images.find((image) => image.secureUrl === photo);
+                    const selected = selectedPhotoIndex === index;
+                    return (
+                      <div
+                        key={uploadedImage?.parkingSpotImageId ?? `${photo.slice(0, 24)}-${index}`}
+                        role="button"
+                        tabIndex={0}
+                        draggable={!setupBusy}
+                        aria-pressed={selected}
+                        aria-label={`Parking photo ${index + 1}. ${selected ? 'Selected. Choose another photo to move it.' : 'Select to reorder.'}`}
+                        onClick={() => handlePhotoTap(index)}
+                        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handlePhotoTap(index); } }}
+                        onDragStart={(event) => { setDraggedPhotoIndex(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)); }}
+                        onDragEnd={() => setDraggedPhotoIndex(null)}
+                        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
+                        onDrop={(event) => { event.preventDefault(); const from = draggedPhotoIndex ?? Number(event.dataTransfer.getData('text/plain')); if (Number.isInteger(from)) void swapPhotos(from, index); setDraggedPhotoIndex(null); setSelectedPhotoIndex(null); }}
+                        className={`group relative aspect-[4/3] cursor-grab overflow-hidden rounded-2xl bg-slate-100 dark:bg-white/5 shadow-sm outline-none transition ${selected ? 'ring-4 ring-blue-500/25 ring-offset-2' : 'ring-1 ring-black/5 dark:ring-white/10'} ${draggedPhotoIndex === index ? 'opacity-50' : ''}`}
+                      >
+                        <img src={photo} alt="" className="h-full w-full object-cover" draggable={false} />
+                        <span className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm ${index === 0 ? 'bg-white text-slate-900' : 'bg-slate-950/70 text-white'}`}>{index === 0 ? 'Cover' : index + 1}</span>
+                        <span className="absolute bottom-2 left-2 grid h-8 w-8 place-items-center rounded-full bg-slate-950/65 text-white backdrop-blur"><GripVertical className="h-4 w-4" aria-hidden="true" /></span>
+                        <button type="button" onClick={(event) => { event.stopPropagation(); if (uploadedImage) void deleteImage(uploadedImage); else removePhoto(index); }} disabled={setupBusy} className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-slate-950/70 text-white backdrop-blur hover:bg-rose-600 disabled:opacity-50" aria-label={`Remove parking photo ${index + 1}`}><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
+                        {imageUpdatingId === uploadedImage?.parkingSpotImageId && <span className="absolute inset-0 grid place-items-center bg-slate-950/55 text-[11px] font-bold text-white">Reordering…</span>}
+                        {imageDeletingId === uploadedImage?.parkingSpotImageId && <span className="absolute inset-0 grid place-items-center bg-rose-950/65 text-[11px] font-bold text-white">Removing…</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {setupPhotos.length > 1 && (
+                  <p className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    <GripVertical className="size-3.5 shrink-0" aria-hidden="true" />
+                    Drag to reorder, or tap two photos to swap them.
+                  </p>
                 )}
                 {pendingPhotoCount > 0 && <p className="text-[11px] font-medium text-blue-600">Preparing photo preview…</p>}
-                <div className="border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => void continueFromPhotos()} disabled={pendingPhotoCount > 0 || setupBusy} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{imagesUploading ? 'Uploading photos…' : 'Continue'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
-                </div>
               </motion.div>
             )}
 
             {setupStep === 2 && (
               <motion.div key="description-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
-                <div>
-                  <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Describe the parking spot</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">Help commuters recognise the bay and find it without calling you.</p>
-                </div>
+                <ParkingSectionHeading
+                  title="Help commuters find your spot"
+                  description="Tell them where to go. A floor number, nearby lift, or familiar landmark can make your bay easier to find."
+                />
                 <label className="block">
                   <span className="mb-2 block text-xs font-semibold text-slate-800 dark:text-slate-200">Description</span>
                   <textarea value={setupForm.description} onChange={(event) => replaceSetupForm('description', event.target.value)} rows={6} maxLength={500} placeholder="Covered bay on Level B2, beside the lift lobby. Enter through the visitor lane." className="w-full resize-none rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-slate-900 dark:text-white outline-none placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:border-blue-500 focus:bg-white dark:focus:bg-[#18181C] focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/40 sm:py-3.5" />
@@ -1869,39 +1944,35 @@ export default function AvailabilityScheduler({
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(1)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
-                  <button type="button" onClick={continueFromDescription} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
-                </div>
               </motion.div>
             )}
 
             {setupStep === 3 && (
               <motion.div key="pricing-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
-                <div>
-                  <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Set your rates</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">Add one or both prices. Leave a rate empty if you do not offer it.</p>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 basis-32">
+                    <ParkingSectionHeading
+                      title="Set your rates"
+                      description="Choose what you’d like to charge per day, per month, or both. Leave a rate blank if you don’t offer it."
+                    />
+                  </div>
+                  {aiPricingRecommendation && (
+                    <AiPricingAdvisorCard
+                      key={activeSpotId}
+                      variant="detailed"
+                      recommendation={aiPricingRecommendation}
+                      onApplyRates={(daily, monthly) => {
+                        replaceRate('dailyRate', String(daily));
+                        replaceRate('monthlyRate', String(monthly));
+                        setSetupMessage(null);
+                      }}
+                    />
+                  )}
                 </div>
-                {aiPricingRecommendation && (
-                  <AiPricingAdvisorCard
-                    variant="detailed"
-                    recommendation={aiPricingRecommendation}
-                    onApplyRates={(daily, monthly) => {
-                      replaceRate('dailyRate', String(daily));
-                      replaceRate('monthlyRate', String(monthly));
-                      setSetupMessage(
-                        `Applied AI optimal pricing: RM ${daily.toFixed(2)}/day & RM ${monthly.toFixed(2)}/month.`,
-                      );
-                    }}
-                  />
-                )}
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="min-w-0 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-3 shadow-sm sm:p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <label htmlFor="owner-daily-rate" className="text-xs font-semibold text-slate-700 dark:text-slate-200">Daily rate</label>
-                      <span className="rounded-md bg-slate-100 dark:bg-white/10 px-2 py-1 text-[9px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Optional</span>
-                    </div>
-                    <div className="mt-3 flex min-h-14 min-w-0 w-full items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-1.5 focus-within:border-blue-400 focus-within:bg-white dark:focus-within:bg-[#18181C] focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40">
+                <div className="mx-auto grid w-full max-w-[25rem] grid-cols-1 gap-3 sm:gap-4">
+                  <div className="min-w-0">
+                    <label htmlFor="owner-daily-rate" className="text-xs font-semibold text-slate-700 dark:text-slate-200">Daily rate</label>
+                    <div className="mt-2 flex min-h-[3.75rem] min-w-0 w-full items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-1.5 focus-within:border-blue-400 focus-within:bg-white dark:focus-within:bg-[#18181C] focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40">
                       <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 dark:bg-white/[0.06] px-3 text-sm font-bold text-blue-700 dark:text-blue-400">RM</span>
                       <input id="owner-daily-rate" type="text" size={1} inputMode="decimal" value={setupForm.dailyRate} onChange={(event) => replaceRate('dailyRate', event.target.value)} placeholder="0" aria-describedby="owner-daily-rate-unit" className="min-w-0 w-full flex-1 border-0 !border-0 bg-transparent !bg-transparent px-3 text-2xl font-bold text-slate-950 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:ring-0 focus:border-0 !shadow-none" />
                       <div className="flex shrink-0 gap-1">
@@ -1912,12 +1983,26 @@ export default function AvailabilityScheduler({
                     <p id="owner-daily-rate-unit" className="mt-2 text-[10px] text-slate-500 dark:text-[#A1A1AA]">Charged per booking day. Minimum RM 1.</p>
                   </div>
 
-                  <div className="min-w-0 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-3 shadow-sm sm:p-4">
-                    <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
                       <label htmlFor="owner-monthly-rate" className="text-xs font-semibold text-slate-700 dark:text-slate-200">Monthly rate</label>
-                      <span className="rounded-md bg-slate-100 dark:bg-white/10 px-2 py-1 text-[9px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Optional</span>
+                      <Popover.Root>
+                        <Popover.Trigger aria-label="How monthly pricing works" className="grid size-8 min-h-0! place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white">
+                          <CircleHelp className="size-4" aria-hidden="true" />
+                        </Popover.Trigger>
+                        <Popover.Portal>
+                          <Popover.Positioner side="top" align="start" sideOffset={6} collisionPadding={12} className="z-[60]">
+                            <Popover.Popup className="w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-[#202024]">
+                              <Popover.Title className="text-xs font-semibold text-slate-900 dark:text-white">Monthly pricing</Popover.Title>
+                              <Popover.Description className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                                Bookings of 21 days or more automatically use your monthly rate.
+                              </Popover.Description>
+                            </Popover.Popup>
+                          </Popover.Positioner>
+                        </Popover.Portal>
+                      </Popover.Root>
                     </div>
-                    <div className="mt-3 flex min-h-14 min-w-0 w-full items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-1.5 focus-within:border-blue-400 focus-within:bg-white dark:focus-within:bg-[#18181C] focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40">
+                    <div className="mt-2 flex min-h-[3.75rem] min-w-0 w-full items-center rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] p-1.5 focus-within:border-blue-400 focus-within:bg-white dark:focus-within:bg-[#18181C] focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/40">
                       <span className="inline-flex h-10 shrink-0 items-center rounded-lg bg-blue-50 dark:bg-white/[0.06] px-3 text-sm font-bold text-blue-700 dark:text-blue-400">RM</span>
                       <input id="owner-monthly-rate" type="text" size={1} inputMode="decimal" value={setupForm.monthlyRate} onChange={(event) => replaceRate('monthlyRate', event.target.value)} placeholder="0" aria-describedby="owner-monthly-rate-unit" className="min-w-0 w-full flex-1 border-0 !border-0 bg-transparent !bg-transparent px-3 text-2xl font-bold text-slate-950 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:ring-0 focus:border-0 !shadow-none" />
                       <div className="flex shrink-0 gap-1">
@@ -1928,70 +2013,119 @@ export default function AvailabilityScheduler({
                     <p id="owner-monthly-rate-unit" className="mt-2 text-[10px] text-slate-500 dark:text-[#A1A1AA]">Charged for a monthly booking. Minimum RM 1.</p>
                   </div>
                 </div>
-                <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(2)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>
-                  <button type="button" onClick={() => void continueFromPricing()} disabled={setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{setupSaving ? 'Saving…' : 'Save & review'} <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
-                </div>
               </motion.div>
             )}
 
             {setupStep === 4 && (
-              <motion.div key="review-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
-                <div>
-                  <h3 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">Review your listing</h3>
-                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA] sm:mt-1 sm:text-sm">This is what commuters will see before booking.</p>
-                </div>
-                <div className="overflow-hidden rounded-3xl border border-black/5 dark:border-white/10 bg-white dark:bg-[#18181C] shadow-[0_16px_45px_-30px_rgba(15,23,42,0.45)]">
-                  {setupPhotos[0] && <img src={setupPhotos[0]} alt="Parking listing cover" className="aspect-[16/7] w-full object-cover sm:aspect-[16/10]" />}
-                  <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">{activeBay.propertyName || `Property #${activeBay.propertyId}`}</p><h4 className="mt-1 text-lg font-bold text-slate-950 dark:text-white">{activeBay.bayNumber || activeBay.parkingLabel}</h4></div><span className="shrink-0 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:text-[#A1A1AA]">{setupPhotos.length} photo{setupPhotos.length === 1 ? '' : 's'}</span></div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">{setupForm.description}</p>
-                    <div className="flex flex-wrap gap-1.5 pt-1">
+              <motion.div key="review-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3">
+                <ParkingSectionHeading
+                  title="Review your listing"
+                  description="Check the photos, details, and rates commuters will see."
+                />
+                <div aria-label="Listing preview" className="mx-auto w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#18181C]">
+                  {setupPhotos[0] && <img src={setupPhotos[0]} alt="Parking listing cover" className="h-24 w-full object-cover sm:h-32" />}
+                  <div className="space-y-2.5 p-3 sm:p-4">
+                    <div className="flex items-start justify-between gap-2"><div><p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">{activeBay.propertyName || `Property #${activeBay.propertyId}`}</p><h4 className="mt-0.5 text-sm font-bold text-slate-950 dark:text-white">{activeBay.parkingLabel || activeBay.bayNumber}</h4></div><span className="shrink-0 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:text-[#A1A1AA]">{setupPhotos.length} photo{setupPhotos.length === 1 ? '' : 's'}</span></div>
+                    <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-600 dark:text-slate-300">{setupForm.description}</p>
+                    <div className="flex flex-wrap gap-1.5">
                       {setupForm.isCovered && (
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-400">
                           <Umbrella className="h-3 w-3" /> Covered bay
                         </span>
                       )}
                       {setupForm.hasCctv && (
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-400">
                           <ShieldCheck className="h-3 w-3" /> 24/7 CCTV
                         </span>
                       )}
                       {setupForm.isHandicapAccessible && (
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-400">
                           <Accessibility className="h-3 w-3" /> Handicap OKU
                         </span>
                       )}
                       {setupForm.hasEvCharging && (
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
                           <Zap className="h-3 w-3" /> EV Charging ({setupForm.evChargingSpeed || 'Available'})
                         </span>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 border-t border-slate-100 dark:border-white/10 pt-4">
-                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Daily</p><p className="mt-1 text-base font-bold text-slate-900 dark:text-white">{setupForm.dailyRate ? `RM ${Number(setupForm.dailyRate).toFixed(2)}` : 'Not offered'}</p></div>
-                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Monthly</p><p className="mt-1 text-base font-bold text-slate-900 dark:text-white">{setupForm.monthlyRate ? `RM ${Number(setupForm.monthlyRate).toFixed(2)}` : 'Not offered'}</p></div>
+                    <div className="grid grid-cols-2 gap-2 border-t border-slate-100 dark:border-white/10 pt-2">
+                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Daily</p><p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{setupForm.dailyRate ? `RM ${Number(setupForm.dailyRate).toFixed(2)}` : 'Not offered'}</p></div>
+                      <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Monthly</p><p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{setupForm.monthlyRate ? `RM ${Number(setupForm.monthlyRate).toFixed(2)}` : 'Not offered'}</p></div>
                     </div>
                   </div>
-                </div>
-                <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  <button type="button" onClick={() => setSetupStep(3)} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Edit</button>
-                  <button type="button" onClick={continueToPublish} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Continue <ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
                 </div>
               </motion.div>
             )}
 
             {setupStep === 5 && (
-              <motion.div key="publish-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 text-center sm:space-y-5">
-                <div className={`mx-auto grid h-16 w-16 place-items-center rounded-full ${activeSetup.published ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' : 'bg-blue-100 dark:bg-white/[0.06] text-blue-600 dark:text-blue-400'}`}>{activeSetup.published ? <CheckCircle2 className="h-8 w-8" aria-hidden="true" /> : <ShieldCheck className="h-8 w-8" aria-hidden="true" />}</div>
-                <div><h3 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">{activeSetup.published ? 'Your parking is live' : 'Ready to publish'}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500 dark:text-[#A1A1AA]">{activeSetup.published ? 'Commuters can now see this listing. Open bookable dates in the availability timetable.' : 'Publishing makes this listing visible. Dates remain closed until you open them in the timetable.'}</p></div>
-                <div className="mx-auto grid max-w-md grid-cols-3 gap-2"><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><ImagePlus className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">{setupPhotos.length} photos</p></div><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><FileText className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Details ready</p></div><div className="rounded-2xl bg-slate-50 dark:bg-white/[0.04] p-3"><Car className="mx-auto h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" /><p className="mt-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Rates set</p></div></div>
-                <div className="flex gap-2 border-t border-slate-100 dark:border-white/10 pt-3 sm:pt-5">
-                  {!activeSetup.published && <button type="button" onClick={() => setSetupStep(4)} disabled={setupBusy} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1C1C1E] px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back</button>}
-                  {activeSetup.published ? <button type="button" onClick={() => setSection('timetable')} className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700"><CalendarRange className="h-4 w-4" aria-hidden="true" /> Set availability</button> : <button type="button" onClick={() => void handlePublish()} disabled={!setupIsComplete || setupBusy} className="inline-flex min-h-12 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" aria-hidden="true" /> {publishing ? 'Publishing…' : 'Publish listing'}</button>}
-                </div>
+              <motion.div key="publish-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="py-5 text-center sm:py-7">
+                {activeSetup.published ? (
+                  <div role="status" className="mx-auto max-w-sm">
+                    <motion.div
+                      initial={prefersReducedMotion ? false : { scale: 0.85, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 320, damping: 21 }}
+                      className="mx-auto grid size-14 place-items-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-400"
+                      aria-hidden="true"
+                    >
+                      <motion.svg viewBox="0 0 24 24" className="size-7" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <motion.path
+                          d="m5 12 4.5 4.5L19 7"
+                          initial={prefersReducedMotion ? false : { pathLength: 0 }}
+                          animate={{ pathLength: 1 }}
+                          transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.1, duration: 0.38, ease: 'easeOut' }}
+                        />
+                      </motion.svg>
+                    </motion.div>
+                    <div className="mt-3">
+                      <ParkingSectionHeading
+                        title="You're all set!"
+                        description="Your parking listing is published. Set your availability so commuters can start booking."
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mx-auto max-w-sm">
+                    <ParkingSectionHeading
+                      title="Ready to publish?"
+                      description="Publish your listing, then choose which dates commuters can book."
+                    />
+                  </div>
+                )}
               </motion.div>
             )}
+
+            <footer aria-label="Setup navigation" className="flex flex-wrap items-start justify-between gap-2 border-t border-slate-100 pt-3 dark:border-white/10 sm:pt-4">
+              {setupStep > 1 && (
+                <button
+                  type="button"
+                  onClick={() => openSetupStep((setupStep - 1) as SetupStep)}
+                  disabled={setupNavigationBusy}
+                  className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-[#1C1C1E] dark:text-slate-200 dark:hover:bg-white/5"
+                >
+                  <ChevronLeft className="size-4 shrink-0" aria-hidden="true" />
+                  Back
+                </button>
+              )}
+              <div className="ml-auto flex max-w-full flex-col items-end gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  {setupMessage && !showTimetableAction && <SaveTick message={setupMessage} />}
+                  <button
+                    type="button"
+                    onClick={handleSetupAction}
+                    disabled={setupNavigationBusy || (setupStep >= 4 && !showTimetableAction && !setupIsComplete)}
+                    className="inline-flex min-h-11 min-w-28 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {setupActionLabel}
+                    <SetupActionIcon className="size-4 shrink-0" aria-hidden="true" />
+                  </button>
+                </div>
+                {setupStep === 3 && (
+                  <p className="text-right text-[11px] text-slate-500 dark:text-slate-400">Standard platform fee: 10% of booking total</p>
+                )}
+              </div>
+            </footer>
           </div>
 
         </motion.section>
@@ -2009,7 +2143,10 @@ export default function AvailabilityScheduler({
           )}
        <div className="rounded-3xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div><h2 className="text-base font-bold text-slate-900">Availability timetable</h2><p className="mt-1 text-xs leading-relaxed text-slate-500">Select a day to inspect it, then explicitly open or close it. Future dates start closed; booked dates stay locked.</p></div>
+              <ParkingSectionHeading
+                title="Availability timetable"
+                description="Select a day to view it, then open or close it. Future dates start closed, and booked dates stay locked."
+              />
               <div className="flex flex-wrap gap-2" aria-label="Availability legend">
                 {(Object.keys(statusMeta) as ParkingDayStatus[]).map((status) => { const meta = statusMeta[status]; const Icon = meta.icon; return <span key={status} className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${meta.badge}`}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{status === 'available' ? 'Open' : status === 'unavailable' ? 'Closed' : 'Booked'}</span>; })}
               </div>
@@ -2061,7 +2198,7 @@ export default function AvailabilityScheduler({
                 )}
               </div>
               {dayError && <p role="alert" className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{dayError}</p>}
-              {dayMessage && <p role="status" className={`flex items-center gap-1.5 text-[10px] font-semibold ${selectedDay.status === 'unavailable' ? 'text-slate-600' : 'text-emerald-700'}`}>{selectedDay.status === 'unavailable' ? <Ban className="h-3.5 w-3.5" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}{dayMessage}</p>}
+              {dayMessage && <SaveTick message={dayMessage} />}
               {selectedDay.status === 'booked' && <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3"><div className="flex items-center gap-2 text-[11px] font-bold text-slate-700"><Users className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Commuter booking</div><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Name</span><span className="text-right font-semibold text-slate-700">{selectedDay.booking?.commuterName || 'Booking details unavailable'}</span></div><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Vehicle</span><span className="inline-flex items-center gap-1 text-right font-semibold text-slate-700"><Car className="h-3 w-3" aria-hidden="true" />{selectedDay.booking?.vehicle || '—'}</span></div>{selectedDay.booking?.commuterPhone && <div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Contact</span><span className="font-semibold text-slate-700">{selectedDay.booking.commuterPhone}</span></div>}</div>}
               <div className="rounded-xl border border-slate-100 p-3 text-[10px] leading-relaxed text-slate-500"><strong className="text-slate-700">One booking per day.</strong> Once a commuter books this spot, the day remains locked until the backend handles cancellation or reopening.</div>
             </aside>
@@ -2189,7 +2326,7 @@ export default function AvailabilityScheduler({
               <button type="button" onClick={() => void bulkUpdate(bulkStatus)} disabled={availabilitySaving || !bulkPreview.total || bulkPreview.total > MAX_BULK_DAYS || !bulkPreview.editable} className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-xs font-semibold text-white hover:bg-[#006EE6] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"><Check className="h-4 w-4" aria-hidden="true" /> {availabilitySaving ? 'Creating rule…' : bulkStatus === 'available' ? 'Create rule' : 'Apply range'}</button>
             </div>
             {bulkError && <p role="alert" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{bulkError}</p>}
-            {bulkMessage && <p role="status" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{bulkMessage}</p>}
+            {bulkMessage && <div className="mt-2 flex justify-end"><SaveTick message={bulkMessage} /></div>}
           </div>
         </motion.section>
       )}

@@ -1,16 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Popover } from '@base-ui/react/popover';
 import {
   AlertCircle,
-  ArrowRight,
   Building2,
+  CalendarCheck,
   CalendarDays,
-  CheckCircle2,
+  CircleCheck,
+  CircleX,
   Clock3,
-  LockKeyhole,
+  Check,
+  ImageOff,
   RefreshCw,
   Settings2,
   Sparkles,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
@@ -26,7 +30,7 @@ import {
   OwnerPortfolioPricingResponse,
   SpotPricingRecommendation,
 } from '../api/dynamicPricingApi';
-import AiPricingAdvisorCard from './AiPricingAdvisorCard';
+import { showConfirm } from '@/components/common/ModalProvider';
 import { getOwnerParkingWorkspace, localDateKey } from './AvailabilityScheduler';
 
 /**
@@ -44,6 +48,7 @@ export interface DashboardHomeProps {
   onRefreshBays?: () => void | Promise<void>;
   onConfigureParking?: (parkingSpotId: number) => void;
   onOpenTimetable?: (parkingSpotId: number) => void;
+  onOpenSupport?: () => void;
 
   onUpdateAvailability?: (
     parkingSpotId: number,
@@ -58,31 +63,22 @@ export interface DashboardHomeProps {
   ) => Promise<ParkingActionResult>;
 }
 
-type StatusTone = 'green' | 'amber' | 'red' | 'blue' | 'slate';
+type StatusTone = 'green' | 'amber' | 'blue' | 'slate';
 
-const toneClasses: Record<StatusTone, { dot: string; text: string; chip: string }> = {
+const toneClasses: Record<StatusTone, { text: string; chip: string }> = {
   green: {
-    dot: 'bg-emerald-500',
     text: 'text-emerald-700',
     chip: 'border-emerald-200 bg-emerald-50',
   },
   amber: {
-    dot: 'bg-amber-500',
     text: 'text-amber-700',
     chip: 'border-amber-200 bg-amber-50',
   },
-  red: {
-    dot: 'bg-rose-500',
-    text: 'text-rose-700',
-    chip: 'border-rose-200 bg-rose-50',
-  },
   blue: {
-    dot: 'bg-blue-500',
     text: 'text-blue-700',
     chip: 'border-blue-200 bg-blue-50',
   },
   slate: {
-    dot: 'bg-slate-400',
     text: 'text-slate-600',
     chip: 'border-slate-200 bg-slate-50',
   },
@@ -97,29 +93,10 @@ function isApproved(verificationStatus: string | number): boolean {
   return value === 'approved' || value === 'verified' || value === '2';
 }
 
-function verificationStatus(bay: ParkingBay): { label: string; tone: StatusTone } {
-  const value = normalize(bay.verificationStatus);
-  if (value === 'rejected' || value === '3') return { label: 'Rejected', tone: 'red' };
-  if (isApproved(bay.verificationStatus)) return { label: 'Approved', tone: 'green' };
-  return { label: 'Pending review', tone: 'amber' };
-}
-
 function hasRate(bay: ParkingBay): boolean {
   return [bay.monthlyRate, bay.dailyRate, bay.hourlyRate].some(
     (rate) => typeof rate === 'number' && Number.isFinite(rate) && rate > 0,
   );
-}
-
-function setupStatus(bay: ParkingBay): { label: string; tone: StatusTone } {
-  return hasRate(bay)
-    ? { label: 'Configured', tone: 'green' }
-    : { label: 'Needs setup', tone: 'amber' };
-}
-
-function publicationStatus(bay: ParkingBay): { label: string; tone: StatusTone } {
-  return bay.isPublished
-    ? { label: 'Published', tone: 'green' }
-    : { label: 'Hidden', tone: 'slate' };
 }
 
 function dateKey(value: string): string | null {
@@ -178,7 +155,14 @@ function scheduleStatus(
     };
   }
 
-  if (!bay.isPublished || !isApproved(bay.verificationStatus) || !hasRate(bay)) {
+  if (!isApproved(bay.verificationStatus)) {
+    const rejected = ['rejected', '3'].includes(normalize(bay.verificationStatus));
+    return rejected
+      ? { label: 'Verification rejected', detail: 'Verification needs attention', tone: 'slate', locked: false }
+      : { label: 'Awaiting verification', detail: 'Verification is pending approval', tone: 'amber', locked: false };
+  }
+
+  if (!bay.isPublished || !hasRate(bay)) {
     return {
       label: 'Not bookable',
       detail: 'Finish setup and publish this parking spot',
@@ -223,23 +207,37 @@ function scheduleStatus(
   };
 }
 
-function StatusLine({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: StatusTone;
-}) {
-  const classes = toneClasses[tone];
+function RateAmount({ rate, period }: { rate: number | null; period: 'day' | 'month' }) {
+  const hasRate = rate !== null && Number.isFinite(rate) && rate > 0;
+  const unit = period === 'day' ? 'day' : 'mo';
+
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-2.5 last:border-b-0">
-      <span className="text-[11px] font-medium text-slate-500">{label}</span>
-      <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${classes.text}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${classes.dot}`} aria-hidden="true" />
-        {value}
-      </span>
+    <div className="min-w-0">
+      <dt className="sr-only">{period === 'day' ? 'Daily rate' : 'Monthly rate'}</dt>
+      <dd className="flex min-w-0 flex-wrap items-baseline gap-x-1 leading-tight">
+        {hasRate ? (
+          <span className="max-w-full break-words text-sm font-semibold tabular-nums text-slate-900 dark:text-white">
+            <span className="mr-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">RM</span>{rate.toFixed(2)}
+          </span>
+        ) : (
+          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Not set</span>
+        )}
+        <span className="text-[10px] text-slate-500 dark:text-slate-400" aria-hidden="true">/{unit}</span>
+      </dd>
+    </div>
+  );
+}
+
+function ParkingCover({ url, label }: { url?: string; label: string }) {
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <div className="relative flex h-36 items-center justify-center overflow-hidden bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+      {url && !failed ? (
+        <img src={url} alt={label} loading="lazy" onError={() => setFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <ImageOff className="h-8 w-8" aria-label="Parking photo unavailable" />
+      )}
     </div>
   );
 }
@@ -253,7 +251,7 @@ export default function DashboardHome({
   onRefreshBays,
   onConfigureParking,
   onOpenTimetable,
-  onDeleteParking,
+  onOpenSupport,
 }: DashboardHomeProps) {
   const { user } = useAuth();
   const [portfolioPricing, setPortfolioPricing] = useState<OwnerPortfolioPricingResponse | null>(null);
@@ -319,6 +317,16 @@ export default function DashboardHome({
       onConfigureParking?.(parkingSpotId);
       return;
     }
+    const bay = bays.find((item) => item.parkingSpotId === parkingSpotId);
+    const confirmed = await showConfirm({
+      title: 'Apply suggested rates?',
+      message: `Set ${bay?.parkingLabel || 'this parking spot'} to RM ${dailyRateRm.toFixed(2)} per day and RM ${monthlyRateRm.toFixed(2)} per month?`,
+      confirmText: 'Apply rates',
+      variant: 'info',
+      icon: 'info',
+    });
+    if (!confirmed) return;
+
     setApplyingSpotId(parkingSpotId);
     try {
       const result = await applyAiSpotPricing(
@@ -465,98 +473,186 @@ export default function DashboardHome({
           <p className="mt-1 text-xs text-slate-500">Register a property before configuring its timetable.</p>
         </div>
       ) : (
-        <section aria-label="Parking spot status" className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <section aria-label="Parking spot status" className="grid grid-cols-1 gap-2 sm:gap-4 landscape:grid-cols-3">
           {bays.map((bay) => {
-            const verification = verificationStatus(bay);
-            const setup = setupStatus(bay);
-            const publication = publicationStatus(bay);
             const schedule = scheduleStatus(bay, bookings);
             const statusClasses = toneClasses[schedule.tone];
+            const StatusIcon = { blue: CalendarCheck, green: CircleCheck, amber: Clock3, slate: CircleX }[schedule.tone];
             const canConfigure = Boolean(onConfigureParking);
             const canOpenTimetable = Boolean(onOpenTimetable);
-            const activeSpotBookings = bookings.filter(
-              (item) =>
-                isBookingForBay(item, bay) &&
-                (item.status === 'Active' || item.status === 'Upcoming'),
-            );
-            const hasActiveBooking = schedule.locked || activeSpotBookings.length > 0;
+            const recommendation = recommendationMap.get(bay.parkingSpotId);
+            const verificationRejected = ['rejected', '3'].includes(normalize(bay.verificationStatus));
+            const configure = onConfigureParking && (() => onConfigureParking(bay.parkingSpotId));
+            const openTimetable = onOpenTimetable && (() => onOpenTimetable(bay.parkingSpotId));
+            const steps = [
+              {
+                label: 'Verify',
+                complete: isApproved(bay.verificationStatus),
+                hint: verificationRejected ? 'Contact Support about your verification.' : 'Verification is awaiting review.',
+                action: verificationRejected ? onOpenSupport : undefined,
+              },
+              {
+                label: 'Set up',
+                complete: bay.isConfigurationComplete ?? hasRate(bay),
+                hint: 'Finish your listing details.',
+                action: configure,
+              },
+              {
+                label: 'Schedule',
+                complete: bay.hasAvailabilityRules ?? false,
+                hint: 'Add bookable dates in the timetable.',
+                action: openTimetable,
+              },
+              {
+                label: 'Publish',
+                complete: bay.isPublished,
+                hint: 'Open Configure parking to publish your listing.',
+                action: configure,
+              },
+            ];
+            const nextStepIndex = steps.findIndex((step) => !step.complete);
+            const nextStep = steps[nextStepIndex];
+            const completedSteps = steps.filter((step) => step.complete).length;
 
             return (
-              <article key={bay.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                    <Building2 className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <h3 className="truncate text-sm font-bold text-slate-900 dark:text-white">
-                          {bay.propertyName || `Property #${bay.propertyId}`}
-                        </h3>
-                        <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                          {bay.bayNumber || bay.parkingLabel} · Spot #{bay.parkingSpotId}
-                          {bay.stationName && bay.stationName !== '—' ? ` · Near ${bay.stationName}` : ''}
-                        </p>
-                      </div>
-                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${statusClasses.chip} ${statusClasses.text}`}>
-                        {schedule.locked ? <LockKeyhole className="h-3 w-3" aria-hidden="true" /> : <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
-                        {schedule.label}
-                      </span>
+              <article key={bay.id} className="@container flex w-full min-w-0 max-w-sm flex-col overflow-hidden rounded-2xl landscape:max-w-none border border-slate-200 bg-white shadow-sm dark:border-white/10">
+                <ParkingCover key={bay.imageUrl} url={bay.imageUrl} label={`Parking at ${bay.propertyName}, bay ${bay.parkingLabel}`} />
+                <div className="flex flex-1 flex-col p-2 @min-[15rem]:p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="break-words text-sm font-bold text-slate-900 dark:text-white">
+                        {bay.propertyName || `Property #${bay.propertyId}`}
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                        {bay.parkingLabel || bay.bayNumber}
+                        {bay.stationName && bay.stationName !== '—' ? ` · Near ${bay.stationName}` : ''}
+                      </p>
                     </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-xl border border-slate-100 px-3">
-                  <StatusLine label="Verification" value={verification.label} tone={verification.tone} />
-                  <StatusLine label="Initial setup" value={setup.label} tone={setup.tone} />
-                  <StatusLine label="Publication" value={publication.label} tone={publication.tone} />
-                  <div className="flex items-center justify-between gap-3 py-2.5">
-                    <span className="text-[11px] font-medium text-slate-500">Booking lock</span>
-                    <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${schedule.locked ? 'text-blue-700' : 'text-slate-600'}`}>
-                      {schedule.locked ? <LockKeyhole className="h-3 w-3" aria-hidden="true" /> : <Clock3 className="h-3 w-3" aria-hidden="true" />}
-                      {schedule.locked ? 'Owner changes locked' : 'Timetable can be edited'}
+                    <span title={schedule.detail} className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${statusClasses.chip} ${statusClasses.text}`}>
+                      <StatusIcon className="size-3 shrink-0" aria-hidden="true" />
+                      {schedule.label}
                     </span>
                   </div>
-                </div>
 
-                {recommendationMap.get(bay.parkingSpotId) && (
-                  <div className="mt-3">
-                    <AiPricingAdvisorCard
-                      variant="compact"
-                      recommendation={recommendationMap.get(bay.parkingSpotId)!}
-                      isApplying={applyingSpotId === bay.parkingSpotId}
-                      onApplyRates={(daily, monthly) =>
-                        void handleApplyAiRate(bay.parkingSpotId, daily, monthly)
-                      }
-                      onOpenSetup={
-                        canConfigure ? () => onConfigureParking?.(bay.parkingSpotId) : undefined
-                      }
-                    />
+                  <div className="mt-4 border-y border-slate-100 py-3 dark:border-white/10">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                      <h4 className="text-xs font-semibold text-slate-900 dark:text-white">Listing checklist</h4>
+                      <span className="text-[10px] font-medium tabular-nums text-slate-500 dark:text-slate-400">{completedSteps} of {steps.length} complete</span>
+                    </div>
+                    <ol aria-label="Publishing checklist" className="mt-3 grid grid-cols-4">
+                      {steps.map(({ label, complete, action }, index) => {
+                        const current = index === nextStepIndex;
+                        const marker = (
+                          <>
+                            <span className={`relative grid size-6 shrink-0 place-items-center rounded-full border text-[10px] font-semibold @min-[15rem]:size-7 ${complete
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-400'
+                              : current
+                                ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900'
+                                : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-white/15 dark:bg-white/[0.04] dark:text-slate-400'}`} aria-hidden="true">
+                              {complete ? <Check className="size-3.5" strokeWidth={2} /> : index + 1}
+                            </span>
+                            <span className="w-full break-words text-[10px] leading-tight">{label}</span>
+                            <span className="sr-only">{complete ? ' complete' : ' incomplete'}</span>
+                          </>
+                        );
+                        const stepClass = `relative flex w-full min-w-0 flex-col items-center gap-1.5 text-center ${current ? 'font-semibold text-slate-900 dark:text-white' : 'font-medium text-slate-600 dark:text-slate-400'}`;
+
+                        return (
+                          <li key={label} aria-current={current ? 'step' : undefined} className="relative min-w-0">
+                            {index < steps.length - 1 && (
+                              <span aria-hidden="true" className={`absolute left-[calc(50%+0.85rem)] right-[calc(-50%+0.85rem)] top-3 h-px @min-[15rem]:left-[calc(50%+1.05rem)] @min-[15rem]:right-[calc(-50%+1.05rem)] @min-[15rem]:top-3.5 ${complete && steps[index + 1].complete ? 'bg-emerald-200 dark:bg-emerald-400/30' : 'bg-slate-200 dark:bg-white/15'}`} />
+                            )}
+                            {current && action ? (
+                              <button type="button" onClick={action} className={`${stepClass} cursor-pointer rounded-lg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500`}>
+                                {marker}
+                              </button>
+                            ) : <div className={stepClass}>{marker}</div>}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    <p className={`mt-3 text-[11px] leading-relaxed ${nextStep ? 'text-slate-600 dark:text-slate-300' : 'font-semibold text-emerald-700 dark:text-emerald-400'}`}>
+                      {nextStep?.hint ?? "You're all set!"}
+                    </p>
                   </div>
-                )}
 
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => onConfigureParking?.(bay.parkingSpotId)}
-                    disabled={!canConfigure}
-                    className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 text-[11px] font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
-                    title={canConfigure ? 'Open parking setup' : 'Parking setup is not connected yet'}
-                  >
-                    <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    Configure parking
-                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenTimetable?.(bay.parkingSpotId)}
-                    disabled={!canOpenTimetable}
-                    className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
-                    title={canOpenTimetable ? 'Open timetable' : 'Timetable is not connected yet'}
-                  >
-                    <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-                    Open timetable
-                  </button>
+                  <div className="mt-auto pt-3">
+                    <div className="flex items-center justify-between gap-1 rounded-xl border border-slate-100 px-1.5 py-2 @min-[15rem]:px-3 dark:border-white/10">
+                      <dl aria-label="Current rates" className="grid min-w-0 gap-x-4 gap-y-1.5 @min-[15rem]:grid-cols-2">
+                        <RateAmount rate={bay.dailyRate} period="day" />
+                        <RateAmount rate={bay.monthlyRate} period="month" />
+                      </dl>
+                      {recommendation && (
+                        <Popover.Root>
+                          <Popover.Trigger
+                            aria-label="AI pricing suggestion"
+                            title="AI pricing suggestion"
+                            disabled={applyingSpotId !== null}
+                            className="grid size-8 shrink-0 @min-[15rem]:size-10 place-items-center rounded-xl bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:bg-blue-400/10 dark:text-blue-300 dark:hover:bg-blue-400/20"
+                          >
+                            {applyingSpotId === bay.parkingSpotId
+                              ? <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
+                              : <Sparkles className="size-4" aria-hidden="true" />}
+                          </Popover.Trigger>
+                          <Popover.Portal>
+                            <Popover.Positioner side="top" align="end" sideOffset={8} collisionPadding={12} className="z-[60]">
+                              <Popover.Popup className="relative w-72 max-w-[min(var(--available-width),calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/30">
+                                <Popover.Arrow className="group text-slate-200 data-[side=bottom]:-top-1 data-[side=top]:-bottom-1 data-[side=left]:-right-1 data-[side=right]:-left-1 dark:text-slate-700">
+                                  <div className="size-2 rotate-45 bg-white dark:bg-slate-900 group-data-[side=top]:border-b group-data-[side=top]:border-r group-data-[side=bottom]:border-l group-data-[side=bottom]:border-t group-data-[side=left]:border-r group-data-[side=left]:border-t group-data-[side=right]:border-b group-data-[side=right]:border-l" />
+                                </Popover.Arrow>
+                                <div className="relative flex max-h-[min(20rem,var(--available-height))] flex-col overflow-y-auto overscroll-contain rounded-2xl p-3.5 [scrollbar-width:thin]">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <Popover.Title className="text-xs font-semibold text-slate-900 dark:text-white">
+                                      Suggested pricing
+                                    </Popover.Title>
+                                    <Popover.Close aria-label="Close pricing suggestion" className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-slate-300 dark:hover:bg-white/10">
+                                      <X className="size-4" aria-hidden="true" />
+                                    </Popover.Close>
+                                  </div>
+                                  <Popover.Description className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                                    {recommendation.headlineSuggestion?.trim() || 'Compare the suggested rates with your current pricing.'}
+                                  </Popover.Description>
+                                  <dl aria-label="Suggested rates" className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-white/[0.06]">
+                                    <RateAmount rate={recommendation.recommendedDailyRateRm} period="day" />
+                                    <RateAmount rate={recommendation.recommendedMonthlyRateRm} period="month" />
+                                  </dl>
+                                  <Popover.Close
+                                    onClick={() => void handleApplyAiRate(bay.parkingSpotId, recommendation.recommendedDailyRateRm, recommendation.recommendedMonthlyRateRm)}
+                                    className="mt-2 min-h-9 shrink-0 self-end rounded-lg px-2.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-blue-300 dark:hover:bg-blue-400/10"
+                                  >
+                                    Review rates
+                                  </Popover.Close>
+                                </div>
+                              </Popover.Popup>
+                            </Popover.Positioner>
+                          </Popover.Portal>
+                        </Popover.Root>
+                      )}
+                    </div>
+
+                    <div className="mt-2 grid gap-1.5 @min-[17rem]:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => onConfigureParking?.(bay.parkingSpotId)}
+                        disabled={!canConfigure}
+                        className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-center bg-slate-900 px-3 text-[11px] font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
+                        title={canConfigure ? 'Open parking setup' : 'Parking setup is not connected yet'}
+                      >
+                        <Settings2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        Configure parking
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onOpenTimetable?.(bay.parkingSpotId)}
+                        disabled={!canOpenTimetable}
+                        className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-center border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
+                        title={canOpenTimetable ? 'Open timetable' : 'Timetable is not connected yet'}
+                      >
+                        <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        Open timetable
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </article>
             );

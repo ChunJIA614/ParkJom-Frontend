@@ -16,6 +16,8 @@ export interface SystemSelectProps
   placeholder?: string;
   leadingIcon?: React.ReactNode;
   variant?: 'default' | 'ghost';
+  triggerLabel?: string;
+  menuMinWidth?: number;
 }
 
 function extractOptionsFromChildren(children: React.ReactNode): SystemSelectOption[] {
@@ -62,6 +64,8 @@ export default function SystemSelect({
   placeholder,
   leadingIcon,
   variant = 'default',
+  triggerLabel,
+  menuMinWidth = 156,
 }: SystemSelectProps) {
   const generatedId = useId();
   const selectId = id || `system-select-${generatedId}`;
@@ -94,7 +98,7 @@ export default function SystemSelect({
     const spaceAbove = Math.max(0, rect.top - 18);
     const openUpward = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
     const maxHeight = Math.min(260, openUpward ? spaceAbove : spaceBelow);
-    const width = Math.min(Math.max(rect.width, 156), viewportWidth - 24);
+    const width = Math.min(Math.max(rect.width, menuMinWidth), viewportWidth - 24);
     const left = Math.max(12, Math.min(rect.left, viewportWidth - width - 12));
 
     setMenuStyle({
@@ -147,7 +151,7 @@ export default function SystemSelect({
       window.removeEventListener('resize', handleViewportChange);
       window.removeEventListener('scroll', handleViewportChange, true);
     };
-  }, [open, options.length]);
+  }, [open, options.length, menuMinWidth]);
 
   const handleSelect = (opt: SystemSelectOption) => {
     if (opt.disabled) return;
@@ -194,7 +198,7 @@ export default function SystemSelect({
       >
         <span className="inline-flex items-center gap-1.5 min-w-0">
           {leadingIcon}
-          <span className="truncate">{selectedOption?.label ?? ''}</span>
+          <span className="truncate">{triggerLabel ?? selectedOption?.label ?? ''}</span>
         </span>
         <ChevronDown
           className={`h-3 w-3 shrink-0 text-[#8e8e93] dark:text-[#A1A1AA] transition-transform duration-150 ${

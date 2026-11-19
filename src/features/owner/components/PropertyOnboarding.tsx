@@ -357,14 +357,6 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Onboard Parking Supply</h1>
-        <p className="text-slate-500 text-xs mt-1 leading-normal">
-          Register new private parking spaces near LRT/MRT stations. Verification of Strata Titles guarantees platform safety and legal compliance.
-        </p>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Registration Form Card */}
         <div className="lg:col-span-8">

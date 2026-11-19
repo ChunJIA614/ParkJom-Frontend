@@ -75,6 +75,7 @@ import SupportExperience from './SupportExperience';
 interface SupportWorkspaceProps {
   mode: 'user' | 'admin';
   viewer: SupportViewer;
+  hidePageHeading?: boolean;
 }
 
 const statusMeta: Record<string, { label: string; badge: string; dot: string }> = {
@@ -2417,6 +2418,7 @@ export default function SupportWorkspace(props: SupportWorkspaceProps) {
     <SupportExperience
       mode={props.mode}
       viewer={props.viewer}
+      hidePageHeading={props.hidePageHeading}
       ticketWorkspace={<TicketWorkspace {...props} />}
     />
   );

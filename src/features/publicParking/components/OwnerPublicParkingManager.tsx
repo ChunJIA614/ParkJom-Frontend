@@ -245,12 +245,7 @@ export const OwnerPublicParkingManager: React.FC = () => {
               <Layers className="w-5 h-5" />
             </span>
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-[#1d1d1f] dark:text-white">
-                Public Parking Areas & Drive-In Facilities
-              </h2>
-              <p className="text-xs text-neutral-500 mt-0.5">
-                Commercial drive-in facilities with live bay counts and barrier gate control.
-              </p>
+              <h2 className="text-sm font-bold text-[#1d1d1f] dark:text-white">Managed facilities</h2>
             </div>
           </div>
         </div>

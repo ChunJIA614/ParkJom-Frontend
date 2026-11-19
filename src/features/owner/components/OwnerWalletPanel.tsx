@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
   ArrowDownToLine,
   Banknote,
   CheckCircle2,
   Clock3,
+  CircleHelp,
   Loader2,
   RefreshCw,
   Wallet,
@@ -54,11 +55,13 @@ function StatCard({
   value,
   hint,
   tone,
+  featured = false,
 }: {
   label: string;
   value: string;
   hint: string;
   tone: 'emerald' | 'amber' | 'slate' | 'blue';
+  featured?: boolean;
 }) {
   const tones = {
     emerald: 'text-emerald-700 dark:text-emerald-400',
@@ -68,10 +71,26 @@ function StatCard({
   } as const;
 
   return (
-    <div className="rounded-xl border border-slate-100 dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2.5">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-slate-400 dark:text-[#A1A1AA]">{label}</p>
-      <p className={`mt-1 text-base font-extrabold ${tones[tone]}`}>{value}</p>
-      <p className="mt-0.5 text-[10px] text-slate-400 dark:text-[#A1A1AA]">{hint}</p>
+    <div className={`rounded-2xl border p-4 sm:p-5 ${featured
+      ? 'border-emerald-100 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20'
+      : 'border-slate-100 bg-slate-50/60 dark:border-white/10 dark:bg-white/[0.02]'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-slate-500 dark:text-[#A1A1AA]">{label}</p>
+        <details className="relative shrink-0">
+          <summary
+            aria-label={`About ${label.toLowerCase()}`}
+            className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-full text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:bg-white/10 dark:hover:text-white [&::-webkit-details-marker]:hidden"
+          >
+            <CircleHelp className="h-4 w-4" aria-hidden="true" />
+          </summary>
+          <p className="absolute right-0 top-10 z-10 w-52 rounded-xl border border-slate-200 bg-white p-3 text-xs leading-relaxed text-slate-600 shadow-lg dark:border-white/10 dark:bg-[#242428] dark:text-slate-300">
+            {hint}
+          </p>
+        </details>
+      </div>
+      <p className={`mt-2 break-words font-extrabold tracking-tight tabular-nums ${featured ? 'text-4xl sm:text-5xl' : 'text-2xl sm:text-3xl'} ${tones[tone]}`}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -84,30 +103,33 @@ function TransactionRow({ item }: { item: OwnerEarningsTransactionItem }) {
   ].filter((entry): entry is { label: string; amount: number } => Boolean(entry));
 
   return (
-    <article className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] p-3">
-      <div className="flex items-start justify-between gap-3">
+    <article className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] p-4 sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-bold text-slate-900 dark:text-white">
-            {item.parkingLabel || `Parking spot #${item.parkingSpotId}`}
+          <p className="break-words text-sm font-bold text-slate-900 dark:text-white">
+            {[item.propertyName?.trim(), item.parkingLabel?.trim()].filter(Boolean).join(' · ') || 'Parking booking'}
           </p>
-          <p className="mt-0.5 text-[10px] text-slate-500 dark:text-[#A1A1AA]">
-            {formatDate(item.startDate)} - {formatDate(item.endDate)}
-            {item.bookingStatus ? ` · ${item.bookingStatus}` : ''}
+          <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA]">
+            <span className="font-medium">Booking date: </span>
+            {formatDate(item.startDate)}
+            {item.endDate !== item.startDate && ` – ${formatDate(item.endDate)}`}
           </p>
-          <p className="mt-1 break-all font-mono text-[10px] text-slate-400 dark:text-[#8E8E93]">
-            {item.bookingReference || `Booking #${item.bookingId}`}
-          </p>
+          {item.bookingStatus && (
+            <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+              {item.bookingStatus}
+            </span>
+          )}
         </div>
-        <div className="shrink-0 text-right">
-          <p className="text-[13px] font-extrabold text-emerald-700 dark:text-[#34D399]">{money(item.payout)}</p>
-          <p className="text-[10px] text-slate-400 dark:text-[#A1A1AA]">owner payout</p>
+        <div className="shrink-0 sm:text-right">
+          <p className="text-[11px] font-medium text-slate-500 dark:text-[#A1A1AA]">Payout</p>
+          <p className="mt-0.5 text-xl font-extrabold tabular-nums text-emerald-700 dark:text-[#34D399]">{money(item.payout)}</p>
         </div>
       </div>
 
       {extras.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-100 dark:border-white/[0.08] pt-2">
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 dark:border-white/[0.08] pt-3">
           {extras.map((extra) => (
-            <span key={extra.label} className="text-[10px] text-slate-500 dark:text-[#A1A1AA]">
+            <span key={extra.label} className="text-xs text-slate-500 dark:text-[#A1A1AA]">
               {extra.label} <span className="font-semibold text-slate-700 dark:text-white">{money(extra.amount)}</span>
             </span>
           ))}
@@ -190,14 +212,6 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
   const available = summary?.availableEarnings ?? 0;
   const held = summary?.heldEarnings ?? 0;
   const paid = summary?.paidEarnings ?? 0;
-  const completedCount = summary?.bookingCounts?.completed ?? 0;
-
-  const statusLine = useMemo(() => {
-    if (summaryLoading) return 'Loading your balance...';
-    if (summaryError) return 'Balance unavailable';
-    return `${summary?.totalBookings ?? 0} lifetime booking${(summary?.totalBookings ?? 0) === 1 ? '' : 's'} · ${completedCount} completed`;
-  }, [summaryLoading, summaryError, summary, completedCount]);
-
   const retryAll = () => setRefreshToken((value) => value + 1);
 
   const handleConfirmWithdraw = async (e: React.FormEvent) => {
@@ -235,8 +249,7 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
               <Wallet className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Earnings wallet</h2>
-              <p className="mt-1 text-[11px] text-slate-500 dark:text-[#A1A1AA]">{statusLine}</p>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Wallet balance</h2>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -275,14 +288,14 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
           </div>
         ) : (
           <>
-            <div className="owner-wallet-hero mt-4 rounded-xl border border-slate-100 dark:border-white/10 bg-white dark:bg-[#141417] px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-slate-400 dark:text-[#A1A1AA]">Available to withdraw</p>
-              <p className="mt-1 text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                {summaryLoading ? '—' : money(available)}
-              </p>
-              <p className="mt-1 text-[10px] text-slate-400 dark:text-[#A1A1AA]">
-                Settled owner payouts currently sitting in your wallet.
-              </p>
+            <div className="mt-5">
+              <StatCard
+                label="Available to withdraw"
+                value={summaryLoading ? '—' : money(available)}
+                hint="Settled payouts in your wallet, available to withdraw to your linked bank account."
+                tone="emerald"
+                featured
+              />
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -316,7 +329,7 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
             <p className="mt-0.5 text-[11px] text-slate-500 dark:text-[#A1A1AA]">
               {feedLoading && items.length === 0
                 ? 'Loading transactions...'
-                : `${totalCount} entr${totalCount === 1 ? 'y' : 'ies'} · payouts, commission, refunds and penalties`}
+                : `${totalCount} transaction${totalCount === 1 ? '' : 's'}`}
             </p>
           </div>
           <div className="flex items-center gap-2">

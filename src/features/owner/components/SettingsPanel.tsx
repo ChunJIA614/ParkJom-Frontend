@@ -81,14 +81,6 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
 
   return (
     <div className="space-y-6">
-      {/* Title */}
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Platform Settings</h1>
-        <p className="text-slate-500 text-xs mt-1 leading-normal">
-          Manage payout credentials, configure automatic wallet settlement rules, and audit active IoT edge hardware nodes.
-        </p>
-      </div>
-
       {/* Account Profile Card */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">

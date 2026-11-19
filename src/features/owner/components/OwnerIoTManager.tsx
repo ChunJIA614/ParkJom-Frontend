@@ -105,14 +105,6 @@ export default function OwnerIoTManager({
 
   return (
     <div className="space-y-5">
-      <div>
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">
-          <Radio className="h-4 w-4" aria-hidden="true" /> Smart access
-        </div>
-        <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Smart bollards</h2>
-        <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">Commission a ParkJom bollard, link it to one of your bays, and open it for on-site support.</p>
-      </div>
-
       {baysError && (
         <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">{baysError}</div>
       )}

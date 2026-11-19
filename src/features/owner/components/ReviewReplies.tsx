@@ -180,16 +180,8 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
   const waitingForParking = baysLoading && bays.length === 0;
 
   return (
-    <section className="space-y-5" aria-labelledby="owner-reviews-heading">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 id="owner-reviews-heading" className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-            Parking reviews
-          </h1>
-          <p className="mt-1 text-xs leading-normal text-slate-500 dark:text-slate-400">
-            Read verified customer feedback and publish a response from the parking owner.
-          </p>
-        </div>
+    <section className="space-y-5" aria-labelledby="owner-page-heading">
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={() => void loadReviews()}

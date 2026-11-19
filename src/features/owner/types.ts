@@ -22,6 +22,10 @@ export interface ParkingBay {
   verificationSubmittedAt?: string;
   activeBookingCount?: number;
   hasActiveBookings?: boolean;
+  imageUrl?: string;
+  isConfigurationComplete?: boolean;
+  configurationDescription?: string | null;
+  hasAvailabilityRules?: boolean;
   hasEvCharging?: boolean;
   evChargingSpeed?: string | null;
   isCovered?: boolean;
@@ -130,23 +134,29 @@ export interface MyParkingResponse {
   message: string;
   data: Array<{
     parkingSpotId: number;
-    propertyId: number;
-    propertyName?: string;
-    stationName?: string;
-    address?: string;
-    distanceToStation?: number;
-    timeToStation?: number;
     ownerId: number;
-    parkingLabel: string;
+    parkingLabel: string | null;
     availabilityStatus: string | number;
     verificationStatus: string | number;
-    monthlyRate: number;
-    dailyRate: number | null;
     isPublished: boolean;
     createdAt: string;
     updatedAt: string;
     activeBookingCount?: number;
     hasActiveBookings?: boolean;
+    images?: ParkingSpotImage[];
+    property: {
+      propertyId: number;
+      propertyName: string;
+      address: string;
+      nearestStation: { stationName: string | null } | null;
+    };
+    configuration: {
+      description?: string | null;
+      isConfigurationComplete?: boolean;
+      availability?: { rules: unknown[] };
+      rates: { monthlyRate: number | null; dailyRate: number | null };
+      amenities: Pick<ParkingBay, 'hasEvCharging' | 'evChargingSpeed' | 'isCovered' | 'isHandicapAccessible' | 'hasCctv'>;
+    };
   }>;
 }
 
@@ -313,6 +323,7 @@ export interface OwnerEarningsSummary {
 export interface OwnerEarningsTransactionItem {
   bookingId: number;
   bookingReference: string;
+  propertyName: string;
   parkingSpotId: number;
   parkingLabel: string;
   startDate: string;
