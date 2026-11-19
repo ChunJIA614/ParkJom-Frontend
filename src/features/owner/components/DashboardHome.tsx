@@ -207,6 +207,19 @@ function scheduleStatus(
   };
 }
 
+type ParkingStatusEntry = { bay: ParkingBay; schedule: ReturnType<typeof scheduleStatus> };
+
+const parkingFilters = [
+  { id: 'all', label: 'All', matches: () => true },
+  { id: 'available', label: 'Available', matches: ({ schedule }: ParkingStatusEntry) => schedule.tone === 'green' },
+  { id: 'booked', label: 'Booked', matches: ({ schedule }: ParkingStatusEntry) => schedule.locked },
+  { id: 'attention', label: 'Needs attention', matches: ({ bay }: ParkingStatusEntry) => (
+    !isApproved(bay.verificationStatus) || !(bay.isConfigurationComplete ?? hasRate(bay)) || !bay.hasAvailabilityRules || !bay.isPublished
+  ) },
+] as const;
+
+type ParkingFilter = (typeof parkingFilters)[number]['id'];
+
 function RateAmount({ rate, period }: { rate: number | null; period: 'day' | 'month' }) {
   const hasRate = rate !== null && Number.isFinite(rate) && rate > 0;
   const unit = period === 'day' ? 'day' : 'mo';
@@ -254,6 +267,7 @@ export default function DashboardHome({
   onOpenSupport,
 }: DashboardHomeProps) {
   const { user } = useAuth();
+  const [parkingFilter, setParkingFilter] = useState<ParkingFilter>('all');
   const [portfolioPricing, setPortfolioPricing] = useState<OwnerPortfolioPricingResponse | null>(null);
   const [applyingSpotId, setApplyingSpotId] = useState<number | null>(null);
 
@@ -354,12 +368,12 @@ export default function DashboardHome({
     year: 'numeric',
   }).format(new Date());
 
+  const parkingStatuses = bays.map((bay) => ({ bay, schedule: scheduleStatus(bay, bookings) }));
+  const filters = parkingFilters.map((filter) => ({ ...filter, spots: parkingStatuses.filter(filter.matches) }));
+  const visibleParking = (filters.find((filter) => filter.id === parkingFilter) ?? filters[0]).spots;
   const publishedCount = bays.filter((bay) => bay.isPublished).length;
-  const bookableCount = bays.filter((bay) => {
-    const status = scheduleStatus(bay, bookings);
-    return status.label === 'Available for booking';
-  }).length;
-  const lockedCount = bays.filter((bay) => scheduleStatus(bay, bookings).locked).length;
+  const bookableCount = filters.find(({ id }) => id === 'available')?.spots.length ?? 0;
+  const lockedCount = filters.find(({ id }) => id === 'booked')?.spots.length ?? 0;
 
   return (
     <div className="space-y-5 md:space-y-6">
@@ -461,6 +475,31 @@ export default function DashboardHome({
         </div>
       )}
 
+      {bays.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">My parking</h2>
+            <p role="status" className="text-xs text-slate-500 dark:text-slate-400">{visibleParking.length} of {bays.length} spots</p>
+          </div>
+          <div role="group" aria-label="Filter parking spots" className="flex flex-wrap gap-2">
+            {filters.map(({ id, label, spots }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={parkingFilter === id}
+                onClick={() => setParkingFilter(id)}
+                className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${parkingFilter === id
+                  ? 'border-blue-600 bg-blue-600 text-white dark:border-blue-500 dark:bg-blue-500'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/10'}`}
+              >
+                {label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${parkingFilter === id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`} aria-hidden="true">{spots.length}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {baysLoading ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
           <RefreshCw className="mx-auto h-6 w-6 animate-spin text-blue-600" aria-hidden="true" />
@@ -472,10 +511,14 @@ export default function DashboardHome({
           <p className="mt-3 text-sm font-semibold text-slate-700">No parking spots registered</p>
           <p className="mt-1 text-xs text-slate-500">Register a property before configuring its timetable.</p>
         </div>
+      ) : visibleParking.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-7 text-center dark:border-white/15">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">No parking spots match this filter.</p>
+          <button type="button" onClick={() => setParkingFilter('all')} className="mt-1 text-xs font-semibold text-blue-700 hover:underline dark:text-blue-300">Show all spots</button>
+        </div>
       ) : (
         <section aria-label="Parking spot status" className="grid grid-cols-1 gap-2 sm:gap-4 landscape:grid-cols-3">
-          {bays.map((bay) => {
-            const schedule = scheduleStatus(bay, bookings);
+          {visibleParking.map(({ bay, schedule }) => {
             const statusClasses = toneClasses[schedule.tone];
             const StatusIcon = { blue: CalendarCheck, green: CircleCheck, amber: Clock3, slate: CircleX }[schedule.tone];
             const canConfigure = Boolean(onConfigureParking);
@@ -660,7 +703,7 @@ export default function DashboardHome({
         </section>
       )}
 
-      {bays.length > 0 && bookableCount > 0 && (
+      {parkingFilter === 'all' && bookableCount > 0 && (
         <p className="text-center text-[10px] text-slate-400">{bookableCount} parking spot{bookableCount === 1 ? '' : 's'} currently open for commuter booking.</p>
       )}
     </div>

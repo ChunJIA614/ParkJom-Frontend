@@ -36,8 +36,25 @@ await api.generateIoTBindingOtp(token, uuid);
 assert.deepEqual(calls.at(-1), { path: '/api/iot/gen-otp', body: { deviceUuid: uuid } });
 
 responses.push({ body: { success: true, data: { ...device, isAssigned: true, parkingSpotId: 31 } } });
-await api.bindIoTDevice(token, uuid, 31, '123456');
-assert.deepEqual(calls.at(-1), { path: '/api/iot/bind', body: { deviceUuid: uuid, parkingSpotId: 31, otp: '123456' } });
+await api.bindIoTDevice(token, 31, '123456');
+assert.deepEqual(calls.at(-1), { path: '/api/iot/bind', body: { parkingSpotId: 31, otp: '123456' } });
+
+const scanTimeout = 'The bollard did not reply to the status scan.';
+responses.push({ status: 504, body: { code: 504, success: false, message: scanTimeout, data: null } });
+await assert.rejects(api.scanBollardPosition(token, uuid), { message: scanTimeout });
+
+responses.push({
+  body: {
+    code: 200,
+    success: true,
+    message: 'Fresh bollard distance received.',
+    data: { deviceUuid: uuid, distanceCm: 303.62, receivedAt: '2026-11-19T15:55:37.2856068+00:00', bollardPosition: 'LOCKED' },
+  },
+});
+assert.equal(await api.scanBollardPosition(token, uuid), 'LOCKED');
+assert.deepEqual(calls.at(-1), { path: `/api/iot/${uuid}/status/scan`, body: undefined });
+responses.push({ body: { success: true, data: { bollardPosition: null } } });
+await assert.rejects(api.scanBollardPosition(token, uuid), /did not report its position/);
 
 const confirmed = (command, position, bookingId = null) => ({
   success: true,
@@ -46,6 +63,7 @@ const confirmed = (command, position, bookingId = null) => ({
 });
 for (const test of [
   [() => api.ownerUnlockParkingSpot(token, 31), '/api/owner/iot/parking-spots/31/unlock', confirmed('UNLOCK', 'UNLOCKED')],
+  [() => api.ownerLockParkingSpot(token, 31), '/api/owner/iot/parking-spots/31/lock', confirmed('LOCK', 'LOCKED')],
   [() => api.adminLockBooking(token, 214), '/api/admin/iot/214/lock', confirmed('LOCK', 'LOCKED', 214)],
   [() => api.adminUnlockBooking(token, 214), '/api/admin/iot/214/unlock', confirmed('UNLOCK', 'UNLOCKED', 214)],
   [() => api.adminUnlockBooking(token, 214, 'booking-alias'), '/api/admin/iot/bookings/214/unlock', confirmed('UNLOCK', 'UNLOCKED', 214)],
@@ -61,7 +79,7 @@ responses.push({ body: { success: true, data: { ...confirmed('UNLOCK', 'LOCKED')
 await assert.rejects(api.adminUnlockDevice(token, 8), /did not confirm/);
 
 responses.push({ status: 403, body: { success: false, message: 'Only property owners can bind devices.' } });
-await assert.rejects(api.bindIoTDevice(token, uuid, 31, '123456'), /Only property owners/);
+await assert.rejects(api.bindIoTDevice(token, 31, '123456'), /Only property owners/);
 assert.equal(rejectedSessions, 0, 'Business authorization errors must not clear the login session');
 assert.equal(responses.length, 0);
 console.log('IoT management routes, acknowledgements and session handling passed.');

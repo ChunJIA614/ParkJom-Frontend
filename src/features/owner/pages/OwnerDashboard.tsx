@@ -257,7 +257,7 @@ export default function OwnerDashboard() {
 
   // Overview, configuration, and owner reviews share Get My Parking as their source of truth.
   useEffect(() => {
-    if (activeView === 'dashboard' || activeView === 'bookingHistory' || activeView === 'availability' || activeView === 'reviews') {
+    if (activeView === 'dashboard' || activeView === 'bookingHistory' || activeView === 'availability' || activeView === 'reviews' || activeView === 'iot') {
       void fetchMyParking();
     }
   }, [activeView, fetchMyParking]);
@@ -578,7 +578,7 @@ export default function OwnerDashboard() {
     availability: { title: 'Configure parking', description: 'Keep one-time parking details separate from the availability timetable you manage day to day.' },
     reviews: { title: 'Parking reviews', description: 'Read customer feedback and reply as the parking owner.' },
     registration: { title: 'Register a property', description: 'Submit a bay for verification and configure it for bookings.' },
-    iot: { title: 'Smart bollards', description: 'Pair hardware with your parking spots and securely unlock an assigned bollard.' },
+    iot: { title: 'Smart bollards', description: 'Check your bollards’ connection, pair a device, or unlock a parking spot.' },
     wallet: { title: 'Earnings wallet', description: 'Track settled payouts, funds on hold, and every commission and refund line.' },
     tickets: { title: 'Support', description: 'Track booking, access, and settlement issues.' },
     settings: { title: 'Settings', description: 'Manage payout details and workspace preferences.' },

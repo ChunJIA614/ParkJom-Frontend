@@ -1,3 +1,9 @@
+export interface ParkingBollard {
+  deviceUuid: string;
+  deviceStatus: string;
+  isAssigned: boolean;
+}
+
 export interface ParkingBay {
   id: string;
   parkingSpotId: number;
@@ -22,6 +28,7 @@ export interface ParkingBay {
   verificationSubmittedAt?: string;
   activeBookingCount?: number;
   hasActiveBookings?: boolean;
+  bollard?: ParkingBollard | null;
   imageUrl?: string;
   isConfigurationComplete?: boolean;
   configurationDescription?: string | null;
@@ -143,6 +150,7 @@ export interface MyParkingResponse {
     updatedAt: string;
     activeBookingCount?: number;
     hasActiveBookings?: boolean;
+    bollard?: ParkingBollard | null;
     images?: ParkingSpotImage[];
     property: {
       propertyId: number;

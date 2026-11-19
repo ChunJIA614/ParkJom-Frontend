@@ -7,10 +7,17 @@ export interface IoTDeviceInfo {
   parkingSpotId: number | null;
 }
 
+export interface OwnerIoTDevice extends IoTDeviceInfo {
+  lastHeartbeatAt: string | null;
+  firmwareVersion?: string | null;
+}
+
 export interface IoTOtpInfo {
   otp: string;
   expiresAtUtc: string;
 }
+
+export type BollardPosition = 'LOCKED' | 'UNLOCKED';
 
 export interface IoTCommandConfirmation {
   bookingId: number | null;
@@ -29,9 +36,10 @@ interface IoTEnvelope<T> {
   data?: T;
 }
 
-async function postIoT<T>(token: string, path: string, body?: object): Promise<{ data: T; message: string }> {
+async function postIoT<T>(token: string, path: string, body?: object, signal?: AbortSignal): Promise<{ data: T; message: string }> {
   const response = await apiRequest(path, {
     method: 'POST',
+    signal,
     headers: authorizationHeaders(token, body ? 'application/json' : undefined),
     body: body ? JSON.stringify(body) : undefined,
   }, { preserveSessionOnForbidden: true });
@@ -61,6 +69,18 @@ async function sendCommand(
   return result;
 }
 
+export async function listOwnerIoTDevices(token: string, signal?: AbortSignal): Promise<OwnerIoTDevice[]> {
+  const response = await apiRequest('/iot/owner/devices', {
+    headers: authorizationHeaders(token),
+    signal,
+  }, { preserveSessionOnForbidden: true });
+  const payload = await response.json().catch(() => null) as IoTEnvelope<OwnerIoTDevice[]> | null;
+  if (!response.ok || payload?.success === false || !Array.isArray(payload?.data)) {
+    throw new Error(payload?.message || 'Unable to check your bollard connections.');
+  }
+  return payload.data;
+}
+
 export function registerIoTDevice(token: string, deviceUuid: string) {
   return postIoT<IoTDeviceInfo>(token, '/iot/register', { deviceUuid });
 }
@@ -69,12 +89,27 @@ export function generateIoTBindingOtp(token: string, deviceUuid: string) {
   return postIoT<IoTOtpInfo>(token, '/iot/gen-otp', { deviceUuid });
 }
 
-export function bindIoTDevice(token: string, deviceUuid: string, parkingSpotId: number, otp: string) {
-  return postIoT<IoTDeviceInfo>(token, '/iot/bind', { deviceUuid, parkingSpotId, otp });
+export function bindIoTDevice(token: string, parkingSpotId: number, otp: string) {
+  return postIoT<IoTDeviceInfo>(token, '/iot/bind', { parkingSpotId, otp });
 }
 
 export function ownerUnlockParkingSpot(token: string, parkingSpotId: number) {
   return sendCommand(token, `/owner/iot/parking-spots/${parkingSpotId}/unlock`, 'UNLOCKED');
+}
+
+export function ownerLockParkingSpot(token: string, parkingSpotId: number) {
+  return sendCommand(token, `/owner/iot/parking-spots/${parkingSpotId}/lock`, 'LOCKED');
+}
+
+export async function scanBollardPosition(token: string, deviceUuid: string, signal?: AbortSignal): Promise<BollardPosition> {
+  const { data } = await postIoT<{ bollardPosition?: string | null }>(
+    token, `/iot/${encodeURIComponent(deviceUuid)}/status/scan`, undefined, signal,
+  );
+  const position = data.bollardPosition?.toUpperCase();
+  if (position !== 'LOCKED' && position !== 'UNLOCKED') {
+    throw new Error('The bollard did not report its position.');
+  }
+  return position;
 }
 
 export function adminLockBooking(token: string, bookingId: number) {
