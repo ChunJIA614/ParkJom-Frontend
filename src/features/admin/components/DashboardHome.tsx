@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   TrendingUp, Users, Radio, ShieldCheck,
-  Clock, DollarSign, Activity, MapPin, Building,
+  ChevronRight, Clock, DollarSign, Activity, MapPin, Building,
   RefreshCw, AlertTriangle, Inbox, Wifi, WifiOff, Percent
 } from 'lucide-react';
 import {
@@ -12,7 +12,10 @@ import {
 } from 'recharts';
 import type { AdminDashboardData, SystemConfig } from '../types';
 
+type DashboardQueue = 'governance' | 'iot' | 'enforcement' | 'support';
+
 interface DashboardHomeProps {
+  onOpenQueue: (queue: DashboardQueue) => void;
   dashboard: AdminDashboardData | null;
   isLoading: boolean;
   error: string | null;
@@ -41,6 +44,7 @@ function ChartEmptyState({ message }: { message: string }) {
 
 export default function DashboardHome({
   dashboard,
+  onOpenQueue,
   isLoading,
   error,
   onRefresh,
@@ -121,17 +125,29 @@ export default function DashboardHome({
     }
   ];
 
-  const attentionItems = stats
-    ? [
-        { label: 'Listing reviews pending', value: stats.pendingListingsCount, tone: 'text-amber-600' },
-        { label: 'Open disputes', value: stats.openDisputesCount, tone: 'text-rose-600' },
-        { label: 'Active overstays', value: stats.activeOverstaysCount, tone: 'text-rose-600' },
-        { label: 'Open support tickets', value: stats.openTicketsCount, tone: 'text-indigo-600' },
-      ]
-    : [];
+  const queueCounts: { view: DashboardQueue; label: string; count: number }[] = stats ? [
+    { view: 'governance', label: 'pending listing', count: stats.pendingListingsCount },
+    { view: 'iot', label: 'offline bollard', count: stats.totalBollards - stats.onlineBollards },
+    { view: 'enforcement', label: 'active overstay', count: stats.activeOverstaysCount },
+    { view: 'support', label: 'open ticket', count: stats.openTicketsCount },
+  ] : [];
+  const openQueues = queueCounts.filter(({ count }) => count > 0);
 
   return (
     <div id="dashboard-home" className="space-y-6">
+      {openQueues.length > 0 && (
+        <ul aria-label="Queues with open items" className="flex flex-wrap gap-2">
+          {openQueues.map(({ view, label, count }) => (
+            <li key={view}>
+              <button type="button" onClick={() => onOpenQueue(view)} className="workspace-button workspace-button--secondary tabular-nums">
+                {count.toLocaleString()} {label}{count === 1 ? '' : 's'}
+                <ChevronRight size={14} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {/* Source + freshness banner */}
       <div className="flex flex-col gap-3 rounded-xl bg-[#f2f2f7] px-4 py-3 text-[12px] text-[#6e6e73] sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
@@ -191,20 +207,6 @@ export default function DashboardHome({
           </motion.div>
         ))}
       </div>
-
-      {/* Attention strip — the queues an operator should look at first */}
-      {stats && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {attentionItems.map((item) => (
-            <div key={item.label} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">{item.label}</p>
-              <p className={`mt-1 text-xl font-bold ${item.value > 0 ? item.tone : 'text-slate-400'}`}>
-                {item.value}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Primary Analytics - Revenue Area Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

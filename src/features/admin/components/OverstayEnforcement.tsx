@@ -1,3 +1,4 @@
+import AdminPageHeader from './AdminPageHeader';
 import React from 'react';
 import { ShieldAlert, Clock, AlertTriangle, ShieldCheck, Car, BellRing, Lock } from 'lucide-react';
 import ServiceUpcoming from '@/components/ui/ServiceUpcoming';
@@ -16,11 +17,7 @@ export default function OverstayEnforcement({
 }: OverstayEnforcementProps) {
   return (
     <div id="overstay-enforcement" className="space-y-6">
-      {/* Title */}
-      <div>
-        <h2 id="enforcement-title" className="text-2xl font-bold text-slate-800 tracking-tight">Overstay Detection &amp; Enforcement</h2>
-        <p className="text-slate-500 text-sm">Monitor parked vehicles exceeding their bookings. Calculate automated fine schedules and issue reminders.</p>
-      </div>
+      <AdminPageHeader headingId="enforcement-title" title="Overstay enforcement" description="Review vehicles that remain parked after their booking ends." />
 
       {/* Live Configuration Status Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

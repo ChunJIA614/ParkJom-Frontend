@@ -1,3 +1,5 @@
+import WorkspaceActivityRow from '@/components/ui/WorkspaceActivityRow';
+import WorkspaceEmptyState from '@/components/ui/WorkspaceEmptyState';
 import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -26,6 +28,7 @@ import {
   Clock,
   Coins,
   ShieldCheck,
+  ChevronLeft,
   ChevronRight,
   Info,
   Map,
@@ -57,6 +60,7 @@ import {
   WalletTransactionItem,
 } from '../types';
 import MyParkingPassesWorkspace from '../components/MyParkingPassesWorkspace';
+import ParkingPhoto from '../components/ParkingPhoto';
 import CommuterBrowseView from '../components/CommuterBrowseView';
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
@@ -188,6 +192,8 @@ const mapParkingResult = (spot: ParkingResultDto): ParkingSpot => ({
   averageRating: spot.averageRating ?? null,
   totalReviews: spot.totalReviews ?? 0,
 });
+
+const BOOKING_HISTORY_PAGE_SIZE = 5;
 
 const historyItemToBooking = ({ booking }: BookingHistoryItem): Booking => ({
   id: booking.bookingReference,
@@ -826,10 +832,14 @@ export default function CommuterDashboard() {
   const [history, setHistory] = useState<Booking[]>([]);
   const [bookingHistory, setBookingHistory] = useState<BookingHistoryItem[]>([]);
   const [bookingHistoryPage, setBookingHistoryPage] = useState(1);
-  const [bookingHistoryMeta, setBookingHistoryMeta] = useState({ totalPages: 0, totalCount: 0 });
+  const [bookingHistoryMeta, setBookingHistoryMeta] = useState({ page: 0, pageSize: BOOKING_HISTORY_PAGE_SIZE, totalPages: 0, totalCount: 0 });
   const [isBookingHistoryLoading, setIsBookingHistoryLoading] = useState(false);
   const [bookingHistoryError, setBookingHistoryError] = useState<string | null>(null);
   const [bookingHistoryRefreshKey, setBookingHistoryRefreshKey] = useState(0);
+  const bookingHistoryHeadingRef = useRef<HTMLHeadingElement>(null);
+  const visibleBookingHistory = bookingHistoryMeta.page === bookingHistoryPage ? bookingHistory : [];
+  const recentCompletions = bookingHistoryPage === 1 ? history : [];
+  const bookingHistoryStart = (bookingHistoryPage - 1) * bookingHistoryMeta.pageSize + 1;
   const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
   const [editingReviewRating, setEditingReviewRating] = useState(0);
   const [editingReviewComment, setEditingReviewComment] = useState('');
@@ -854,6 +864,15 @@ export default function CommuterDashboard() {
   const cancelReviewEdit = () => {
     if (isReviewSaving) return;
     resetReviewEdit();
+  };
+
+  const changeBookingHistoryPage = (page: number) => {
+    setIsBookingHistoryLoading(true);
+    setBookingHistoryError(null);
+    resetReviewEdit();
+    setBookingHistoryPage(page);
+    bookingHistoryHeadingRef.current?.focus({ preventScroll: true });
+    bookingHistoryHeadingRef.current?.scrollIntoView({ block: 'start' });
   };
 
   const saveReviewEdit = async () => {
@@ -896,11 +915,20 @@ export default function CommuterDashboard() {
     const controller = new AbortController();
     setIsBookingHistoryLoading(true);
     setBookingHistoryError(null);
-    void getCommuterBookingHistory(user.token, bookingHistoryPage, 10, controller.signal)
+    void getCommuterBookingHistory(user.token, bookingHistoryPage, BOOKING_HISTORY_PAGE_SIZE, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
+        const { pageSize, totalPages, totalCount } = result;
+        const lastPage = Math.max(1, totalPages);
+        if (bookingHistoryPage > lastPage) {
+          setBookingHistoryPage(lastPage);
+          return;
+        }
         setBookingHistory(result.data);
-        setBookingHistoryMeta({ totalPages: result.totalPages, totalCount: result.totalCount });
+        setBookingHistoryMeta({ page: bookingHistoryPage, pageSize, totalPages, totalCount });
+        setHistory((current) => current.filter((entry) => !result.data.some(({ booking }) => (
+          entry.bookingId === booking.bookingId || entry.id === booking.bookingReference
+        ))));
       })
       .catch((reason) => {
         if (!controller.signal.aborted) {
@@ -2144,7 +2172,7 @@ export default function CommuterDashboard() {
       void showAlert({
         title: 'Insufficient Balance',
         message: 'Insufficient wallet balance. Please top up your wallet (minimum RM 10.00 required for reserve hold).',
-        buttonText: 'Top Up Wallet',
+        buttonText: 'Top up wallet',
         variant: 'warning',
       });
       openTopUpModal();
@@ -2484,7 +2512,7 @@ export default function CommuterDashboard() {
       />
 
       {/* ─── Main Layout ─── */}
-      <div className={`commuter-content-grid flex-1 ${activeTab === 'map' || activeTab === 'home' ? 'max-w-[1520px]' : 'max-w-[1180px]'} w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 pb-20 md:pb-8`}>
+      <div className={`commuter-content-grid flex-1 ${['map', 'home', 'active', 'favorites'].includes(activeTab) ? 'max-w-[1520px]' : 'max-w-[1180px]'} w-full mx-auto px-4 md:px-8 pt-4 lg:pt-6 pb-20 md:pb-8`}>
 
         {isGuest && (
           <aside
@@ -2520,7 +2548,7 @@ export default function CommuterDashboard() {
         {/* Main Content */}
         <main className="min-h-0">
           {activeTab !== 'home' && (
-            <div className={`workspace-heading workspace-heading--compact ${activeTab === 'map' ? 'hidden lg:flex' : ''}`}>
+            <div className={`workspace-heading workspace-heading--compact ${activeTab === 'map' ? 'sr-only lg:not-sr-only' : ''}`}>
               <div>
                 <h1>{COMMUTER_VIEW_META[activeTab]?.title || ''}</h1>
                 <p>{COMMUTER_VIEW_META[activeTab]?.description || ''}</p>
@@ -2575,10 +2603,6 @@ export default function CommuterDashboard() {
               onOpenParkingDetail={(spot, station) => openParkingDetail(spot, null, station)}
               onToggleFavorite={(spot) => void handleToggleFavorite(spot)}
               onInspectPublicLot={(lot) => setInspectingPublicLot(lot)}
-              onSwitchToMap={() => {
-                setActiveTab('map');
-                setMobileTransitTab('map');
-              }}
             />
           )}
 
@@ -2586,39 +2610,42 @@ export default function CommuterDashboard() {
           {activeTab === 'map' && (
             <div className="space-y-3">
               {/* Mobile View Switcher */}
-              <div className="flex lg:hidden bg-black/[0.05] dark:bg-[#1C1C1F] border border-black/[0.05] dark:border-white/[0.09] p-1 rounded-full text-xs font-semibold">
+              <div role="group" aria-label="Transit views" className="workspace-panel flex gap-1 p-1 text-sm font-semibold lg:hidden">
                 <button
                   type="button"
                   onClick={() => setMobileTransitTab('transit')}
-                  className={`flex-1 py-1.5 px-2 rounded-full transition-all ${
+                  aria-pressed={mobileTransitTab === 'transit'}
+                  className={`min-h-11 flex-1 rounded-xl px-2 py-1.5 transition-colors ${
                     mobileTransitTab === 'transit'
                       ? 'bg-white dark:bg-[#2C2C2E] text-slate-900 dark:text-white shadow-xs'
                       : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
-                  {transitWorkspaceMode === 'navigation' ? 'Directions' : 'Transit Hub'}
+                  {transitWorkspaceMode === 'navigation' ? 'Directions' : 'Stations'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobileTransitTab('map')}
-                  className={`flex-1 py-1.5 px-2 rounded-full transition-all ${
+                  aria-pressed={mobileTransitTab === 'map'}
+                  className={`min-h-11 flex-1 rounded-xl px-2 py-1.5 transition-colors ${
                     mobileTransitTab === 'map'
                       ? 'bg-white dark:bg-[#2C2C2E] text-slate-900 dark:text-white shadow-xs'
                       : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
-                  Transit Map
+                  Map
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobileTransitTab('bays')}
-                  className={`flex-1 py-1.5 px-2 rounded-full transition-all ${
+                  aria-pressed={mobileTransitTab === 'bays'}
+                  className={`min-h-11 flex-1 rounded-xl px-2 py-1.5 transition-colors ${
                     mobileTransitTab === 'bays'
                       ? 'bg-white dark:bg-[#2C2C2E] text-slate-900 dark:text-white shadow-xs'
                       : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
-                  Nearby Bays ({lensSpots.length})
+                  Bays ({lensSpots.length})
                 </button>
               </div>
 
@@ -3158,13 +3185,14 @@ export default function CommuterDashboard() {
               </div>
               <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-[12px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] uppercase tracking-wider">
-                      Wallet Activity
+                  <div className="workspace-filter-bar">
+                    <h3 className="font-semibold">
+                      Wallet activity
                     </h3>
                     <div className="inline-flex rounded-lg bg-[#f1f3f4] dark:bg-[#1E1E24] p-0.5 text-[11px] font-semibold">
                       <button
                         type="button"
+                        aria-pressed={walletActivityFilter === 'all'}
                         onClick={() => { setWalletActivityFilter('all'); setWalletActivityPage(1); }}
                         className={`rounded-md px-2.5 py-1 transition-all cursor-pointer ${
                           walletActivityFilter === 'all'
@@ -3176,6 +3204,7 @@ export default function CommuterDashboard() {
                       </button>
                       <button
                         type="button"
+                        aria-pressed={walletActivityFilter === 'topup'}
                         onClick={() => { setWalletActivityFilter('topup'); setWalletActivityPage(1); }}
                         className={`rounded-md px-2.5 py-1 transition-all cursor-pointer ${
                           walletActivityFilter === 'topup'
@@ -3187,6 +3216,7 @@ export default function CommuterDashboard() {
                       </button>
                       <button
                         type="button"
+                        aria-pressed={walletActivityFilter === 'deduction'}
                         onClick={() => { setWalletActivityFilter('deduction'); setWalletActivityPage(1); }}
                         className={`rounded-md px-2.5 py-1 transition-all cursor-pointer ${
                           walletActivityFilter === 'deduction'
@@ -3212,54 +3242,14 @@ export default function CommuterDashboard() {
                 {paginatedActivities.length > 0 ? (
                   <div className="space-y-2">
                     {paginatedActivities.map((item) => (
-                      <div
+                      <WorkspaceActivityRow
                         key={item.id}
-                        className="flex items-center justify-between gap-4 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-3.5"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                              item.category === 'deduction'
-                                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400'
-                                : item.type === 'refund'
-                                ? 'bg-blue-50 dark:bg-white/[0.06] text-[#007AFF] dark:text-[#38bdf8]'
-                                : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
-                            }`}
-                          >
-                            {item.category === 'deduction' ? (
-                              <ArrowUpRight size={16} />
-                            ) : (
-                              <ArrowDownLeft size={16} />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate text-[13px] font-semibold text-[#111] dark:text-white">
-                                {item.title}
-                              </p>
-                              {item.isPending && (
-                                <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
-                                  Pending
-                                </span>
-                              )}
-                            </div>
-                            <p className="truncate text-[11px] text-[#9ca3af] dark:text-[#71717A]">
-                              {item.subtitle}
-                            </p>
-                          </div>
-                        </div>
-                        <span
-                          className={`shrink-0 text-[13px] font-semibold ${
-                            item.category === 'deduction'
-                              ? 'text-rose-600 dark:text-rose-400'
-                              : item.isPending
-                              ? 'text-[#5f6368] dark:text-[#A1A1AA]'
-                              : 'text-[#007AFF] dark:text-[#38bdf8]'
-                          }`}
-                        >
-                          {item.category === 'deduction' ? '-' : '+'}{item.currency} {item.amount.toFixed(2)}
-                        </span>
-                      </div>
+                        title={item.title}
+                        detail={item.subtitle}
+                        amount={`${item.category === 'deduction' ? '−' : '+'}${item.currency} ${item.amount.toFixed(2)}`}
+                        status={item.isPending ? 'Pending' : undefined}
+                        pending={item.isPending}
+                      />
                     ))}
 
                     {totalActivityPages > 1 && (
@@ -3314,29 +3304,11 @@ export default function CommuterDashboard() {
                     </span>
                   </div>
                 ) : (
-                  <div className="flex min-h-24 flex-col items-center justify-center rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 px-4 text-center">
-                    {walletActivityFilter === 'deduction' ? (
-                      <ArrowUpRight size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
-                    ) : walletActivityFilter === 'topup' ? (
-                      <ArrowDownLeft size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
-                    ) : (
-                      <Coins size={20} className="mb-2 text-[#9ca3af] dark:text-[#71717A]" />
-                    )}
-                    <p className="text-[12px] font-medium text-[#5f6368] dark:text-[#A1A1AA]">
-                      {walletActivityFilter === 'deduction'
-                        ? 'No deductions yet'
-                        : walletActivityFilter === 'topup'
-                        ? 'No top-ups yet'
-                        : 'No wallet activity'}
-                    </p>
-                    <p className="mt-1 text-[11px] text-[#9ca3af] dark:text-[#71717A]">
-                      {walletActivityFilter === 'deduction'
-                        ? 'Your parking payments and deductions will appear here.'
-                        : walletActivityFilter === 'topup'
-                        ? 'Your wallet top-ups will appear here.'
-                        : 'Your top-ups and parking payments will appear here.'}
-                    </p>
-                  </div>
+                  <WorkspaceEmptyState
+                    icon={Coins}
+                    title={walletActivityFilter === 'deduction' ? 'No deductions yet' : walletActivityFilter === 'topup' ? 'No top-ups yet' : 'No wallet activity'}
+                    description="Transactions matching this filter will appear here."
+                  />
                 )}
               </div>
             </div>
@@ -3582,14 +3554,24 @@ export default function CommuterDashboard() {
                 )}
               </div>
               {/* History */}
-              <div className="bg-white dark:bg-[#141417] rounded-2xl border border-[#e8eaed] dark:border-white/10 p-5">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[#5f6368] dark:text-[#A1A1AA]">Booking History</h3>
-                  <button type="button" onClick={() => setBookingHistoryRefreshKey((value) => value + 1)} disabled={isBookingHistoryLoading} className="rounded-lg p-1.5 text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f1f3f4] dark:hover:bg-[#202025] cursor-pointer" aria-label="Refresh booking history"><RefreshCw size={14} className={isBookingHistoryLoading ? 'animate-spin' : ''} /></button>
-                </div>
+              <section aria-labelledby="commuter-booking-history-title" className="workspace-panel p-5">
+                <header className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 id="commuter-booking-history-title" ref={bookingHistoryHeadingRef} tabIndex={-1} className="scroll-mt-24 font-semibold">Booking history</h3>
+                    {visibleBookingHistory.length > 0 && (
+                      <p className="mt-0.5 text-sm text-muted-foreground tabular-nums" role="status">
+                        Showing {bookingHistoryStart}–{bookingHistoryStart + visibleBookingHistory.length - 1}
+                        {bookingHistoryMeta.totalCount > (bookingHistoryMeta.totalPages - 1) * bookingHistoryMeta.pageSize && ` of ${bookingHistoryMeta.totalCount}`} bookings
+                      </p>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => setBookingHistoryRefreshKey((value) => value + 1)} disabled={isBookingHistoryLoading || isReviewSaving} className="workspace-button workspace-button--secondary size-11 p-0!" aria-label="Refresh booking history">
+                    <RefreshCw size={16} aria-hidden="true" className={isBookingHistoryLoading ? 'motion-safe:animate-spin' : ''} />
+                  </button>
+                </header>
                 {bookingHistoryError && <div role="alert" className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200/50 dark:border-red-900/50 px-3 py-2 text-[11px] text-red-700 dark:text-red-300"><AlertCircle size={14} />{bookingHistoryError}</div>}
-                {isBookingHistoryLoading && bookingHistory.length === 0 ? <div className="py-5 text-center text-[11px] text-[#5f6368] dark:text-[#A1A1AA]"><Loader2 size={18} className="mx-auto animate-spin text-[#007AFF]" />Loading history...</div> : null}
-                {bookingHistory.map((item) => {
+                {isBookingHistoryLoading && visibleBookingHistory.length === 0 && <p className="py-5 text-center text-sm text-muted-foreground" role="status"><Loader2 size={18} aria-hidden="true" className="mx-auto mb-2 text-primary motion-safe:animate-spin" />Loading booking history…</p>}
+                {visibleBookingHistory.map((item) => {
                   const { booking, review } = item;
                   const isEditingReview = review?.reviewId === editingReviewId;
                   return <article key={booking.bookingId} className="border-b border-[#f1f3f4] dark:border-white/10 py-4 last:border-0">
@@ -3606,7 +3588,7 @@ export default function CommuterDashboard() {
                             <span className="rounded-full bg-[#eef5ff] dark:bg-white/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#007AFF] dark:text-white">Parking ID #{booking.parkingSpotId}</span>
                           </div>
                           <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{new Date(booking.startDate).toLocaleDateString('en-MY')} – {new Date(booking.endDate).toLocaleDateString('en-MY')}</p>
-                          <p className="mt-0.5 text-[10px] text-[#9ca3af] dark:text-[#71717A]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
+                          <p className="mt-0.5 break-all text-[10px] text-[#9ca3af] dark:text-[#71717A]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
                         </div>
                       </div>
                       <div className="text-left sm:text-right shrink-0">
@@ -3671,8 +3653,9 @@ export default function CommuterDashboard() {
                     </div>}
                   </article>;
                 })}
-                {bookingHistory.length === 0 && history.length === 0 && !isBookingHistoryLoading && !bookingHistoryError && <p className="py-4 text-center text-[11px] text-[#9ca3af] dark:text-[#71717A]">No booking history yet.</p>}
-                {history.map((b) => (
+                {visibleBookingHistory.length === 0 && recentCompletions.length === 0 && !isBookingHistoryLoading && !bookingHistoryError && <p className="py-4 text-center text-sm text-muted-foreground">No booking history yet.</p>}
+                {recentCompletions.length > 0 && <h4 className="mt-3 text-sm font-semibold">Recent completions</h4>}
+                {recentCompletions.map((b) => (
                   <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] dark:border-white/10 last:border-0 gap-3">
                     <div>
                       <p className="text-[13px] font-medium text-[#111] dark:text-white">{b.spot.name}</p>
@@ -3695,8 +3678,18 @@ export default function CommuterDashboard() {
                     </div>
                   </div>
                 ))}
-                {bookingHistoryMeta.totalPages > 1 && <div className="mt-3 flex items-center justify-between text-[11px] font-semibold text-[#5f6368] dark:text-[#A1A1AA]"><button type="button" onClick={() => setBookingHistoryPage((value) => Math.max(1, value - 1))} disabled={bookingHistoryPage === 1} className="cursor-pointer">Previous</button><span>Page {bookingHistoryPage} of {bookingHistoryMeta.totalPages}</span><button type="button" onClick={() => setBookingHistoryPage((value) => Math.min(bookingHistoryMeta.totalPages, value + 1))} disabled={bookingHistoryPage === bookingHistoryMeta.totalPages} className="cursor-pointer">Next</button></div>}
-              </div>
+                {bookingHistoryMeta.totalPages > 1 && (
+                  <nav aria-label="Booking history pagination" className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+                    <button type="button" onClick={() => changeBookingHistoryPage(bookingHistoryPage - 1)} disabled={bookingHistoryPage <= 1 || isBookingHistoryLoading || isReviewSaving} className="workspace-button workspace-button--secondary px-2.5!">
+                      <ChevronLeft size={16} aria-hidden="true" /> Previous
+                    </button>
+                    <span className="text-sm text-muted-foreground tabular-nums">Page {bookingHistoryPage} of {bookingHistoryMeta.totalPages}</span>
+                    <button type="button" onClick={() => changeBookingHistoryPage(bookingHistoryPage + 1)} disabled={bookingHistoryPage >= bookingHistoryMeta.totalPages || isBookingHistoryLoading || isReviewSaving} className="workspace-button workspace-button--secondary px-2.5!">
+                      Next <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  </nav>
+                )}
+              </section>
             </div>
           )}
 
@@ -3723,19 +3716,19 @@ export default function CommuterDashboard() {
                   <button type="button" onClick={() => setActiveTab('home')} className="mt-4 rounded-xl bg-[#007AFF] px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-[#0066d6] cursor-pointer">Browse parking</button>
                 </div>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
                   {favoriteSpots.map((spot) => (
-                    <article key={spot.parkingSpotId} className="overflow-hidden rounded-2xl border border-[#e8eaed] dark:border-white/[0.08] bg-white dark:bg-[#1c1c1e] shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
-                      <div className="relative">
-                        {spot.primaryImageUrl ? <img src={spot.primaryImageUrl} alt="" className="aspect-[16/9] w-full object-cover" /> : <div className="flex aspect-[16/9] items-center justify-center bg-[#eff6ff]"><Home size={28} className="text-[#007AFF]" /></div>}
+                    <article key={spot.parkingSpotId} className="parking-result workspace-panel">
+                      <div className="parking-result__photo">
+                        <ParkingPhoto key={spot.primaryImageUrl} src={spot.primaryImageUrl} />
                         <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 shadow-sm backdrop-blur">{spot.availabilityStatus}</span>
                         <button type="button" onClick={() => void handleToggleFavorite(spot)} disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)} aria-label={`Remove ${spot.propertyName} from favorites`} className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.06] bg-white/95 text-rose-500 shadow-md backdrop-blur active:scale-95 disabled:cursor-wait disabled:opacity-70">{favoriteUpdatingIds.includes(spot.parkingSpotId) ? <Loader2 size={18} className="animate-spin text-[#007AFF]" /> : <Heart size={18} fill="currentColor" />}</button>
                       </div>
-                      <div className="p-4">
+                      <div className="flex flex-1 flex-col p-4">
                         <div className="min-w-0"><h3 className="truncate text-[15px] font-semibold text-[#111] dark:text-[#f5f5f7]">{spot.propertyName}</h3><p className="mt-1 text-[11px] text-[#5f6368]">Bay {spot.parkingLabel} · Near {spot.stationName}</p></div>
                         <p className="mt-2 line-clamp-2 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">{spot.address}</p>
                         <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-[#f8f9fa] dark:bg-white/[0.06] p-3 text-[11px]"><div><span className="block text-[10px] text-[#9ca3af] dark:text-[#a1a1a6]">Daily rate</span><strong className="mt-0.5 block text-[#111] dark:text-[#f5f5f7]">{spot.dailyRate === null ? 'Not set' : `RM ${spot.dailyRate.toFixed(2)}`}</strong></div><div><span className="block text-[10px] text-[#9ca3af] dark:text-[#a1a1a6]">To station</span><strong className="mt-0.5 block text-[#111] dark:text-[#f5f5f7]">{(spot.distanceToStation ?? 0).toFixed(2)} km</strong></div></div>
-                        <button type="button" onClick={() => openParkingDetail(spot, null, spot.stationName)} className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-[12px] font-semibold text-white hover:bg-[#0066d6]">View parking <ChevronRight size={15} /></button>
+                        <button type="button" onClick={() => openParkingDetail(spot, null, spot.stationName)} className="mt-auto flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-[12px] font-semibold text-white hover:bg-[#0066d6]">View parking <ChevronRight size={15} /></button>
                       </div>
                     </article>
                   ))}

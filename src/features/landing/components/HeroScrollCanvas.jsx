@@ -70,8 +70,7 @@ const framePath = (index, set) =>
 
 const isReady = (img) => Boolean(img && img.complete && img.naturalWidth > 0);
 
-const btnPrimary =
-  'inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#0071e3] px-7 text-[16px] font-medium tracking-[-0.016em] text-white shadow-[0_8px_24px_rgba(0,113,227,0.38)] transition-all duration-200 hover:bg-[#0077ed]';
+const btnPrimary = 'workspace-button workspace-button--primary';
 const btnSecondary =
   'inline-flex min-h-12 items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/30 px-7 text-[16px] font-medium tracking-[-0.016em] text-white transition-all duration-200';
 const stepCard =
@@ -333,18 +332,12 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
       {/* ── Stage 1 (0% – 20%): Cardless floating hero typography shifted slightly upward ── */}
       <div className="hero-stage-1 absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
         <div className="-translate-y-6 flex flex-col items-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-slate-950/40 backdrop-blur-md border border-white/20 px-4 py-1.5 text-[12px] font-medium tracking-[-0.01em] text-white shadow-lg">
-            <span className="h-2 w-2 rounded-full bg-[#30d158]" />
-            Parking &amp; transit across the Klang Valley
-          </span>
-
           <h1 className="mt-6 max-w-4xl text-[38px] font-semibold leading-[1.06] tracking-[-0.022em] text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.65)] sm:text-[52px] md:text-[64px] lg:text-[72px]">
-            A good day starts
-            <span className="mt-1 block text-[#64d2ff]">with an easier commute.</span>
+            Find parking near your train station
           </h1>
 
           <p className="mx-auto mt-5 max-w-[560px] text-[17px] leading-[1.47] tracking-[-0.016em] text-white/90 drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)] sm:text-[19px]">
-            Find a verified parking bay, explore your transit connections, and keep your journey together in ParkJom.
+            Book a bay near your station and continue by train.
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
@@ -368,7 +361,6 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
       {/* ── Stage 2 (25% – 50%): Compact translucent glass card (bottom-left) ── */}
       <div className="hero-stage-2 invisible absolute inset-x-5 bottom-8 max-w-sm md:inset-x-auto md:bottom-14 md:left-10 lg:left-16">
         <div className={stepCard}>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#64d2ff]">For commuters</p>
           <h2 className="mt-1.5 text-[24px] font-semibold leading-[1.14] tracking-[-0.015em] text-white md:text-[28px]">
             Find a bay that fits your day.
           </h2>
@@ -381,7 +373,6 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
       {/* ── Stage 3 (55% – 80%): Compact translucent glass card (bottom-right) ── */}
       <div className="hero-stage-3 invisible absolute inset-x-5 bottom-8 max-w-sm md:inset-x-auto md:bottom-14 md:right-10 lg:right-16">
         <div className={stepCard}>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#30d158]">For owners</p>
           <h2 className="mt-1.5 text-[24px] font-semibold leading-[1.14] tracking-[-0.015em] text-white md:text-[28px]">
             Put your unused bay to work.
           </h2>
@@ -394,23 +385,12 @@ export default function HeroScrollCanvas({ totalFrames = undefined }) {
       {/* ── Stage 4 (85% – 100%): Floating closing CTA shifted above the glowing VIP bay ── */}
       <div className="hero-stage-4 invisible absolute inset-0 flex items-center justify-center px-5 text-center">
         <div className="-translate-y-32 flex max-w-2xl flex-col items-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-slate-950/40 backdrop-blur-md border border-white/20 px-4 py-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-[#64d2ff] shadow-lg">
-            Your next connection
-          </span>
           <h2 className="mt-4 text-[32px] font-semibold leading-[1.08] tracking-[-0.02em] text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.65)] sm:text-[44px] md:text-[52px]">
             More lines. More ways to get there.
           </h2>
           <p className="mx-auto mt-4 max-w-[480px] text-[16px] leading-[1.5] tracking-[-0.016em] text-white/90 drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)] sm:text-[18px]">
             Explore LRT, MRT, Monorail, BRT, and bus connections in the app. Find nearby parking where verified bays are available.
           </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <a href="/login?role=Commuter" className={`${btnPrimary} w-full sm:w-auto`}>
-              Reserve a bay <ArrowRight size={16} />
-            </a>
-            <a href="/login?role=Owner" className={`${btnSecondary} w-full sm:w-auto`}>
-              Become a host
-            </a>
-          </div>
         </div>
       </div>
 

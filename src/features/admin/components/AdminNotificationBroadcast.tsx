@@ -1,3 +1,4 @@
+import AdminPageHeader from './AdminPageHeader';
 import React, { useState, useEffect } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
 import {
@@ -103,17 +104,7 @@ export default function AdminNotificationBroadcast() {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Tab Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/10 pb-4">
-        <div>
-          <h2 className="text-xl font-bold text-[#1d1d1f] dark:text-white flex items-center gap-2">
-            <Radio size={20} className="text-emerald-500" /> Platform Broadcast & Notifications
-          </h2>
-          <p className="text-xs text-[#6e6e73] dark:text-[#a1a1aa] mt-0.5">
-            Send real-time alerts, maintenance notices, and monitor outbox delivery status.
-          </p>
-        </div>
-
+      <AdminPageHeader title="Broadcast and notifications" description="Send alerts and check their delivery status.">
         <div className="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/[0.06] p-1">
           <button
             type="button"
@@ -138,7 +129,7 @@ export default function AdminNotificationBroadcast() {
             Delivery Audit Log
           </button>
         </div>
-      </div>
+      </AdminPageHeader>
 
       {/* Broadcast Tab */}
       {activeTab === 'broadcast' && (

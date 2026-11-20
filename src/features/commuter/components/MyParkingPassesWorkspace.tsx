@@ -1,3 +1,4 @@
+import ParkingPhoto from './ParkingPhoto';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -38,12 +39,6 @@ import {
 } from '../api/iotApi';
 import ParkingReview from '../pages/ParkingReview';
 
-const FALLBACK_SPOT_PHOTOS = [
-  'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1545179605-1296651e9d43?w=800&auto=format&fit=crop&q=80',
-];
 
 const CANCELLATION_OPTIONS = [
   {
@@ -455,13 +450,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
             {/* Spot Hero Card */}
             <div className="overflow-hidden rounded-3xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] shadow-sm">
               <div className="relative h-56 sm:h-64 w-full overflow-hidden bg-slate-900">
-                <img
-                  src={
-                    effectiveBooking.spot.primaryImageUrl || FALLBACK_SPOT_PHOTOS[0]
-                  }
-                  alt={effectiveBooking.spot.propertyName || effectiveBooking.spot.name}
-                  className="h-full w-full object-cover"
-                />
+                <ParkingPhoto key={effectiveBooking.spot.primaryImageUrl} src={effectiveBooking.spot.primaryImageUrl} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/15" />
 
                 <div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-2">
@@ -1053,10 +1042,10 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-[#111] dark:text-white">
-            My Parking Passes ({bookings.length})
+            Parking passes ({bookings.length})
           </h2>
           <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA]">
-            Select any pass to control its smart bollard, or use the top-right menu (&#8942;) to view confirmation details or cancel.
+            Get directions, manage the booking, or open gate controls.
           </p>
         </div>
         <button
@@ -1064,41 +1053,23 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
           onClick={onFindMoreParking}
           className="self-start sm:self-auto inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-2 text-xs font-bold text-white hover:bg-[#0066d6] transition-colors cursor-pointer shrink-0"
         >
-          <Plus size={14} /> Book Another Spot
+          <Plus size={14} /> Book another spot
         </button>
       </div>
 
-      {/* Square Cards Grid (Matching Browse Card Style) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {bookings.map((booking, index) => {
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+        {bookings.map((booking) => {
           const inclusiveEnd = formatInclusiveEndDate(
             booking.startTime,
             booking.endTime,
           );
           const isUnlocked = Boolean(unlockedByBookingId[booking.id]);
-          const photoUrl =
-            booking.spot.primaryImageUrl ||
-            FALLBACK_SPOT_PHOTOS[index % FALLBACK_SPOT_PHOTOS.length];
+          const isActive = booking.status === 'Active' || isUnlocked;
 
           return (
-            <div
-              key={booking.id}
-              onClick={() => handleOpenBollardView(booking)}
-              className="group cursor-pointer flex flex-col text-left select-none rounded-2xl p-2.5 -m-2.5 transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-            >
-              {/* Square Image Container */}
-              <div className="aspect-square w-full rounded-2xl overflow-hidden relative bg-slate-100 dark:bg-white/5 border border-black/[0.06] dark:border-white/10 shadow-xs">
-                <img
-                  src={photoUrl}
-                  alt={booking.spot.propertyName || booking.spot.name}
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                  loading="lazy"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src =
-                      FALLBACK_SPOT_PHOTOS[index % FALLBACK_SPOT_PHOTOS.length];
-                  }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/15 pointer-events-none" />
+            <article key={booking.id} className="parking-result workspace-panel">
+              <div className="parking-result__photo">
+                <ParkingPhoto key={booking.spot.primaryImageUrl} src={booking.spot.primaryImageUrl} />
 
                 {/* Top-Left Status Badge */}
                 <div className="absolute top-3 left-3 pointer-events-none">
@@ -1109,13 +1080,6 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                         : 'bg-white/95 dark:bg-[#1C1C1E]/95 text-[#111] dark:text-white border-black/5 dark:border-white/10'
                     }`}
                   >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${
-                        isUnlocked || booking.status === 'Active'
-                          ? 'bg-white animate-pulse'
-                          : 'bg-[#007AFF]'
-                      }`}
-                    />
                     {isUnlocked ? 'Unlocked' : booking.status}
                   </span>
                 </div>
@@ -1127,7 +1091,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                     e.stopPropagation();
                     handleOpenConfirmationView(booking);
                   }}
-                  className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 hover:bg-black/70 text-white backdrop-blur-md border border-white/25 transition-all hover:scale-110 active:scale-95 cursor-pointer shadow-sm"
+                  className="absolute top-3 right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/45 hover:bg-black/70 text-white backdrop-blur-md border border-white/25 transition-all hover:scale-110 active:scale-95 cursor-pointer shadow-sm"
                   aria-label="Configure booking or cancel"
                   title="Booking confirmation & cancellation"
                 >
@@ -1146,7 +1110,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
               </div>
 
               {/* Card Details Below Square Image (Matches Sketch: Parking A, Period:, [lock/unlock] [navigate]) */}
-              <div className="pt-3 px-1 flex-1 flex flex-col justify-between space-y-2.5">
+              <div className="flex flex-1 flex-col justify-between space-y-2.5 p-4">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-1">
                     <h3 className="text-[14px] font-bold text-[#111] dark:text-white truncate">
@@ -1171,35 +1135,17 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                   )}
                 </div>
 
-                {/* Action Row: [Lock / Unlock] + [Navigate Icon Button] */}
-                <div className="pt-1 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenBollardView(booking);
-                    }}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#007AFF] hover:bg-[#0066d6] text-white py-2 px-3 text-xs font-bold transition-colors shadow-xs cursor-pointer"
-                  >
-                    {isUnlocked ? <Unlock size={13} /> : <Lock size={13} />}
-                    <span>Lock / Unlock</span>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button type="button" onClick={() => onNavigateToMap(booking)} className={isActive ? 'workspace-button workspace-button--secondary' : 'workspace-button workspace-button--primary'}>
+                    <Navigation size={15} aria-hidden="true" /> Navigate
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onNavigateToMap(booking);
-                    }}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-black/10 dark:border-white/15 bg-white dark:bg-[#1C1C1E] text-[#111] dark:text-white hover:border-[#007AFF] hover:text-[#007AFF] transition-colors shadow-xs cursor-pointer"
-                    aria-label="Navigate on map"
-                    title="Bring to map"
-                  >
-                    <Navigation size={15} />
+                  <button type="button" onClick={() => handleOpenBollardView(booking)} className={isActive ? 'workspace-button workspace-button--primary' : 'workspace-button workspace-button--secondary'}>
+                    {isUnlocked ? <Unlock size={15} aria-hidden="true" /> : <Lock size={15} aria-hidden="true" />}
+                    Gate controls
                   </button>
                 </div>
               </div>
-            </div>
+            </article>
           );
         })}
       </div>

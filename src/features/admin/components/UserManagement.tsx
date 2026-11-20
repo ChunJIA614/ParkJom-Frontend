@@ -1,3 +1,5 @@
+import AdminSummaryCounts from './AdminSummaryCounts';
+import AdminPageHeader from './AdminPageHeader';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -157,16 +159,7 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">User Management</h2>
-          <p className="text-sm text-slate-500 dark:text-[#A1A1AA]">Search, inspect, and govern every ParkJom account.</p>
-        </div>
-        <button type="button" onClick={() => void loadUsers()} disabled={isLoading}
-          className="inline-flex min-h-9 items-center gap-2 self-start rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-3.5 text-xs font-semibold text-slate-700 dark:text-white shadow-xs hover:bg-slate-50 dark:hover:bg-white/[0.08] transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
-        </button>
-      </div>
+      <AdminPageHeader title="User management" description="Find and manage ParkJom accounts." isLoading={isLoading} onRefresh={loadUsers} />
 
       {error && (
         <div role="alert" className="flex flex-col gap-3 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-sm text-rose-800 dark:text-rose-300 sm:flex-row sm:items-center sm:justify-between">
@@ -175,20 +168,11 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A1A1AA]">Matching users</span><Users className="h-4 w-4 text-blue-600 dark:text-[#0A84FF]" /></div>
-          <p className="mt-2 text-2xl font-bold text-slate-800 dark:text-white">{totalCount}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A1A1AA]">Active on page</span><ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /></div>
-          <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">{pageCounts.active}</p>
-        </div>
-        <div className="col-span-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 shadow-sm lg:col-span-1">
-          <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A1A1AA]">Restricted on page</span><AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" /></div>
-          <p className="mt-2 text-2xl font-bold text-amber-600 dark:text-amber-400">{pageCounts.restricted}</p>
-        </div>
-      </div>
+      <AdminSummaryCounts items={[
+        { label: 'Matching users', value: totalCount },
+        { label: 'Active on page', value: pageCounts.active },
+        { label: 'Restricted on page', value: pageCounts.restricted },
+      ]} />
 
       <div className="grid gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-3 shadow-sm sm:grid-cols-2 sm:p-4 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
         <label className="relative block">
@@ -221,17 +205,17 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
       ) : (
         <div className={`overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${isLoading ? 'opacity-60' : ''}`}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] border-separate border-spacing-0 text-left">
-              <thead className="bg-slate-50 dark:bg-[#18181C] text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]"><tr>
-                <th className="rounded-tl-2xl border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">User</th>
-                <th className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Role &amp; status</th>
-                <th className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Activity</th>
-                <th className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Joined</th>
-                <th className="rounded-tr-2xl border-b border-slate-200 dark:border-white/10 px-4 py-3">Actions</th>
+            <table role="table" className="workspace-record-table w-full min-w-[900px] border-separate border-spacing-0 text-left">
+              <thead role="rowgroup" className="bg-slate-50 dark:bg-[#18181C] text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]"><tr role="row">
+                <th role="columnheader" scope="col" className="rounded-tl-2xl border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">User</th>
+                <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Role &amp; status</th>
+                <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Activity</th>
+                <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Joined</th>
+                <th role="columnheader" scope="col" className="rounded-tr-2xl border-b border-slate-200 dark:border-white/10 px-4 py-3">Actions</th>
               </tr></thead>
-              <tbody>{users.map((entry) => (
-                <tr key={entry.userId} className="align-top hover:bg-slate-50/70 dark:hover:bg-white/[0.04] transition-colors">
-                  <td className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
+              <tbody role="rowgroup">{users.map((entry) => (
+                <tr role="row" key={entry.userId} className="align-top hover:bg-slate-50/70 dark:hover:bg-white/[0.04] transition-colors">
+                  <td role="cell" data-label="User" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar user={entry} />
                       <div className="min-w-0">
@@ -241,20 +225,20 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
                       </div>
                     </div>
                   </td>
-                  <td className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
+                  <td role="cell" data-label="Role and status" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
                     <div className="flex flex-wrap gap-1.5">
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${roleTone[entry.userType]}`}>{USER_TYPE_LABELS[entry.userType]}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusTone(entry.accountStatus)}`}>{entry.accountStatus}</span>
                       {!entry.isProfileComplete && <span className="rounded-full bg-orange-50 dark:bg-orange-950/50 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-800/60">Incomplete</span>}
                     </div>
                   </td>
-                  <td className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-[10px] text-slate-500 dark:text-[#A1A1AA]">
+                  <td role="cell" data-label="Activity" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-[10px] text-slate-500 dark:text-[#A1A1AA]">
                     <p><span className="font-semibold text-slate-700 dark:text-white">{currency(entry.summary.walletBalance)}</span> wallet</p>
                     <p className="mt-0.5">{entry.summary.activeBookingsCount} active · {entry.summary.totalBookingsCount} total bookings</p>
                     <p className="mt-0.5">{entry.userType === 2 ? `${entry.summary.ownedParkingSpotsCount} spots` : `${entry.summary.vehicleCount} vehicles`} · {entry.summary.openSupportTicketsCount} open tickets</p>
                   </td>
-                  <td className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-[10px] text-slate-500 dark:text-[#A1A1AA] whitespace-nowrap">{formatDate(entry.createdAt)}</td>
-                  <td className="border-b border-slate-200 dark:border-white/10 px-4 py-3">
+                  <td role="cell" data-label="Joined" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-[10px] text-slate-500 dark:text-[#A1A1AA] whitespace-nowrap">{formatDate(entry.createdAt)}</td>
+                  <td role="cell" data-label="Actions" className="border-b border-slate-200 dark:border-white/10 px-4 py-3">
                     <button type="button" onClick={() => setSelectedUserId(entry.userId)}
                       className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-slate-700 dark:text-white hover:bg-slate-50 dark:hover:bg-white/[0.08] transition-colors cursor-pointer">
                       <Eye className="h-3.5 w-3.5 text-blue-600 dark:text-[#0A84FF]" /> Manage

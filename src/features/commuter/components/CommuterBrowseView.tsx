@@ -1,3 +1,4 @@
+import ParkingPhoto from './ParkingPhoto';
 import {
   Accessibility,
   Building2,
@@ -7,7 +8,6 @@ import {
   Heart,
   Layers,
   Loader2,
-  Map,
   MapPin,
   Navigation,
   Search,
@@ -20,11 +20,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import {
-  DEFAULT_PUBLIC_PARKING_PHOTO,
-  getPublicLotPhotoUrl,
-  type PublicParkingLot,
-} from '@/features/publicParking/types';
+import type { PublicParkingLot } from '@/features/publicParking/types';
 import type { ParkingSpot } from '../types';
 
 type GeoPoint = { lat: number; lng: number };
@@ -37,16 +33,9 @@ import {
   type RealCategory,
 } from '../lib/browseFilters';
 
-const BROWSE_FALLBACK_PHOTOS = [
-  'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1590674899484-d5640e854abe?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1621929747188-0b4dc28498d2?auto=format&fit=crop&w=800&q=80',
-];
-
 const SORT_TABS: Array<{ id: BrowseSortBy; label: string; icon: typeof Clock }> = [
   { id: 'latest', label: 'Latest', icon: Clock },
-  { id: 'nearby', label: 'Nearby', icon: Crosshair },
+  { id: 'nearby', label: 'Nearest', icon: Crosshair },
   { id: 'popular', label: 'Popular', icon: TrendingUp },
 ];
 
@@ -85,7 +74,6 @@ export interface CommuterBrowseViewProps {
   onOpenParkingDetail: (spot: ParkingSpot, stationName?: string) => void;
   onToggleFavorite: (spot: ParkingSpot) => void;
   onInspectPublicLot: (lot: PublicParkingLot) => void;
-  onSwitchToMap: () => void;
 }
 
 export default function CommuterBrowseView({
@@ -117,7 +105,6 @@ export default function CommuterBrowseView({
   onOpenParkingDetail,
   onToggleFavorite,
   onInspectPublicLot,
-  onSwitchToMap,
 }: CommuterBrowseViewProps) {
   const showPublicSection =
     browseFilters.listingScope !== 'private' && matchingPublicLots.length > 0;
@@ -134,63 +121,27 @@ export default function CommuterBrowseView({
   };
 
   return (
-    <div className="space-y-4 pb-24 md:pb-12">
-      {/* ── Hidmo-Style Floating Top Search Bar + GPS Trigger ── */}
+    <div className="space-y-5 pb-24 md:pb-12">
+      <h1 className="sr-only">Browse parking</h1>
       <div className="max-w-3xl mx-auto space-y-2.5">
         <div className="flex items-center gap-2.5">
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={onOpenSearchSheet}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onOpenSearchSheet();
-              }
-            }}
-            aria-label="Search station, condo, or open parking filters"
-            className="flex-1 min-w-0 h-12 sm:h-[52px] rounded-full bg-white dark:bg-[#1C1C1F] border border-black/[0.09] dark:border-white/[0.11] shadow-[0_6px_22px_rgba(0,0,0,0.06)] dark:shadow-[0_10px_28px_rgba(0,0,0,0.45)] pl-4 pr-2 flex items-center gap-2.5 cursor-pointer hover:border-[#007AFF]/45 active:scale-[0.995] transition-all"
-          >
-            <Search
-              size={17}
-              className={
-                searchQuery.trim()
-                  ? 'text-[#007AFF] dark:text-[#0A84FF] shrink-0'
-                  : 'text-[#8E8E93] dark:text-[#71717A] shrink-0'
-              }
-            />
-            <span
-              className={`flex-1 min-w-0 truncate text-left text-[14px] ${
-                searchQuery.trim()
-                  ? 'font-semibold text-[#111111] dark:text-white'
-                  : 'font-medium text-[#8E8E93] dark:text-[#71717A]'
-              }`}
+          <div className="workspace-panel flex min-w-0 flex-1 items-center">
+            <button
+              type="button"
+              onClick={onOpenSearchSheet}
+              className="flex min-h-12 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 text-left"
+              aria-label={searchQuery.trim() ? `Edit parking search: ${searchQuery.trim()}` : 'Search for a station or parking'}
             >
-              {searchQuery.trim() || 'Search station, condo, or area...'}
-            </span>
-
+              <Search size={17} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="flex-1 truncate text-sm">{searchQuery.trim() || 'Search station or parking'}</span>
+              <SlidersHorizontal size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+              {activeFilterCount > 0 && <span className="workspace-status" aria-label={`${activeFilterCount} active filters`}>{activeFilterCount}</span>}
+            </button>
             {searchQuery.trim() && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClearSearchQuery();
-                }}
-                aria-label="Clear destination search"
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#111111] dark:hover:text-white shrink-0"
-              >
-                <X size={13} />
+              <button type="button" onClick={onClearSearchQuery} aria-label="Clear parking search" className="grid size-11 shrink-0 place-items-center rounded-xl text-muted-foreground">
+                <X size={16} aria-hidden="true" />
               </button>
             )}
-
-            <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-[#111111] dark:text-white shrink-0">
-              <SlidersHorizontal size={15} />
-              {activeFilterCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#007AFF] dark:bg-[#0A84FF] px-1 text-[9px] font-bold text-white shadow-xs">
-                  {activeFilterCount}
-                </span>
-              )}
-            </span>
           </div>
 
           <button
@@ -200,10 +151,10 @@ export default function CommuterBrowseView({
             title={
               locationStatus === 'ready'
                 ? `Using your location (±${Math.round(locationAccuracy ?? 50)}m)`
-                : 'Enable precise GPS nearby'
+                : 'Use your location'
             }
-            aria-label={locationStatus === 'ready' ? 'Refresh GPS location' : 'Enable nearby GPS'}
-            className={`h-12 w-12 sm:w-auto sm:h-[52px] sm:px-4 rounded-full border shadow-[0_6px_22px_rgba(0,0,0,0.06)] dark:shadow-[0_10px_28px_rgba(0,0,0,0.45)] flex items-center justify-center gap-1.5 shrink-0 text-[12px] font-semibold transition-all cursor-pointer active:scale-95 ${
+            aria-label={locationStatus === 'ready' ? 'Refresh GPS location' : 'Use my location'}
+            className={`workspace-button workspace-button--secondary size-12 shrink-0 p-0! sm:w-auto sm:px-4! ${
               locationStatus === 'ready'
                 ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                 : 'bg-white dark:bg-[#1C1C1F] border-black/[0.09] dark:border-white/[0.11] text-[#111111] dark:text-white hover:border-[#007AFF]/45'
@@ -218,7 +169,7 @@ export default function CommuterBrowseView({
               />
             )}
             <span className="hidden sm:inline">
-              {locationStatus === 'ready' ? 'GPS Ready' : 'Nearby'}
+              {locationStatus === 'ready' ? 'Location on' : 'Use my location'}
             </span>
           </button>
         </div>
@@ -403,7 +354,7 @@ export default function CommuterBrowseView({
           <p className="text-[12px] text-[#6E6E73] dark:text-[#A1A1AA] mt-1 max-w-sm mx-auto">
             {hasActiveFilters
               ? 'Try loosening your price or distance filter, or pick a popular rail station area below.'
-              : 'Enable Nearby GPS above or pick a popular rail station area below.'}
+              : 'Use your location above or pick a popular rail station area below.'}
           </p>
 
           <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
@@ -447,11 +398,8 @@ export default function CommuterBrowseView({
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-[17px] sm:text-xl font-bold tracking-tight text-[#111111] dark:text-white">
-                      Public Drive-In Lots
+                      Public drive-in lots
                     </h2>
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
-                      Real-Time ANPR
-                    </span>
                   </div>
                   <p className="text-[12px] text-[#6E6E73] dark:text-[#A1A1AA] mt-0.5">
                     Drive in anytime without booking — gate reads your plate automatically.
@@ -463,31 +411,10 @@ export default function CommuterBrowseView({
                 {matchingPublicLots.map((lot) => {
                   const isFull = lot.availableSpaces <= 0;
                   return (
-                    <div
-                      key={`browse-pub-${lot.publicParkingLotId}`}
-                      onClick={() => onInspectPublicLot(lot)}
-                      className="group cursor-pointer rounded-3xl bg-white dark:bg-[#1C1C1F] border border-black/[0.07] dark:border-white/[0.09] shadow-xs hover:shadow-lg transition-all duration-300 overflow-hidden flex flex-col"
-                    >
-                      <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100 dark:bg-white/[0.04]">
-                        {lot.facilityPhotoUrl ? (
-                          <img
-                            src={getPublicLotPhotoUrl(lot.facilityPhotoUrl)}
-                            alt={lot.lotName}
-                            onError={(e) => {
-                              const target = e.currentTarget;
-                              if (target.src !== DEFAULT_PUBLIC_PARKING_PHOTO) {
-                                target.src = DEFAULT_PUBLIC_PARKING_PHOTO;
-                              }
-                            }}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-blue-600/20 to-indigo-600/30 flex items-center justify-center">
-                            <Layers className="w-10 h-10 text-[#007AFF] opacity-60" />
-                          </div>
-                        )}
-
+                    <article key={`browse-pub-${lot.publicParkingLotId}`} className="parking-result workspace-panel">
+                      <button type="button" className="parking-result__open" onClick={() => onInspectPublicLot(lot)} aria-label={`View ${lot.lotName}`} />
+                      <div className="parking-result__photo">
+                        <ParkingPhoto key={lot.facilityPhotoUrl} src={lot.facilityPhotoUrl} />
                         <div className="absolute top-3 left-3">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-black/65 text-white backdrop-blur-md">
                             <Layers className="w-3 h-3 text-[#3894FF]" />
@@ -503,7 +430,6 @@ export default function CommuterBrowseView({
                                 : 'bg-emerald-600/90 text-white'
                             }`}
                           >
-                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                             <span>
                               {isFull ? 'FULL' : `${lot.availableSpaces}/${lot.totalCapacity} bays`}
                             </span>
@@ -539,14 +465,14 @@ export default function CommuterBrowseView({
                               {lot.distanceToStation ? ` · ${lot.distanceToStation}m` : ''}
                             </span>
                           )}
-                          {lot.dailyCapRate && (
+                          {lot.dailyCapRate != null && lot.dailyCapRate > 0 && (
                             <span className="inline-flex items-center rounded-lg bg-black/[0.04] dark:bg-white/[0.07] px-2.5 py-1 text-[11px] font-medium text-[#3A3A3C] dark:text-[#D4D4D8]">
                               Cap RM {lot.dailyCapRate.toFixed(0)}/day
                             </span>
                           )}
                         </div>
                       </div>
-                    </div>
+                    </article>
                   );
                 })}
               </div>
@@ -558,12 +484,12 @@ export default function CommuterBrowseView({
             <section className="space-y-3.5">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-[17px] sm:text-xl font-bold tracking-tight text-[#111111] dark:text-white">
-                  {hasActiveFilters ? 'Matching Condo & Verified Bays' : 'Verified Condo & Station Bays'}
+                  {hasActiveFilters ? 'Matching Condo & Verified Bays' : 'Reservable parking'}
                 </h2>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-                {filteredBrowseSpots.map((spot, index) => {
+                {filteredBrowseSpots.map((spot) => {
                   const isSaved = favoriteSpots.some(
                     (f) => f.parkingSpotId === spot.parkingSpotId,
                   );
@@ -580,32 +506,18 @@ export default function CommuterBrowseView({
                     spot.propertyName || formatShortSpotName(spot.name);
 
                   return (
-                    <div
-                      key={spot.id}
-                      onClick={() =>
-                        onOpenParkingDetail(spot, spot.stationName || spot.station)
-                      }
-                      className="group cursor-pointer rounded-3xl bg-white dark:bg-[#1C1C1F] border border-black/[0.07] dark:border-white/[0.09] shadow-xs hover:shadow-lg transition-all duration-300 overflow-hidden flex flex-col text-left"
-                    >
-                      {/* Photo Header */}
-                      <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100 dark:bg-white/[0.04]">
-                        <img
-                          src={
-                            spot.primaryImageUrl ||
-                            BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length]
-                          }
-                          alt={shortTitle}
-                          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                          loading="lazy"
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).src =
-                              BROWSE_FALLBACK_PHOTOS[index % BROWSE_FALLBACK_PHOTOS.length];
-                          }}
-                        />
-
+                    <article key={spot.id} className="parking-result workspace-panel">
+                      <button
+                        type="button"
+                        className="parking-result__open"
+                        aria-label={`View parking at ${shortTitle}`}
+                        onClick={() => onOpenParkingDetail(spot, spot.stationName || spot.station)}
+                      />
+                      <div className="parking-result__photo">
+                        <ParkingPhoto key={spot.primaryImageUrl} src={spot.primaryImageUrl} />
                         {/* Top-left subtle type badge */}
                         <div className="absolute top-3 left-3 pointer-events-none">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-black/60 text-white px-2.5 py-1 text-[11px] font-semibold backdrop-blur-md">
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-black/75 text-white px-2.5 py-1 text-sm font-semibold">
                             <CheckCircle2 size={11} className="text-emerald-400" />
                             <span>{spot.type === 'Condo Bay' ? 'Condo Bay' : 'Private Bay'}</span>
                           </span>
@@ -614,13 +526,11 @@ export default function CommuterBrowseView({
                         {/* Top-right Heart button */}
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleFavorite(spot);
-                          }}
+                          onClick={() => onToggleFavorite(spot)}
+                          aria-pressed={isSaved}
                           disabled={isFavPending}
                           aria-label={isSaved ? 'Remove from favorites' : 'Save to favorites'}
-                          className="absolute top-3 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/35 hover:bg-black/55 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-105 active:scale-90 cursor-pointer"
+                          className="absolute top-3 right-3 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/35 hover:bg-black/55 text-white backdrop-blur-md border border-white/20 transition-all hover:scale-105 active:scale-90 cursor-pointer"
                         >
                           <Heart
                             size={16}
@@ -708,9 +618,9 @@ export default function CommuterBrowseView({
                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                           <span className="inline-flex items-center gap-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.07] px-2.5 py-1 text-[11px] font-medium text-[#3A3A3C] dark:text-[#D4D4D8]">
                             <TrainFront size={11} className="text-[#007AFF]" />
-                            {spot.distanceToStation > 0
-                              ? `${spot.distanceToStation.toFixed(1)} km to rail`
-                              : `${spot.timeToStationInMinutes || 5} min walk`}
+                            {spot.timeToStationInMinutes > 0
+                              ? `${spot.timeToStationInMinutes} min walk`
+                              : 'Walking time unavailable'}
                           </span>
 
                           {userDistanceKm !== null && (
@@ -728,7 +638,7 @@ export default function CommuterBrowseView({
                           )}
                         </div>
                       </div>
-                    </div>
+                    </article>
                   );
                 })}
               </div>
@@ -737,18 +647,6 @@ export default function CommuterBrowseView({
         </div>
       )}
 
-      {/* ── Hidmo-Style Mobile Floating "Map" Switch Pill ── */}
-      <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5.65rem+var(--parkjom-safe-bottom))] z-[1040] md:hidden pointer-events-auto">
-        <button
-          type="button"
-          onClick={onSwitchToMap}
-          aria-label="Open Transit Map view"
-          className="inline-flex items-center gap-2 rounded-full bg-[#111111] dark:bg-white text-white dark:text-[#111111] px-5 py-2.5 text-[13px] font-bold shadow-[0_10px_28px_rgba(0,0,0,0.28)] border border-black/15 dark:border-white/25 active:scale-95 transition-transform cursor-pointer"
-        >
-          <Map size={15} strokeWidth={2.2} />
-          <span>Map</span>
-        </button>
-      </div>
     </div>
   );
 }

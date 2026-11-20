@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import {
   AlertCircle,
   RefreshCw,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import {
   deleteParkingSpot,
@@ -154,13 +154,26 @@ export default function OwnerDashboard() {
     token: user.token,
   }) : null, [user]);
   // Navigation View Router — persist across reloads
-  const [activeView, setActiveView] = useState<OwnerView>(() => {
+  const location = useLocation();
+  const workspaceQuery = new URLSearchParams(location.search);
+  const rangeEditorOpen = workspaceQuery.get('view') === 'availability' && workspaceQuery.get('schedule') === 'range';
+  const rangeParkingSpotId = rangeEditorOpen ? Number(workspaceQuery.get('spot')) || undefined : undefined;
+  const [selectedView, setSelectedView] = useState<OwnerView>(() => {
     const urlView = new URLSearchParams(window.location.search).get('view') as OwnerView | null;
     const validViews: OwnerView[] = ['dashboard', 'bookingHistory', 'publicParking', 'availability', 'reviews', 'registration', 'iot', 'wallet', 'settings', 'tickets'];
     if (urlView && validViews.includes(urlView)) return urlView;
     const saved = localStorage.getItem('parkjom_owner_view');
     return saved && validViews.includes(saved as OwnerView) ? saved as OwnerView : 'dashboard';
   });
+  const activeView = rangeEditorOpen ? 'availability' : selectedView;
+  const pageHeadingRef = useRef<HTMLHeadingElement>(null);
+  const wasRangeEditorOpen = useRef(rangeEditorOpen);
+
+  useLayoutEffect(() => {
+    if (rangeEditorOpen || wasRangeEditorOpen.current) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    if (rangeEditorOpen) pageHeadingRef.current?.focus({ preventScroll: true });
+    wasRangeEditorOpen.current = rangeEditorOpen;
+  }, [rangeEditorOpen]);
 
   // Persist active view to localStorage
   useEffect(() => {
@@ -170,8 +183,12 @@ export default function OwnerDashboard() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     () => localStorage.getItem('parkjom_owner_sidebar_collapsed') === 'true',
   );
-  const [configureParkingSpotId, setConfigureParkingSpotId] = useState<number | undefined>();
-  const [configureParkingSection, setConfigureParkingSection] = useState<'setup' | 'timetable'>('setup');
+  const [configureParkingSpotId, setConfigureParkingSpotId] = useState<number | undefined>(
+    rangeParkingSpotId,
+  );
+  const [configureParkingSection, setConfigureParkingSection] = useState<'setup' | 'timetable'>(
+    rangeEditorOpen ? 'timetable' : 'setup',
+  );
 
   useEffect(() => {
     localStorage.setItem('parkjom_owner_sidebar_collapsed', String(isSidebarCollapsed));
@@ -191,6 +208,7 @@ export default function OwnerDashboard() {
   const [bays, setBays] = useState<ParkingBay[]>([]);
   const [baysLoading, setBaysLoading] = useState(true);
   const [baysError, setBaysError] = useState<string | null>(null);
+  const parkingRequestRef = useRef(0);
 
   // 2. Bookings for today — drives the "Booked now / Booked today" bay badge
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -204,6 +222,7 @@ export default function OwnerDashboard() {
 
   // ---- Fetch parking spots from backend ----
   const fetchMyParking = useCallback(async () => {
+    const requestId = ++parkingRequestRef.current;
     setBaysLoading(true);
     setBaysError(null);
     try {
@@ -212,6 +231,7 @@ export default function OwnerDashboard() {
 
       const res = await getMyParking(token);
       const body = await res.json().catch(() => null) as MyParkingResponse | null;
+      if (requestId !== parkingRequestRef.current) return;
       if (!res.ok || !body?.success) {
         throw new Error(body?.message || `Unable to retrieve parking spots (${res.status})`);
       }
@@ -235,6 +255,7 @@ export default function OwnerDashboard() {
           propertyName: property.propertyName || property.address || `Property #${property.propertyId}`,
           stationName: property.nearestStation?.stationName || '—',
           imageUrl: cover?.secureUrl,
+          images: ps.images === undefined ? undefined : images,
           isConfigurationComplete: configuration.isConfigurationComplete,
           configurationDescription: configuration.description,
           hasAvailabilityRules: Boolean(configuration.availability?.rules.length),
@@ -250,9 +271,12 @@ export default function OwnerDashboard() {
       });
       setBays(mapped);
     } catch (error) {
-      setBaysError(error instanceof Error ? error.message : 'Unable to retrieve your parking spots.');
+      if (requestId === parkingRequestRef.current) {
+        setBaysError(error instanceof Error ? error.message : 'Unable to retrieve your parking spots.');
+      }
+    } finally {
+      if (requestId === parkingRequestRef.current) setBaysLoading(false);
     }
-    finally { setBaysLoading(false); }
   }, [user?.token]);
 
   // Overview, configuration, and owner reviews share Get My Parking as their source of truth.
@@ -565,6 +589,30 @@ export default function OwnerDashboard() {
     setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
   };
 
+  const openRangeEditor = (parkingSpotId: number) => {
+    setConfigureParkingSpotId(parkingSpotId);
+    setConfigureParkingSection('timetable');
+    const query = new URLSearchParams({ view: 'availability', schedule: 'range', spot: String(parkingSpotId) });
+    navigate({ search: query.toString() }, { state: { fromTimetable: true } });
+  };
+
+  const closeRangeEditor = () => {
+    setSelectedView('availability');
+    setConfigureParkingSection('timetable');
+    if (location.state?.fromTimetable) {
+      navigate(-1);
+    } else {
+      navigate({ search: 'view=availability' }, { replace: true });
+    }
+  };
+
+  const setActiveView = (view: OwnerView) => {
+    setSelectedView(view);
+    if (!rangeEditorOpen) return;
+    if (view === 'availability') closeRangeEditor();
+    else navigate({ search: '' }, { replace: true });
+  };
+
   const openParkingWorkspace = (parkingSpotId: number, section: 'setup' | 'timetable') => {
     setConfigureParkingSpotId(parkingSpotId);
     setConfigureParkingSection(section);
@@ -583,7 +631,9 @@ export default function OwnerDashboard() {
     tickets: { title: 'Support', description: 'Track booking, access, and settlement issues.' },
     settings: { title: 'Settings', description: 'Manage payout details and workspace preferences.' },
   };
-  const currentViewMeta = viewMeta[activeView];
+  const currentViewMeta = rangeEditorOpen
+    ? { title: 'Edit date range', description: 'Set booking availability for several dates at once.' }
+    : viewMeta[activeView];
 
   return (
     <div className="app-workspace font-sans text-[#1d1d1f] flex" data-workspace-role="owner">
@@ -619,9 +669,9 @@ export default function OwnerDashboard() {
 
         {/* Render View Panels */}
         <main className="workspace-frame flex-1">
-          <header className="workspace-heading">
+          <header className={`workspace-heading${rangeEditorOpen ? ' mx-auto! max-w-[65rem]' : ''}`}>
             <div>
-              <h1 id="owner-page-heading">{currentViewMeta.title}</h1>
+              <h1 id="owner-page-heading" ref={pageHeadingRef} tabIndex={rangeEditorOpen ? -1 : undefined}>{currentViewMeta.title}</h1>
               <p>{currentViewMeta.description}</p>
             </div>
           </header>
@@ -679,8 +729,11 @@ export default function OwnerDashboard() {
                 <AvailabilityScheduler
                   bays={bays}
                   bookings={bookings}
-                  initialParkingSpotId={configureParkingSpotId}
-                  initialSection={configureParkingSection}
+                  initialParkingSpotId={rangeParkingSpotId ?? configureParkingSpotId}
+                  initialSection={rangeEditorOpen ? 'timetable' : configureParkingSection}
+                  rangeEditorOpen={rangeEditorOpen}
+                  onOpenRangeEditor={openRangeEditor}
+                  onCloseRangeEditor={closeRangeEditor}
                   onScheduleChange={() => { void fetchMyParking(); }}
                   onDeleteParking={handleDeleteParkingSpot}
                 />

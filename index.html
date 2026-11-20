@@ -11,6 +11,16 @@
     <script>
       (function () {
         try {
+          if (window.location.pathname === '/login') {
+            var root = document.documentElement;
+            root.classList.remove('dark');
+            root.classList.add('light');
+            root.dataset.theme = 'light';
+            root.style.colorScheme = 'light';
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', '#f5f5f7');
+            return;
+          }
           var stored = window.localStorage.getItem('parkjom-theme');
           var preference = stored === 'light' || stored === 'dark' ? stored : 'system';
           var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -35,11 +45,11 @@
     <meta property="og:type" content="website" />
     <meta property="og:title" content="ParkJom — Park once. Move with the city." />
     <meta property="og:description" content="Reserve trusted parking near LRT and MRT stations, then walk straight into your day." />
-    <meta property="og:image" content="https://united-perigee-400000.web.app/og.png" />
+    <meta property="og:image" content="https://parkjom.web.app/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="ParkJom — Park once. Move with the city." />
     <meta name="twitter:description" content="Trusted parking near your LRT or MRT line." />
-    <meta name="twitter:image" content="https://united-perigee-400000.web.app/og.png" />
+    <meta name="twitter:image" content="https://parkjom.web.app/og.png" />
     <link rel="manifest" href="/manifest.json" />
     <!-- Hero first frame: the scrubber fetches it from JS, invisible to the preload scanner.
          Must mirror pickFrameSet() in HeroScrollCanvas.jsx exactly:

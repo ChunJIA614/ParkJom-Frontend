@@ -5,7 +5,7 @@ import type {
   CloseParkingAvailabilityPayload,
   ParkingAvailabilityRuleInput,
   ParkingConfigurationPayload,
-  ParkingImageUpdatePayload,
+  ParkingImageOrderInput,
 } from '../types';
 
 export function getMyParking(token: string): Promise<Response> {
@@ -53,25 +53,12 @@ export function uploadParkingImages(
 export function updateParkingImageOrder(
   token: string,
   parkingSpotId: number,
-  image: ParkingImageUpdatePayload,
+  images: ParkingImageOrderInput[],
 ): Promise<Response> {
   return apiRequest(`/owner/parking/${parkingSpotId}/images`, {
     method: 'PUT',
     headers: authorizationHeaders(token, 'application/json'),
-    body: JSON.stringify(image),
-  });
-}
-
-export function updateParkingImage(
-  token: string,
-  parkingSpotId: number,
-  parkingSpotImageId: number,
-  image: ParkingImageUpdatePayload,
-): Promise<Response> {
-  return apiRequest(`/owner/parking/${parkingSpotId}/images/${parkingSpotImageId}`, {
-    method: 'PUT',
-    headers: authorizationHeaders(token, 'application/json'),
-    body: JSON.stringify(image),
+    body: JSON.stringify({ images }),
   });
 }
 
@@ -79,12 +66,10 @@ export function deleteParkingImage(
   token: string,
   parkingSpotId: number,
   parkingSpotImageId: number,
-  image?: ParkingImageUpdatePayload,
 ): Promise<Response> {
   return apiRequest(`/owner/parking/${parkingSpotId}/images/${parkingSpotImageId}`, {
     method: 'DELETE',
-    headers: authorizationHeaders(token, 'application/json'),
-    ...(image ? { body: JSON.stringify(image) } : {}),
+    headers: authorizationHeaders(token),
   });
 }
 

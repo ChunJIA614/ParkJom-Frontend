@@ -80,13 +80,6 @@ interface WalkingInfo {
   durationMinutes?: number;
 }
 
-const FALLBACK_BAY_PHOTOS = [
-  'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=1200&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1573348722427-f1d6819fdf98?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1545179605-12988d227443?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1562774053-701939374585?w=800&auto=format&fit=crop&q=80',
-];
 
 const REVIEW_PAGE_SIZE = 10;
 
@@ -147,8 +140,7 @@ export default function ParkingDetail() {
     };
   };
 
-  const [fetchedSpot, setFetchedSpot] = useState<MockParkingSpot | null>(null);
-  const [isFetchingSpot, setIsFetchingSpot] = useState(false);
+  const [fetchedSpot, setFetchedSpot] = useState<{ routeId: string; spot: MockParkingSpot } | null>(null);
   const [fetchSpotError, setFetchSpotError] = useState<string | null>(null);
 
   const rawRouteId = routeId ? String(routeId).trim() : '';
@@ -161,7 +153,9 @@ export default function ParkingDetail() {
       String(state.spot.id) === cleanSpotId
     ),
   );
-  const spot = fetchedSpot ?? (stateSpotMatchesRoute ? state?.spot ?? null : null);
+  const [isFetchingSpot, setIsFetchingSpot] = useState(Boolean(cleanSpotId && !stateSpotMatchesRoute));
+  const routeSpot = fetchedSpot?.routeId === cleanSpotId ? fetchedSpot.spot : null;
+  const spot = routeSpot ?? (stateSpotMatchesRoute ? state?.spot ?? null : null);
   const [activeTab, setActiveTab] = useState<DetailTab>('reserve');
   const [isLinkCopied, setIsLinkCopied] = useState(false);
   const handleShare = () => {
@@ -218,9 +212,7 @@ export default function ParkingDetail() {
   useEffect(() => {
     if (!cleanSpotId) return;
     const controller = new AbortController();
-    if (!state?.spot) {
-      setIsFetchingSpot(true);
-    }
+    setIsFetchingSpot(!stateSpotMatchesRoute);
     setFetchSpotError(null);
     getPublicParkingSpot(cleanSpotId, controller.signal)
       .then((result) => {
@@ -233,8 +225,7 @@ export default function ParkingDetail() {
         const primaryImg =
           imageUrls[0] ||
           d.images?.[0]?.secureUrl ||
-          (d.images?.[0]?.mediaFileId ? `/api/media/view/image/${d.images[0].mediaFileId}` : '') ||
-          'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80';
+          (d.images?.[0]?.mediaFileId ? `/api/media/view/image/${d.images[0].mediaFileId}` : '') || null;
         const latitude = d.latitude ?? 0;
         const longitude = d.longitude ?? 0;
         const hasCoordinates = latitude !== 0 || longitude !== 0;
@@ -252,7 +243,7 @@ export default function ParkingDetail() {
           lon: longitude,
           hasCoordinates,
           stationName: d.stationName ?? '',
-          distanceToStation: d.distanceToStationMeters ?? 0,
+          distanceToStation: (d.distanceToStationMeters ?? 0) / 1000,
           timeToStationInMinutes: d.timeToStationInMinutes ?? 0,
           availabilityStatus: String(d.availabilityStatus),
           monthlyRate: d.monthlyRate,
@@ -260,7 +251,7 @@ export default function ParkingDetail() {
           primaryImageUrl: primaryImg,
           photoUrl: primaryImg,
           images: d.images,
-          allPhotos: imageUrls.length > 0 ? imageUrls : [primaryImg],
+          allPhotos: imageUrls,
           price: d.dailyRate ?? (d.monthlyRate ? Number((d.monthlyRate / 30).toFixed(2)) : 0),
           station: d.stationName ?? '',
           name: d.propertyName || d.address,
@@ -270,7 +261,7 @@ export default function ParkingDetail() {
           type: 'Condo Bay',
           owner: d.ownerName || 'Bay Owner',
         };
-        setFetchedSpot(mockSpot);
+        setFetchedSpot({ routeId: cleanSpotId, spot: mockSpot });
       })
       .catch((err) => {
         if (!controller.signal.aborted) {
@@ -282,7 +273,7 @@ export default function ParkingDetail() {
       });
 
     return () => controller.abort();
-  }, [cleanSpotId]);
+  }, [cleanSpotId, stateSpotMatchesRoute]);
 
   // ── Booking ──
   const today = new Date();
@@ -334,6 +325,11 @@ export default function ParkingDetail() {
   const [reportStatus, setReportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [viewingPhotoUrl, setViewingPhotoUrl] = useState<string | null>(null);
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+  const [failedPhotos, setFailedPhotos] = useState<string[]>([]);
+  const hideFailedPhoto = (url: string) => {
+    setGalleryIndex(null);
+    setFailedPhotos((current) => current.includes(url) ? current : [...current, url]);
+  };
 
   const displayPhotos = useMemo(() => {
     const extracted: string[] = [];
@@ -358,9 +354,8 @@ export default function ParkingDetail() {
         extracted.unshift(primary.trim());
       }
     }
-    // Return strictly only real uploaded photos of this parking spot
-    return extracted;
-  }, [spot]);
+    return extracted.filter((url) => !failedPhotos.includes(url));
+  }, [spot, failedPhotos]);
 
   useEffect(() => {
     if (galleryIndex === null) return;
@@ -394,11 +389,11 @@ export default function ParkingDetail() {
     if (walkingInfo?.durationMinutes) {
       return walkingInfo.durationMinutes;
     }
-    if (spot && spot.distanceToStation > 0) {
-      return calculateWalkingMinutes(spot.distanceToStation * 1000, { isStationDestination: true });
-    }
     if (spot?.timeToStationInMinutes && spot.timeToStationInMinutes > 0) {
       return Math.round(spot.timeToStationInMinutes);
+    }
+    if (spot && spot.distanceToStation > 0) {
+      return calculateWalkingMinutes(spot.distanceToStation * 1000, { isStationDestination: true });
     }
     return null;
   }, [walkingInfo?.durationMinutes, spot?.distanceToStation, spot?.timeToStationInMinutes]);
@@ -750,31 +745,6 @@ export default function ParkingDetail() {
     }
   };
 
-  if (isFetchingSpot) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa] dark:bg-[#000000]">
-        <div className="text-center space-y-4">
-          <Loader2 size={36} className="mx-auto text-[#007AFF] dark:text-[#0A84FF] animate-spin" />
-          <p className="text-[#5f6368] dark:text-[#A1A1AA] font-medium text-[14px]">Loading parking spot...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!spot) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa] dark:bg-[#000000]">
-        <div className="text-center space-y-4">
-          <MapPin size={40} className="mx-auto text-[#dadce0] dark:text-white/20" />
-          <p className="text-[#5f6368] dark:text-[#A1A1AA] font-medium text-[15px]">{fetchSpotError || 'No parking spot selected.'}</p>
-          <button onClick={() => navigate('/commuter')} className="text-[13px] text-[#007AFF] dark:text-[#0A84FF] font-semibold hover:underline cursor-pointer">
-            &larr; Back to Transit Map
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const availabilityRecords = Object.values(availabilityByMonth);
   const minimumBookingDate = availabilityRecords
     .map((availability) => availability.minimumBookingDate)
@@ -844,6 +814,43 @@ export default function ParkingDetail() {
     const totalDays = getDatesBetween(startDate, endDate).length;
     return Math.max(0, totalDays - openDaysInRange.length);
   }, [startDate, endDate, openDaysInRange]);
+
+  // Clean up grace period timer on unmount
+  useEffect(() => {
+    return () => {
+      if (graceTimerRef.current) clearInterval(graceTimerRef.current);
+    };
+  }, []);
+
+  if (isFetchingSpot || !spot) {
+    return (
+      <div className="app-workspace">
+        <DashboardHeader
+          role="commuter"
+          user={user}
+          onSignOut={() => { logout(); navigate('/'); }}
+          onSignIn={() => navigate('/login')}
+          isGuest={Boolean(isGuest || !user)}
+          onBrandClick={() => navigate('/commuter?tab=home')}
+        />
+        <main className="workspace-frame py-8">
+          <header className="workspace-heading"><h1>Parking details</h1></header>
+          <div className="workspace-panel p-6">
+            {isFetchingSpot ? (
+              <p role="status" className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 size={20} className="animate-spin text-primary" aria-hidden="true" /> Loading parking details…
+              </p>
+            ) : (
+              <>
+                <p role="alert">{fetchSpotError || 'This parking spot could not be found.'}</p>
+                <button type="button" onClick={() => navigate('/commuter?tab=home')} className="workspace-button workspace-button--secondary mt-4">Browse parking</button>
+              </>
+            )}
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   const invalidDates = !startDate
     || !endDate
@@ -933,13 +940,6 @@ export default function ParkingDetail() {
   };
 
   const GRACE_PERIOD_DURATION_MS = 7000; // 7 seconds
-
-  // Clean up grace period timer on unmount
-  useEffect(() => {
-    return () => {
-      if (graceTimerRef.current) clearInterval(graceTimerRef.current);
-    };
-  }, []);
 
   const handleCancelGracePeriod = () => {
     if (graceTimerRef.current) {
@@ -1076,7 +1076,7 @@ export default function ParkingDetail() {
   };
 
   if (reservationReady) {
-    const spotPhoto = spot.primaryImageUrl || spot.photoUrl || 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80';
+    const spotPhoto = displayPhotos[0];
     return (
       <div className="page-shell text-[#1d1d1f] dark:text-white">
         <DashboardHeader
@@ -1098,11 +1098,12 @@ export default function ParkingDetail() {
           <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 overflow-hidden shadow-xl">
             {/* Minimalist Hero Image Card (Airbnb Style) */}
             <div className="relative aspect-[16/9] w-full overflow-hidden bg-slate-100 dark:bg-white/5 border-b border-black/[0.06] dark:border-white/10">
-              <img
+              {spotPhoto && <img
                 src={spotPhoto}
+                onError={() => hideFailedPhoto(spotPhoto)}
                 alt={spot.propertyName || spot.name || 'Parking bay'}
                 className="h-full w-full object-cover"
-              />
+              />}
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               <div className="absolute top-4 left-4">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500 text-white shadow-sm backdrop-blur-md">
@@ -1245,7 +1246,7 @@ export default function ParkingDetail() {
   }
 
   return (
-    <div className="page-shell text-[#1d1d1f] dark:text-white min-h-screen pb-24 lg:pb-16">
+    <div className="app-workspace page-shell min-h-screen pb-24 lg:pb-16">
       <DashboardHeader
         role="commuter"
         user={user}
@@ -1259,10 +1260,10 @@ export default function ParkingDetail() {
         {/* Top Navigation & Breadcrumb */}
         <div className="flex items-center justify-between pb-3 shrink-0">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => stateSpotMatchesRoute ? navigate(-1) : navigate('/commuter?tab=home')}
             className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white transition-colors cursor-pointer"
           >
-            <ArrowLeft size={16} /> Back to map
+            <ArrowLeft size={16} /> Back to parking
           </button>
           <span className="text-xs font-semibold text-[#8e8e93] dark:text-[#71717A] hidden sm:inline-flex items-center gap-1.5">
             <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay · Instant Reservation
@@ -1270,10 +1271,14 @@ export default function ParkingDetail() {
         </div>
 
         {/* ── Title & Header Info Bar (Airbnb Style) ── */}
-        <div className="space-y-1.5 pt-1 pb-4">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#111] dark:text-white tracking-[-0.02em] leading-tight break-words">
+        <div className="workspace-heading space-y-2 pt-1">
+          <h1 className="break-words">
             {spot.propertyName || spot.name || spot.address}
           </h1>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            {displayedRate > 0 && <span className="font-semibold text-foreground tabular-nums">RM {displayedRate.toFixed(2)} / day</span>}
+            {calculatedWalkMinutes != null && <span>{calculatedWalkMinutes} min walk to {stationName || 'the station'}</span>}
+          </div>
 
           <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-4 text-xs sm:text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
             <div className="flex flex-wrap items-center gap-2">
@@ -1311,7 +1316,7 @@ export default function ParkingDetail() {
               <button
                 type="button"
                 onClick={handleShare}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dadce0] dark:border-white/10 hover:bg-[#F5F5F7] dark:hover:bg-white/[0.06] text-xs font-semibold text-[#111] dark:text-white transition cursor-pointer"
+                className="workspace-button workspace-button--secondary"
               >
                 {isLinkCopied ? (
                   <>
@@ -1330,6 +1335,7 @@ export default function ParkingDetail() {
                 type="button"
                 onClick={() => void handleToggleFavorite()}
                 disabled={isFavoriteLoading || isFavoriteUpdating}
+                aria-pressed={isFavorite}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition cursor-pointer text-xs font-semibold ${
                   isFavorite
                     ? 'border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400'
@@ -1347,371 +1353,29 @@ export default function ParkingDetail() {
           </div>
         </div>
 
-        {/* ── Dynamic Multi-Picture Gallery Section (Adapts to exact picture count: 1, 2, 3, 4, 5+) ── */}
-        {displayPhotos.length === 0 ? (
-          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[260px] sm:h-[340px] flex flex-col items-center justify-center p-6 text-center">
-            <Car size={40} className="text-[#8e8e93] dark:text-[#71717A] mb-2 opacity-50" />
-            <p className="text-sm font-bold text-[#111] dark:text-white">Parking Bay Photo</p>
-            <p className="text-xs text-[#6e6e73] dark:text-[#A1A1AA] mt-1 max-w-sm">
-              Bay {spot.parkingLabel ? `${spot.parkingLabel} · ` : ''}{spot.propertyName || spot.name}
-            </p>
-          </div>
-        ) : displayPhotos.length === 1 ? (
-          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[320px] sm:h-[400px] md:h-[460px]">
-            {/* 1 Photo: Clean Full-Width Hero Banner */}
-            <div
-              onClick={() => setGalleryIndex(0)}
-              className="relative h-full w-full group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
-            >
-              <img
-                src={displayPhotos[0]}
-                alt={spot.propertyName || spot.name || 'Parking bay view'}
-                className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                loading="eager"
-              />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-
-              <div className="absolute top-4 left-4 flex items-center gap-2 pointer-events-none">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                  <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
-                </span>
-              </div>
-
-              {spot.parkingLabel && (
-                <div className="absolute bottom-4 left-4 flex items-center gap-2 pointer-events-none">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                    Bay {spot.parkingLabel}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : displayPhotos.length === 2 ? (
-          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[320px] sm:h-[400px] md:h-[460px]">
-            {/* 2 Photos: 50% / 50% Split Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 h-full">
-              <div
-                onClick={() => setGalleryIndex(0)}
-                className="relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[0]}
-                  alt="Parking bay photo 1"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-                <div className="absolute top-4 left-4 pointer-events-none">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                    <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
-                  </span>
-                </div>
-                {spot.parkingLabel && (
-                  <div className="absolute bottom-4 left-4 pointer-events-none">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                      Bay {spot.parkingLabel}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(1)}
-                className="hidden sm:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[1]}
-                  alt="Parking bay photo 2"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setGalleryIndex(0);
-                  }}
-                  className="absolute bottom-3.5 right-3.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                >
-                  <LayoutGrid size={13} />
-                  <span>Show all 2 photos</span>
-                </button>
-              </div>
-            </div>
-            {/* Mobile 'Show all photos' pill */}
-            <button
-              type="button"
-              onClick={() => setGalleryIndex(0)}
-              className="sm:hidden absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md cursor-pointer"
-            >
-              <LayoutGrid size={13} />
-              <span>Show all 2 photos</span>
+        {displayPhotos.length > 0 ? (
+          <section aria-label="Parking photos" className={`mb-6 grid gap-2 ${displayPhotos.length > 1 ? 'sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]' : ''}`}>
+            <button type="button" className="workspace-panel relative h-56 overflow-hidden sm:h-80" onClick={() => setGalleryIndex(0)} aria-label={`View parking photos (1 of ${displayPhotos.length})`}>
+              <img src={displayPhotos[0]} alt="" className="h-full w-full object-cover" onError={() => hideFailedPhoto(displayPhotos[0])} />
+              <span className="absolute bottom-3 right-3 rounded-lg bg-black/75 px-2.5 py-1 text-sm text-white">
+                {displayPhotos.length === 1 ? 'View photo' : `View ${displayPhotos.length} photos`}
+              </span>
             </button>
-          </div>
-        ) : displayPhotos.length === 3 ? (
-          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[320px] sm:h-[400px] md:h-[460px]">
-            {/* 3 Photos: 1 Hero on Left (66%), 2 Stacked on Right (33%) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-2 h-full">
-              <div
-                onClick={() => setGalleryIndex(0)}
-                className="md:col-span-2 md:row-span-2 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[0]}
-                  alt="Parking bay photo 1"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-                <div className="absolute top-4 left-4 pointer-events-none">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                    <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
-                  </span>
-                </div>
-                {spot.parkingLabel && (
-                  <div className="absolute bottom-4 left-4 pointer-events-none">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                      Bay {spot.parkingLabel}
-                    </span>
-                  </div>
-                )}
+            {displayPhotos.length > 1 && (
+              <div className="hidden h-80 gap-2 sm:grid">
+                {displayPhotos.slice(1, 3).map((url, index) => (
+                  <button key={url} type="button" className="workspace-panel min-h-0 overflow-hidden" onClick={() => setGalleryIndex(index + 1)} aria-label={`View photo ${index + 2} of ${displayPhotos.length}`}>
+                    <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => hideFailedPhoto(url)} />
+                  </button>
+                ))}
               </div>
-
-              <div
-                onClick={() => setGalleryIndex(1)}
-                className="hidden md:block md:col-span-1 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[1]}
-                  alt="Parking bay photo 2"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(2)}
-                className="hidden md:block md:col-span-1 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[2]}
-                  alt="Parking bay photo 3"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setGalleryIndex(0);
-                  }}
-                  className="absolute bottom-3.5 right-3.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                >
-                  <LayoutGrid size={13} />
-                  <span>Show all 3 photos</span>
-                </button>
-              </div>
-            </div>
-            {/* Mobile 'Show all photos' pill */}
-            <button
-              type="button"
-              onClick={() => setGalleryIndex(0)}
-              className="md:hidden absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md cursor-pointer"
-            >
-              <LayoutGrid size={13} />
-              <span>Show all 3 photos</span>
-            </button>
-          </div>
-        ) : displayPhotos.length === 4 ? (
-          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm h-[320px] sm:h-[400px] md:h-[460px]">
-            {/* 4 Photos: 1 Hero on Left (50%), 1 Top-Right (50%), 2 Squares Bottom-Right */}
-            <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-2 h-full">
-              <div
-                onClick={() => setGalleryIndex(0)}
-                className="md:col-span-2 md:row-span-2 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[0]}
-                  alt="Parking bay photo 1"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-                <div className="absolute top-4 left-4 pointer-events-none">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                    <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
-                  </span>
-                </div>
-                {spot.parkingLabel && (
-                  <div className="absolute bottom-4 left-4 pointer-events-none">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                      Bay {spot.parkingLabel}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(1)}
-                className="hidden md:block md:col-span-2 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[1]}
-                  alt="Parking bay photo 2"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(2)}
-                className="hidden md:block md:col-span-1 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[2]}
-                  alt="Parking bay photo 3"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(3)}
-                className="hidden md:block md:col-span-1 md:row-span-1 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5 h-full"
-              >
-                <img
-                  src={displayPhotos[3]}
-                  alt="Parking bay photo 4"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setGalleryIndex(0);
-                  }}
-                  className="absolute bottom-3.5 right-3.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                >
-                  <LayoutGrid size={13} />
-                  <span>Show all 4 photos</span>
-                </button>
-              </div>
-            </div>
-            {/* Mobile 'Show all photos' pill */}
-            <button
-              type="button"
-              onClick={() => setGalleryIndex(0)}
-              className="md:hidden absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md cursor-pointer"
-            >
-              <LayoutGrid size={13} />
-              <span>Show all 4 photos</span>
-            </button>
-          </div>
+            )}
+          </section>
         ) : (
-          <div className="relative mb-10 overflow-hidden rounded-2xl md:rounded-3xl border border-black/[0.08] dark:border-white/10 bg-[#F5F5F7] dark:bg-[#1C1C1E] shadow-sm">
-            {/* 5+ Photos: Full Airbnb Mosaic (1 Large Left + 4 Squares Right in 2x2) */}
-            <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-2 md:gap-2.5 h-[320px] sm:h-[400px] md:h-[480px]">
-              <div
-                onClick={() => setGalleryIndex(0)}
-                className="md:col-span-2 md:row-span-2 relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
-              >
-                <img
-                  src={displayPhotos[0]}
-                  alt={spot.propertyName || spot.name || 'Parking bay main view'}
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.02]"
-                  loading="eager"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-
-                <div className="absolute top-4 left-4 flex items-center gap-2 pointer-events-none">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3.5 py-1.5 text-xs font-semibold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                    <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay Photo
-                  </span>
-                </div>
-
-                {spot.parkingLabel && (
-                  <div className="absolute bottom-4 left-4 flex items-center gap-2 pointer-events-none">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/65 dark:bg-black/75 px-3 py-1 text-xs font-mono font-bold text-white backdrop-blur-md border border-white/15 shadow-sm">
-                      Bay {spot.parkingLabel}
-                    </span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setGalleryIndex(0);
-                  }}
-                  className="md:hidden absolute bottom-4 right-4 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all active:scale-95 cursor-pointer"
-                >
-                  <LayoutGrid size={13} className="shrink-0 text-slate-700 dark:text-slate-300" />
-                  <span>Show all {displayPhotos.length} photos</span>
-                </button>
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(1)}
-                className="hidden md:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
-              >
-                <img
-                  src={displayPhotos[1]}
-                  alt="Parking facility view 2"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(2)}
-                className="hidden md:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
-              >
-                <img
-                  src={displayPhotos[2]}
-                  alt="Parking facility view 3"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(3)}
-                className="hidden md:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
-              >
-                <img
-                  src={displayPhotos[3]}
-                  alt="Parking facility view 4"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-              </div>
-
-              <div
-                onClick={() => setGalleryIndex(4)}
-                className="hidden md:block relative group cursor-pointer overflow-hidden bg-slate-100 dark:bg-white/5"
-              >
-                <img
-                  src={displayPhotos[4]}
-                  alt="Parking facility view 5"
-                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 pointer-events-none" />
-
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setGalleryIndex(0);
-                  }}
-                  className="absolute bottom-3.5 right-3.5 z-10 inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/15 bg-white/95 dark:bg-[#1C1C1E]/95 px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] dark:text-white shadow-md backdrop-blur-md transition-all hover:bg-white dark:hover:bg-[#2C2C2E] hover:scale-105 active:scale-95 cursor-pointer"
-                >
-                  <LayoutGrid size={13} className="shrink-0 text-slate-700 dark:text-slate-300" />
-                  <span>Show all {displayPhotos.length} photos</span>
-                </button>
-              </div>
-            </div>
+          <div className="workspace-panel mb-6 grid min-h-32 place-content-center justify-items-center gap-1 p-5 text-center">
+            <Car size={28} className="mb-1 text-muted-foreground" aria-hidden="true" />
+            <p className="font-semibold">No bay photo available</p>
+            {spot.parkingLabel && <p className="text-sm text-muted-foreground">Bay {spot.parkingLabel}</p>}
           </div>
         )}
 
@@ -1727,91 +1391,29 @@ export default function ParkingDetail() {
 
           {/* ════════ LEFT COLUMN (65% Width) - Completely Unboxed, Sits on page background ════════ */}
           <div className="w-full space-y-8">
-            {/* 1. Property Summary & Metadata Pills */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-1">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-[#111] dark:text-white">
-                    Private parking bay · Hosted by verified owner
-                  </h2>
-                  <p className="mt-1 text-xs sm:text-sm text-[#5f6368] dark:text-[#A1A1AA]">
-                    1 dedicated bay {spot.parkingLabel ? `(${spot.parkingLabel})` : ''} · Smart IoT bollard · Transit-connected
-                  </p>
-                </div>
-                <div className="w-12 h-12 rounded-full bg-[#007AFF]/10 dark:bg-[#0071E3]/20 flex items-center justify-center shrink-0 text-[#007AFF] font-bold text-base">
-                  <Car size={22} />
-                </div>
-              </div>
-
-              {/* Metadata Pills */}
-              <div className="flex flex-wrap items-center gap-2.5 pt-1 text-xs">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 dark:bg-[#1E1E22] px-3.5 py-1.5 font-bold text-blue-700 dark:text-[#3894FF] border border-blue-100 dark:border-white/10">
-                  RM {displayedRate.toFixed(2)} <span className="font-normal text-blue-600">/ day</span>
-                </span>
-                {spot.parkingLabel && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-[#1E1E22] px-3.5 py-1.5 font-semibold text-slate-700 dark:text-[#E4E4E7] border border-transparent dark:border-white/10">
-                    <Car size={14} className="text-slate-500 dark:text-[#A1A1AA]" /> Bay {spot.parkingLabel}
-                  </span>
-                )}
-                {calculatedWalkMinutes !== null && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTab('route');
-                      document.getElementById('booking-calendar-section')?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    title="Click to view walking & transit route to station"
-                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-3.5 py-1.5 font-medium text-emerald-800 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800/60 hover:bg-emerald-100/70 dark:hover:bg-emerald-900/50 transition cursor-pointer"
-                  >
-                    <Footprints size={14} className="text-emerald-600 dark:text-emerald-400" />
-                    <span>~{calculatedWalkMinutes} mins walk ({spot.distanceToStation > 0 ? `${spot.distanceToStation.toFixed(2)} km` : walkingInfo?.distanceText || 'to station'})</span>
-                  </button>
-                )}
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 dark:bg-[#1E1E22] px-3.5 py-1.5 text-slate-600 dark:text-[#D4D4D8] border border-slate-200 dark:border-white/10">
-                  <Wifi size={14} className="text-[#007AFF] dark:text-[#0A84FF]" /> Smart bollard access
-                </span>
-              </div>
-
-              {/* Airbnb Signature Highlight Rows */}
-              <div className="space-y-4 pt-4">
-                <div className="flex items-start gap-4">
-                  <Wifi size={22} className="text-[#007AFF] shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-bold text-[#111] dark:text-white">Self check-in via smart bollard</h3>
-                    <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
-                      Check yourself in with the ParkJom 1-tap Bluetooth or IoT barrier pass upon arrival.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4">
-                  <MapPin size={22} className="text-[#007AFF] shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-bold text-[#111] dark:text-white">Great commuter location</h3>
-                    <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
-                      100% of recent commuters rated the proximity to {stationName || 'the transit station'} 5 stars.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4">
-                  <ShieldCheck size={22} className="text-[#34C759] shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-bold text-[#111] dark:text-white">ParkJom Verified Guarantee</h3>
-                    <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA] mt-0.5">
-                      Physical spot dimensions and automated barrier hardware are verified by ParkJom specialists.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="h-px bg-[#e8eaed] dark:bg-white/10" />
+            <section className="space-y-3" aria-labelledby="parking-bay-heading">
+              <h2 id="parking-bay-heading" className="text-xl font-semibold">
+                {spot.parkingLabel ? `Bay ${spot.parkingLabel}` : 'Private parking bay'}
+              </h2>
+              <p className="text-sm text-muted-foreground">Use your parking pass to access the bay after booking.</p>
+              {calculatedWalkMinutes !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('route');
+                    document.getElementById('booking-calendar-section')?.scrollIntoView();
+                  }}
+                  className="workspace-button workspace-button--secondary"
+                >
+                  <Footprints size={16} aria-hidden="true" /> View route to the station
+                </button>
+              )}
+            </section>
 
             {/* 2. PARKING SPACE DETAILS */}
             <div className="space-y-3">
               <h2 className="text-xs font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">
-                PARKING SPACE DETAILS
+                Parking features
               </h2>
               <div className="grid grid-cols-2 gap-3 pt-1">
                 {[
@@ -1836,7 +1438,7 @@ export default function ParkingDetail() {
             {/* 3. ABOUT THIS SPACE */}
             <div className="space-y-3">
               <h2 className="text-xs font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">
-                ABOUT THIS SPACE
+                About this bay
               </h2>
               <p className="text-sm text-[#333] dark:text-[#D4D4D8] leading-relaxed">
                 {spot.propertyName || spot.name || 'Private parking bay'} near {stationName || 'the station'}.
@@ -2770,9 +2372,7 @@ export default function ParkingDetail() {
               src={displayPhotos[galleryIndex]}
               alt={`Parking bay photo ${galleryIndex + 1}`}
               className="max-h-full max-w-full object-contain rounded-xl select-none shadow-2xl"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = FALLBACK_BAY_PHOTOS[galleryIndex % FALLBACK_BAY_PHOTOS.length];
-              }}
+              onError={() => hideFailedPhoto(displayPhotos[galleryIndex])}
             />
 
             {displayPhotos.length > 1 && (
@@ -2813,9 +2413,7 @@ export default function ParkingDetail() {
                     src={photo}
                     alt={`Thumbnail ${idx + 1}`}
                     className="h-full w-full object-cover"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = FALLBACK_BAY_PHOTOS[idx % FALLBACK_BAY_PHOTOS.length];
-                    }}
+                    onError={() => hideFailedPhoto(photo)}
                   />
                 </button>
               ))}

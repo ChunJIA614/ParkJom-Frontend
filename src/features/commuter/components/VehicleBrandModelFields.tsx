@@ -61,14 +61,14 @@ export default function VehicleBrandModelFields({
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <label className="block space-y-1">
-        <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Brand</span>
+        <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Brand</span>
         <SystemSelect
           value={selectedBrandValue}
           onChange={handleBrandSelect}
           required={!brand && !customBrandMode}
           disabled={disabled}
           aria-label="Vehicle brand"
-          className="w-full rounded-xl border border-[#dadce0] bg-white px-3 py-2 text-[12px] focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-9 w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#121214] px-3 py-2 text-[12px] text-[#111] dark:text-white focus:border-[#007AFF] dark:focus:border-[#0071E3] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         >
           <option value="">Select brand</option>
           {catalog.map((entry) => (
@@ -86,12 +86,12 @@ export default function VehicleBrandModelFields({
             required
             disabled={disabled}
             aria-label="Custom vehicle brand"
-            className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-9 w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#121214] px-3 py-2 text-[12px] text-[#111] dark:text-white placeholder:text-[#9ca3af] dark:placeholder:text-[#71717A] focus:border-[#007AFF] dark:focus:border-[#0071E3] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           />
         )}
       </label>
       <label className="block space-y-1">
-        <span className="text-[10px] font-semibold uppercase text-[#5f6368]">Model</span>
+        <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Model</span>
         {modelOptions.length > 0 && selectedBrandValue !== CUSTOM_VALUE ? (
           <SystemSelect
             value={selectedModelValue}
@@ -99,7 +99,7 @@ export default function VehicleBrandModelFields({
             required={!model && !customModelMode}
             disabled={disabled || !brand}
             aria-label="Vehicle model"
-            className="w-full rounded-xl border border-[#dadce0] bg-white px-3 py-2 text-[12px] focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-9 w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#121214] px-3 py-2 text-[12px] text-[#111] dark:text-white focus:border-[#007AFF] dark:focus:border-[#0071E3] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           >
             <option value="">Select model</option>
             {modelOptions.map((option) => (
@@ -118,11 +118,11 @@ export default function VehicleBrandModelFields({
             required
             disabled={disabled || !brand}
             aria-label="Custom vehicle model"
-            className="w-full rounded-xl border border-[#dadce0] px-3 py-2 text-[12px] focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-9 w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#121214] px-3 py-2 text-[12px] text-[#111] dark:text-white placeholder:text-[#9ca3af] dark:placeholder:text-[#71717A] focus:border-[#007AFF] dark:focus:border-[#0071E3] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           />
         )}
         {!brand && (
-          <p className="text-[10px] text-[#80868b]">Select a brand first.</p>
+          <p className="text-[10px] text-[#80868b] dark:text-[#71717A]">Select a brand first.</p>
         )}
       </label>
     </div>

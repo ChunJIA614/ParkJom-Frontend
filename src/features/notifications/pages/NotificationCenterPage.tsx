@@ -1,3 +1,4 @@
+import WorkspaceEmptyState from '@/components/ui/WorkspaceEmptyState';
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -91,7 +92,7 @@ export default function NotificationCenterPage() {
               <button
                 type="button"
                 onClick={() => markAllRead()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full bg-white dark:bg-[#242429] border border-black/[0.08] dark:border-white/10 hover:bg-[#f5f5f7] dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 min-h-11 px-3 py-1.5 text-sm font-medium rounded-xl bg-white dark:bg-[#242429] border border-black/[0.08] dark:border-white/10 hover:bg-[#f5f5f7] dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
               >
                 <CheckCheck size={14} className="text-emerald-500" />
                 <span>Mark all read</span>
@@ -101,12 +102,13 @@ export default function NotificationCenterPage() {
             <button
               type="button"
               onClick={() => setShowPreferences(!showPreferences)}
-              className={`p-2 rounded-full border border-black/[0.08] dark:border-white/10 transition-colors cursor-pointer ${
+              className={`inline-grid size-11 place-items-center rounded-xl border border-black/[0.08] dark:border-white/10 transition-colors cursor-pointer ${
                 showPreferences
                   ? 'bg-emerald-500 text-white border-emerald-500'
                   : 'bg-white dark:bg-[#242429] text-[#6e6e73] dark:text-[#a1a1aa] hover:bg-[#f5f5f7] dark:hover:bg-white/[0.06]'
               }`}
-              title="Notification Settings"
+              aria-label="Notification settings"
+              aria-expanded={showPreferences}
             >
               <SlidersHorizontal size={16} />
             </button>
@@ -124,9 +126,9 @@ export default function NotificationCenterPage() {
         )}
 
         {/* Filter Toolbar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="workspace-filter-bar">
           {/* Category Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+          <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-1">
             {CATEGORIES.map(({ key, label, icon: Icon }) => {
               const active = activeCategory === key;
               return (
@@ -134,9 +136,10 @@ export default function NotificationCenterPage() {
                   key={key}
                   type="button"
                   onClick={() => setActiveCategory(key)}
-                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  aria-pressed={active}
+                  className={`inline-flex min-h-11 items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     active
-                      ? 'bg-[var(--workspace-accent,#007AFF)] text-white shadow-sm'
+                      ? 'bg-primary text-primary-foreground'
                       : 'bg-white dark:bg-[#18181c] border border-black/[0.06] dark:border-white/10 text-[#6e6e73] dark:text-[#a1a1aa] hover:text-[#1d1d1f] dark:hover:text-white'
                   }`}
                 >
@@ -152,7 +155,8 @@ export default function NotificationCenterPage() {
             <button
               type="button"
               onClick={() => setUnreadOnly(!unreadOnly)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+              aria-pressed={unreadOnly}
+              className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
                 unreadOnly
                   ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
                   : 'border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#18181c] text-[#6e6e73] dark:text-[#a1a1aa]'
@@ -175,20 +179,12 @@ export default function NotificationCenterPage() {
         {/* Notifications List */}
         <div className="space-y-2">
           {isLoading && items.length === 0 ? (
-            <div className="py-20 text-center text-sm text-[#8e8e93] dark:text-[#71717a]">
+            <div className="py-20 text-center text-sm text-muted-foreground">
               Loading notifications...
             </div>
           ) : filteredNotifications.length === 0 ? (
-            <div className="py-20 flex flex-col items-center justify-center text-center rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#18181c] p-8">
-              <div className="w-14 h-14 rounded-full bg-black/[0.03] dark:bg-white/[0.04] flex items-center justify-center mb-3 text-[#8e8e93] dark:text-[#71717a]">
-                <Inbox size={26} />
-              </div>
-              <h3 className="text-sm font-semibold text-[#1d1d1f] dark:text-white">
-                {unreadOnly ? 'No unread notifications' : 'No notifications in this category'}
-              </h3>
-              <p className="text-xs text-[#8e8e93] dark:text-[#71717a] mt-1 max-w-sm">
-                When you get updates about bookings, parking verifications, or wallet transactions, they will appear here.
-              </p>
+            <div className="workspace-panel">
+              <WorkspaceEmptyState icon={Inbox} title={unreadOnly ? 'No unread notifications' : 'No notifications in this category'} description="Booking, verification, and wallet updates will appear here." />
             </div>
           ) : (
             <>

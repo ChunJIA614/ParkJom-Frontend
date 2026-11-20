@@ -655,7 +655,7 @@ export const OwnerPublicParkingManager: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setScannerMode('entry')}
-                      className="flex-1 h-11 rounded-2xl bg-[#0071e3] hover:bg-[#0077ed] active:scale-98 text-white font-medium text-xs transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                      className="workspace-button workspace-button--primary flex-1"
                     >
                       <LogIn className="w-4 h-4" />
                       <span>Scan Vehicle Entry</span>
@@ -664,7 +664,7 @@ export const OwnerPublicParkingManager: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setScannerMode('exit')}
-                      className="flex-1 h-11 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:opacity-90 active:scale-98 font-medium text-xs transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                      className="workspace-button workspace-button--secondary flex-1"
                     >
                       <LogOut className="w-4 h-4" />
                       <span>Scan Vehicle Exit</span>

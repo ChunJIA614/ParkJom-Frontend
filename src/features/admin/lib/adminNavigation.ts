@@ -35,7 +35,7 @@ export const ADMIN_VIEW_META: Record<AdminActiveView, { title: string; descripti
   governance: { title: 'Listing governance', description: 'Review owner submissions and publish only verified supply.' },
   users: { title: 'User governance', description: 'Review, inspect, and manage registered ParkJom accounts and roles.' },
   'property-managers': { title: 'Property management accounts', description: 'Provision standalone building-desk accounts and manage 14-day single-use email invitations.' },
-  vehicles: { title: 'Vehicle management', description: 'Review commuter vehicles registered across the platform.' },
+  vehicles: { title: 'Vehicle management', description: 'Register, inspect, update, and remove vehicles across the platform.' },
   iot: { title: 'Smart bollards', description: 'Inspect access hardware health and intervene when a bay cannot serve a booking.' },
   settlement: { title: 'Settlement', description: 'Reconcile owner payouts and transaction records.' },
   enforcement: { title: 'Overstay enforcement', description: 'Resolve sessions that exceeded their confirmed parking window.' },

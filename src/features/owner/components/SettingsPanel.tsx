@@ -82,7 +82,7 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
   return (
     <div className="space-y-6">
       {/* Account Profile Card */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="workspace-panel workspace-filter-bar p-5">
         <div className="flex items-center gap-3.5">
           {user?.picture ? (
             <img src={user.picture} alt="" className="h-12 w-12 rounded-full object-cover ring-1 ring-slate-200" />
@@ -96,7 +96,7 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
               <h2 className="text-sm font-bold text-slate-900 truncate">
                 {`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || user?.email}
               </h2>
-              <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 ring-blue-200">
+              <span className="workspace-status">
                 Property Owner
               </span>
             </div>
@@ -107,10 +107,10 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
         <button
           type="button"
           onClick={() => setShowProfileDialog(true)}
-          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs self-start sm:self-auto cursor-pointer"
+          className="workspace-button workspace-button--secondary"
         >
           <UserRound className="w-4 h-4 text-blue-600" />
-          Manage Profile &amp; Role
+          Edit profile
         </button>
       </div>
 
@@ -119,17 +119,17 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Payout configuration */}
         <div className="lg:col-span-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 h-full flex flex-col justify-between">
+          <div className="workspace-panel p-5 space-y-5 h-full flex flex-col justify-between">
             <div className="space-y-4">
               <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2 border-b border-slate-100 pb-3">
                 <Building className="w-4 h-4 text-blue-600" />
-                Malaysian Payout Credentials
+                Payout account
               </h2>
 
               <form onSubmit={handleBankSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Recipient Financial Institution</label>
-                  <SystemSelect
+                  <label htmlFor="payout-bank" className="block text-xs font-bold text-slate-600 mb-1.5">Bank</label>
+                  <SystemSelect id="payout-bank"
                     value={bankName}
                     onChange={(e) => setBankName(e.target.value)}
                     className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
@@ -143,8 +143,8 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Bank Account Number</label>
-                  <input
+                  <label htmlFor="payout-account-number" className="block text-xs font-bold text-slate-600 mb-1.5">Account number</label>
+                  <input id="payout-account-number"
                     type="text"
                     value={accNo}
                     onChange={(e) => setAccNo(e.target.value)}
@@ -154,8 +154,8 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Beneficiary Account Name</label>
-                  <input
+                  <label htmlFor="payout-holder" className="block text-xs font-bold text-slate-600 mb-1.5">Account holder name</label>
+                  <input id="payout-holder"
                     type="text"
                     value={holder}
                     onChange={(e) => setHolder(e.target.value.toUpperCase())}
@@ -168,10 +168,10 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="bg-[#0f172a] hover:bg-[#1e293b] text-white font-bold text-xs py-2.5 px-4 rounded-xl transition-colors shadow flex items-center gap-1.5 cursor-pointer"
+                    className="workspace-button workspace-button--primary"
                   >
                     <Save className="w-4 h-4 text-blue-400" />
-                    Save Bank Details
+                    Save bank details
                   </button>
                 </div>
               </form>
@@ -184,7 +184,7 @@ export default function SettingsPanel({ bank, onSaveBank }: SettingsPanelProps) 
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
             <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2 border-b border-slate-100 pb-3">
               <Sliders className="w-4 h-4 text-blue-600" />
-              Notifications & Auto-Rules
+              Notifications and preferences
             </h2>
 
             <div className="space-y-4">

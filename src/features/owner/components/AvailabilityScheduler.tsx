@@ -1,7 +1,6 @@
 import { Popover } from '@base-ui/react/popover';
 import SystemSelect from '@/components/ui/SystemSelect';
-import DateRangePicker from '@/components/ui/DateRangePicker';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Ban,
@@ -15,12 +14,10 @@ import {
   ChevronRight,
   FileText,
   GripVertical,
-  Info,
   Lock,
   Minus,
   Plus,
   RefreshCw,
-  RotateCcw,
   Send,
   ShieldCheck,
   Trash2,
@@ -39,7 +36,7 @@ import {
   deleteParkingImage,
   getOwnerAvailabilityCalendar,
   updateParkingConfiguration,
-  updateParkingImage,
+  updateParkingImageOrder,
   updateParkingPublication,
   uploadParkingImages,
 } from '../api/parkingApi';
@@ -54,10 +51,10 @@ import type {
   ParkingConfigurationResponse,
   ParkingImagesResponse,
   ParkingSpotImage,
-  OwnerAvailabilityDayPattern,
 } from '../types';
 import { computeClientSpotRecommendation } from '../api/dynamicPricingApi';
 import AiPricingAdvisorCard from './AiPricingAdvisorCard';
+import AvailabilityRangeEditor, { type AvailabilityRangeDraft } from './AvailabilityRangeEditor';
 
 /**
  * Local owner parking workspace storage.  The shape is deliberately JSON
@@ -113,6 +110,9 @@ export interface AvailabilitySchedulerProps {
   bays: ParkingBay[];
   initialParkingSpotId?: number;
   initialSection?: 'setup' | 'timetable';
+  rangeEditorOpen: boolean;
+  onOpenRangeEditor: (parkingSpotId: number) => void;
+  onCloseRangeEditor: () => void;
   onScheduleChange?: () => void;
   bookings?: Booking[];
   onDeleteParking?: (parkingSpotId: number) => Promise<ParkingActionResult>;
@@ -120,8 +120,13 @@ export interface AvailabilitySchedulerProps {
 
 const MAX_PHOTOS = 6;
 const MAX_BULK_DAYS = 366;
+const DEFAULT_RANGE_HOURS = { fromTime: '09:00', toTime: '19:00' };
 const SETUP_STEPS = ['Photos', 'Description', 'Pricing', 'Review', 'Publish'] as const;
 type SetupStep = 1 | 2 | 3 | 4 | 5;
+
+function newRangeDraft(date: string): AvailabilityRangeDraft {
+  return { start: date, end: date, ...DEFAULT_RANGE_HOURS, dayPattern: 'Weekdays', status: 'available' };
+}
 
 const statusMeta: Record<ParkingDayStatus, {
   label: string;
@@ -207,6 +212,7 @@ function normaliseParkingImage(value: unknown): ParkingSpotImage | null {
     || mediaFileId === null
     || displayOrder === null
     || typeof candidate.secureUrl !== 'string'
+    || !candidate.secureUrl.trim()
   ) return null;
   return {
     parkingSpotImageId,
@@ -218,14 +224,25 @@ function normaliseParkingImage(value: unknown): ParkingSpotImage | null {
   };
 }
 
-function emptySetup(bay?: ParkingBay): OwnerParkingSetup {
+function normaliseParkingImages(images: unknown[]): ParkingSpotImage[] {
+  return images
+    .map(normaliseParkingImage)
+    .filter((image): image is ParkingSpotImage => image !== null)
+    .sort((left, right) => left.displayOrder - right.displayOrder)
+    .slice(0, MAX_PHOTOS);
+}
+
+function setupFromBay(bay?: ParkingBay): OwnerParkingSetup {
+  const images = normaliseParkingImages(bay?.images ?? []);
+  const dailyRate = safeNumber(bay?.dailyRate);
+  const monthlyRate = safeNumber(bay?.monthlyRate);
   return {
-    photos: [],
-    images: [],
+    photos: images.map((image) => image.secureUrl),
+    images,
     description: bay?.configurationDescription ?? '',
     accessInstructions: '',
-    dailyRate: bay && safeNumber(bay.dailyRate) && (bay.dailyRate ?? 0) > 0 ? bay.dailyRate : null,
-    monthlyRate: bay && safeNumber(bay.monthlyRate) && bay.monthlyRate > 0 ? bay.monthlyRate : null,
+    dailyRate: dailyRate !== null && dailyRate > 0 ? dailyRate : null,
+    monthlyRate: monthlyRate !== null && monthlyRate > 0 ? monthlyRate : null,
     hasEvCharging: Boolean(bay?.hasEvCharging),
     evChargingSpeed: typeof bay?.evChargingSpeed === 'string' ? bay.evChargingSpeed : '',
     isCovered: Boolean(bay?.isCovered),
@@ -253,20 +270,15 @@ function seedDaysFromBay(bay?: ParkingBay): Record<string, OwnerParkingDay> {
 }
 
 function normaliseSetup(value: unknown, bay?: ParkingBay): OwnerParkingSetup {
-  const fallback = emptySetup(bay);
+  const fallback = setupFromBay(bay);
   if (!value || typeof value !== 'object') return fallback;
   const candidate = value as Record<string, unknown>;
-  const photos = Array.isArray(candidate.photos)
+  const photos = bay?.images === undefined && Array.isArray(candidate.photos)
     ? candidate.photos.filter((photo): photo is string => typeof photo === 'string').slice(0, MAX_PHOTOS)
     : fallback.photos;
-  const images = Array.isArray(candidate.images)
-    ? candidate.images
-      .map(normaliseParkingImage)
-      .filter((image): image is ParkingSpotImage => image !== null)
-      .sort((left, right) => left.displayOrder - right.displayOrder)
+  const images = bay?.images === undefined && Array.isArray(candidate.images)
+    ? normaliseParkingImages(candidate.images)
     : fallback.images;
-  const apiDailyRate = bay ? safeNumber(bay.dailyRate) : null;
-  const apiMonthlyRate = bay ? safeNumber(bay.monthlyRate) : null;
   return {
     photos,
     images,
@@ -277,16 +289,16 @@ function normaliseSetup(value: unknown, bay?: ParkingBay): OwnerParkingSetup {
       ? candidate.accessInstructions
       : fallback.accessInstructions,
     dailyRate: bay
-      ? (apiDailyRate !== null && apiDailyRate > 0 ? apiDailyRate : null)
+      ? fallback.dailyRate
       : candidate.dailyRate === undefined ? fallback.dailyRate : safeNumber(candidate.dailyRate),
     monthlyRate: bay
-      ? (apiMonthlyRate !== null && apiMonthlyRate > 0 ? apiMonthlyRate : null)
+      ? fallback.monthlyRate
       : candidate.monthlyRate === undefined ? fallback.monthlyRate : safeNumber(candidate.monthlyRate),
     hasEvCharging: bay && typeof bay.hasEvCharging === 'boolean'
       ? bay.hasEvCharging
       : typeof candidate.hasEvCharging === 'boolean' ? candidate.hasEvCharging : fallback.hasEvCharging,
-    evChargingSpeed: bay && typeof bay.evChargingSpeed === 'string'
-      ? bay.evChargingSpeed
+    evChargingSpeed: bay?.evChargingSpeed !== undefined
+      ? fallback.evChargingSpeed
       : typeof candidate.evChargingSpeed === 'string' ? candidate.evChargingSpeed : fallback.evChargingSpeed,
     isCovered: bay && typeof bay.isCovered === 'boolean'
       ? bay.isCovered
@@ -416,7 +428,7 @@ function inclusiveDateKeys(start: string, end: string): string[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return [];
   const first = dateFromKey(start);
   const last = dateFromKey(end);
-  if (first.getTime() > last.getTime()) return [];
+  if (localDateKey(first) !== start || localDateKey(last) !== end || first > last) return [];
   const result: string[] = [];
   let cursor = first;
   while (cursor.getTime() <= last.getTime() && result.length <= MAX_BULK_DAYS) {
@@ -466,10 +478,14 @@ function bayLabel(bay: ParkingBay): string {
   return `${bay.bayNumber || bay.parkingLabel || `Spot #${bay.parkingSpotId}`} · ${bay.propertyName || `Property #${bay.propertyId}`}`;
 }
 
-function ParkingSectionHeading({ title, description }: { title: string; description: string }) {
+function ParkingSectionHeading({ title, description, headingRef }: {
+  title: string;
+  description: string;
+  headingRef?: React.Ref<HTMLHeadingElement>;
+}) {
   return (
     <div className="space-y-1">
-      <h2 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">{title}</h2>
+      <h2 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">{title}</h2>
       <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 sm:text-sm">{description}</p>
     </div>
   );
@@ -489,7 +505,16 @@ function statusFor(spot: OwnerParkingWorkspaceSpot | undefined, date: string): O
 }
 
 function setupFromSpot(spot: OwnerParkingWorkspaceSpot | undefined, bay?: ParkingBay): OwnerParkingSetup {
-  return spot?.setup ?? emptySetup(bay);
+  return spot?.setup ?? setupFromBay(bay);
+}
+
+function toSetupForm(setup: OwnerParkingSetup) {
+  const { images, published, updatedAt, dailyRate, monthlyRate, ...fields } = setup;
+  return {
+    ...fields,
+    dailyRate: dailyRate === null ? '' : String(dailyRate),
+    monthlyRate: monthlyRate === null ? '' : String(monthlyRate),
+  };
 }
 
 function toConfigurationPayload(setup: OwnerParkingSetup): ParkingConfigurationPayload {
@@ -509,10 +534,16 @@ function rateText(value: number | null): string {
   return value === null || !Number.isFinite(value) ? '—' : `RM ${value.toFixed(2)}`;
 }
 
-function setupCompletion(setup: OwnerParkingSetup): { complete: boolean; issues: string[] } {
+function hasInvalidRates(rates: Pick<OwnerParkingSetup, 'dailyRate' | 'monthlyRate'>, saved: OwnerParkingSetup): boolean {
+  return (['dailyRate', 'monthlyRate'] as const).some((field) => {
+    const rate = rates[field];
+    return rate !== null && (!Number.isFinite(rate) || rate <= 0 || (rate < 1 && rate !== saved[field]));
+  });
+}
+
+function setupCompletion(setup: OwnerParkingSetup, saved: OwnerParkingSetup): { complete: boolean; issues: string[] } {
   const issues: string[] = [];
-  const rates = [setup.dailyRate, setup.monthlyRate];
-  const hasInvalidRate = rates.some((rate) => rate !== null && (!Number.isFinite(rate) || rate < 1));
+  const hasInvalidRate = hasInvalidRates(setup, saved);
   if (setup.photos.length === 0) issues.push('Add at least one parking photo.');
   if (!setup.description.trim()) issues.push('Add a short parking description.');
   if (hasInvalidRate) issues.push('Enter a valid positive rate.');
@@ -531,6 +562,9 @@ export default function AvailabilityScheduler({
   bays,
   initialParkingSpotId,
   initialSection = 'setup',
+  rangeEditorOpen,
+  onOpenRangeEditor,
+  onCloseRangeEditor,
   onScheduleChange,
   bookings = [],
   onDeleteParking,
@@ -550,36 +584,19 @@ export default function AvailabilityScheduler({
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [setupStep, setSetupStep] = useState<SetupStep>(1);
   const [completedSetupSteps, setCompletedSetupSteps] = useState<Set<SetupStep>>(() => new Set());
-  const [setupForm, setSetupForm] = useState<{
-    photos: string[];
-    description: string;
-    accessInstructions: string;
-    dailyRate: string;
-    monthlyRate: string;
-    hasEvCharging: boolean;
-    evChargingSpeed: string;
-    isCovered: boolean;
-    isHandicapAccessible: boolean;
-    hasCctv: boolean;
-  }>({ photos: [], description: '', accessInstructions: '', dailyRate: '', monthlyRate: '', hasEvCharging: false, evChargingSpeed: '', isCovered: false, isHandicapAccessible: false, hasCctv: false });
-  const [photoPreviews, setPhotoPreviews] = useState<Record<string, string[]>>({});
+  const [setupDraft, setSetupDraft] = useState<Partial<ReturnType<typeof toSetupForm>>>({});
   const [pendingPhotoCount, setPendingPhotoCount] = useState(0);
   const [setupMessage, setSetupMessage] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupSaving, setSetupSaving] = useState(false);
   const savedConfigurations = useRef(new Map<number, { sourceUpdatedAt: string; payload: ParkingConfigurationPayload }>());
   const [imagesUploading, setImagesUploading] = useState(false);
-  const [imageUpdatingId, setImageUpdatingId] = useState<number | null>(null);
+  const [imagesReordering, setImagesReordering] = useState(false);
   const [imageDeletingId, setImageDeletingId] = useState<number | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [draggedPhotoIndex, setDraggedPhotoIndex] = useState<number | null>(null);
-  const [bulkStart, setBulkStart] = useState(todayKey);
-  const [bulkEnd, setBulkEnd] = useState(todayKey);
-  const [bulkFromTime, setBulkFromTime] = useState('09:00');
-  const [bulkToTime, setBulkToTime] = useState('19:00');
-  const [bulkDayPattern, setBulkDayPattern] = useState<OwnerAvailabilityDayPattern>('Weekdays');
-  const [bulkStatus, setBulkStatus] = useState<'available' | 'unavailable'>('available');
+  const [rangeDraft, setRangeDraft] = useState(() => newRangeDraft(todayKey));
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
@@ -594,24 +611,29 @@ export default function AvailabilityScheduler({
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const pendingImageFilesRef = useRef<Map<string, File>>(new Map());
   const calendarRequestRef = useRef(0);
+  const timetableHeadingRef = useRef<HTMLHeadingElement>(null);
+  const wasRangeEditorOpen = useRef(rangeEditorOpen);
   const prefersReducedMotion = useReducedMotion();
 
-  const activeBay = bays.find((bay) => String(bay.parkingSpotId) === selectedBayId) ?? bays[0];
+  const activeBay = rangeEditorOpen && initialParkingSpotId
+    ? bays.find((bay) => bay.parkingSpotId === initialParkingSpotId)
+    : bays.find((bay) => String(bay.parkingSpotId) === selectedBayId) ?? bays[0];
   const activeSpotId = activeBay ? String(activeBay.parkingSpotId) : '';
   const activeSpot = activeSpotId ? workspace.spots[activeSpotId] : undefined;
   const activeSetup = setupFromSpot(activeSpot, activeBay);
+  const setupForm = { ...toSetupForm(activeSetup), ...setupDraft };
   const aiPricingRecommendation = useMemo(() => {
-    if (!activeBay) return null;
+    if (!activeBay || section !== 'setup' || setupStep !== 3 || rangeEditorOpen) return null;
     const candidateDaily = setupForm.dailyRate ? Number(setupForm.dailyRate) : null;
     return computeClientSpotRecommendation(
       activeBay,
       candidateDaily && Number.isFinite(candidateDaily) && candidateDaily > 0 ? candidateDaily : null,
     );
-  }, [activeBay, setupForm.dailyRate]);
+  }, [activeBay, section, setupStep, rangeEditorOpen, setupForm.dailyRate]);
   const displayedMonth = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`;
   const setupBusy = setupSaving
     || imagesUploading
-    || imageUpdatingId !== null
+    || imagesReordering
     || imageDeletingId !== null
     || publishing
     || availabilitySaving
@@ -632,31 +654,17 @@ export default function AvailabilityScheduler({
   }, [bays, initialParkingSpotId, selectedBayId]);
 
   useEffect(() => {
-    if (initialParkingSpotId === undefined) return;
-    const preferred = bays.find((bay) => bay.parkingSpotId === initialParkingSpotId);
-    if (preferred) setSelectedBayId(String(preferred.parkingSpotId));
-  }, [initialParkingSpotId, bays]);
-
-  useEffect(() => {
     setSection(initialSection);
   }, [initialSection]);
 
+  useLayoutEffect(() => {
+    if (wasRangeEditorOpen.current && !rangeEditorOpen) timetableHeadingRef.current?.focus({ preventScroll: true });
+    wasRangeEditorOpen.current = rangeEditorOpen;
+  }, [rangeEditorOpen]);
+
   useEffect(() => {
     if (!selectedBayId) return;
-    const setup = setupFromSpot(workspace.spots[selectedBayId], bays.find((bay) => String(bay.parkingSpotId) === selectedBayId));
-    setSetupForm({
-      photos: [...setup.photos],
-      description: setup.description,
-      accessInstructions: setup.accessInstructions,
-      dailyRate: setup.dailyRate === null ? '' : String(setup.dailyRate),
-      monthlyRate: setup.monthlyRate === null ? '' : String(setup.monthlyRate),
-      hasEvCharging: setup.hasEvCharging,
-      evChargingSpeed: setup.evChargingSpeed,
-      isCovered: setup.isCovered,
-      isHandicapAccessible: setup.isHandicapAccessible,
-      hasCctv: setup.hasCctv,
-    });
-    setPhotoPreviews((current) => ({ ...current, [selectedBayId]: [...setup.photos] }));
+    setSetupDraft({});
     setSetupStep(1);
     setCompletedSetupSteps(new Set());
     setSetupMessage(null);
@@ -665,11 +673,7 @@ export default function AvailabilityScheduler({
     setSelectedPhotoIndex(null);
     setDraggedPhotoIndex(null);
     setSelectedDate(todayKey);
-    setBulkStart(todayKey);
-    setBulkEnd(todayKey);
-    setBulkFromTime('09:00');
-    setBulkToTime('19:00');
-    setBulkDayPattern('Weekdays');
+    setRangeDraft(newRangeDraft(todayKey));
     setBulkMessage(null);
     setBulkError(null);
     setCalendarError(null);
@@ -721,6 +725,7 @@ export default function AvailabilityScheduler({
       if (!response.ok || !body?.success || !Array.isArray(body.days)) {
         throw new Error(body?.message || `Unable to retrieve the availability calendar (${response.status}).`);
       }
+      if (calendarRequestRef.current !== requestId) return;
 
       setWorkspace((current) => {
         const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
@@ -759,7 +764,7 @@ export default function AvailabilityScheduler({
   }, [fetchAvailabilityCalendar, section]);
 
   const replaceSetupForm = <K extends keyof typeof setupForm>(field: K, value: (typeof setupForm)[K]) => {
-    setSetupForm((current) => ({ ...current, [field]: value }));
+    setSetupDraft((current) => ({ ...current, [field]: value }));
     setSetupMessage(null);
     setSetupError(null);
   };
@@ -783,8 +788,7 @@ export default function AvailabilityScheduler({
       setSetupError('Photos must be JPG, JPEG, PNG, or WEBP images.');
       return;
     }
-    const existing = photoPreviews[activeSpotId] ?? setupForm.photos;
-    const available = Math.max(0, MAX_PHOTOS - existing.length);
+    const available = Math.max(0, MAX_PHOTOS - setupForm.photos.length);
     if (available === 0) {
       setSetupError(`You can upload up to ${MAX_PHOTOS} photos.`);
       return;
@@ -795,11 +799,10 @@ export default function AvailabilityScheduler({
       objectUrlsRef.current.add(url);
       return url;
     });
-    setPhotoPreviews((current) => ({
+    setSetupDraft((current) => ({
       ...current,
-      [activeSpotId]: [...(current[activeSpotId] ?? []), ...objectUrls].slice(0, MAX_PHOTOS),
+      photos: [...(current.photos ?? activeSetup.photos), ...objectUrls].slice(0, MAX_PHOTOS),
     }));
-    setSetupForm((current) => ({ ...current, photos: [...current.photos, ...objectUrls].slice(0, MAX_PHOTOS) }));
     setPendingPhotoCount((count) => count + selected.length);
     setSetupError(files.length > selected.length ? `Only ${MAX_PHOTOS} photos can be kept; extra files were skipped.` : null);
 
@@ -807,25 +810,20 @@ export default function AvailabilityScheduler({
       const dataUrls = await Promise.all(selected.map((file) => fileToDataUrl(file)));
       const replacements = new Map(objectUrls.map((url, index) => [url, dataUrls[index]]));
       dataUrls.forEach((dataUrl, index) => pendingImageFilesRef.current.set(dataUrl, selected[index]));
-      setPhotoPreviews((current) => ({
-        ...current,
-        [activeSpotId]: (current[activeSpotId] ?? []).map((photo) => replacements.get(photo) ?? photo),
-      }));
-      setSetupForm((current) => ({
+      setSetupDraft((current) => current.photos ? {
         ...current,
         photos: current.photos.map((photo) => replacements.get(photo) ?? photo),
-      }));
+      } : current);
       objectUrls.forEach((url) => {
         URL.revokeObjectURL(url);
         objectUrlsRef.current.delete(url);
       });
     } catch {
       setSetupError('One or more photos could not be read. Please try again.');
-      setPhotoPreviews((current) => ({
+      setSetupDraft((current) => current.photos ? {
         ...current,
-        [activeSpotId]: (current[activeSpotId] ?? []).filter((photo) => !objectUrls.includes(photo)),
-      }));
-      setSetupForm((current) => ({ ...current, photos: current.photos.filter((photo) => !objectUrls.includes(photo)) }));
+        photos: current.photos.filter((photo) => !objectUrls.includes(photo)),
+      } : current);
       objectUrls.forEach((url) => {
         URL.revokeObjectURL(url);
         objectUrlsRef.current.delete(url);
@@ -849,24 +847,21 @@ export default function AvailabilityScheduler({
 
   const removePhoto = (index: number) => {
     if (!activeSpotId) return;
-    const preview = photoPreviews[activeSpotId]?.[index];
-    const storedPhoto = setupForm.photos[index];
-    if (storedPhoto) pendingImageFilesRef.current.delete(storedPhoto);
-    if (preview && objectUrlsRef.current.has(preview)) {
-      URL.revokeObjectURL(preview);
-      objectUrlsRef.current.delete(preview);
+    const photo = setupForm.photos[index];
+    if (photo) {
+      pendingImageFilesRef.current.delete(photo);
+      if (objectUrlsRef.current.delete(photo)) URL.revokeObjectURL(photo);
     }
-    setPhotoPreviews((current) => ({
+    setSetupDraft((current) => ({
       ...current,
-      [activeSpotId]: (current[activeSpotId] ?? []).filter((_, itemIndex) => itemIndex !== index),
+      photos: setupForm.photos.filter((_, itemIndex) => itemIndex !== index),
     }));
-    setSetupForm((current) => ({ ...current, photos: current.photos.filter((_, itemIndex) => itemIndex !== index) }));
     setSelectedPhotoIndex(null);
   };
 
   const swapPhotos = async (fromIndex: number, toIndex: number) => {
     if (!activeSpotId || fromIndex === toIndex || setupBusy) return;
-    const photos = photoPreviews[activeSpotId] ?? setupForm.photos;
+    const photos = setupForm.photos;
     const sourceUrl = photos[fromIndex];
     const targetUrl = photos[toIndex];
     if (!sourceUrl || !targetUrl) return;
@@ -874,20 +869,17 @@ export default function AvailabilityScheduler({
     const sourceImage = activeSetup.images.find((image) => image.secureUrl === sourceUrl);
     const targetImage = activeSetup.images.find((image) => image.secureUrl === targetUrl);
     if (sourceImage && targetImage) {
-      if (sourceImage.isPrimary) {
-        await editImageOrder(targetImage, sourceImage.displayOrder, true);
-        await editImageOrder(sourceImage, targetImage.displayOrder, false);
-      } else {
-        await editImageOrder(sourceImage, targetImage.displayOrder, targetImage.isPrimary);
-        await editImageOrder(targetImage, sourceImage.displayOrder, false);
-      }
+      const orderedImages = [...activeSetup.images];
+      const source = orderedImages.indexOf(sourceImage);
+      const target = orderedImages.indexOf(targetImage);
+      [orderedImages[source], orderedImages[target]] = [targetImage, sourceImage];
+      await saveImageOrder(orderedImages);
       return;
     }
 
     const reordered = [...photos];
     [reordered[fromIndex], reordered[toIndex]] = [reordered[toIndex], reordered[fromIndex]];
-    setPhotoPreviews((current) => ({ ...current, [activeSpotId]: reordered }));
-    setSetupForm((current) => ({ ...current, photos: reordered }));
+    setSetupDraft((current) => ({ ...current, photos: reordered }));
     setSetupMessage('Photo order updated.');
     setSetupError(null);
   };
@@ -917,14 +909,11 @@ export default function AvailabilityScheduler({
     }
     const daily = setupForm.dailyRate.trim() === '' ? null : Number(setupForm.dailyRate);
     const monthly = setupForm.monthlyRate.trim() === '' ? null : Number(setupForm.monthlyRate);
-    if ((daily !== null && (!Number.isFinite(daily) || daily < 1)) || (monthly !== null && (!Number.isFinite(monthly) || monthly < 1))) {
-      setSetupError('Each entered rate must be at least RM 1.');
+    if (hasInvalidRates({ dailyRate: daily, monthlyRate: monthly }, activeSetup)) {
+      setSetupError('Each new or changed rate must be at least RM 1.');
       return false;
     }
     const nextSetup: OwnerParkingSetup = {
-      // Keep both data URLs created by this prototype and any future API
-      // URLs/paths.  The component deliberately does not assume a backend
-      // image URL shape yet.
       photos: setupForm.photos.filter((photo) => photo.trim().length > 0).slice(0, MAX_PHOTOS),
       images: activeSetup.images.filter((image) => setupForm.photos.includes(image.secureUrl)),
       description: setupForm.description.trim(),
@@ -949,19 +938,7 @@ export default function AvailabilityScheduler({
         },
       };
     });
-    setSetupForm({
-      photos: [...nextSetup.photos],
-      description: nextSetup.description,
-      accessInstructions: nextSetup.accessInstructions,
-      dailyRate: nextSetup.dailyRate === null ? '' : String(nextSetup.dailyRate),
-      monthlyRate: nextSetup.monthlyRate === null ? '' : String(nextSetup.monthlyRate),
-      hasEvCharging: nextSetup.hasEvCharging,
-      evChargingSpeed: nextSetup.evChargingSpeed,
-      isCovered: nextSetup.isCovered,
-      isHandicapAccessible: nextSetup.isHandicapAccessible,
-      hasCctv: nextSetup.hasCctv,
-    });
-    setPhotoPreviews((current) => ({ ...current, [activeSpotId]: [...nextSetup.photos] }));
+    setSetupDraft({});
     setSetupMessage(successMessage);
     setSetupError(null);
     return true;
@@ -972,7 +949,7 @@ export default function AvailabilityScheduler({
     // Use the acknowledged save until a newer spot snapshot arrives from the API.
     const baseline = saved && saved.sourceUpdatedAt === bay.updatedAt
       ? saved.payload
-      : bay.configurationDescription !== undefined ? toConfigurationPayload(emptySetup(bay)) : null;
+      : bay.configurationDescription !== undefined ? toConfigurationPayload(setupFromBay(bay)) : null;
     return baseline === null || JSON.stringify(payload) !== JSON.stringify(baseline);
   };
 
@@ -1000,12 +977,6 @@ export default function AvailabilityScheduler({
       }
 
       savedConfigurations.current.set(activeBay.parkingSpotId, { sourceUpdatedAt: activeBay.updatedAt, payload });
-      activeBay.hasEvCharging = setupForm.hasEvCharging;
-      activeBay.evChargingSpeed = setupForm.hasEvCharging ? setupForm.evChargingSpeed : null;
-      activeBay.isCovered = setupForm.isCovered;
-      activeBay.isHandicapAccessible = setupForm.isHandicapAccessible;
-      activeBay.hasCctv = setupForm.hasCctv;
-      onScheduleChange?.();
       return persistSetup(false, body.updatedAt, body.message);
     } catch (error) {
       setSetupError(error instanceof Error ? error.message : 'Unable to save parking configuration.');
@@ -1015,12 +986,8 @@ export default function AvailabilityScheduler({
     }
   };
 
-  const applyServerImages = (images: ParkingSpotImage[], message: string) => {
-    const orderedImages = images
-      .map(normaliseParkingImage)
-      .filter((image): image is ParkingSpotImage => image !== null)
-      .sort((left, right) => left.displayOrder - right.displayOrder)
-      .slice(0, MAX_PHOTOS);
+  const applyServerImages = (images: ParkingSpotImage[], message: string, uploadedPhotos: string[] = []) => {
+    const orderedImages = normaliseParkingImages(images);
     const secureUrls = orderedImages.map((image) => image.secureUrl);
 
     updateWorkspace((current) => {
@@ -1036,8 +1003,12 @@ export default function AvailabilityScheduler({
         },
       };
     });
-    setSetupForm((current) => ({ ...current, photos: secureUrls }));
-    setPhotoPreviews((current) => ({ ...current, [activeSpotId]: secureUrls }));
+    setSetupDraft(({ photos, ...fields }) => {
+      const pendingPhotos = photos?.filter((photo) => (
+        (photo.startsWith('data:image/') || photo.startsWith('blob:')) && !uploadedPhotos.includes(photo)
+      )) ?? [];
+      return pendingPhotos.length ? { ...fields, photos: [...secureUrls, ...pendingPhotos] } : fields;
+    });
     setSetupMessage(message);
   };
 
@@ -1068,7 +1039,7 @@ export default function AvailabilityScheduler({
       }
 
       localImages.forEach((dataUrl) => pendingImageFilesRef.current.delete(dataUrl));
-      applyServerImages(body.data, body.message);
+      applyServerImages(body.data, body.message, localImages);
       return true;
     } catch (error) {
       setSetupError(error instanceof Error ? error.message : 'Unable to upload parking images.');
@@ -1078,11 +1049,7 @@ export default function AvailabilityScheduler({
     }
   };
 
-  const editImageOrder = async (
-    image: ParkingSpotImage,
-    displayOrder: number,
-    isPrimary: boolean,
-  ) => {
+  const saveImageOrder = async (images: ParkingSpotImage[]) => {
     if (!activeBay) return;
     const token = user?.token ?? '';
     if (!token) {
@@ -1090,18 +1057,18 @@ export default function AvailabilityScheduler({
       return;
     }
 
-    const nextOrder = Math.min(Math.max(1, displayOrder), activeSetup.images.length);
-    if (nextOrder === image.displayOrder && isPrimary === image.isPrimary) return;
-
-    setImageUpdatingId(image.parkingSpotImageId);
+    setImagesReordering(true);
     setSetupMessage(null);
     setSetupError(null);
     try {
-      const response = await updateParkingImage(
+      const response = await updateParkingImageOrder(
         token,
         activeBay.parkingSpotId,
-        image.parkingSpotImageId,
-        { displayOrder: nextOrder, isPrimary },
+        images.map((image, index) => ({
+          imageFileId: image.parkingSpotImageId,
+          displayOrder: index + 1,
+          isPrimary: index === 0,
+        })),
       );
       const body = await response.json().catch(() => null) as ParkingImagesResponse | null;
       if (!response.ok || !body?.success || !Array.isArray(body.data)) {
@@ -1112,7 +1079,7 @@ export default function AvailabilityScheduler({
     } catch (error) {
       setSetupError(error instanceof Error ? error.message : 'Unable to update the parking image.');
     } finally {
-      setImageUpdatingId(null);
+      setImagesReordering(false);
     }
   };
 
@@ -1142,7 +1109,6 @@ export default function AvailabilityScheduler({
         token,
         activeBay.parkingSpotId,
         image.parkingSpotImageId,
-        { displayOrder: 1, isPrimary: true },
       );
       const body = await response.json().catch(() => null) as ParkingImagesResponse | null;
       if (!response.ok || !body?.success || !Array.isArray(body.data)) {
@@ -1199,9 +1165,8 @@ export default function AvailabilityScheduler({
 
   const continueFromPricing = async (allowSave: boolean) => {
     const candidate = currentSetupCandidate();
-    const rates = [candidate.dailyRate, candidate.monthlyRate];
-    if (rates.some((rate) => rate !== null && (!Number.isFinite(rate) || rate < 1))) {
-      setSetupError('Each entered rate must be at least RM 1.');
+    if (hasInvalidRates(candidate, activeSetup)) {
+      setSetupError('Each new or changed rate must be at least RM 1.');
       return;
     }
     if ((candidate.dailyRate ?? 0) <= 0 && (candidate.monthlyRate ?? 0) <= 0) {
@@ -1220,7 +1185,7 @@ export default function AvailabilityScheduler({
   };
 
   const continueToPublish = () => {
-    const completion = setupCompletion(currentSetupCandidate());
+    const completion = setupCompletion(currentSetupCandidate(), activeSetup);
     if (!completion.complete) {
       setSetupError(completion.issues.join(' '));
       return;
@@ -1232,7 +1197,7 @@ export default function AvailabilityScheduler({
 
   const handlePublish = async () => {
     if (!activeBay) return;
-    const completion = setupCompletion(currentSetupCandidate());
+    const completion = setupCompletion(currentSetupCandidate(), activeSetup);
     if (!completion.complete) {
       setSetupError(completion.issues.join(' '));
       return;
@@ -1296,142 +1261,60 @@ export default function AvailabilityScheduler({
     setDayError(null);
   };
 
-  const setPreset = (preset: 'week' | 'month') => {
-    const now = new Date();
-    if (preset === 'week') {
-      const mondayOffset = (now.getDay() + 6) % 7;
-      setBulkStart(localDateKey(addDays(now, -mondayOffset)));
-      setBulkEnd(localDateKey(addDays(now, 6 - mondayOffset)));
-    } else {
-      setBulkStart(localDateKey(new Date(now.getFullYear(), now.getMonth(), 1)));
-      setBulkEnd(localDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
-    }
-    setBulkMessage(null);
+  const changeRangeDraft = (changes: Partial<AvailabilityRangeDraft>) => {
+    setRangeDraft((current) => ({ ...current, ...changes }));
     setBulkError(null);
+    setBulkMessage(null);
   };
 
-  const bulkUpdate = async (nextStatus: 'available' | 'unavailable') => {
-    if (!activeSpotId || !activeBay) return;
-    const keys = inclusiveDateKeys(bulkStart, bulkEnd);
-    if (keys.length === 0) {
-      setBulkError('Choose a valid inclusive start and end date.');
-      setBulkMessage(null);
-      return;
-    }
-    if (keys.length > MAX_BULK_DAYS) {
-      setBulkError(`Choose a range of ${MAX_BULK_DAYS} days or fewer.`);
-      setBulkMessage(null);
-      return;
-    }
-
-    if (nextStatus === 'available') {
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(bulkFromTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(bulkToTime)) {
-        setBulkError('Choose valid opening and closing times.');
-        setBulkMessage(null);
-        return;
-      }
-      if (bulkFromTime >= bulkToTime) {
-        setBulkError('The closing time must be later than the opening time.');
-        setBulkMessage(null);
-        return;
-      }
-      if (bulkDayPattern === 'Weekdays') {
-        const hasWeekday = keys.some((date) => {
-          const day = dateFromKey(date).getDay();
-          return day >= 1 && day <= 5;
-        });
-        if (!hasWeekday) {
-          setBulkError('A Weekdays rule must include at least one weekday (Mon–Fri) in the date range.');
-          setBulkMessage(null);
-          return;
-        }
-      }
-    }
-
-    const currentSpot = workspace.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
-    const matchingDates = nextStatus === 'available'
-      ? keys.filter((date) => dateMatchesDayPattern(date, bulkDayPattern))
-      : keys;
-    const editableDates = matchingDates.filter((date) => {
-      const currentDay = statusFor(currentSpot, date);
-      return currentDay.status !== 'booked';
-    });
-    const skipped = keys.length - editableDates.length;
-    const changed = editableDates.reduce((count, date) => (
-      statusFor(currentSpot, date).status === nextStatus ? count : count + 1
-    ), 0);
-
-    let backendMessage = '';
-    const token = user?.token ?? '';
+  const bulkUpdate = async () => {
+    if (!activeSpotId || !activeBay || availabilitySaving || bulkMessage || rangeDateError || rangeHoursError || rangeSelectionError) return;
+    const token = user?.token;
     if (!token) {
-      setBulkError('Your owner session is missing an authorization token.');
-      setBulkMessage(null);
+      setBulkError('Your session has expired. Sign in again to save availability.');
       return;
     }
 
+    const { status, start, end, fromTime, toTime, dayPattern } = rangeDraft;
+    const opensDates = status === 'available';
     setAvailabilitySaving(true);
     setBulkError(null);
-    setBulkMessage(null);
     try {
-      if (nextStatus === 'available') {
-        const response = await createParkingAvailabilityRules(token, activeBay.parkingSpotId, {
-          rules: [{
-            fromDate: bulkStart,
-            toDate: bulkEnd,
-            fromTime: bulkFromTime,
-            toTime: bulkToTime,
-            dayPattern: bulkDayPattern,
-          }],
-        });
-        const rawBody = await response.json().catch(() => null);
-        const body = rawBody as (ParkingAvailabilityRulesResponse & { errors?: Record<string, string[]>; title?: string }) | null;
-        if (!response.ok || !body?.success || !Array.isArray(body.data)) {
-          const detail = body?.message
-            || (body?.errors ? Object.values(body.errors).flat().join(' ') : null)
-            || body?.title;
-          throw new Error(detail || `Unable to create availability rules (${response.status}).`);
-        }
-        backendMessage = `${body.message}${body.timeZone ? ` Time zone: ${body.timeZone}.` : ''}`;
-      } else {
-        const response = await closeParkingAvailabilityDates(token, activeBay.parkingSpotId, {
-          fromDate: bulkStart,
-          toDate: bulkEnd,
-        });
-        const rawBody = await response.json().catch(() => null);
-        const body = rawBody as (ParkingAvailabilityRulesResponse & { errors?: Record<string, string[]>; title?: string }) | null;
-        if (!response.ok || !body?.success) {
-          const detail = body?.message
-            || (body?.errors ? Object.values(body.errors).flat().join(' ') : null)
-            || body?.title;
-          throw new Error(detail || `Unable to close dates (${response.status}).`);
-        }
-        backendMessage = body.message;
+      const response = opensDates
+        ? await createParkingAvailabilityRules(token, activeBay.parkingSpotId, {
+            rules: [{ fromDate: start, toDate: end, fromTime, toTime, dayPattern }],
+          })
+        : await closeParkingAvailabilityDates(token, activeBay.parkingSpotId, { fromDate: start, toDate: end });
+      const body = await response.json().catch(() => null) as (ParkingAvailabilityRulesResponse & {
+        errors?: Record<string, string[]>;
+        title?: string;
+      }) | null;
+      if (!response.ok || !body?.success || (opensDates && !Array.isArray(body.data))) {
+        const detail = body?.message || Object.values(body?.errors ?? {}).flat().join(' ') || body?.title;
+        throw new Error(detail || `Unable to save availability (${response.status}).`);
       }
+
+      updateWorkspace((current) => {
+        const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
+        const days = { ...spot.days };
+        matchingRangeDates.forEach((date) => {
+          if (statusFor(spot, date).status !== 'booked') {
+            days[date] = { ...days[date], status, ownerOverride: undefined };
+          }
+        });
+        return { ...current, spots: { ...current.spots, [activeSpotId]: { ...spot, days } } };
+      });
+      setBulkMessage(body.message || (opensDates ? 'Opening hours saved.' : 'Dates closed.'));
+      await fetchAvailabilityCalendar();
     } catch (error) {
-      setBulkError(error instanceof Error ? error.message : `Unable to ${nextStatus === 'available' ? 'create availability rules' : 'close dates'}.`);
-      return;
+      setBulkError(error instanceof Error ? error.message : 'Unable to save availability. Try again.');
     } finally {
       setAvailabilitySaving(false);
     }
-
-    updateWorkspace((current) => {
-      const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
-      const days = { ...spot.days };
-      editableDates.forEach((date) => {
-        days[date] = nextStatus === 'unavailable'
-          ? { ...days[date], status: 'unavailable', ownerOverride: undefined }
-          : { ...days[date], status: 'available', ownerOverride: undefined };
-      });
-      return { ...current, spots: { ...current.spots, [activeSpotId]: { ...spot, days } } };
-    });
-    setBulkError(null);
-    const localMessage = `${changed} day${changed === 1 ? '' : 's'} marked ${statusMeta[nextStatus].shortLabel.toLowerCase()}.${skipped ? ` ${skipped} day${skipped === 1 ? '' : 's'} outside the pattern, booked, or past.` : ''}`;
-    setBulkMessage(backendMessage ? `${backendMessage} ${localMessage}` : localMessage);
-    await fetchAvailabilityCalendar();
   };
 
   const applySelectedDayStatus = async (nextStatus: 'available' | 'unavailable') => {
-    if (!activeSpotId || !activeBay) {
+    if (!activeSpotId || !activeBay || availabilitySaving || daySaving) {
       return;
     }
     const currentDay = statusFor(workspace.spots[activeSpotId], selectedDate);
@@ -1459,8 +1342,8 @@ export default function AvailabilityScheduler({
           const match = t.trim().match(/^([01]\d|2[0-3]):[0-5]\d/);
           return match ? match[0] : fallback;
         };
-        const ruleFrom = cleanTime(currentDay.configuredHours?.[0]?.from, bulkFromTime);
-        const ruleTo = cleanTime(currentDay.configuredHours?.[0]?.to, bulkToTime);
+        const ruleFrom = cleanTime(currentDay.configuredHours?.[0]?.from, rangeDraft.fromTime);
+        const ruleTo = cleanTime(currentDay.configuredHours?.[0]?.to, rangeDraft.toTime);
         if (ruleFrom >= ruleTo) {
           throw new Error('Opening time must be earlier than closing time.');
         }
@@ -1545,39 +1428,73 @@ export default function AvailabilityScheduler({
     return { available, unavailable, booked };
   }, [activeSpot, calendarDays]);
 
-  const bulkPreview = useMemo(() => {
-    const keys = inclusiveDateKeys(bulkStart, bulkEnd);
-    if (!keys.length || keys.length > MAX_BULK_DAYS || !activeSpot) {
-      return { total: keys.length, editable: 0, changed: 0, skipped: keys.length };
+  const rangeDates = useMemo(
+    () => rangeEditorOpen ? inclusiveDateKeys(rangeDraft.start, rangeDraft.end) : [],
+    [rangeEditorOpen, rangeDraft.start, rangeDraft.end],
+  );
+  let rangeDateError: string | null = null;
+  if (!rangeDraft.start || !rangeDraft.end) rangeDateError = 'Enter a start date and an end date.';
+  else if (rangeDraft.start > rangeDraft.end) rangeDateError = 'End date must be on or after the start date.';
+  else if (rangeDates.length > MAX_BULK_DAYS) rangeDateError = `Choose a range of ${MAX_BULK_DAYS} days or fewer.`;
+  else if (!rangeDates.length) rangeDateError = 'Enter valid dates.';
+
+  const opensRangeDates = rangeDraft.status === 'available';
+  const matchingRangeDates = rangeDateError ? [] : opensRangeDates
+    ? rangeDates.filter((date) => dateMatchesDayPattern(date, rangeDraft.dayPattern))
+    : rangeDates;
+  let rangeHoursError: string | null = null;
+  if (opensRangeDates) {
+    const validTime = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (!validTime.test(rangeDraft.fromTime) || !validTime.test(rangeDraft.toTime)) {
+      rangeHoursError = 'Enter an opening time and a closing time.';
+    } else if (rangeDraft.fromTime >= rangeDraft.toTime) {
+      rangeHoursError = 'Closing time must be later than opening time.';
     }
-    const matchingKeys = bulkStatus === 'available'
-      ? keys.filter((date) => dateMatchesDayPattern(date, bulkDayPattern))
-      : keys;
-    const editable = matchingKeys.filter((date) => {
-      const day = statusFor(activeSpot, date);
-      return day.status !== 'booked';
-    });
-    return {
-      total: keys.length,
-      editable: editable.length,
-      changed: editable.filter((date) => statusFor(activeSpot, date).status !== bulkStatus).length,
-      skipped: keys.length - editable.length,
-    };
-  }, [activeSpot, bulkDayPattern, bulkEnd, bulkStart, bulkStatus]);
+  }
+
+  let rangeSelectionError: string | null = null;
+  if (!rangeDateError) {
+    if (!matchingRangeDates.length) rangeSelectionError = 'This range has no weekdays. Choose other dates or select Every day.';
+    else if (matchingRangeDates.every((date) => statusFor(activeSpot, date).status === 'booked')) rangeSelectionError = 'All selected dates are booked.';
+  }
 
   if (!activeBay) {
     return (
       <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
         <CalendarDays className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
-        <h2 className="mt-3 text-sm font-bold text-slate-800">No parking spots to configure</h2>
-        <p className="mt-1 text-xs text-slate-500">Register a parking spot first, then return here to add setup details and a timetable.</p>
+        <h2 className="mt-3 text-sm font-bold text-slate-800">{rangeEditorOpen ? 'Parking spot unavailable' : 'No parking spots to configure'}</h2>
+        {rangeEditorOpen ? (
+          <button type="button" onClick={onCloseRangeEditor} className="mt-2 min-h-11 rounded-lg px-2 text-sm font-semibold text-blue-700 hover:underline focus-visible:outline-2 dark:text-blue-300">Back to timetable</button>
+        ) : (
+          <p className="mt-1 text-xs text-slate-500">Register a parking spot first, then return here to add setup details and a timetable.</p>
+        )}
       </div>
     );
   }
 
-  const setupPhotos = photoPreviews[activeSpotId] ?? setupForm.photos;
+  if (rangeEditorOpen) {
+    return (
+      <AvailabilityRangeEditor
+        spotLabel={bayLabel(activeBay)}
+        timeZone={calendarTimeZone}
+        draft={rangeDraft}
+        matchingDays={matchingRangeDates.length}
+        dateError={rangeDateError}
+        hoursError={rangeHoursError}
+        selectionError={rangeSelectionError}
+        saveError={bulkError}
+        savedMessage={bulkMessage}
+        saving={availabilitySaving}
+        onChange={changeRangeDraft}
+        onBack={onCloseRangeEditor}
+        onSave={() => void bulkUpdate()}
+      />
+    );
+  }
+
+  const setupPhotos = setupForm.photos;
   const setupCandidate = currentSetupCandidate();
-  const setupIsComplete = setupCompletion(setupCandidate).complete;
+  const setupIsComplete = setupCompletion(setupCandidate, activeSetup).complete;
   const publishedAndConfigured = activeSetup.published && activeBay.isConfigurationComplete === true;
   const completedSteps = (publishedAndConfigured ? 4 : completedSetupSteps.size) + Number(activeSetup.published);
   const advanceSetupStep = {
@@ -1756,8 +1673,8 @@ export default function AvailabilityScheduler({
             {setupStep === 1 && (
               <motion.div key="photos-step" initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={prefersReducedMotion ? { duration: 0 } : calmMotion.transition} className="space-y-3 sm:space-y-5">
                 <ParkingSectionHeading
-                  title="Add some photos!"
-                  description="Give commuters a look at your parking spot so they know what to look for when they arrive. Start with one clear photo and add more angles if you can."
+                  title={activeSetup.images.length > 0 ? "Saved photos" : "Parking photos"}
+                  description={activeSetup.images.length > 0 ? "Continue with your saved photos, or add and reorder photos here." : "Add a clear photo that helps commuters recognize the bay."}
                 />
                 <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple onChange={handlePhotoChange} className="hidden" />
                 <div className="grid grid-cols-3 gap-2 sm:gap-3" role="group" aria-label="Parking photo gallery">
@@ -1798,7 +1715,7 @@ export default function AvailabilityScheduler({
                         <span className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-bold shadow-sm ${index === 0 ? 'bg-white text-slate-900' : 'bg-slate-950/70 text-white'}`}>{index === 0 ? 'Cover' : index + 1}</span>
                         <span className="absolute bottom-2 left-2 grid h-8 w-8 place-items-center rounded-full bg-slate-950/65 text-white backdrop-blur"><GripVertical className="h-4 w-4" aria-hidden="true" /></span>
                         <button type="button" onClick={(event) => { event.stopPropagation(); if (uploadedImage) void deleteImage(uploadedImage); else removePhoto(index); }} disabled={setupBusy} className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-slate-950/70 text-white backdrop-blur hover:bg-rose-600 disabled:opacity-50" aria-label={`Remove parking photo ${index + 1}`}><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
-                        {imageUpdatingId === uploadedImage?.parkingSpotImageId && <span className="absolute inset-0 grid place-items-center bg-slate-950/55 text-[11px] font-bold text-white">Reordering…</span>}
+                        {imagesReordering && uploadedImage && <span className="absolute inset-0 grid place-items-center bg-slate-950/55 text-[11px] font-bold text-white">Reordering…</span>}
                         {imageDeletingId === uploadedImage?.parkingSpotImageId && <span className="absolute inset-0 grid place-items-center bg-rose-950/65 text-[11px] font-bold text-white">Removing…</span>}
                       </div>
                     );
@@ -1959,7 +1876,6 @@ export default function AvailabilityScheduler({
                   {aiPricingRecommendation && (
                     <AiPricingAdvisorCard
                       key={activeSpotId}
-                      variant="detailed"
                       recommendation={aiPricingRecommendation}
                       onApplyRates={(daily, monthly) => {
                         replaceRate('dailyRate', String(daily));
@@ -2115,7 +2031,7 @@ export default function AvailabilityScheduler({
                     type="button"
                     onClick={handleSetupAction}
                     disabled={setupNavigationBusy || (setupStep >= 4 && !showTimetableAction && !setupIsComplete)}
-                    className="inline-flex min-h-11 min-w-28 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="workspace-button workspace-button--primary min-h-11! min-w-28"
                   >
                     {setupActionLabel}
                     <SetupActionIcon className="size-4 shrink-0" aria-hidden="true" />
@@ -2131,28 +2047,14 @@ export default function AvailabilityScheduler({
         </motion.section>
       ) : (
         <motion.section id="parking-timetable-panel" role="tabpanel" aria-labelledby="parking-timetable-tab" key="timetable" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition} className="space-y-5">
-          {aiPricingRecommendation && (
-            <AiPricingAdvisorCard
-              variant="compact"
-              recommendation={aiPricingRecommendation}
-              onOpenSetup={() => {
-                setSection('setup');
-                setSetupStep(3);
-              }}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <ParkingSectionHeading
+              headingRef={timetableHeadingRef}
+              title="Availability timetable"
+              description="Select a day to view or change its availability."
             />
-          )}
-       <div className="rounded-3xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <ParkingSectionHeading
-                title="Availability timetable"
-                description="Select a day to view it, then open or close it. Future dates start closed, and booked dates stay locked."
-              />
-              <div className="flex flex-wrap gap-2" aria-label="Availability legend">
-                {(Object.keys(statusMeta) as ParkingDayStatus[]).map((status) => { const meta = statusMeta[status]; const Icon = meta.icon; return <span key={status} className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${meta.badge}`}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{status === 'available' ? 'Open' : status === 'unavailable' ? 'Closed' : 'Booked'}</span>; })}
-              </div>
-            </div>
-            <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/75 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 text-[11px]" aria-live="polite">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <div className="min-w-0 text-xs" aria-live="polite">
                 {calendarLoading ? (
                   <span className="inline-flex items-center gap-2 font-semibold text-blue-700"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Loading {displayedMonth} availability…</span>
                 ) : calendarError ? (
@@ -2161,12 +2063,14 @@ export default function AvailabilityScheduler({
                   <span className="text-slate-500">Time zone: {calendarTimeZone}</span>
                 )}
               </div>
-              <button type="button" onClick={() => void fetchAvailabilityCalendar()} disabled={calendarLoading} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-bold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"><RefreshCw className={`h-3.5 w-3.5 ${calendarLoading ? 'animate-spin' : ''}`} aria-hidden="true" /> Refresh</button>
+              <button type="button" onClick={() => void fetchAvailabilityCalendar()} disabled={calendarLoading} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-[var(--workspace-text-secondary)] hover:bg-black/5 hover:text-[var(--workspace-text)] focus-visible:outline-2 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-white/10">
+                <RefreshCw className={`size-3.5 ${calendarLoading ? 'motion-safe:animate-spin' : ''}`} aria-hidden="true" /> Refresh
+              </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.75fr)]">
-             <div className="rounded-2xl border border-slate-200/90 bg-white p-3 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
+             <div className="workspace-panel p-3 md:p-5">
               <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -2182,11 +2086,24 @@ export default function AvailabilityScheduler({
                 </div>
                 <button type="button" onClick={goToCurrentMonth} className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-bold text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Today</button>
               </div>
-              <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{Array.from({ length: calendarStartOffset }, (_, index) => <span key={`calendar-offset-${index}`} aria-hidden="true" />)}{calendarDays.map((day) => { const key = localDateKey(day); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={false} aria-selected={selected} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-1 py-2 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-[#007AFF] text-white' : key === todayKey ? 'ring-1 ring-inset ring-[#007AFF] text-[#007AFF]' : 'text-slate-800'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[9px] font-semibold leading-none ${meta.cell} ${past ? 'opacity-55' : ''}`}><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
-              <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400"><Info className="h-3.5 w-3.5" aria-hidden="true" /> Select a date to inspect it. Use the inspector action to open or close it.</p>
+              <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{Array.from({ length: calendarStartOffset }, (_, index) => <span key={`calendar-offset-${index}`} aria-hidden="true" />)}{calendarDays.map((day) => { const key = localDateKey(day); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={false} aria-selected={selected} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-0.5 py-2 sm:px-1 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-primary text-primary-foreground' : key === todayKey ? 'ring-1 ring-inset ring-primary text-primary' : 'text-slate-800'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[0.6875rem]! font-semibold leading-none sm:text-xs! ${meta.cell} ${past ? 'opacity-55' : ''}`}><span className={`hidden h-1.5 w-1.5 shrink-0 rounded-full sm:block ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
+              <div className="mt-3 flex justify-end border-t border-border pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const date = selectedDate < todayKey ? todayKey : selectedDate;
+                    changeRangeDraft(newRangeDraft(date));
+                    onOpenRangeEditor(activeBay.parkingSpotId);
+                  }}
+                  disabled={setupBusy || deletingSpot}
+                  className="inline-flex min-h-11! items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-primary hover:bg-[var(--parkjom-action-soft)] disabled:opacity-50"
+                >
+                  <CalendarRange className="size-4" aria-hidden="true" /> Edit date range
+                </button>
+              </div>
             </div>
 
-             <aside className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:sticky md:top-28 md:self-start md:p-5">
+             <aside className="workspace-panel space-y-4 p-4 md:sticky md:top-28 md:self-start md:p-5">
               <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Selected day</p><h3 className="mt-1 text-sm font-bold text-slate-900">{formatLongDate(selectedDate)}</h3></div>
               <div className={`rounded-2xl border p-4 ${selectedDayMeta.badge}`} aria-live="polite"><div className="flex items-center gap-2"><SelectedDayIcon className="h-4 w-4" aria-hidden="true" /><span className="text-xs font-bold">{selectedDay.status === 'booked' ? 'Booked · locked' : selectedDayMeta.label}</span>{daySaving && <RefreshCw className="ml-auto h-3.5 w-3.5 animate-spin" aria-label="Saving day status" />}</div>{selectedDay.status === 'booked' && <p className="mt-2 text-xs leading-relaxed">This date is locked because one commuter already has the booking.</p>}{selectedDay.status !== 'booked' && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => void applySelectedDayStatus('available')} disabled={daySaving} aria-pressed={selectedDay.status === 'available'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'available' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Check className="h-4 w-4" aria-hidden="true" /> Open</button><button type="button" onClick={() => void applySelectedDayStatus('unavailable')} disabled={daySaving} aria-pressed={selectedDay.status === 'unavailable'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'unavailable' ? 'border-slate-400 bg-slate-200 text-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Ban className="h-4 w-4" aria-hidden="true" /> Closed</button></div>}</div>
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
@@ -2204,130 +2121,6 @@ export default function AvailabilityScheduler({
             </aside>
           </div>
 
-          <div className="rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#141417] p-4 shadow-[0_14px_45px_-32px_rgba(15,23,42,0.5)] md:p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <CalendarRange className="h-4 w-4 shrink-0 text-[#007AFF]" aria-hidden="true" />
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Range editor</h3>
-                </div>
-                <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-[#A1A1AA]">Set one schedule across several dates.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setBulkStart(todayKey);
-                  setBulkEnd(todayKey);
-                  setBulkFromTime('09:00');
-                  setBulkToTime('19:00');
-                  setBulkDayPattern('Weekdays');
-                  setBulkStatus('available');
-                  setBulkMessage(null);
-                  setBulkError(null);
-                }}
-                disabled={availabilitySaving}
-                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-slate-500 dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-800 dark:hover:text-white disabled:opacity-50 transition-colors"
-              >
-                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Reset
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 dark:bg-white/[0.06] p-1" aria-label="Availability action">
-              <button
-                type="button"
-                onClick={() => setBulkStatus('available')}
-                disabled={availabilitySaving}
-                className={`min-h-10 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
-                  bulkStatus === 'available'
-                    ? 'bg-white dark:bg-[#1C1C1E] text-emerald-700 dark:text-emerald-400 shadow-sm'
-                    : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-700 dark:hover:text-white'
-                }`}
-                aria-pressed={bulkStatus === 'available'}
-              >
-                <span className="inline-flex items-center gap-1.5"><Check className="h-4 w-4" aria-hidden="true" /> Open dates</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBulkStatus('unavailable')}
-                disabled={availabilitySaving}
-                className={`min-h-10 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
-                  bulkStatus === 'unavailable'
-                    ? 'bg-white dark:bg-[#1C1C1E] text-slate-800 dark:text-white shadow-sm'
-                    : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-700 dark:hover:text-white'
-                }`}
-                aria-pressed={bulkStatus === 'unavailable'}
-              >
-                <span className="inline-flex items-center gap-1.5"><Ban className="h-4 w-4" aria-hidden="true" /> Close dates</span>
-              </button>
-            </div>
-
-            <div className={`mt-4 grid gap-3 ${bulkStatus === 'available' ? 'lg:grid-cols-2' : ''}`}>
-              <section className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-[#18181C]/60 p-3 sm:p-4" aria-labelledby="range-dates-title">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <h4 id="range-dates-title" className="text-xs font-bold text-slate-800 dark:text-white">Date range</h4>
-                </div>
-                <DateRangePicker
-                  startDate={bulkStart}
-                  endDate={bulkEnd}
-                  onChange={(start, end) => {
-                    setBulkStart(start);
-                    setBulkEnd(end);
-                    setBulkError(null);
-                  }}
-                  disabled={availabilitySaving}
-                />
-              </section>
-
-              {bulkStatus === 'available' && (
-                <section className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-[#18181C]/60 p-3 sm:p-4 flex flex-col justify-between" aria-labelledby="range-schedule-title">
-                  <div>
-                    <h4 id="range-schedule-title" className="text-xs font-bold text-slate-800 dark:text-white mb-3">Opening schedule</h4>
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="min-w-0">
-                        <span className="mb-1.5 block text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Opens</span>
-                        <input
-                          type="time"
-                          value={bulkFromTime}
-                          onChange={(event) => setBulkFromTime(event.target.value)}
-                          disabled={availabilitySaving}
-                          className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 disabled:opacity-60"
-                        />
-                      </label>
-                      <label className="min-w-0">
-                        <span className="mb-1.5 block text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Closes</span>
-                        <input
-                          type="time"
-                          value={bulkToTime}
-                          onChange={(event) => setBulkToTime(event.target.value)}
-                          disabled={availabilitySaving}
-                          className="min-h-10 w-full min-w-0 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 disabled:opacity-60"
-                        />
-                      </label>
-                    </div>
-                    <label className="mt-3 block">
-                      <span className="mb-1.5 block text-[10px] font-semibold text-slate-500 dark:text-[#A1A1AA]">Repeat pattern</span>
-                      <SystemSelect
-                        value={bulkDayPattern}
-                        onChange={(event) => setBulkDayPattern(event.target.value as OwnerAvailabilityDayPattern)}
-                        disabled={availabilitySaving}
-                        className="min-h-10 w-full rounded-lg border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-[#18181C] px-2.5 text-[11px] font-semibold text-slate-800 dark:text-white outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
-                      >
-                        <option value="Weekdays">Weekdays (Mon – Fri)</option>
-                        <option value="Everyday">Every day (Mon – Sun)</option>
-                      </SystemSelect>
-                    </label>
-                  </div>
-                </section>
-              )}
-            </div>
-
-            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 dark:border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[11px] leading-relaxed text-slate-500 dark:text-[#A1A1AA]" aria-live="polite">{bulkPreview.total ? <><strong className="text-slate-800 dark:text-white">{bulkPreview.changed}</strong> day{bulkPreview.changed === 1 ? '' : 's'} will change · <strong className="text-slate-800 dark:text-white">{bulkPreview.skipped}</strong> skipped</> : 'Choose a date range to preview changes.'}</p>
-              <button type="button" onClick={() => void bulkUpdate(bulkStatus)} disabled={availabilitySaving || !bulkPreview.total || bulkPreview.total > MAX_BULK_DAYS || !bulkPreview.editable} className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-xs font-semibold text-white hover:bg-[#006EE6] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"><Check className="h-4 w-4" aria-hidden="true" /> {availabilitySaving ? 'Creating rule…' : bulkStatus === 'available' ? 'Create rule' : 'Apply range'}</button>
-            </div>
-            {bulkError && <p role="alert" className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{bulkError}</p>}
-            {bulkMessage && <div className="mt-2 flex justify-end"><SaveTick message={bulkMessage} /></div>}
-          </div>
         </motion.section>
       )}
       </AnimatePresence>

@@ -251,14 +251,21 @@ async function getBookingHistory(
   const statusValue = readField(payload, 'status', 'Status');
   const fromDateValue = readField(payload, 'fromDate', 'FromDate');
   const toDateValue = readField(payload, 'toDate', 'ToDate');
+  const totalCount = Number(readField(payload, 'totalCount', 'TotalCount') ?? data.length);
+  const responsePageSize = Number(readField(payload, 'pageSize', 'PageSize') ?? pageSize);
+  const resolvedPageSize = Number.isInteger(responsePageSize) && responsePageSize > 0 ? responsePageSize : pageSize;
+  const responseTotalPages = Number(readField(payload, 'totalPages', 'TotalPages'));
+  const totalPages = Number.isInteger(responseTotalPages) && responseTotalPages > 0
+    ? responseTotalPages
+    : Math.ceil(totalCount / resolvedPageSize);
   const result: BookingHistoryResponse = {
     code: Number(readField(payload, 'code', 'Code') ?? response.status),
     success: Boolean(readField(payload, 'success', 'Success')),
     message: String(readField(payload, 'message', 'Message') ?? ''),
-    totalCount: Number(readField(payload, 'totalCount', 'TotalCount') ?? data.length),
+    totalCount,
     page: Number(readField(payload, 'page', 'Page') ?? page),
-    pageSize: Number(readField(payload, 'pageSize', 'PageSize') ?? pageSize),
-    totalPages: Number(readField(payload, 'totalPages', 'TotalPages') ?? (data.length > 0 ? 1 : 0)),
+    pageSize: resolvedPageSize,
+    totalPages,
     status: statusValue == null ? null : String(statusValue),
     fromDate: fromDateValue == null ? null : String(fromDateValue),
     toDate: toDateValue == null ? null : String(toDateValue),

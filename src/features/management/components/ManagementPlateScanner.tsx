@@ -202,19 +202,10 @@ export default function ManagementPlateScanner({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Left: Capture & Spot Filter */}
         <section
-          aria-labelledby="plate-capture-heading"
-          className="lg:col-span-7 rounded-2xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-[#141417] p-5 space-y-4 shadow-sm"
+          aria-label="Vehicle plate capture"
+          className="workspace-panel lg:col-span-7 space-y-4 p-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 id="plate-capture-heading" className="text-[16px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
-                Gatehouse Plate Scanner
-              </h2>
-              <p className="text-[12px] text-[#6e6e73] dark:text-[#a1a1aa] mt-0.5">
-                Scan a vehicle number plate to verify an active booking at this property.
-              </p>
-            </div>
-
             <div className="flex items-center gap-2">
               <label htmlFor="scanner-spot-filter" className="text-[12px] font-medium text-[#6e6e73] dark:text-[#a1a1aa]">
                 Bay filter
@@ -317,10 +308,10 @@ export default function ManagementPlateScanner({
                 type="button"
                 disabled={scanning}
                 onClick={() => void startCamera()}
-                className="min-h-11 px-4 rounded-xl bg-[#0071e3] dark:bg-[#0a84ff] hover:bg-[#0066d6] text-white text-[13px] font-semibold inline-flex items-center gap-2 shadow-sm disabled:opacity-50"
+                className="workspace-button workspace-button--primary min-h-11!"
               >
                 <Video size={17} aria-hidden="true" />
-                <span>Open Camera</span>
+                <span>Open camera</span>
               </button>
             ) : (
               <>
@@ -328,18 +319,18 @@ export default function ManagementPlateScanner({
                   type="button"
                   disabled={scanning}
                   onClick={() => void captureCameraFrame()}
-                  className="min-h-11 px-5 rounded-xl bg-[#248a3d] hover:bg-[#1e7433] text-white text-[13px] font-semibold inline-flex items-center gap-2 shadow-sm disabled:opacity-50"
+                  className="workspace-button workspace-button--primary min-h-11!"
                 >
                   <Camera size={17} aria-hidden="true" />
-                  <span>Capture &amp; Verify Plate</span>
+                  <span>Capture and verify</span>
                 </button>
                 <button
                   type="button"
                   onClick={stopCamera}
-                  className="min-h-11 px-3.5 rounded-xl border border-black/[0.12] dark:border-white/[0.16] text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] inline-flex items-center gap-1.5"
+                  className="workspace-button workspace-button--secondary min-h-11!"
                 >
                   <VideoOff size={16} aria-hidden="true" />
-                  <span>Stop Camera</span>
+                  <span>Stop camera</span>
                 </button>
               </>
             )}
@@ -348,10 +339,10 @@ export default function ManagementPlateScanner({
               type="button"
               disabled={scanning}
               onClick={() => fileInputRef.current?.click()}
-              className="min-h-11 px-4 rounded-xl border border-black/[0.12] dark:border-white/[0.16] bg-[#f5f5f7] dark:bg-[#1c1c1e] hover:bg-black/[0.06] text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] inline-flex items-center gap-2 disabled:opacity-50"
+              className="workspace-button workspace-button--secondary min-h-11!"
             >
               <ImagePlus size={17} aria-hidden="true" />
-              <span>Upload Plate Photo</span>
+              <span>Upload photo</span>
             </button>
 
             <input
@@ -370,11 +361,11 @@ export default function ManagementPlateScanner({
         <section
           aria-labelledby="plate-verdict-heading"
           aria-live="polite"
-          className="lg:col-span-5 rounded-2xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-[#141417] p-5 space-y-4 shadow-sm"
+          className="workspace-panel lg:col-span-5 space-y-4 p-5"
         >
           <div className="flex items-center justify-between">
             <h2 id="plate-verdict-heading" className="text-[16px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
-              Verification Verdict
+              Verification result
             </h2>
             {result && (
               <span className="text-[11px] font-mono text-[#6e6e73] dark:text-[#a1a1aa]">

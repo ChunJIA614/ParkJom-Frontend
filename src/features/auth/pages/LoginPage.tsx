@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Building2, Compass, Eye, EyeOff, Loader2, Moon, Sun } from 'lucide-react';
-import GoogleLoginButton from '../components/GoogleLoginButton';
+import { ArrowLeft, ArrowRight, Building2, Compass, Eye, EyeOff, Loader2 } from 'lucide-react';
+import GoogleLoginButton, { type OnboardingStepState } from '../components/GoogleLoginButton';
 import LoginMagneticCars from '../components/LoginMagneticCars';
 import BrandLogo from '@/components/ui/BrandLogo';
-import { useTheme } from '@/app/theme/ThemeContext';
+import { applyTheme, readStoredTheme, resolveTheme } from '@/app/theme/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { loginManagement, managementSessionFromLogin } from '@/features/management/api/managementApi';
 import '../login.css';
@@ -12,16 +12,34 @@ import '../login.css';
 type LoginMode = 'commuter' | 'management';
 
 export default function LoginPage() {
-  const { isDark, toggleTheme } = useTheme();
   const { setUser, continueAsGuest } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [mode, setMode] = useState<LoginMode>(searchParams.get('role') === 'PropertyManagement' ? 'management' : 'commuter');
+  const [onboarding, setOnboarding] = useState<OnboardingStepState>({ step: 'idle' });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const isOnboarding = mode === 'commuter' && onboarding.step !== 'idle';
+  const onboardingStep = onboarding.step === 'otp' ? 'Step 2 of 2' : 'Step 1 of 2';
+  const headingTitle = isOnboarding
+    ? (onboarding.step === 'otp' ? 'Verify your number' : 'Complete your profile')
+    : (mode === 'management' ? 'Property Desk' : 'Sign in to ParkJom');
+  const headingSubtitle = isOnboarding
+    ? (onboarding.step === 'otp'
+      ? `Enter the 6-digit code sent to ${onboarding.phoneNumber || 'your mobile number'}.`
+      : 'Choose your account role and add a mobile number for verification.')
+    : (mode === 'management' ? 'Use the account issued for your building.' : 'Your parking, bookings and wallet in one place.');
+
+  useEffect(() => {
+    applyTheme('light');
+    return () => {
+      applyTheme(resolveTheme(readStoredTheme()));
+    };
+  }, []);
 
   const handleContinueAsGuest = () => {
     continueAsGuest();
@@ -56,30 +74,33 @@ export default function LoginPage() {
           <BrandLogo className="h-10 w-10" />
           <span>ParkJom<span className="login-wordmark__dot">.</span></span>
         </a>
-        <button type="button" onClick={toggleTheme} className="login-theme-button" aria-label={isDark ? 'Switch to light appearance' : 'Switch to dark appearance'}>
-          {isDark ? <Sun size={19} /> : <Moon size={19} />}
-        </button>
       </header>
 
       <div className="login-page__layout">
         <section className="login-form-pane" aria-labelledby="login-title">
           <div className="login-form-heading">
-            <p className="login-eyebrow">YOUR EVERYDAY PARKING, SORTED</p>
-            <h1 id="login-title">{mode === 'management' ? 'Property Desk' : 'Sign in to ParkJom'}</h1>
-            <p>{mode === 'management' ? 'Use the account issued for your building.' : 'Your parking, bookings and wallet in one place.'}</p>
+            {isOnboarding && <p className="login-eyebrow login-eyebrow--step">{onboardingStep}</p>}
+            <h1 id="login-title">{headingTitle}</h1>
+            <p>{headingSubtitle}</p>
           </div>
 
-          <div className="login-mode-switch" aria-label="Sign-in options">
-            <button type="button" aria-pressed={mode === 'commuter'} onClick={() => { setMode('commuter'); setError(''); }}>Commuter &amp; Owner</button>
-            <button type="button" aria-pressed={mode === 'management'} onClick={() => { setMode('management'); setError(''); }}><Building2 size={15} />Property Desk</button>
-          </div>
+          {!isOnboarding && (
+            <div className="login-mode-switch" aria-label="Sign-in options">
+              <button type="button" aria-pressed={mode === 'commuter'} onClick={() => { setMode('commuter'); setError(''); }}>Commuter or owner</button>
+              <button type="button" aria-pressed={mode === 'management'} onClick={() => { setMode('management'); setError(''); }}><Building2 size={15} />Property Desk</button>
+            </div>
+          )}
 
           {mode === 'commuter' ? (
             <div className="login-commuter-form">
-              <GoogleLoginButton />
-              <div className="login-divider"><span>or take a look around</span></div>
-              <button type="button" onClick={handleContinueAsGuest} className="login-guest-button"><Compass size={18} /><span>Browse as Guest</span><ArrowRight size={17} /></button>
-              <p className="login-small-note">No account needed to explore parking and transit.</p>
+              <GoogleLoginButton onOnboardingChange={setOnboarding} />
+              {!isOnboarding && (
+                <>
+                  <div className="login-divider"><span>or</span></div>
+                  <button type="button" onClick={handleContinueAsGuest} className="login-guest-button"><Compass size={18} /><span>Browse as guest</span><ArrowRight size={17} /></button>
+                  <p className="login-small-note">No account needed to explore parking and transit.</p>
+                </>
+              )}
             </div>
           ) : (
             <form onSubmit={handleManagementSubmit} className="login-management-form" noValidate>
@@ -91,12 +112,14 @@ export default function LoginPage() {
                 <button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
               </div>
               {error && <p role="alert" className="login-form-error">{error}</p>}
-              <button type="submit" disabled={submitting} className="login-submit-button">{submitting ? <><Loader2 size={17} className="animate-spin" />Signing in…</> : <>Sign in to Property Desk<ArrowRight size={17} /></>}</button>
+              <button type="submit" disabled={submitting} aria-busy={submitting} className="login-submit-button">{submitting ? <><Loader2 size={17} className="animate-spin" />Signing in…</> : <>Sign in to Property Desk<ArrowRight size={17} /></>}</button>
               <p className="login-small-note">New here? Use your email invitation to set up your password.</p>
             </form>
           )}
 
-          <a href="/home" className="login-home-link"><ArrowLeft size={15} />Back to Home</a>
+          {!isOnboarding && (
+            <a href="/home" className="login-home-link"><ArrowLeft size={15} />Back to Home</a>
+          )}
         </section>
       </div>
 

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import WorkspaceActivityRow from '@/components/ui/WorkspaceActivityRow';
+import WorkspaceEmptyState from '@/components/ui/WorkspaceEmptyState';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowDownToLine,
@@ -26,7 +28,7 @@ interface Props {
   onNavigateSettings?: () => void;
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 
 const TRANSACTION_TYPES: Array<{ value: string; label: string }> = [
   { value: '', label: 'All transactions' },
@@ -103,29 +105,13 @@ function TransactionRow({ item }: { item: OwnerEarningsTransactionItem }) {
   ].filter((entry): entry is { label: string; amount: number } => Boolean(entry));
 
   return (
-    <article className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] p-4 sm:p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="break-words text-sm font-bold text-slate-900 dark:text-white">
-            {[item.propertyName?.trim(), item.parkingLabel?.trim()].filter(Boolean).join(' · ') || 'Parking booking'}
-          </p>
-          <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-[#A1A1AA]">
-            <span className="font-medium">Booking date: </span>
-            {formatDate(item.startDate)}
-            {item.endDate !== item.startDate && ` – ${formatDate(item.endDate)}`}
-          </p>
-          {item.bookingStatus && (
-            <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
-              {item.bookingStatus}
-            </span>
-          )}
-        </div>
-        <div className="shrink-0 sm:text-right">
-          <p className="text-[11px] font-medium text-slate-500 dark:text-[#A1A1AA]">Payout</p>
-          <p className="mt-0.5 text-xl font-extrabold tabular-nums text-emerald-700 dark:text-[#34D399]">{money(item.payout)}</p>
-        </div>
-      </div>
-
+    <WorkspaceActivityRow
+      title={[item.propertyName?.trim(), item.parkingLabel?.trim()].filter(Boolean).join(' · ') || 'Parking booking'}
+      detail={`Booking date: ${formatDate(item.startDate)}${item.endDate !== item.startDate ? ` – ${formatDate(item.endDate)}` : ''}`}
+      status={item.bookingStatus ?? undefined}
+      amountLabel="Payout"
+      amount={money(item.payout)}
+    >
       {extras.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 dark:border-white/[0.08] pt-3">
           {extras.map((extra) => (
@@ -135,7 +121,7 @@ function TransactionRow({ item }: { item: OwnerEarningsTransactionItem }) {
           ))}
         </div>
       )}
-    </article>
+    </WorkspaceActivityRow>
   );
 }
 
@@ -152,6 +138,7 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const activityHeadingRef = useRef<HTMLHeadingElement>(null);
 
   // Withdrawal modal states
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -193,8 +180,15 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
     getOwnerEarningsTransactions(token, params, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
+        const pages = Number.isFinite(result.totalPages) && result.totalPages > 0
+          ? result.totalPages
+          : Math.ceil(result.totalCount / PAGE_SIZE);
+        if (page > Math.max(1, pages)) {
+          setPage(Math.max(1, pages));
+          return;
+        }
         setItems(result.data);
-        setTotalPages(result.totalPages);
+        setTotalPages(pages);
         setTotalCount(result.totalCount);
       })
       .catch((error) => {
@@ -213,6 +207,14 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
   const held = summary?.heldEarnings ?? 0;
   const paid = summary?.paidEarnings ?? 0;
   const retryAll = () => setRefreshToken((value) => value + 1);
+  const changePage = (nextPage: number) => {
+    setFeedLoading(true);
+    setFeedError(null);
+    setItems([]);
+    setPage(nextPage);
+    activityHeadingRef.current?.focus({ preventScroll: true });
+    activityHeadingRef.current?.scrollIntoView({ block: 'start' });
+  };
 
   const handleConfirmWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,7 +272,7 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
                 setWithdrawSuccess(null);
                 setWithdrawAmount('');
               }}
-              className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 dark:bg-emerald-500 px-3 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-700 dark:hover:bg-emerald-600 shadow-sm"
+              className="workspace-button workspace-button--primary"
             >
               <ArrowDownToLine className="h-3.5 w-3.5" aria-hidden="true" />
               Withdraw
@@ -323,13 +325,15 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
       </section>
 
       <section className="space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="workspace-filter-bar">
           <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Earnings activity</h3>
+            <h3 ref={activityHeadingRef} tabIndex={-1} className="scroll-mt-24 text-sm font-bold text-slate-900 dark:text-white">Earnings activity</h3>
             <p className="mt-0.5 text-[11px] text-slate-500 dark:text-[#A1A1AA]">
               {feedLoading && items.length === 0
                 ? 'Loading transactions...'
-                : `${totalCount} transaction${totalCount === 1 ? '' : 's'}`}
+                : items.length > 0
+                  ? `Showing ${(page - 1) * PAGE_SIZE + 1}–${(page - 1) * PAGE_SIZE + items.length} of ${totalCount} transactions`
+                  : `${totalCount} transaction${totalCount === 1 ? '' : 's'}`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -337,6 +341,11 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
             <SystemSelect
               value={typeFilter}
               onChange={(event) => {
+                if (event.target.value === typeFilter) return;
+                setItems([]);
+                setTotalPages(0);
+                setTotalCount(0);
+                setFeedLoading(true);
                 setTypeFilter(event.target.value);
                 setPage(1);
               }}
@@ -368,13 +377,7 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
         )}
 
         {!feedLoading && !feedError && items.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-300 dark:border-white/10 bg-white dark:bg-[#141417] p-8 text-center">
-            <Clock3 className="mx-auto h-7 w-7 text-slate-300 dark:text-[#71717A]" aria-hidden="true" />
-            <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-white">No earnings yet</p>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-[#A1A1AA]">
-              Payouts appear here once a commuter completes a booking on one of your spots.
-            </p>
-          </div>
+          <WorkspaceEmptyState icon={Clock3} title={typeFilter ? 'No matching transactions' : 'No earnings yet'} description={typeFilter ? 'Choose another transaction type.' : 'Payouts appear here when a booking is completed.'} />
         )}
 
         <div className="space-y-2">
@@ -384,25 +387,25 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
         </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] px-4 py-2.5 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+          <nav aria-label="Earnings activity pagination" className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
             <button
               type="button"
-              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              onClick={() => changePage(page - 1)}
               disabled={page === 1 || feedLoading}
-              className="disabled:cursor-not-allowed disabled:opacity-40"
+              className="workspace-button workspace-button--secondary"
             >
               Previous
             </button>
-            <span>Page {page} of {totalPages}</span>
+            <span className="text-sm text-muted-foreground tabular-nums" aria-live="polite">Page {page} of {totalPages}</span>
             <button
               type="button"
-              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              onClick={() => changePage(page + 1)}
               disabled={page >= totalPages || feedLoading}
-              className="disabled:cursor-not-allowed disabled:opacity-40"
+              className="workspace-button workspace-button--secondary"
             >
               Next
             </button>
-          </div>
+          </nav>
         )}
       </section>
 

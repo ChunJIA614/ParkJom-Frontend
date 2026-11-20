@@ -30,6 +30,7 @@ export interface ParkingBay {
   hasActiveBookings?: boolean;
   bollard?: ParkingBollard | null;
   imageUrl?: string;
+  images?: ParkingSpotImage[];
   isConfigurationComplete?: boolean;
   configurationDescription?: string | null;
   hasAvailabilityRules?: boolean;
@@ -81,7 +82,8 @@ export interface ParkingImagesResponse extends ParkingActionResult {
   data: ParkingSpotImage[];
 }
 
-export interface ParkingImageUpdatePayload {
+export interface ParkingImageOrderInput {
+  imageFileId: number;
   displayOrder: number;
   isPrimary: boolean;
 }

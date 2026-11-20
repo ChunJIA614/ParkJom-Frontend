@@ -1,13 +1,21 @@
+import { useLayoutEffect, type RefObject } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 
 interface PageTransitionProps {
   children: React.ReactNode;
   transitionKey: string;
   className?: string;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 }
 
-export default function PageTransition({ children, transitionKey, className = '' }: PageTransitionProps) {
+export default function PageTransition({ children, transitionKey, className = '', scrollContainerRef }: PageTransitionProps) {
   const prefersReducedMotion = useReducedMotion();
+
+  useLayoutEffect(() => {
+    const top = { top: 0, left: 0, behavior: 'instant' } as const;
+    window.scrollTo(top);
+    scrollContainerRef?.current?.scrollTo(top);
+  }, [transitionKey, scrollContainerRef]);
 
   return (
     <AnimatePresence mode="popLayout" initial={false}>

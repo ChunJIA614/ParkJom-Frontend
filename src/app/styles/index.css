@@ -27,10 +27,10 @@
   --font-mono: "SF Mono", ui-monospace, SFMono-Regular, "JetBrains Mono", monospace;
 
   /* ParkJom design tokens — iOS / macOS aligned */
-  --color-accent: #007aff;
-  --color-accent-hover: #0066d6;
-  --color-accent-pressed: #0055b3;
-  --color-accent-soft: #e8f0fe;
+  --color-accent: var(--parkjom-action);
+  --color-accent-hover: var(--parkjom-action-hover);
+  --color-accent-pressed: var(--parkjom-action-pressed);
+  --color-accent-soft: var(--parkjom-action-soft);
   --color-success: #34c759;
   --color-warning: #ff9500;
   --color-danger: #ff3b30;
@@ -61,6 +61,7 @@
 
 /* ── Base ── */
 body {
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -189,13 +190,6 @@ html {
   }
 }
 
-@font-face {
-  font-family: "Ogg Medium";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("https://dcym8fthxf5uu.cloudfront.net/fonts/247a073c-29f5-4a89-aa3a-741020f346fc/OggText-Medium.woff2") format("woff2");
-}
 
 /* ParkJom cinematic landing story */
 .parkjom-cinema {
@@ -444,7 +438,7 @@ html {
   width: min(96vw, 1780px);
   margin: 0;
   color: #fff8ed;
-  font-family: "Ogg Medium", Georgia, serif;
+  font-family: var(--font-sans);
   font-size: clamp(8rem, 13.6vw, 14rem);
   font-weight: 500;
   line-height: 0.78;
@@ -557,7 +551,7 @@ html {
 .pj-story-panel h2 {
   margin: 0;
   color: #fff8ed;
-  font-family: "Ogg Medium", Georgia, serif;
+  font-family: var(--font-sans);
   font-size: clamp(3.5rem, 5.2vw, 5.1rem);
   font-weight: 500;
   line-height: 0.94;
@@ -585,7 +579,7 @@ html {
 
 .pj-facts dt {
   color: #fff8ed;
-  font-family: "Ogg Medium", Georgia, serif;
+  font-family: var(--font-sans);
   font-size: clamp(3rem, 4.5vw, 4.4rem);
   font-weight: 500;
   line-height: 0.9;
@@ -889,16 +883,32 @@ html {
 }
 
 :root {
+  --parkjom-action-light: #0066cc;
+  --parkjom-action-light-hover: #0057b3;
+  --parkjom-action: var(--parkjom-action-light);
+  --parkjom-action-hover: var(--parkjom-action-light-hover);
+  --parkjom-action-pressed: #004a99;
+  --parkjom-action-ink: #ffffff;
+  --parkjom-action-rgb: 0, 102, 204;
+  --parkjom-action-soft: #eaf2fc;
+  --parkjom-success: #227645;
+  --parkjom-warning: #8a5200;
+  --parkjom-danger: #b42323;
+  --parkjom-page-title: 2rem;
+  --parkjom-body: 1rem;
+  --parkjom-label: 0.8125rem;
+  --parkjom-control-height: 2.75rem;
+
   /* Apple HIG & Interactive Dot Wave Surface Tokens (Light) */
   --bg-surface: #f5f5f7;
   --dot-base: rgba(0, 0, 0, 0.14);
-  --system-primary: #0071e3;
-  --system-primary-rgb: 0, 113, 227;
+  --system-primary: var(--parkjom-action);
+  --system-primary-rgb: var(--parkjom-action-rgb);
   --system-secondary: #5e5ce6;
   --system-secondary-rgb: 94, 92, 230;
 
-  --accent-blue: #007aff;
-  --accent-blue-hover: #0066d6;
+  --accent-blue: var(--parkjom-action);
+  --accent-blue-hover: var(--parkjom-action-hover);
   --text-primary: #1d1d1f;
   --text-secondary: #6e6e73;
   --bg-secondary: #f5f5f7;
@@ -910,18 +920,18 @@ html {
   --card-foreground: #1d1d1f;
   --popover: #ffffff;
   --popover-foreground: #1d1d1f;
-  --primary: #248a3d;
-  --primary-foreground: #ffffff;
+  --primary: var(--parkjom-action);
+  --primary-foreground: var(--parkjom-action-ink);
   --secondary: #f1f3f4;
   --secondary-foreground: #333336;
   --muted: #f1f3f4;
   --muted-foreground: #6e6e73;
-  --accent: #edf8f0;
-  --accent-foreground: #1f6b34;
+  --accent: var(--parkjom-action-soft);
+  --accent-foreground: var(--parkjom-action);
   --destructive: #c62828;
   --border: rgba(0, 0, 0, 0.08);
   --input: #d2d2d7;
-  --ring: #34c759;
+  --ring: var(--parkjom-action);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -1118,11 +1128,12 @@ html {
 
 /* ── Authenticated product: Apple-minimal operating system ── */
 .app-workspace {
-  --workspace-accent: #007aff;
-  --workspace-accent-soft: #e8f0fe;
+  --workspace-accent: var(--parkjom-action);
+  --workspace-accent-soft: var(--parkjom-action-soft);
+  --workspace-accent-rgb: var(--parkjom-action-rgb);
   --workspace-text: #1d1d1f;
   --workspace-text-secondary: #6e6e73;
-  --workspace-text-tertiary: #8e8e93;
+  --workspace-text-tertiary: #6e6e73;
   --workspace-surface: #ffffff;
   --workspace-surface-muted: #f5f5f7;
   --workspace-border: rgba(0, 0, 0, 0.08);
@@ -1130,17 +1141,15 @@ html {
   background: var(--workspace-surface-muted);
   color: var(--workspace-text);
   font-family: var(--font-sans);
-  font-size: 0.875rem;
+  font-size: var(--parkjom-body);
   line-height: 1.45;
   letter-spacing: -0.01em;
 }
 
 .dark .app-workspace {
-  --workspace-accent: #0a84ff;
-  --workspace-accent-soft: rgba(10, 132, 255, 0.15);
   --workspace-text: #f5f5f7;
   --workspace-text-secondary: #A1A1AA;
-  --workspace-text-tertiary: #8E8E93;
+  --workspace-text-tertiary: #a1a1aa;
   --workspace-surface: #141417;
   --workspace-surface-muted: #000000;
   --workspace-border: rgba(255, 255, 255, 0.10);
@@ -1160,17 +1169,19 @@ html {
 .app-workspace .font-bold { font-weight: 650 !important; }
 .app-workspace .font-semibold { font-weight: 600 !important; }
 
-.app-workspace .tracking-widest { letter-spacing: 0.06em !important; }
-.app-workspace .tracking-wider { letter-spacing: 0.04em !important; }
+.app-workspace .uppercase:not(input):not([data-format="plate"]) { text-transform: none; }
+.app-workspace :is(.tracking-widest, .tracking-wider):not(input):not([data-format="plate"]) { letter-spacing: normal !important; }
 
-/* Dashboard typography scale: caption 12, label 13, body 14, title 16–24,
-   page display 32–36. This also lifts legacy 8–11px labels to readable sizes
+/* Lift older caption utilities to the shared label size
+   and use the workspace body size for regular text
    (excluding compact Leaflet map popovers so they retain crisp popover proportions). */
-.app-workspace :where([class~="text-[8px]"], [class~="text-[9px]"], [class~="text-[10px]"], [class~="text-[11px]"], .text-xs):not(.leaflet-popup-content, .leaflet-popup-content *) { font-size: 0.75rem !important; }
+.app-workspace :where([class~="text-[8px]"], [class~="text-[9px]"], [class~="text-[10px]"], [class~="text-[11px]"], .text-xs):not(.leaflet-popup-content, .leaflet-popup-content *) { font-size: var(--parkjom-label) !important; }
 
 .app-workspace :where([class~="text-[12px]"], [class~="text-[13px]"]):not(.leaflet-popup-content, .leaflet-popup-content *) { font-size: 0.8125rem !important; }
 
-.app-workspace :where([class~="text-[14px]"], [class~="text-[15px]"], .text-sm, .text-base):not(.leaflet-popup-content, .leaflet-popup-content *) { font-size: 0.875rem !important; }
+.app-workspace :where([class~="text-[14px]"], [class~="text-[15px]"], .text-sm):not(.leaflet-popup-content, .leaflet-popup-content *) { font-size: 0.875rem !important; }
+
+.app-workspace .text-base { font-size: var(--parkjom-body) !important; }
 
 .app-workspace [class~="text-[16px]"],
 .app-workspace [class~="text-[17px]"],
@@ -1737,7 +1748,7 @@ select option,
 
 .workspace-heading h1 {
   margin: 0;
-  font-size: clamp(2rem, 2.2vw, 2.25rem);
+  font-size: var(--parkjom-page-title);
   line-height: 1.08;
   letter-spacing: -0.035em;
   font-weight: 700;
@@ -2739,24 +2750,6 @@ select option,
 /* ── Adaptive workspace system ──────────────────────────────────────────────
    Shared dashboard chrome follows Apple-style directness: stable geometry,
    immediate press feedback, bounce-free motion, and material only for chrome. */
-.app-workspace[data-workspace-role="commuter"] {
-  --workspace-accent: #007aff;
-  --workspace-accent-soft: #e8f2ff;
-  --workspace-accent-rgb: 0, 122, 255;
-}
-
-.app-workspace[data-workspace-role="owner"] {
-  --workspace-accent: #007aff;
-  --workspace-accent-soft: #e8f2ff;
-  --workspace-accent-rgb: 0, 122, 255;
-}
-
-.app-workspace[data-workspace-role="admin"] {
-  --workspace-accent: #007aff;
-  --workspace-accent-soft: #e8f2ff;
-  --workspace-accent-rgb: 0, 122, 255;
-}
-
 .app-workspace {
   --workspace-bottom-nav-height: 4.6rem;
   position: relative;
@@ -2781,7 +2774,7 @@ select option,
 }
 
 .app-workspace :where(button, input, select, textarea, a):not(.leaflet-container *):focus-visible {
-  outline: 3px solid rgba(var(--workspace-accent-rgb), 0.32);
+  outline: 2px solid var(--parkjom-action);
   outline-offset: 2px;
 }
 
@@ -2789,14 +2782,18 @@ select option,
   cursor: not-allowed;
 }
 
-.app-workspace [class~="text-[#007AFF]"],
-.app-workspace [class~="text-[#007aff]"] {
+.app-workspace :where([class~="text-[#007AFF]"], [class~="text-[#007aff]"], [class~="text-[#0071e3]"], [class~="text-[#0071E3]"], .text-blue-600, .text-blue-700),
+.dark .app-workspace :where([class~="dark:text-[#0A84FF]"], [class~="dark:text-[#0a84ff]"], [class~="dark:text-[#3894FF]"], .dark\:text-blue-300, .dark\:text-blue-400) {
   color: var(--workspace-accent) !important;
 }
 
-.app-workspace [class~="bg-[#007AFF]"],
-.app-workspace [class~="bg-[#007aff]"] {
-  background-color: var(--workspace-accent) !important;
+.app-workspace :where(button, a):is([class~="bg-[#007AFF]"], [class~="bg-[#007aff]"], [class~="bg-[#0071e3]"], [class~="bg-[#0071E3]"], .bg-blue-600, .bg-blue-700) {
+  background-color: var(--parkjom-action) !important;
+  color: var(--parkjom-action-ink) !important;
+}
+
+.app-workspace :where(button, a):is([class~="bg-[#007AFF]"], [class~="bg-[#007aff]"], [class~="bg-[#0071e3]"], [class~="bg-[#0071E3]"], .bg-blue-600, .bg-blue-700):hover {
+  background-color: var(--parkjom-action-hover) !important;
 }
 
 .workspace-header {
@@ -4345,7 +4342,7 @@ select option,
   }
 
   .workspace-heading h1 {
-    font-size: clamp(1.75rem, 7vw, 2rem);
+    --parkjom-page-title: 1.625rem;
   }
 
   .map-lens {
@@ -4650,11 +4647,21 @@ select option,
 }
 
 .dark {
+  --parkjom-action: #66b0ff;
+  --parkjom-action-hover: #89c3ff;
+  --parkjom-action-pressed: #a4d0ff;
+  --parkjom-action-ink: #141417;
+  --parkjom-action-rgb: 102, 176, 255;
+  --parkjom-action-soft: rgba(102, 176, 255, 0.15);
+  --parkjom-success: #79d6a0;
+  --parkjom-warning: #ffbf69;
+  --parkjom-danger: #ff9b9b;
+
   /* Apple HIG & Interactive Dot Wave Surface Tokens (Dark) */
   --bg-surface: #090a0f;
   --dot-base: rgba(255, 255, 255, 0.16);
-  --system-primary: #0a84ff;
-  --system-primary-rgb: 10, 132, 255;
+  --system-primary: var(--parkjom-action);
+  --system-primary-rgb: var(--parkjom-action-rgb);
   --system-secondary: #5e5ce6;
   --system-secondary-rgb: 94, 92, 230;
 
@@ -4664,8 +4671,8 @@ select option,
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: #57c46d;
-  --primary-foreground: #0b2b13;
+  --primary: var(--parkjom-action);
+  --primary-foreground: var(--parkjom-action-ink);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -4675,7 +4682,7 @@ select option,
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: #57c46d;
+  --ring: var(--parkjom-action);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -5426,4 +5433,197 @@ select option,
   .animate-car-bounce {
     animation: none !important;
   }
+}
+
+
+/* Shared controls and surfaces used by the parking workflows. */
+.workspace-button,
+.app-workspace main .workspace-button {
+  display: inline-flex;
+  min-height: var(--parkjom-control-height);
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.workspace-button--primary,
+.workspace-button--primary:hover {
+  color: var(--parkjom-action-ink);
+}
+
+.workspace-button--primary { background: var(--parkjom-action); }
+.workspace-button--primary:hover:enabled { background: var(--parkjom-action-hover); }
+
+.workspace-button--secondary {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.workspace-button--secondary:hover { background: var(--muted); }
+.workspace-button:disabled { opacity: 0.55; }
+
+.workspace-button:focus-visible,
+.workspace-payment-option:has(:focus-visible) {
+  outline: 2px solid var(--parkjom-action);
+  outline-offset: 2px;
+}
+
+.workspace-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.workspace-payment-option {
+  display: flex;
+  align-items: center;
+  column-gap: 0.4rem;
+  min-height: var(--parkjom-control-height);
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  font-size: var(--parkjom-label);
+}
+
+.workspace-payment-option:has(input:checked) {
+  background: var(--parkjom-action-soft);
+  border-color: var(--parkjom-action);
+}
+
+.workspace-payment-option :is(input, svg) { flex-shrink: 0; }
+
+.parking-result {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.parking-result__photo {
+  position: relative;
+  flex: none;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--muted);
+}
+
+.parking-result__photo > .parking-photo {
+  position: absolute;
+  inset: 0;
+}
+
+.parking-result__open {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  width: 100%;
+  border-radius: inherit;
+  cursor: pointer;
+}
+
+.parking-result .parking-result__open:active { scale: none; }
+.parking-result .parking-result__open:focus-visible { outline-offset: -3px; }
+.parking-result:has(.parking-result__open:hover) { border-color: var(--parkjom-action); }
+
+@media (max-width: 767px) {
+  :root { --parkjom-page-title: 1.625rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-button { transition: none; }
+}
+
+.workspace-queue-row {
+  display: flex;
+  width: 100%;
+  min-height: var(--parkjom-control-height);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.25rem;
+  border-radius: var(--radius-lg);
+  text-align: start;
+  font-size: 0.9375rem;
+}
+
+.workspace-queue-row:hover { background: var(--parkjom-action-soft); }
+
+.workspace-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.workspace-status {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: var(--radius-lg);
+  background: var(--muted);
+  padding: 0.125rem 0.5rem;
+  color: var(--muted-foreground);
+  font-size: var(--parkjom-label);
+  font-weight: 600;
+}
+
+.workspace-status--warning {
+  background-color: color-mix(in srgb, var(--parkjom-warning) 10%, transparent);
+  color: var(--parkjom-warning);
+}
+
+@media (max-width: 767px) {
+  .workspace-record-table {
+    display: block;
+    min-width: 0;
+  }
+
+  .workspace-record-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .workspace-record-table tbody { display: block; }
+
+  .workspace-record-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem 1rem;
+    padding: 0.875rem;
+  }
+
+  .workspace-record-table tbody td {
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .workspace-record-table td:first-child,
+  .workspace-record-table td[data-label="Actions"] { grid-column: 1 / -1; }
+
+  .workspace-record-table td:not(:first-child, [data-label="Actions"])::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--muted-foreground);
+    font-size: var(--parkjom-label);
+    font-weight: 600;
+  }
+
+  .workspace-record-table :is(.truncate, .whitespace-nowrap) { white-space: normal; }
 }

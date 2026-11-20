@@ -1,3 +1,4 @@
+import AdminPageHeader from './AdminPageHeader';
 import React from 'react';
 import { Landmark, Receipt, FileSpreadsheet, Percent, ShieldCheck, ArrowDownToLine, Clock } from 'lucide-react';
 import ServiceUpcoming from '@/components/ui/ServiceUpcoming';
@@ -18,11 +19,7 @@ export default function FinanceSettlement({
 }: FinanceSettlementProps) {
   return (
     <div id="finance-settlement" className="space-y-6">
-      {/* Title Header */}
-      <div>
-        <h2 id="finance-title" className="text-2xl font-bold text-slate-800 tracking-tight">Financial Clearing &amp; Settlement</h2>
-        <p className="text-slate-500 text-sm">Disburse property owner payouts, monitor commission schedules, and audit platform receipts.</p>
-      </div>
+      <AdminPageHeader headingId="finance-title" title="Financial settlement" description="Review owner payouts, platform fees, and transaction receipts." />
 
       {/* Real Live Commission Status Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

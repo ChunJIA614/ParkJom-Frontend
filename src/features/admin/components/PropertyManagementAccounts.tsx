@@ -9,7 +9,6 @@ import {
   Edit3,
   Mail,
   Plus,
-  RefreshCw,
   Send,
   ShieldAlert,
   X,
@@ -30,6 +29,7 @@ import {
   type ManagementAccount,
   type ManagementAccountStatus,
 } from '@/features/management/types';
+import AdminPageHeader from './AdminPageHeader';
 
 interface PropertyOption {
   propertyId: number;
@@ -305,78 +305,59 @@ export default function PropertyManagementAccounts({ addActivityLog }: PropertyM
 
   return (
     <div className="space-y-5">
-      {/* Top Toolbar */}
-      <section className="rounded-2xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-[#141417] p-5 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-[16px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">
-              Property Management Accounts
-            </h2>
-            <p className="text-[12px] text-[#6e6e73] dark:text-[#a1a1aa] mt-0.5">
-              Provision standalone building-desk accounts and manage 14-day single-use email invitations.
-            </p>
-          </div>
+      <AdminPageHeader
+        title="Property management accounts"
+        description="Provision standalone building-desk accounts and manage 14-day single-use email invitations."
+        isLoading={loading}
+        onRefresh={loadAccounts}
+      >
+        <button
+          type="button"
+          onClick={() => { setCreateError(null); setCreateOpen(true); }}
+          className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-[#0071e3] px-3 text-xs font-semibold text-white shadow-sm hover:bg-[#0066d6] dark:bg-[#0a84ff]"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          Invite Property Manager
+        </button>
+      </AdminPageHeader>
 
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => void loadAccounts()}
-              disabled={loading}
-              className="min-h-10 px-3.5 rounded-xl border border-black/[0.1] dark:border-white/[0.14] text-[12px] font-semibold inline-flex items-center gap-1.5 text-[#1d1d1f] dark:text-[#f5f5f7]"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} aria-hidden="true" />
-              <span>Refresh</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setCreateError(null); setCreateOpen(true); }}
-              className="min-h-10 px-4 rounded-xl bg-[#0071e3] dark:bg-[#0a84ff] hover:bg-[#0066d6] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 shadow-sm"
-            >
-              <Plus size={16} aria-hidden="true" />
-              <span>Invite Property Manager</span>
-            </button>
-          </div>
+      <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-2 sm:p-4">
+        <div>
+          <label htmlFor="admin-pm-property-filter" className="block text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1aa] mb-1">
+            Filter by property
+          </label>
+          <SystemSelect
+            id="admin-pm-property-filter"
+            value={propertyFilter}
+            onChange={(e) => { setPropertyFilter(e.target.value); setPage(1); }}
+            className="w-full min-h-10 rounded-xl"
+          >
+            <option value="">All properties</option>
+            {properties.map((p) => (
+              <option key={p.propertyId} value={String(p.propertyId)}>
+                {p.propertyName} (#{p.propertyId})
+              </option>
+            ))}
+          </SystemSelect>
         </div>
 
-        {/* Filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div>
-            <label htmlFor="admin-pm-property-filter" className="block text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1aa] mb-1">
-              Filter by property
-            </label>
-            <SystemSelect
-              id="admin-pm-property-filter"
-              value={propertyFilter}
-              onChange={(e) => { setPropertyFilter(e.target.value); setPage(1); }}
-              className="w-full min-h-10 rounded-xl"
-            >
-              <option value="">All properties</option>
-              {properties.map((p) => (
-                <option key={p.propertyId} value={String(p.propertyId)}>
-                  {p.propertyName} (#{p.propertyId})
-                </option>
-              ))}
-            </SystemSelect>
-          </div>
-
-          <div>
-            <label htmlFor="admin-pm-status-filter" className="block text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1aa] mb-1">
-              Filter by account status
-            </label>
-            <SystemSelect
-              id="admin-pm-status-filter"
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value as ManagementAccountStatus | ''); setPage(1); }}
-              className="w-full min-h-10 rounded-xl"
-            >
-              <option value="">All statuses</option>
-              {MANAGEMENT_ACCOUNT_STATUSES.map((st) => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </SystemSelect>
-          </div>
+        <div>
+          <label htmlFor="admin-pm-status-filter" className="block text-[11px] font-semibold text-[#6e6e73] dark:text-[#a1a1aa] mb-1">
+            Filter by account status
+          </label>
+          <SystemSelect
+            id="admin-pm-status-filter"
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value as ManagementAccountStatus | ''); setPage(1); }}
+            className="w-full min-h-10 rounded-xl"
+          >
+            <option value="">All statuses</option>
+            {MANAGEMENT_ACCOUNT_STATUSES.map((st) => (
+              <option key={st} value={st}>{st}</option>
+            ))}
+          </SystemSelect>
         </div>
-      </section>
+      </div>
 
       {feedback && (
         <div

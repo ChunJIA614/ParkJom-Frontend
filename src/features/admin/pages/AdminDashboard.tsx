@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import AdminPageHeader from '../components/AdminPageHeader';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { NotificationBell } from '@/features/notifications';
 import AppSidebar from '@/components/layout/AppSidebar';
@@ -45,6 +46,7 @@ import PropertyManagementAccounts from '../components/PropertyManagementAccounts
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const scrollContainerRef = React.useRef<HTMLElement>(null);
   const { logout, user } = useAuth();
   const token = user?.token ?? '';
   const supportViewer = React.useMemo(() => user ? ({
@@ -547,6 +549,7 @@ export default function AdminDashboard() {
         return (
           <DashboardHome 
             dashboard={dashboard}
+            onOpenQueue={setActiveView}
             isLoading={dashboardLoading}
             error={dashboardError}
             onRefresh={() => void refreshDashboard()}
@@ -639,6 +642,7 @@ export default function AdminDashboard() {
             isLoading={adminVehiclesLoading}
             error={adminVehiclesError}
             onRefresh={fetchAdminVehicles}
+            addActivityLog={addActivityLog}
           />
         );
       case 'broadcast':
@@ -713,13 +717,11 @@ export default function AdminDashboard() {
         />
 
         {/* Main Workspace Frame */}
-        <main className="workspace-frame flex-1 overflow-y-scroll">
-          {activeView === 'home' && (
-            <div className="workspace-heading">
-              <div><h1>{currentViewMeta.title}</h1><p>{currentViewMeta.description}</p></div>
-            </div>
+        <main ref={scrollContainerRef} className="workspace-frame flex-1 overflow-y-scroll">
+          {(activeView === 'home' || activeView === 'support') && (
+            <AdminPageHeader title={currentViewMeta.title} description={currentViewMeta.description} />
           )}
-          <PageTransition transitionKey={activeView}>
+          <PageTransition transitionKey={activeView} scrollContainerRef={scrollContainerRef}>
             {renderActiveView()}
           </PageTransition>
         </main>

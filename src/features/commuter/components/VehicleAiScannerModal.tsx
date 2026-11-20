@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Camera,
   Upload,
@@ -122,6 +123,18 @@ export default function VehicleAiScannerModal({
     return () => stopCamera();
   }, [open, activeInputTab, startCamera, stopCamera]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isScanning) {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [open, isScanning, onClose]);
+
   if (!open) return null;
 
   const runVisionAnalysis = async (dataUrl: string) => {
@@ -183,7 +196,7 @@ export default function VehicleAiScannerModal({
 
   const activeBoundingBox = onboardingResult?.boundingBox ?? barrierResult?.boundingBox ?? null;
 
-  return (
+  const dialog = (
     <div
       role="dialog"
       aria-modal="true"
@@ -532,4 +545,6 @@ export default function VehicleAiScannerModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(dialog, document.body) : dialog;
 }

@@ -1,3 +1,5 @@
+import AdminSummaryCounts from './AdminSummaryCounts';
+import AdminPageHeader from './AdminPageHeader';
 import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Loader2, RefreshCw, Search, ShieldAlert, User, XCircle } from 'lucide-react';
@@ -101,22 +103,11 @@ export default function SystemAudit({
 
   return (
     <div id="system-audit-root" className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 id="audit-title" className="text-2xl font-bold text-slate-800">System Access Logs</h2>
-          <p className="text-sm text-slate-500">Review authenticated user, vehicle, wallet, parking, and system operations.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={onRefresh} disabled={isLoading}
-            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
-          </button>
-          <button type="button" onClick={exportLogs} disabled={visibleLogs.length === 0}
-            className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-slate-800 px-3 text-xs font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
-            <Download className="h-3.5 w-3.5" /> Export CSV
-          </button>
-        </div>
-      </div>
+      <AdminPageHeader headingId="audit-title" title="System access logs" description="Review account, vehicle, wallet, and parking events." isLoading={isLoading} onRefresh={onRefresh}>
+        <button type="button" onClick={exportLogs} disabled={visibleLogs.length === 0} className="workspace-button workspace-button--secondary">
+          <Download size={15} aria-hidden="true" /> Export CSV
+        </button>
+      </AdminPageHeader>
 
       {error && (
         <div role="alert" className="flex flex-col gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
@@ -125,22 +116,12 @@ export default function SystemAudit({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: 'Total events', value: totalCount, icon: ShieldAlert, color: 'text-slate-700' },
-          { label: 'Successful', value: successCount, icon: CheckCircle2, color: 'text-emerald-600' },
-          { label: 'Failed', value: failedCount, icon: XCircle, color: 'text-rose-600' },
-          { label: 'System events', value: systemCount, icon: User, color: 'text-amber-600' },
-        ].map((stat) => (
-          <div key={stat.label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase text-slate-400">{stat.label}</span>
-              <stat.icon className={`h-4 w-4 ${stat.color}`} />
-            </div>
-            <p className={`mt-2 text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-          </div>
-        ))}
-      </div>
+      <AdminSummaryCounts items={[
+        { label: 'Total events', value: totalCount },
+        { label: 'Successful', value: successCount },
+        { label: 'Failed', value: failedCount },
+        { label: 'System events', value: systemCount },
+      ]} />
 
       <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -173,21 +154,21 @@ export default function SystemAudit({
       ) : (
         <div className="isolate overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] border-separate border-spacing-0 text-left">
-              <thead className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500">
-                <tr>
-                  <th className="rounded-tl-[11px] border-b-2 border-r border-slate-200 px-4 py-3">Event</th>
-                  <th className="border-b-2 border-r border-slate-200 px-4 py-3">Actor</th>
-                  <th className="border-b-2 border-r border-slate-200 px-4 py-3">References</th>
-                  <th className="rounded-tr-[11px] border-b-2 border-slate-200 px-4 py-3">Accessed</th>
+            <table role="table" className="workspace-record-table w-full min-w-[780px] border-separate border-spacing-0 text-left">
+              <thead role="rowgroup" className="bg-slate-50 text-[10px] font-bold uppercase text-slate-500">
+                <tr role="row">
+                  <th role="columnheader" scope="col" className="rounded-tl-[11px] border-b-2 border-r border-slate-200 px-4 py-3">Event</th>
+                  <th role="columnheader" scope="col" className="border-b-2 border-r border-slate-200 px-4 py-3">Actor</th>
+                  <th role="columnheader" scope="col" className="border-b-2 border-r border-slate-200 px-4 py-3">References</th>
+                  <th role="columnheader" scope="col" className="rounded-tr-[11px] border-b-2 border-slate-200 px-4 py-3">Accessed</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody role="rowgroup" className="divide-y divide-slate-200">
                 {visibleLogs.map((log) => {
                   const outcome = getOutcome(log.actions);
                   return (
-                    <tr key={log.accessLogId} className="align-top hover:bg-slate-50/70">
-                      <td className="relative border-r border-slate-200 px-4 py-3">
+                    <tr role="row" key={log.accessLogId} className="align-top hover:bg-slate-50/70">
+                      <td role="cell" data-label="Event" className="relative border-r border-slate-200 px-4 py-3">
                         <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${outcome === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
                         <div className="flex items-start gap-2">
                           {outcome === 'success'
@@ -199,16 +180,16 @@ export default function SystemAudit({
                           </div>
                         </div>
                       </td>
-                      <td className="border-r border-slate-200 px-4 py-3 text-xs text-slate-600">
+                      <td role="cell" data-label="Actor" className="border-r border-slate-200 px-4 py-3 text-xs text-slate-600">
                         <p className="font-semibold text-slate-700">{log.userName || 'System'}</p>
                         <p className="mt-0.5 text-[10px] text-slate-400">{log.userEmail || 'No user email'}</p>
                         <p className="mt-0.5 font-mono text-[10px] text-slate-400">User {log.userId ?? 'system'}</p>
                       </td>
-                      <td className="border-r border-slate-200 px-4 py-3 font-mono text-[10px] text-slate-500">
+                      <td role="cell" data-label="References" className="border-r border-slate-200 px-4 py-3 font-mono text-[10px] text-slate-500">
                         <p>Booking: {log.bookingId ?? '-'}</p>
                         <p className="mt-1">IoT device: {log.ioTDeviceId ?? '-'}</p>
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
+                      <td role="cell" data-label="Accessed" className="px-4 py-3 text-xs text-slate-600">
                         <p className="whitespace-nowrap">{formatAccessTime(log.accessedAt)}</p>
                         <p className="mt-1 text-[10px] text-slate-400">Created {formatAccessTime(log.createdAt)}</p>
                       </td>

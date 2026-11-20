@@ -37,7 +37,7 @@ For Google sign-in on this development machine, register an Android OAuth client
 
 ### Web origin errors
 
-For web sign-in, Google must also allow the exact origin (scheme, hostname, and port) on the **Web application** client. ParkJom uses `https://localhost:3000` for development and `https://united-perigee-400000.web.app` for hosting. Add those in **Authorized JavaScript origins**, without a trailing path. Keep any other origins that are still in use. An `origin_mismatch` happens before the API receives a token; changing API CORS settings cannot repair it. See [Google's origin configuration](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid).
+For web sign-in, Google must also allow the exact origin (scheme, hostname, and port) on the **Web application** client. ParkJom uses `https://localhost:3000` for development and `https://parkjom.web.app` for hosting. Add those in **Authorized JavaScript origins**, without a trailing path. Keep any other origins that are still in use. An `origin_mismatch` happens before the API receives a token; changing API CORS settings cannot repair it. See [Google's origin configuration](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid).
 
 Production hosting currently retains the legacy `917128720686` client to match the deployed API. Page-design releases keep that configuration. The migration to `681911813064` is pending [backend PR #64](https://github.com/junkerino1/ParkJomV2/pull/64); publish the frontend client change only after the matching API configuration is deployed.
 

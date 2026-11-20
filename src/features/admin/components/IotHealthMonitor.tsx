@@ -1,3 +1,4 @@
+import AdminPageHeader from './AdminPageHeader';
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, HardDrive, Loader2, Lock, Radio, ShieldCheck, Unlock, Wifi } from 'lucide-react';
 import {
@@ -62,29 +63,7 @@ export default function IotHealthMonitor({ token, totalBollards, onlineBollards,
 
   return (
     <div id="iot-health-monitor" className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0071e3]/10 px-2.5 py-1 text-xs font-semibold text-[#0071e3] dark:bg-[#0a84ff]/15 dark:text-[#0a84ff]">
-            <Radio className="h-3.5 w-3.5" aria-hidden="true" />
-            Hardware operations
-          </span>
-          <h2 id="iot-title" className="mt-2.5 text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-[#f5f5f7]">
-            IoT Smart Bollard Fleet
-          </h2>
-          <p className="mt-1 text-sm text-[#6e6e73] dark:text-[#a1a1aa]">
-            Issue authenticated overrides by booking, parking spot, or IoT device. Every successful result comes from the ESP32 acknowledgement.
-          </p>
-        </div>
-        <div className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full border border-black/[0.08] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#1d1d1f] shadow-xs dark:border-white/[0.1] dark:bg-[#141417] dark:text-[#f5f5f7]">
-          <span
-            className={`h-2 w-2 rounded-full ${
-              onlineBollards > 0 ? 'bg-[#34c759] dark:bg-[#30d158]' : 'bg-[#8e8e93]'
-            }`}
-            aria-hidden="true"
-          />
-          <span className="tabular-nums">{onlineBollards}/{totalBollards} bollards online</span>
-        </div>
-      </div>
+      <AdminPageHeader headingId="iot-title" title="Smart bollards" description="Check device health and manage verified hardware overrides." />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Metric

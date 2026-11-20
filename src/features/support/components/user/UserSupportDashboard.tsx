@@ -441,10 +441,6 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
     ).length;
   }, [userTickets]);
 
-  const latestTicket = useMemo(() => {
-    return userTickets.length > 0 ? userTickets[0] : null;
-  }, [userTickets]);
-
   return (
     <div className="space-y-4">
       {/* ── Inner Page: Tickets & Conversation View ── */}
@@ -747,7 +743,23 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
       {/* ── Outer Page: Quick Access View ── */}
       {activeView === 'overview' && (
         <div className="space-y-4 animate-in fade-in duration-300">
-          {/* Top Header & Context Status Bar (Cleaned Subtitle) */}
+          <section className="workspace-panel workspace-filter-bar p-4" aria-labelledby="support-tickets-heading">
+            <div>
+              <h2 id="support-tickets-heading" className="font-semibold">My support tickets</h2>
+              <p role="status" className="mt-1 text-sm text-muted-foreground">
+                {ticketsLoading ? 'Loading tickets…' : activeTicketsCount === 0 ? 'No open tickets' : `${activeTicketsCount} open ${activeTicketsCount === 1 ? 'ticket' : 'tickets'}`}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => setActiveView('tickets')} className="workspace-button workspace-button--secondary">View tickets</button>
+              <button type="button" onClick={() => {
+                if (templates.length > 0 && !selectedIssueCode) handleSelectTemplate(templates[0]);
+                setActiveView('report');
+              }} className="workspace-button workspace-button--primary">Report an issue</button>
+            </div>
+          </section>
+
+          {/* Booking and vehicle context */}
           <div className="bg-white dark:bg-[#141417] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5 md:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -843,38 +855,10 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
             </div>
           )}
 
-          {/* Quick Issue Reporting Card */}
-          <div className="bg-white dark:bg-[#141417] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5 md:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <h2 className="text-sm sm:text-base font-bold text-[#1D1D1F] dark:text-white flex items-center gap-2">
-                  <LifeBuoy className="w-4 h-4 text-[#007AFF]" />
-                  Quick Issue Reporting
-                </h2>
-                <p className="text-xs text-[#6E6E73] dark:text-[#A1A1AA] mt-0.5">
-                  Select a template below to report an issue, or click Report an Issue for custom inquiries.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (templates.length > 0 && !selectedIssueCode) {
-                      handleSelectTemplate(templates[0]);
-                    }
-                    setActiveView('report');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#007AFF] text-white hover:bg-[#0066D6] shadow-2xs transition active:scale-[0.98] cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Report an Issue</span>
-                </button>
-              </div>
-            </div>
-
+          <section className="workspace-panel space-y-3 p-4" aria-labelledby="support-common-issues">
+            <h2 id="support-common-issues" className="font-semibold">Common issues</h2>
             {/* Quick Issue Template Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 pt-1">
+            <div className="grid gap-x-5 sm:grid-cols-2">
               {templates.map((tpl) => (
                 <button
                   key={tpl.issueCode}
@@ -883,15 +867,12 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                     handleSelectTemplate(tpl);
                     setActiveView('report');
                   }}
-                  className="group text-left rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-[#F5F5F7]/70 dark:bg-[#18181C] p-4 transition-all duration-200 hover:bg-white hover:border-[#007AFF]/40 hover:shadow-sm dark:hover:bg-[#202025] hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between gap-3 min-w-0"
+                  className="workspace-queue-row border-t border-border justify-start"
                 >
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <div className="p-2 rounded-xl bg-white dark:bg-white/[0.08] text-[#1D1D1F] dark:text-white border border-black/[0.04] dark:border-white/10 group-hover:text-[#007AFF] transition-colors shrink-0">
                       {getIssueIcon(tpl.issueCode)}
                     </div>
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/10 text-[#6E6E73] dark:text-[#A1A1AA] truncate max-w-[100px] shrink-0">
-                      {getIssueBadgeLabel(tpl.issueCode)}
-                    </span>
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-[#1D1D1F] dark:text-white line-clamp-1 group-hover:text-[#007AFF] transition-colors">
@@ -922,78 +903,9 @@ export const UserSupportDashboard: React.FC<UserSupportDashboardProps> = ({
                 </button>
               </div>
             )}
-          </div>
+          </section>
 
-          {/* ── Apple-Inspired Minimalist Summary Card / Button to Open My Support Tickets ── */}
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => setActiveView('tickets')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                setActiveView('tickets');
-              }
-            }}
-            className="group bg-white dark:bg-[#141417] rounded-3xl border border-black/[0.06] dark:border-white/10 p-5 md:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.03)] dark:shadow-none hover:border-black/[0.12] dark:hover:border-white/20 transition-all duration-300 cursor-pointer"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="flex items-start sm:items-center gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-[#007AFF]/10 dark:bg-[#007AFF]/15 border border-[#007AFF]/20 text-[#007AFF] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Ticket className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm sm:text-base font-bold text-[#1D1D1F] dark:text-white group-hover:text-[#007AFF] transition-colors">
-                      My Support Tickets
-                    </h3>
-                    <span className="inline-flex items-center rounded-full bg-[#F5F5F7] dark:bg-white/[0.08] border border-black/[0.06] dark:border-white/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#6E6E73] dark:text-[#A1A1AA]">
-                      {ticketsLoading ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        `${userTickets.length} ${userTickets.length === 1 ? 'ticket' : 'tickets'}`
-                      )}
-                    </span>
-                    {activeTicketsCount > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#007AFF]/10 border border-[#007AFF]/20 px-2 py-0.5 text-[10px] font-semibold text-[#007AFF]">
-                        <span className="h-1.5 w-1.5 rounded-full bg-[#007AFF] animate-pulse" />
-                        {activeTicketsCount} active
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[#6E6E73] dark:text-[#A1A1AA]">
-                    Track ongoing support requests, upload proof documents, and chat with specialists.
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
-                {latestTicket && (
-                  <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F5F5F7]/70 dark:bg-[#18181C] border border-black/[0.04] dark:border-white/[0.06] text-xs">
-                    <span className="font-mono text-[11px] font-semibold text-[#007AFF]">
-                      {latestTicket.ticketReference}
-                    </span>
-                    <span className="text-[#86868B] dark:text-[#71717A]">·</span>
-                    <span className="text-[11px] text-[#6E6E73] dark:text-[#A1A1AA] truncate max-w-[160px]">
-                      {cleanSupportText(latestTicket.subject)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Crisp Apple Primary Action Button */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveView('tickets');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold bg-[#007AFF] text-white hover:bg-[#0066D6] active:scale-[0.98] shadow-xs transition cursor-pointer"
-                >
-                  <span className="text-white font-medium">View Tickets</span>
-                  <ChevronRight className="w-4 h-4 text-white stroke-[2.5]" />
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>

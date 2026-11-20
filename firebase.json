@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "parkjom",
     "public": "dist",
     "ignore": [
       "firebase.json",

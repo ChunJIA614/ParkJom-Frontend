@@ -142,7 +142,7 @@ function LocalNav() {
 
           <a
             href="/login?role=Commuter"
-            className="inline-flex min-h-11 items-center rounded-xl bg-[#0071e3] px-[11px] text-[12px] tracking-[-0.01em] text-white transition-colors hover:bg-[#0077ed]"
+            className="workspace-button workspace-button--primary"
           >
             Find parking
           </a>
@@ -224,7 +224,6 @@ function AppFeatures() {
       <div className="mx-auto max-w-[1180px]">
         <div className="grid items-center gap-10 md:grid-cols-2">
           <Reveal>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#58788c]">Made for the everyday commute</p>
             <h2 className="mt-4 text-[38px] font-semibold leading-[1.08] tracking-[-0.04em] text-[#203b55] md:text-[56px]">A few less things<br />to think about.</h2>
             <p className="mt-5 max-w-md text-[17px] leading-relaxed text-[#65717a]">Plan the connection, find your bay, and keep the details close. ParkJom brings the small parts of your journey together.</p>
           </Reveal>

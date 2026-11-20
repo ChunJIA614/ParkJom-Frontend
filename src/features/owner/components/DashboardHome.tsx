@@ -416,45 +416,25 @@ export default function DashboardHome({
         </div>
 
         {bays.length > 0 && portfolioSummary.totalBaysCount > 0 && (
-          <div className="rounded-xl border border-blue-200/80 bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-emerald-50/60 p-3.5 dark:border-white/10 dark:bg-none dark:bg-black">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
-                  <Sparkles className="h-4 w-4" aria-hidden="true" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-extrabold text-slate-900">
-                      AI Smart Dynamic Pricing Portfolio
-                    </span>
-                    {portfolioSummary.totalExtraMonthlyRevenueRm > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-[#30d158]/15 dark:text-[#30d158]">
-                        <TrendingUp className="h-3 w-3" />
-                        +RM {portfolioSummary.totalExtraMonthlyRevenueRm.toFixed(0)}/month upside
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-slate-600">
-                    Elasticity model benchmarks station walk distance, off-peak (11 AM – 4 PM) slack, and transit hub demand.
-                  </p>
-                </div>
+          <details className="rounded-xl border border-border px-3.5 py-2">
+            <summary className="cursor-pointer py-2 text-sm font-semibold">Portfolio pricing estimates</summary>
+            <dl className="grid gap-3 border-t border-border py-3 sm:grid-cols-3">
+              <div>
+                <dt className="text-sm text-muted-foreground">Current estimate</dt>
+                <dd className="font-semibold tabular-nums">RM {portfolioSummary.totalCurrentMonthlyRevenueRm.toFixed(0)} / month</dd>
               </div>
-              <div className="flex items-center gap-4 border-t border-blue-100 pt-2.5 sm:border-t-0 sm:pt-0 dark:border-white/10">
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Current Est.</p>
-                  <p className="text-sm font-bold text-slate-700">
-                    RM {portfolioSummary.totalCurrentMonthlyRevenueRm.toFixed(0)}/mo
-                  </p>
-                </div>
-                <div className="border-l border-blue-200 pl-4 dark:border-white/10">
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-blue-600 dark:text-[#0a84ff]">AI Optimized</p>
-                  <p className="text-sm font-black text-emerald-700 dark:text-[#30d158]">
-                    RM {portfolioSummary.totalProjectedMonthlyRevenueRm.toFixed(0)}/mo
-                  </p>
-                </div>
+              <div>
+                <dt className="text-sm text-muted-foreground">Projected estimate</dt>
+                <dd className="font-semibold tabular-nums">RM {portfolioSummary.totalProjectedMonthlyRevenueRm.toFixed(0)} / month</dd>
               </div>
-            </div>
-          </div>
+              {portfolioSummary.totalExtraMonthlyRevenueRm > 0 && (
+                <div>
+                  <dt className="text-sm text-muted-foreground">Estimated increase</dt>
+                  <dd className="font-semibold tabular-nums">RM {portfolioSummary.totalExtraMonthlyRevenueRm.toFixed(0)} / month</dd>
+                </div>
+              )}
+            </dl>
+          </details>
         )}
       </section>
 
