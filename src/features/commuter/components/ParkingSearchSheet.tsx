@@ -22,9 +22,9 @@ import {
   CATEGORY_FILTER_OPTIONS,
   DEFAULT_BROWSE_FILTERS,
   filterSpotsWithQuery,
+  LISTING_SCOPE_OPTIONS,
   matchesPublicLotFilters,
   type BrowseFiltersState,
-  type ListingScope,
   type RatePlanFilter,
   type RealCategory,
 } from '../lib/browseFilters';
@@ -79,12 +79,6 @@ const DISTANCE_PRESETS: Array<{ label: string; maxKm: number | null }> = [
   { label: '≤ 500m', maxKm: 0.5 },
   { label: '≤ 1 km', maxKm: 1.0 },
   { label: '≤ 2 km', maxKm: 2.0 },
-];
-
-const SCOPE_TABS: Array<{ id: ListingScope; label: string }> = [
-  { id: 'all', label: 'All Parking' },
-  { id: 'private', label: 'Condo Bays' },
-  { id: 'public', label: 'Drive-In Lots' },
 ];
 
 const RATE_PLAN_OPTIONS: Array<{ id: RatePlanFilter; label: string }> = [
@@ -312,16 +306,11 @@ export default function ParkingSearchSheet({
       aria-labelledby="parking-search-sheet-title"
     >
       <div
-        className="w-full md:max-w-[580px] max-h-[92dvh] md:max-h-[88vh] flex flex-col rounded-t-3xl md:rounded-3xl bg-white dark:bg-[#141417] border-t md:border border-black/[0.08] dark:border-white/[0.1] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
+        className="parking-search-sheet w-full md:max-w-[580px] max-h-[92dvh] md:max-h-[88vh] flex flex-col rounded-t-3xl md:rounded-3xl bg-white dark:bg-[#141417] border-t md:border border-black/[0.08] dark:border-white/[0.1] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Mobile drag handle */}
-        <div className="flex justify-center pt-2.5 pb-1 md:hidden shrink-0">
-          <div className="h-1 w-10 rounded-full bg-black/15 dark:bg-white/20" />
-        </div>
-
         {/* Header + Scope Tabs */}
-        <div className="px-5 pt-2 md:pt-4 pb-3 border-b border-black/[0.06] dark:border-white/[0.08] shrink-0 space-y-3">
+        <div className="parking-search-sheet__header px-5 pt-2 md:pt-4 pb-3 border-b border-black/[0.06] dark:border-white/[0.08] shrink-0 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <SlidersHorizontal size={17} className="text-[#007AFF] dark:text-[#0A84FF]" />
@@ -336,7 +325,7 @@ export default function ParkingSearchSheet({
               type="button"
               onClick={onClose}
               aria-label="Close search and filters"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#111111] dark:hover:text-white transition-colors"
+              className="parking-search-sheet__close flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#111111] dark:hover:text-white transition-colors"
             >
               <X size={16} />
             </button>
@@ -347,7 +336,7 @@ export default function ParkingSearchSheet({
             role="tablist"
             aria-label="Parking listing type"
           >
-            {SCOPE_TABS.map((tab) => {
+            {LISTING_SCOPE_OPTIONS.map((tab) => {
               const active = draftFilters.listingScope === tab.id;
               return (
                 <button
@@ -375,7 +364,7 @@ export default function ParkingSearchSheet({
         <form
           id="parking-search-sheet-form"
           onSubmit={handleSubmit}
-          className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3.5"
+          className="parking-search-sheet__form flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3.5"
         >
           {/* 1. Location & Query Card */}
           <div className="rounded-2xl border border-black/[0.08] dark:border-white/[0.09] bg-black/[0.02] dark:bg-white/[0.03] p-4 space-y-3">
@@ -414,7 +403,7 @@ export default function ParkingSearchSheet({
                   setShowSuggestions(true);
                 }}
                 placeholder="Search station, condo, or area..."
-                className="w-full bg-transparent text-[14px] text-[#111111] dark:text-white placeholder:text-[#8E8E93] dark:placeholder:text-[#71717A] focus:outline-none"
+                className="parking-search-sheet__input w-full bg-transparent text-[14px] text-[#111111] dark:text-white placeholder:text-[#8E8E93] dark:placeholder:text-[#71717A] focus:outline-none"
               />
               {draftQuery && (
                 <button
@@ -424,7 +413,7 @@ export default function ParkingSearchSheet({
                     inputRef.current?.focus();
                   }}
                   aria-label="Clear location search"
-                  className="flex h-6 w-6 items-center justify-center rounded-full bg-black/[0.06] dark:bg-white/[0.1] text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#111111] dark:hover:text-white shrink-0"
+                  className="parking-search-sheet__clear flex h-6 w-6 items-center justify-center rounded-full bg-black/[0.06] dark:bg-white/[0.1] text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#111111] dark:hover:text-white shrink-0"
                 >
                   <X size={12} />
                 </button>
@@ -499,7 +488,7 @@ export default function ParkingSearchSheet({
                     type="button"
                     onClick={() => toggleCategory(cat.id)}
                     aria-pressed={isSelected}
-                    className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold border transition-all ${
+                    className={`parking-search-sheet__option flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold border transition-all ${
                       isSelected
                         ? 'bg-[#007AFF] dark:bg-[#0A84FF] border-[#007AFF] dark:border-[#0A84FF] text-white shadow-sm shadow-[#007AFF]/20'
                         : 'bg-white dark:bg-[#1C1C1F] border-black/[0.07] dark:border-white/[0.08] text-[#3A3A3C] dark:text-[#D4D4D8] hover:border-black/20 dark:hover:border-white/25'
@@ -641,7 +630,7 @@ export default function ParkingSearchSheet({
         </form>
 
         {/* Sticky Bottom CTA Footer (Hidmo-style) */}
-        <div className="px-5 py-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom,0px))] border-t border-black/[0.08] dark:border-white/[0.08] bg-white/95 dark:bg-[#141417]/95 backdrop-blur-md flex items-center justify-between gap-3 shrink-0">
+        <div className="parking-search-sheet__footer px-5 py-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom,0px))] border-t border-black/[0.08] dark:border-white/[0.08] bg-white/95 dark:bg-[#141417]/95 backdrop-blur-md flex items-center justify-between gap-3 shrink-0">
           <button
             type="button"
             onClick={handleResetSheet}

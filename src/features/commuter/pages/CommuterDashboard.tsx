@@ -72,9 +72,7 @@ import {
   countActiveBrowseFilters,
   matchesBrowseSpotFilters,
   matchesPublicLotFilters,
-  sortBrowseSpots,
   type BrowseFiltersState,
-  type BrowseSortBy,
 } from '../lib/browseFilters';
 import type { DrivingRouteResult } from '@/services/drivingRouteService';
 import type { MultimodalPlanResult } from '@/services/multimodalRoutingService';
@@ -372,6 +370,7 @@ export default function CommuterDashboard() {
     if (isGuest && initialJourney) return 'home';
     return requestedTab || persistedTab || (initialJourney ? 'active' : 'home');
   });
+  const [mobileCopilotLauncher, setMobileCopilotLauncher] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (isGuest && !['home', 'map'].includes(activeTab)) {
@@ -467,7 +466,6 @@ export default function CommuterDashboard() {
     };
   }, []);
   const [browseFilters, setBrowseFilters] = useState<BrowseFiltersState>(DEFAULT_BROWSE_FILTERS);
-  const [browseSortBy, setBrowseSortBy] = useState<BrowseSortBy>('latest');
 
   const [spotRatings, setSpotRatings] = useState<Record<number, { averageRating: number; totalCount: number }>>({});
 
@@ -987,16 +985,13 @@ export default function CommuterDashboard() {
     return list;
   }, [nearbySpots, spotTypeFilter, suggestedSpots]);
 
-  const filteredBrowseSpots = useMemo(() => {
-    const base = discoverySpots.filter((spot) =>
-      matchesBrowseSpotFilters(spot, browseFilters),
-    );
-    return sortBrowseSpots(base, browseSortBy, {
-      currentLocation,
-      spotRatings,
-      distanceKmFn: distanceFromUser,
-    });
-  }, [browseFilters, browseSortBy, currentLocation, discoverySpots, spotRatings]);
+  const filteredBrowseSpots = useMemo(
+    () =>
+      discoverySpots.filter((spot) =>
+        matchesBrowseSpotFilters(spot, browseFilters),
+      ),
+    [browseFilters, discoverySpots],
+  );
 
   const activeFilterCount = useMemo(
     () => countActiveBrowseFilters(browseFilters, searchQuery, Boolean(searchMeta)),
@@ -2473,6 +2468,8 @@ export default function CommuterDashboard() {
     </div>
   );
 
+  const showCopilot = !['support', 'wallet', 'profile'].includes(activeTab);
+
   return (
     <div className="app-workspace commuter-workspace page-shell text-[#1d1d1f] flex" data-workspace-role="commuter" data-commuter-tab={activeTab}>
       <AppSidebar
@@ -2501,7 +2498,12 @@ export default function CommuterDashboard() {
         onMenuClick={() => setSidebarOpen(true)}
         menuExpanded={sidebarOpen}
         menuControls="commuter-workspace-navigation"
-        actions={notificationActions}
+        actions={
+          <>
+            {showCopilot && <div ref={setMobileCopilotLauncher} className="contents md:hidden" />}
+            {notificationActions}
+          </>
+        }
         hideDesktopBrand
         searchItems={commuterSearchItems}
         onSearchSelect={(id) => {
@@ -2516,23 +2518,24 @@ export default function CommuterDashboard() {
 
         {isGuest && (
           <aside
-            className="mb-4 rounded-2xl border border-[#0071e3]/20 bg-[#0071e3]/[0.06] dark:bg-[#0a84ff]/10 p-3.5 sm:p-4 text-[#1d1d1f] dark:text-[#f5f5f7] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+            className="commuter-guest-notice mb-4 rounded-2xl border border-[#0071e3]/20 bg-[#0071e3]/[0.06] dark:bg-[#0a84ff]/10 p-3.5 sm:p-4 text-[#1d1d1f] dark:text-[#f5f5f7] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
             aria-label="Guest mode notice"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <div className="h-9 w-9 rounded-xl bg-[#0071e3]/15 dark:bg-[#0a84ff]/25 text-[#0071e3] dark:text-[#0a84ff] flex items-center justify-center shrink-0">
+              <div className="commuter-guest-notice__icon h-9 w-9 rounded-xl bg-[#0071e3]/15 dark:bg-[#0a84ff]/25 text-[#0071e3] dark:text-[#0a84ff] flex items-center justify-center shrink-0">
                 <Compass size={20} strokeWidth={2.2} />
               </div>
               <div className="min-w-0">
-                <p className="text-[13px] font-semibold tracking-tight">
+                <p className="hidden md:block text-[13px] font-semibold tracking-tight">
                   Guest Mode Preview
                 </p>
-                <p className="text-[12px] text-[#6e6e73] dark:text-[#a1a1a6] truncate sm:whitespace-normal">
+                <p className="hidden md:block text-[12px] text-[#6e6e73] dark:text-[#a1a1a6] truncate sm:whitespace-normal">
                   You are viewing verified transit bays and live maps (data retrieval only). Sign in to book bays, chat with ParkJom AI, and access passes.
                 </p>
+                <p className="md:hidden text-[13px] text-muted-foreground">Guest mode · Sign in to book parking</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            <div className="hidden md:flex items-center gap-2 shrink-0 self-end sm:self-center">
               <button
                 type="button"
                 onClick={() => navigate('/login')}
@@ -2574,7 +2577,6 @@ export default function CommuterDashboard() {
               searchMeta={searchMeta}
               searchError={searchError}
               browseFilters={browseFilters}
-              browseSortBy={browseSortBy}
               activeFilterCount={activeFilterCount}
               hasActiveFilters={hasActiveFilters}
               filteredBrowseSpots={filteredBrowseSpots}
@@ -2589,7 +2591,6 @@ export default function CommuterDashboard() {
               currentLocation={currentLocation}
               distanceFromUser={distanceFromUser}
               onOpenSearchSheet={() => setIsSearchSheetOpen(true)}
-              onChangeSort={setBrowseSortBy}
               onUpdateFilters={(updater) => setBrowseFilters((prev) => updater(prev))}
               onClearSearchQuery={() => {
                 setSearchQuery('');
@@ -3741,8 +3742,7 @@ export default function CommuterDashboard() {
         </main>
       </div>
 
-      {/* AI Transit Copilot — hidden on tabs that have their own composer/forms. */}
-      {!['support', 'wallet', 'profile'].includes(activeTab) && <CopilotLauncher />}
+      {showCopilot && <CopilotLauncher mobileLauncher={mobileCopilotLauncher} />}
 
       <BottomNav
         items={buildCommuterBottomNavItems(!!activeBooking || upcomingBookings.length > 0)}

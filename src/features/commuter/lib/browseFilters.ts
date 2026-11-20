@@ -14,6 +14,12 @@ export type ListingScope = 'all' | 'private' | 'public';
 export type RatePlanFilter = 'all' | 'daily' | 'monthly';
 export type BrowseSortBy = 'latest' | 'nearby' | 'popular';
 
+export const LISTING_SCOPE_OPTIONS: Array<{ id: ListingScope; label: string }> = [
+  { id: 'all', label: 'All Parking' },
+  { id: 'private', label: 'Condo Bays' },
+  { id: 'public', label: 'Drive-In Lots' },
+];
+
 export interface BrowseFiltersState {
   listingScope: ListingScope;
   categories: RealCategory[];

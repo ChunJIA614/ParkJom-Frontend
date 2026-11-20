@@ -3,8 +3,6 @@ import {
   Accessibility,
   Building2,
   CheckCircle2,
-  Clock,
-  Crosshair,
   Heart,
   Layers,
   Loader2,
@@ -16,7 +14,6 @@ import {
   Sparkles,
   Star,
   TrainFront,
-  TrendingUp,
   X,
   Zap,
 } from 'lucide-react';
@@ -28,16 +25,10 @@ import { formatShortAddress, formatShortSpotName } from '../lib/formatUtils';
 import {
   CATEGORY_LABELS,
   getEffectiveDailyRate,
+  LISTING_SCOPE_OPTIONS,
   type BrowseFiltersState,
-  type BrowseSortBy,
   type RealCategory,
 } from '../lib/browseFilters';
-
-const SORT_TABS: Array<{ id: BrowseSortBy; label: string; icon: typeof Clock }> = [
-  { id: 'latest', label: 'Latest', icon: Clock },
-  { id: 'nearby', label: 'Nearest', icon: Crosshair },
-  { id: 'popular', label: 'Popular', icon: TrendingUp },
-];
 
 export interface CommuterBrowseViewProps {
   searchQuery: string;
@@ -50,7 +41,6 @@ export interface CommuterBrowseViewProps {
   } | null;
   searchError: string | null;
   browseFilters: BrowseFiltersState;
-  browseSortBy: BrowseSortBy;
   activeFilterCount: number;
   hasActiveFilters: boolean;
   filteredBrowseSpots: ParkingSpot[];
@@ -65,7 +55,6 @@ export interface CommuterBrowseViewProps {
   currentLocation: GeoPoint | null;
   distanceFromUser: (origin: GeoPoint, spot: ParkingSpot) => number;
   onOpenSearchSheet: () => void;
-  onChangeSort: (sortBy: BrowseSortBy) => void;
   onUpdateFilters: (updater: (prev: BrowseFiltersState) => BrowseFiltersState) => void;
   onClearSearchQuery: () => void;
   onClearAllFilters: () => void;
@@ -81,7 +70,6 @@ export default function CommuterBrowseView({
   searchMeta,
   searchError,
   browseFilters,
-  browseSortBy,
   activeFilterCount,
   hasActiveFilters,
   filteredBrowseSpots,
@@ -96,7 +84,6 @@ export default function CommuterBrowseView({
   currentLocation,
   distanceFromUser,
   onOpenSearchSheet,
-  onChangeSort,
   onUpdateFilters,
   onClearSearchQuery,
   onClearAllFilters,
@@ -121,20 +108,21 @@ export default function CommuterBrowseView({
   };
 
   return (
-    <div className="space-y-5 pb-24 md:pb-12">
-      <h1 className="sr-only">Browse parking</h1>
-      <div className="max-w-3xl mx-auto space-y-2.5">
+    <div className="commuter-browse space-y-5 pb-24 md:pb-12">
+      <h1 className="commuter-browse__title md:sr-only">Browse parking</h1>
+      <div className="commuter-browse__controls max-w-3xl mx-auto space-y-2.5">
         <div className="flex items-center gap-2.5">
-          <div className="workspace-panel flex min-w-0 flex-1 items-center">
+          <div className="commuter-browse__search workspace-panel flex min-w-0 flex-1 items-center">
             <button
               type="button"
               onClick={onOpenSearchSheet}
               className="flex min-h-12 min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 text-left"
               aria-label={searchQuery.trim() ? `Edit parking search: ${searchQuery.trim()}` : 'Search for a station or parking'}
+              aria-haspopup="dialog"
             >
               <Search size={17} className="shrink-0 text-muted-foreground" aria-hidden="true" />
               <span className="flex-1 truncate text-sm">{searchQuery.trim() || 'Search station or parking'}</span>
-              <SlidersHorizontal size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+              <SlidersHorizontal size={16} className="commuter-browse__filter-icon shrink-0 text-muted-foreground" aria-hidden="true" />
               {activeFilterCount > 0 && <span className="workspace-status" aria-label={`${activeFilterCount} active filters`}>{activeFilterCount}</span>}
             </button>
             {searchQuery.trim() && (
@@ -154,7 +142,7 @@ export default function CommuterBrowseView({
                 : 'Use your location'
             }
             aria-label={locationStatus === 'ready' ? 'Refresh GPS location' : 'Use my location'}
-            className={`workspace-button workspace-button--secondary size-12 shrink-0 p-0! sm:w-auto sm:px-4! ${
+            className={`commuter-browse__location workspace-button workspace-button--secondary size-12 shrink-0 p-0! sm:w-auto sm:px-4! ${
               locationStatus === 'ready'
                 ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                 : 'bg-white dark:bg-[#1C1C1F] border-black/[0.09] dark:border-white/[0.11] text-[#111111] dark:text-white hover:border-[#007AFF]/45'
@@ -174,16 +162,29 @@ export default function CommuterBrowseView({
           </button>
         </div>
 
+        <div className="commuter-browse__scope md:hidden" role="group" aria-label="Parking type">
+          {LISTING_SCOPE_OPTIONS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={browseFilters.listingScope === id}
+              onClick={() => onUpdateFilters((previous) => ({ ...previous, listingScope: id }))}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Dismissible Active Filter Badges (Hidmo-style) */}
         {hasActiveFilters && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <div className="commuter-browse__chips flex flex-wrap items-center gap-1.5 pt-0.5">
             {browseFilters.listingScope !== 'all' && (
               <button
                 type="button"
                 onClick={() =>
                   onUpdateFilters((prev) => ({ ...prev, listingScope: 'all' }))
                 }
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#007AFF]/10 dark:bg-[#0A84FF]/15 text-[#007AFF] dark:text-[#3894FF] border border-[#007AFF]/20 px-3 py-1 text-[11px] font-semibold hover:bg-[#007AFF]/15 transition-colors cursor-pointer"
+                className="commuter-browse__scope-chip inline-flex items-center gap-1.5 rounded-full bg-[#007AFF]/10 dark:bg-[#0A84FF]/15 text-[#007AFF] dark:text-[#3894FF] border border-[#007AFF]/20 px-3 py-1 text-[11px] font-semibold hover:bg-[#007AFF]/15 transition-colors cursor-pointer"
               >
                 <span>{browseFilters.listingScope === 'private' ? 'Condo Bays' : 'Drive-In Lots'}</span>
                 <X size={12} />
@@ -276,40 +277,12 @@ export default function CommuterBrowseView({
           </div>
         )}
 
-        {/* Hidmo-Style Centered Segmented Sort Control + Live Result Count */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
-          <div
-            className="inline-flex self-center sm:self-auto items-center p-1 rounded-full bg-white dark:bg-[#1C1C1F] border border-black/[0.08] dark:border-white/[0.1] shadow-xs"
-            role="group"
-            aria-label="Sort parking bays"
-          >
-            {SORT_TABS.map((tab) => {
-              const Icon = tab.icon;
-              const active = browseSortBy === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => onChangeSort(tab.id)}
-                  aria-pressed={active}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all cursor-pointer ${
-                    active
-                      ? 'bg-[#111111] text-white dark:bg-white dark:text-[#111111] shadow-xs'
-                      : 'text-[#6E6E73] dark:text-[#A1A1AA] hover:text-[#111111] dark:hover:text-white'
-                  }`}
-                >
-                  <Icon size={13} strokeWidth={2.2} />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <p className="text-center sm:text-right text-[12px] font-medium text-[#6E6E73] dark:text-[#A1A1AA]">
+        <p className="commuter-browse__count text-right text-[12px] font-medium text-[#6E6E73] dark:text-[#A1A1AA]">
+          <span className="md:hidden">{totalResultsCount} {totalResultsCount === 1 ? 'result' : 'results'}</span>
+          <span className="hidden md:inline">
             {totalResultsCount} {totalResultsCount === 1 ? 'space' : 'spaces'} available
-            {locationStatus === 'ready' && browseSortBy === 'nearby' && ' · Sorted near you'}
-          </p>
-        </div>
+          </span>
+        </p>
 
         {/* Fuzzy / Related Suggestions from API search */}
         {searchMeta?.suggestions && searchMeta.suggestions.length > 0 && (
@@ -340,7 +313,7 @@ export default function CommuterBrowseView({
 
       {/* ── Empty State ── */}
       {totalResultsCount === 0 ? (
-        <div className="bg-white dark:bg-[#1C1C1F] rounded-3xl border border-black/[0.08] dark:border-white/[0.1] p-8 sm:p-12 text-center max-w-xl mx-auto shadow-sm">
+        <div className="commuter-browse__empty bg-white dark:bg-[#1C1C1F] rounded-3xl border border-black/[0.08] dark:border-white/[0.1] p-8 sm:p-12 text-center max-w-xl mx-auto shadow-sm">
           <div className="w-14 h-14 rounded-2xl bg-[#007AFF]/10 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center mx-auto mb-3">
             <Search size={26} />
           </div>
@@ -372,7 +345,7 @@ export default function CommuterBrowseView({
             )}
           </div>
 
-          <div className="mt-6 flex items-center justify-center gap-2.5">
+          <div className="commuter-browse__empty-actions mt-6 flex items-center justify-center gap-2.5">
             <button
               type="button"
               onClick={onOpenSearchSheet}
@@ -390,7 +363,7 @@ export default function CommuterBrowseView({
           </div>
         </div>
       ) : (
-        <div className="space-y-8 pt-1">
+        <div className="commuter-browse__results space-y-8 pt-1">
           {/* ── Public Drive-In Parking Facilities (Hidmo Card Format) ── */}
           {showPublicSection && (
             <section className="space-y-3.5">
@@ -437,7 +410,7 @@ export default function CommuterBrowseView({
                         </div>
                       </div>
 
-                      <div className="p-4 flex-1 flex flex-col justify-between space-y-2.5">
+                      <div className="commuter-browse__card-body p-4 flex-1 flex flex-col justify-between space-y-2.5">
                         <div className="space-y-1.5">
                           <div className="flex items-start justify-between gap-2">
                             <h3 className="font-bold text-[15px] leading-snug text-[#111111] dark:text-white group-hover:text-[#007AFF] transition-colors line-clamp-1">
@@ -542,7 +515,7 @@ export default function CommuterBrowseView({
                         </button>
 
                         {/* Bottom-left frosted amenity pills (Hidmo overlay style) */}
-                        <div className="absolute bottom-2.5 left-3 flex flex-wrap items-center gap-1.5 pointer-events-none">
+                        <div className="commuter-browse__amenities absolute bottom-2.5 left-3 flex flex-wrap items-center gap-1.5 pointer-events-none">
                           {spot.hasEvCharging && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/90 text-white px-2.5 py-0.5 text-[10px] font-bold backdrop-blur-md">
                               <Zap size={10} /> EV Ready
@@ -581,7 +554,7 @@ export default function CommuterBrowseView({
                       </div>
 
                       {/* Card Body */}
-                      <div className="p-4 flex-1 flex flex-col justify-between space-y-2.5">
+                      <div className="commuter-browse__card-body p-4 flex-1 flex flex-col justify-between space-y-2.5">
                         <div className="space-y-1.5">
                           <div className="flex items-start justify-between gap-2.5">
                             <h3 className="text-[15px] font-bold leading-snug text-[#111111] dark:text-white group-hover:text-[#007AFF] transition-colors line-clamp-1">

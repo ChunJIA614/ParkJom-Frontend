@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Loader2, Mic, RotateCcw, Send, Sparkles, X } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
@@ -31,7 +32,7 @@ const getSpeechRecognition = (): (new () => SpeechRecognitionLike) | null => {
  * Floating "ParkJom Copilot" assistant for commuters: a launcher button plus
  * a chat panel that renders AI replies with interactive parking/transit cards.
  */
-export default function CopilotLauncher() {
+export default function CopilotLauncher({ mobileLauncher }: { mobileLauncher: HTMLElement | null }) {
   const { promptLogin } = useAuth();
   const { messages, isSending, send, reset, isSignedIn } = useCopilotChat();
   const [open, setOpen] = useState(false);
@@ -104,6 +105,19 @@ export default function CopilotLauncher() {
 
   return (
     <>
+      {mobileLauncher && createPortal(
+        <button
+          type="button"
+          onClick={open ? () => setOpen(false) : handleLauncherClick}
+          aria-label="Open ParkJom Copilot"
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          className="workspace-icon-button copilot-header-button"
+        >
+          <Sparkles size={18} aria-hidden="true" />
+        </button>,
+        mobileLauncher,
+      )}
       <AnimatePresence>
         {!open && (
           <motion.button
@@ -114,7 +128,7 @@ export default function CopilotLauncher() {
             exit={reduceMotion ? undefined : { scale: 0.8, opacity: 0 }}
             onClick={handleLauncherClick}
             aria-label="Open ParkJom Copilot"
-            className="fixed right-4 bottom-[calc(5.5rem+var(--parkjom-safe-bottom))] md:bottom-6 md:right-6 z-[1050] flex items-center justify-center gap-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3] w-11 h-11 p-0 sm:w-auto sm:h-12 sm:pl-3.5 sm:pr-4 text-white shadow-lg shadow-[#007AFF]/30 hover:bg-[#0066d6] active:scale-95 cursor-pointer"
+            className="fixed right-6 bottom-6 z-[1050] hidden md:flex items-center justify-center gap-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3] h-12 pl-3.5 pr-4 text-white shadow-lg shadow-[#007AFF]/30 hover:bg-[#0066d6] active:scale-95 cursor-pointer"
           >
             <Sparkles size={18} />
             <span className="hidden sm:inline text-[13px] font-semibold">Ask Copilot</span>

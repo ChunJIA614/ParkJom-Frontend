@@ -10,6 +10,7 @@ import {
   Share2, Flag, X, LayoutGrid, RotateCcw, Clock, Lock,
 } from 'lucide-react';
 import DashboardHeader from '@/components/layout/DashboardHeader';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { showConfirm } from '@/components/common/ModalProvider';
 import type { Booking, ParkingSpot, PublicParkingSpotImage } from '../types';
@@ -128,6 +129,7 @@ const getCalendarDateKeys = (month: Date) => {
 
 export default function ParkingDetail() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { id: routeId } = useParams<{ id: string }>();
   const { user, isGuest, promptLogin, logout } = useAuth();
   const { state } = useLocation() as {
@@ -857,6 +859,9 @@ export default function ParkingDetail() {
     || endDate < startDate
     || startDate < minimumBookingDate
     || openDaysInRange.length === 0;
+  const showChooseDates = isMobile && !isBookingLoading && (activeTab !== 'reserve' || invalidDates);
+  const bottomBookingUnavailable = activeTab === 'reserve' && !showChooseDates
+    && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId));
   const displayedRate = quote?.ratePerDay ?? spot.dailyRate ?? 0;
   const displayedTotal = quote?.rentalSubtotal ?? 0;
 
@@ -929,6 +934,14 @@ export default function ParkingDetail() {
   const handleBottomAction = () => {
     if (isGuest || !user?.token) {
       promptLogin('Reserve Parking Bay', 'Sign in to select dates, book this parking bay, and receive automated gate access clearance.');
+      return;
+    }
+    if (showChooseDates) {
+      setActiveTab('reserve');
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      document.getElementById('booking-calendar-section')?.scrollIntoView({
+        behavior: reduceMotion ? 'instant' : 'smooth',
+      });
       return;
     }
     if (activeTab !== 'reserve') {
@@ -1246,7 +1259,7 @@ export default function ParkingDetail() {
   }
 
   return (
-    <div className="app-workspace page-shell min-h-screen pb-24 lg:pb-16">
+    <div className="parking-detail-workspace app-workspace page-shell min-h-screen pb-24 lg:pb-16">
       <DashboardHeader
         role="commuter"
         user={user}
@@ -1256,7 +1269,7 @@ export default function ParkingDetail() {
         onBrandClick={() => navigate('/commuter', { replace: true, state: { activeTab: 'home' } })}
       />
 
-      <main className="w-[92vw] max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 pt-4 pb-12">
+      <main className="parking-detail-content w-[92vw] max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 pt-4 pb-12">
         {/* Top Navigation & Breadcrumb */}
         <div className="flex items-center justify-between pb-3 shrink-0">
           <button
@@ -2443,7 +2456,7 @@ export default function ParkingDetail() {
       )}
 
       {/* ── Mobile bottom fixed booking bar (Hidden on desktop screens) ── */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#141417]/95 border-t border-[#e8eaed] dark:border-white/10 px-4 py-3 z-40 backdrop-blur-md">
+      <div className="parking-detail-booking-bar lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#141417]/95 border-t border-[#e8eaed] dark:border-white/10 px-4 py-3 z-40 backdrop-blur-md">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="font-bold text-[#111] dark:text-white text-sm">{displayedRate > 0 ? `RM ${displayedRate.toFixed(2)}` : 'Daily rate'} <span className="text-xs font-normal text-[#5f6368] dark:text-[#A1A1AA]">/ day</span></p>
@@ -2451,9 +2464,9 @@ export default function ParkingDetail() {
           </div>
           <button
             onClick={handleBottomAction}
-            disabled={Boolean(user?.token) && activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))}
+            disabled={Boolean(user?.token) && bottomBookingUnavailable}
             className={`font-semibold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-1.5 shrink-0 ${
-              activeTab === 'reserve' && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId))
+              bottomBookingUnavailable
                 ? 'bg-[#e8eaed] dark:bg-[#242429] text-[#9ca3af] dark:text-[#71717A] cursor-not-allowed'
                 : 'bg-[#007AFF] dark:bg-[#0071E3] text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] active:scale-[0.98] cursor-pointer shadow-sm'
             }`}
@@ -2463,10 +2476,10 @@ export default function ParkingDetail() {
                 <Lock size={14} />
                 <span>Sign In to Book</span>
               </>
-            ) : activeTab !== 'reserve' ? (
+            ) : showChooseDates || activeTab !== 'reserve' ? (
               <>
                 <Calendar size={14} />
-                <span>Return</span>
+                <span>{showChooseDates ? 'Choose dates' : 'Return'}</span>
               </>
             ) : isBookingLoading ? (
               <>
