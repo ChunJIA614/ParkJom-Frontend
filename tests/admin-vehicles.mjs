@@ -82,6 +82,10 @@ await assert.rejects(
   api.createAdminVehicle(token, { numberPlate: ' ', vehicleBrand: 'Perodua', vehicleModel: 'Myvi', vehicleColor: 'White' }),
   /required/i,
 );
+await assert.rejects(
+  api.createAdminVehicle(token, { numberPlate: 'VAS 3243252353235235', vehicleBrand: 'Toyota', vehicleModel: 'Camry', vehicleColor: 'Silver' }),
+  /valid Malaysian|characters/i,
+);
 responses.push({
   body: {
     code: 200,
@@ -275,6 +279,7 @@ assert.deepEqual(
 
 assert.equal(helpers.validateVehicleForm({ numberPlate: 'ABC 123', vehicleBrand: 'Honda', vehicleModel: 'City', vehicleColor: 'White' }), null);
 assert.match(helpers.validateVehicleForm({ numberPlate: '', vehicleBrand: 'Honda', vehicleModel: 'City', vehicleColor: 'White' }), /Number plate/);
+assert.match(helpers.validateVehicleForm({ numberPlate: 'VAS 3243252353235235', vehicleBrand: 'Toyota', vehicleModel: 'Camry', vehicleColor: 'Silver' }), /valid Malaysian|characters/i);
 
 assert.equal(responses.length, 0);
 console.log('\nALL ADMIN VEHICLE CHECKS PASSED\n');

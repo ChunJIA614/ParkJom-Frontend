@@ -1,4 +1,5 @@
 import type { AdminVehicleDto } from '../types';
+import { validateVehiclePlate } from '@/features/commuter/lib/plateValidation';
 
 export type VehicleSortOption = 'newest-id' | 'updated-desc' | 'updated-asc' | 'plate-asc' | 'owner-asc';
 
@@ -183,13 +184,13 @@ export function filterAndSortVehicles(
 }
 
 export function validateVehicleForm(values: VehicleFormValues): string | null {
-  const plate = values.numberPlate.trim();
+  const plateError = validateVehiclePlate(values.numberPlate);
+  if (plateError) return plateError;
+
   const brand = values.vehicleBrand.trim();
   const model = values.vehicleModel.trim();
   const color = values.vehicleColor.trim();
 
-  if (!plate) return 'Number plate is required.';
-  if (plate.length > 20) return 'Number plate must be 20 characters or fewer.';
   if (!brand) return 'Vehicle brand is required.';
   if (brand.length > 50) return 'Vehicle brand must be 50 characters or fewer.';
   if (!model) return 'Vehicle model is required.';

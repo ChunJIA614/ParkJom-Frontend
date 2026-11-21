@@ -19,6 +19,12 @@ import {
   type VehicleVisionScanData,
 } from '@/features/commuter/api/vehicleVisionApi';
 import {
+  MAX_PLATE_LENGTH,
+  normalizeVehiclePlate,
+  sanitizePlateInput,
+  validateVehiclePlate,
+} from '@/features/commuter/lib/plateValidation';
+import {
   attachStreamToVideo,
   captureVideoFrameDataUrl,
   describeCameraError,
@@ -214,8 +220,14 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
     const plate = (plateToUse || manualPlate || scanResult?.formattedPlate || scanResult?.numberPlate || '').trim();
     if (!plate) return;
 
-    const cleaned = plate.toUpperCase().replace(/\s+/g, ' ');
-    onScanPlate(cleaned);
+    const plateError = validateVehiclePlate(plate);
+    if (plateError) {
+      setScanError(plateError);
+      return;
+    }
+
+    setScanError(null);
+    onScanPlate(normalizeVehiclePlate(plate));
   };
 
   const handleRetake = () => {
@@ -498,7 +510,11 @@ export const AppleScannerView: React.FC<AppleScannerViewProps> = ({
             <input
               type="text"
               value={manualPlate}
-              onChange={(e) => setManualPlate(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setManualPlate(sanitizePlateInput(e.target.value));
+                if (scanError) setScanError(null);
+              }}
+              maxLength={MAX_PLATE_LENGTH}
               placeholder="Enter or verify plate (e.g. VEE 8492)"
               className="h-11 w-full rounded-2xl border border-white/15 bg-white/10 px-4 font-mono text-sm uppercase tracking-wider text-white placeholder-neutral-400 transition-all focus:border-[#0a84ff] focus:ring-2 focus:ring-[#0a84ff]/30 focus:outline-none"
             />

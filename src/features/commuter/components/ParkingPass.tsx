@@ -57,9 +57,11 @@ export default function ParkingPass({
 
             <div className="parking-pass__vehicle">
               <span className="parking-pass__icon"><Car size={17} /></span>
-              <div>
+              <div className="min-w-0">
                 <span>Vehicle</span>
-                <strong>{vehiclePlate || 'Add before checkout'}</strong>
+                <strong className="block truncate" title={vehiclePlate || undefined}>
+                  {vehiclePlate || 'Add before checkout'}
+                </strong>
               </div>
               <div className="parking-pass__price">
                 <span>Rate</span>

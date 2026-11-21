@@ -1,4 +1,5 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
+import { normalizeVehiclePlate, validateVehiclePlate } from '../lib/plateValidation';
 
 export interface AddVehicleRequest {
   numberPlate: string;
@@ -143,10 +144,19 @@ export async function addVehicle(
   token: string,
   vehicle: AddVehicleRequest,
 ): Promise<AddVehicleResponse> {
+  const plateError = validateVehiclePlate(vehicle.numberPlate);
+  if (plateError) {
+    throw new Error(plateError);
+  }
+  const normalizedVehicle: AddVehicleRequest = {
+    ...vehicle,
+    numberPlate: normalizeVehiclePlate(vehicle.numberPlate),
+  };
+
   const response = await apiRequest('/vehicle/add', {
     method: 'POST',
     headers: authorizationHeaders(token, 'application/json'),
-    body: JSON.stringify(vehicle),
+    body: JSON.stringify(normalizedVehicle),
   });
 
   if (!response.ok) {
@@ -179,10 +189,19 @@ export async function modifyVehicle(
   token: string,
   vehicle: ModifyVehicleRequest,
 ): Promise<ModifyVehicleResponse> {
+  const plateError = validateVehiclePlate(vehicle.numberPlate);
+  if (plateError) {
+    throw new Error(plateError);
+  }
+  const normalizedVehicle: ModifyVehicleRequest = {
+    ...vehicle,
+    numberPlate: normalizeVehiclePlate(vehicle.numberPlate),
+  };
+
   const response = await apiRequest('/vehicle/modify', {
     method: 'PUT',
     headers: authorizationHeaders(token, 'application/json'),
-    body: JSON.stringify(vehicle),
+    body: JSON.stringify(normalizedVehicle),
   });
 
   if (!response.ok) {
@@ -191,7 +210,7 @@ export async function modifyVehicle(
 
   const payload = await response.json().catch(() => null) as AddVehicleWireResponse | null;
   const data = normalizeVehicleData(payload?.data ?? payload?.Data) ?? {
-    ...vehicle,
+    ...normalizedVehicle,
     createdAt: '',
     updatedAt: '',
   };

@@ -516,7 +516,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                   </p>
                   <p className="mt-0.5 text-[11px] text-[#5f6368] dark:text-[#A1A1AA]">
                     Assigned Plate:{' '}
-                    <span className="font-mono font-bold text-[#111] dark:text-white">
+                    <span className="font-mono font-bold text-[#111] dark:text-white break-all">
                       {effectiveBooking.vehiclePlate || 'Registered Vehicle'}
                     </span>
                   </p>
@@ -820,8 +820,11 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
             <div className="h-full rounded-3xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] p-6 shadow-sm flex flex-col justify-between space-y-4">
               {/* Spot Summary Header */}
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-2.5 py-0.5 text-[11px] font-bold text-[#007AFF]">
+                <div className="min-w-0">
+                  <span
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-2.5 py-0.5 text-[11px] font-bold text-[#007AFF] truncate"
+                    title={`Bay ${effectiveBooking.spot.parkingLabel} · ${effectiveBooking.vehiclePlate}`}
+                  >
                     Bay {effectiveBooking.spot.parkingLabel} &middot; {effectiveBooking.vehiclePlate}
                   </span>
                   <h2 className="mt-1.5 text-xl sm:text-2xl font-extrabold tracking-tight text-[#111] dark:text-white">
@@ -1099,11 +1102,14 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                 </button>
 
                 {/* Bottom-Left Bay & Plate Overlay */}
-                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white pointer-events-none">
-                  <span className="rounded-lg bg-black/55 backdrop-blur-md px-2.5 py-1 text-[11px] font-extrabold border border-white/15">
+                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2 text-white pointer-events-none">
+                  <span className="shrink-0 rounded-lg bg-black/55 backdrop-blur-md px-2.5 py-1 text-[11px] font-extrabold border border-white/15">
                     Bay {booking.spot.parkingLabel}
                   </span>
-                  <span className="font-mono text-[11px] font-bold bg-black/55 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/15">
+                  <span
+                    className="min-w-0 max-w-[60%] truncate font-mono text-[11px] font-bold bg-black/55 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/15"
+                    title={booking.vehiclePlate}
+                  >
                     {booking.vehiclePlate}
                   </span>
                 </div>

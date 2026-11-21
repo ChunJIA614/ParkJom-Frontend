@@ -138,6 +138,12 @@ import {
   mapApiVehicleToVehicle,
   saveCachedVehicles,
 } from '../lib/vehicleStorage';
+import {
+  MAX_PLATE_LENGTH,
+  normalizeVehiclePlate,
+  sanitizePlateInput,
+  validateVehiclePlate,
+} from '../lib/plateValidation';
 import { getDeviceLocation, DeviceLocationError } from '@/services/deviceCapabilities';
 import { isWithinArrivalRadius, resolveSpotCoordinates } from '../lib/geofence';
 import { getParkingReviews, updateReview } from '../api/reviewApi';
@@ -1992,10 +1998,16 @@ export default function CommuterDashboard() {
       return;
     }
 
-    const numberPlate = newPlate.trim().toUpperCase();
+    const numberPlate = normalizeVehiclePlate(newPlate);
     const vehicleBrand = newBrand.trim();
     const vehicleModel = newModel.trim();
     const vehicleColor = newColor.trim();
+
+    const plateError = validateVehiclePlate(numberPlate);
+    if (plateError) {
+      setVehicleFeedback({ tone: 'error', message: plateError });
+      return;
+    }
 
     if (!numberPlate || !vehicleBrand || !vehicleModel || !vehicleColor) {
       setVehicleFeedback({ tone: 'error', message: 'Number plate, brand, model, and color are required.' });
@@ -2109,11 +2121,16 @@ export default function CommuterDashboard() {
 
     const request = {
       vehicleId: vehicleEditDraft.vehicleId,
-      numberPlate: vehicleEditDraft.numberPlate.trim().toUpperCase(),
+      numberPlate: normalizeVehiclePlate(vehicleEditDraft.numberPlate),
       vehicleBrand: vehicleEditDraft.vehicleBrand.trim(),
       vehicleModel: vehicleEditDraft.vehicleModel.trim(),
       vehicleColor: vehicleEditDraft.vehicleColor.trim(),
     };
+    const plateError = validateVehiclePlate(request.numberPlate);
+    if (plateError) {
+      setVehicleFeedback({ tone: 'error', message: plateError });
+      return;
+    }
     if (!request.numberPlate || !request.vehicleBrand || !request.vehicleModel || !request.vehicleColor) {
       setVehicleFeedback({ tone: 'error', message: 'Number plate, brand, model, and color are required.' });
       return;
@@ -3465,7 +3482,11 @@ export default function CommuterDashboard() {
                     </button>
                   </div>
                 ))}
-                {vehicleEditDraft && (
+                {vehicleEditDraft && (() => {
+                  const editPlateError = vehicleEditDraft.numberPlate.trim()
+                    ? validateVehiclePlate(vehicleEditDraft.numberPlate)
+                    : null;
+                  return (
                   <form onSubmit={handleModifyVehicle} className="mt-3 space-y-2 rounded-xl bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 p-4">
                     <div className="flex items-center justify-between">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Edit vehicle</p>
@@ -3487,9 +3508,20 @@ export default function CommuterDashboard() {
                     <label className="block space-y-1">
                       <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Number plate</span>
                       <input type="text" value={vehicleEditDraft.numberPlate}
-                        onChange={(event) => setVehicleEditDraft((current) => current ? { ...current, numberPlate: event.target.value } : current)}
-                        maxLength={20} required disabled={isVehicleUpdating}
-                        className="w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-[12px] uppercase text-[#111] dark:text-white focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
+                        onChange={(event) => setVehicleEditDraft((current) => current ? { ...current, numberPlate: sanitizePlateInput(event.target.value) } : current)}
+                        placeholder="WXY 1234"
+                        maxLength={MAX_PLATE_LENGTH} required disabled={isVehicleUpdating}
+                        aria-invalid={Boolean(editPlateError)}
+                        className={`w-full rounded-xl border bg-white dark:bg-[#141417] px-3 py-2 font-mono text-[12px] uppercase text-[#111] dark:text-white focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                          editPlateError
+                            ? 'border-rose-400 focus:border-rose-500 dark:border-rose-500/70'
+                            : 'border-[#dadce0] dark:border-white/10 focus:border-[#007AFF]'
+                        }`} />
+                      {editPlateError ? (
+                        <span className="block text-[11px] font-medium text-rose-600 dark:text-rose-400">{editPlateError}</span>
+                      ) : (
+                        <span className="block text-[10px] text-[#8e8e93] dark:text-[#71717A]">Malaysian JPJ format, e.g. WXY 1234 or W 1234 A</span>
+                      )}
                     </label>
                     <VehicleBrandModelFields
                       brand={vehicleEditDraft.vehicleBrand}
@@ -3506,14 +3538,19 @@ export default function CommuterDashboard() {
                         maxLength={30} required disabled={isVehicleUpdating}
                         className="w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-[12px] text-[#111] dark:text-white focus:border-[#007AFF] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60" />
                     </label>
-                    <button type="submit" disabled={isVehicleUpdating}
+                    <button type="submit" disabled={isVehicleUpdating || Boolean(editPlateError)}
                       className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">
                       {isVehicleUpdating && <Loader2 size={14} className="animate-spin" />}
                       {isVehicleUpdating ? 'Updating Vehicle' : 'Update Vehicle'}
                     </button>
                   </form>
-                )}
-                {showAddVehicle && (
+                  );
+                })()}
+                {showAddVehicle && (() => {
+                  const addPlateError = newPlate.trim()
+                    ? validateVehiclePlate(newPlate)
+                    : null;
+                  return (
                   <form onSubmit={handleAddVehicle} className="mt-3 p-4 bg-[#f8f9fa] dark:bg-[#18181C] dark:border dark:border-white/10 rounded-xl space-y-2">
                     <div className="flex items-center justify-between pb-1">
                       <span className="text-[11px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">New Vehicle Details</span>
@@ -3528,9 +3565,19 @@ export default function CommuterDashboard() {
                     </div>
                     <label className="block space-y-1">
                       <span className="text-[10px] font-semibold uppercase text-[#5f6368] dark:text-[#A1A1AA]">Number plate</span>
-                      <input type="text" value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="WXY1234"
-                        maxLength={20} required disabled={isVehicleSaving}
-                        className="w-full px-3 py-2 rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#141417] text-[12px] uppercase text-[#111] dark:text-white placeholder:text-[#9ca3af] dark:placeholder:text-[#71717A] focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
+                      <input type="text" value={newPlate} onChange={(e) => setNewPlate(sanitizePlateInput(e.target.value))} placeholder="WXY 1234"
+                        maxLength={MAX_PLATE_LENGTH} required disabled={isVehicleSaving}
+                        aria-invalid={Boolean(addPlateError)}
+                        className={`w-full px-3 py-2 rounded-xl border bg-white dark:bg-[#141417] font-mono text-[12px] uppercase text-[#111] dark:text-white placeholder:text-[#9ca3af] dark:placeholder:text-[#71717A] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                          addPlateError
+                            ? 'border-rose-400 focus:border-rose-500 dark:border-rose-500/70'
+                            : 'border-[#dadce0] dark:border-white/10 focus:border-[#007AFF]'
+                        }`} />
+                      {addPlateError ? (
+                        <span className="block text-[11px] font-medium text-rose-600 dark:text-rose-400">{addPlateError}</span>
+                      ) : (
+                        <span className="block text-[10px] text-[#8e8e93] dark:text-[#71717A]">Malaysian JPJ format, e.g. WXY 1234 or W 1234 A</span>
+                      )}
                     </label>
                     <VehicleBrandModelFields
                       brand={newBrand}
@@ -3546,13 +3593,14 @@ export default function CommuterDashboard() {
                         maxLength={30} required disabled={isVehicleSaving}
                         className="w-full px-3 py-2 rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#141417] text-[12px] text-[#111] dark:text-white placeholder:text-[#9ca3af] dark:placeholder:text-[#71717A] focus:outline-none focus:border-[#007AFF] disabled:cursor-not-allowed disabled:opacity-60" />
                     </label>
-                    <button type="submit" disabled={isVehicleSaving}
+                    <button type="submit" disabled={isVehicleSaving || Boolean(addPlateError)}
                       className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-3 text-[12px] font-semibold text-white transition-colors hover:bg-[#0066d6] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">
                       {isVehicleSaving && <Loader2 size={14} className="animate-spin" />}
                       {isVehicleSaving ? 'Saving Vehicle' : 'Save Vehicle'}
                     </button>
                   </form>
-                )}
+                  );
+                })()}
               </div>
               {/* History */}
               <section aria-labelledby="commuter-booking-history-title" className="workspace-panel p-5">
@@ -3910,24 +3958,25 @@ export default function CommuterDashboard() {
           closeQRScanner();
         }}
         onApplyVehicle={(extracted) => {
+          const normalizedPlate = normalizeVehiclePlate(extracted.numberPlate);
           if (visionScannerTarget === 'edit' && vehicleEditDraft) {
             setVehicleEditDraft({
               ...vehicleEditDraft,
-              numberPlate: extracted.numberPlate,
+              numberPlate: normalizedPlate,
               vehicleBrand: extracted.brand,
               vehicleModel: extracted.model,
               vehicleColor: extracted.color,
             });
           } else {
             setShowAddVehicle(true);
-            setNewPlate(extracted.numberPlate);
+            setNewPlate(normalizedPlate);
             setNewBrand(extracted.brand);
             setNewModel(extracted.model);
             setNewColor(extracted.color);
           }
           setVehicleFeedback({
             tone: 'success',
-            message: `Vision AI populated ${extracted.numberPlate} (${extracted.brand} ${extracted.model} · ${extracted.color}). Click Save to confirm.`,
+            message: `Vision AI populated ${normalizedPlate} (${extracted.brand} ${extracted.model} · ${extracted.color}). Click Save to confirm.`,
           });
         }}
         onBarrierVerified={(res) => {

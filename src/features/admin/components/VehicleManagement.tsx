@@ -6,6 +6,12 @@ import { useAuth } from '@/features/auth/context/AuthContext';
 import VehicleAiScannerModal from '@/features/commuter/components/VehicleAiScannerModal';
 import VehicleBrandModelFields from '@/features/commuter/components/VehicleBrandModelFields';
 import { VEHICLE_CATALOG_FALLBACK } from '@/features/commuter/data/vehicleCatalog';
+import {
+  MAX_PLATE_LENGTH,
+  normalizeVehiclePlate,
+  sanitizePlateInput,
+  validateVehiclePlate,
+} from '@/features/commuter/lib/plateValidation';
 import React, { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -216,7 +222,7 @@ export default function VehicleManagement({
     color: string;
   }) => {
     const patch = (current: VehicleFormValues): VehicleFormValues => ({
-      numberPlate: extracted.numberPlate?.trim().toUpperCase() || current.numberPlate,
+      numberPlate: extracted.numberPlate ? normalizeVehiclePlate(extracted.numberPlate) : current.numberPlate,
       vehicleBrand: extracted.brand?.trim() || current.vehicleBrand,
       vehicleModel: extracted.model?.trim() || current.vehicleModel,
       vehicleColor: extracted.color?.trim() || current.vehicleColor,
@@ -769,6 +775,8 @@ function VehicleFormFields({
   onOpenScanner,
   scannerDisabled = false,
 }: VehicleFormFieldsProps) {
+  const plateError = values.numberPlate.trim() ? validateVehiclePlate(values.numberPlate) : null;
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2.5 rounded-xl border border-blue-200/80 dark:border-white/10 bg-blue-50/70 dark:bg-white/[0.04] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -799,14 +807,24 @@ function VehicleFormFields({
         <input
           type="text"
           value={values.numberPlate}
-          onChange={(event) => onChange({ ...values, numberPlate: event.target.value.toUpperCase() })}
+          onChange={(event) => onChange({ ...values, numberPlate: sanitizePlateInput(event.target.value) })}
           placeholder="WXY 1234"
-          maxLength={20}
+          maxLength={MAX_PLATE_LENGTH}
           required
           disabled={disabled}
           aria-label="Number plate"
-          className={`${fieldClass} font-mono font-semibold uppercase tracking-wider`}
+          aria-invalid={Boolean(plateError)}
+          className={`${fieldClass} font-mono font-semibold uppercase tracking-wider ${
+            plateError ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500 dark:border-rose-500/70' : ''
+          }`}
         />
+        {plateError ? (
+          <span className="block text-[11px] font-medium text-rose-600 dark:text-rose-400">{plateError}</span>
+        ) : (
+          <span className="block text-[10px] text-slate-400 dark:text-[#71717A]">
+            Malaysian JPJ format, e.g. WXY 1234 or W 1234 A
+          </span>
+        )}
       </label>
 
       <VehicleBrandModelFields

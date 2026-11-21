@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
+import { RouteErrorBoundary } from '@/components/common/RouteErrorBoundary';
 import WelcomeLoadingScreen from '@/components/onboarding/WelcomeLoadingScreen';
 import {
   markWelcomeScreenCompleted,
@@ -23,7 +25,22 @@ const OwnerDashboard = lazy(loadOwnerDashboard);
 const NotificationCenterPage = lazy(() => import('@/features/notifications/pages/NotificationCenterPage'));
 const PublicParkingPayPage = lazy(() => import('@/features/publicParking/pages/PublicParkingPayPage'));
 
+function RouteLoadingFallback() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-screen items-center justify-center gap-2.5 text-sm font-medium text-[#6e6e73] dark:text-[#A1A1AA]"
+    >
+      <Loader2 size={18} className="animate-spin text-[#007AFF] dark:text-[#0A84FF]" aria-hidden="true" />
+      <span>Loading…</span>
+    </div>
+  );
+}
+
 export function AppRoutes() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { isLoggedIn, isGuest, loading, user } = useAuth();
   const [welcomeFinished, setWelcomeFinished] = useState(false);
   const [welcomeError, setWelcomeError] = useState('');
@@ -62,25 +79,27 @@ export function AppRoutes() {
   if (!isLoggedIn) {
     return (
       <div className="font-sans text-[#1d1d1f] page-shell">
-        <Suspense fallback={null}>
-          <Routes>
-            {/* The Login Page is the default main page on initial visit and after logout */}
-            <Route path="/" element={isGuest ? <Navigate to="/commuter" replace /> : <LoginPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            {/* Standalone PropertyManagement 14-day single-use invitation link */}
-            <Route path="/management/invitation" element={<ManagementInvitationPage />} />
-            {/* Landing Page */}
-            <Route path="/home" element={<LandingPage />} />
-            <Route path="/landing" element={<LandingPage />} />
-            {/* Guest mode allows viewing Commuter dashboard (browse & transit maps) and parking details */}
-            <Route path="/commuter" element={<CommuterDashboard />} />
-            <Route path="/commuter/parking/:id" element={<ParkingDetail />} />
-            {/* Public Drive-In Parking Checkout & Payment */}
-            <Route path="/public-pay" element={<PublicParkingPayPage />} />
-            <Route path="/commuter/public-pay" element={<PublicParkingPayPage />} />
-            <Route path="*" element={<Navigate to={isGuest ? "/commuter" : "/"} replace />} />
-          </Routes>
-        </Suspense>
+        <RouteErrorBoundary resetKey={location.pathname} onNavigateHome={() => navigate('/', { replace: true })}>
+          <Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
+              {/* The Login Page is the default main page on initial visit and after logout */}
+              <Route path="/" element={isGuest ? <Navigate to="/commuter" replace /> : <LoginPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              {/* Standalone PropertyManagement 14-day single-use invitation link */}
+              <Route path="/management/invitation" element={<ManagementInvitationPage />} />
+              {/* Landing Page */}
+              <Route path="/home" element={<LandingPage />} />
+              <Route path="/landing" element={<LandingPage />} />
+              {/* Guest mode allows viewing Commuter dashboard (browse & transit maps) and parking details */}
+              <Route path="/commuter" element={<CommuterDashboard />} />
+              <Route path="/commuter/parking/:id" element={<ParkingDetail />} />
+              {/* Public Drive-In Parking Checkout & Payment */}
+              <Route path="/public-pay" element={<PublicParkingPayPage />} />
+              <Route path="/commuter/public-pay" element={<PublicParkingPayPage />} />
+              <Route path="*" element={<Navigate to={isGuest ? "/commuter" : "/"} replace />} />
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </div>
     );
   }
@@ -99,26 +118,28 @@ export function AppRoutes() {
 
   return (
     <div className="page-shell">
-      <Suspense fallback={null}>
-        <Routes>
-          <Route path="/login" element={<Navigate to={dashboardPath} replace />} />
-          <Route path="/management/invitation" element={<ManagementInvitationPage />} />
-          <Route path="/" element={<Navigate to={dashboardPath} replace />} />
-          <Route path="/home" element={<Navigate to={dashboardPath} replace />} />
-          <Route path="/landing" element={<Navigate to={dashboardPath} replace />} />
-          <Route path="/admin" element={<RequireRole role="Admin"><AdminDashboard /></RequireRole>} />
-          <Route path="/owner" element={<RequireRole role="Owner"><OwnerDashboard /></RequireRole>} />
-          <Route path="/management" element={<RequireRole role="PropertyManagement"><PropertyManagementDashboard /></RequireRole>} />
-          <Route path="/notifications" element={<NotificationCenterPage />} />
-          <Route path="/commuter" element={<RequireRole role="Commuter"><CommuterDashboard /></RequireRole>} />
-          <Route path="/commuter/parking/:id" element={<RequireRole role="Commuter"><ParkingDetail /></RequireRole>} />
-          <Route path="/commuter/parking/:id/review" element={<RequireRole role="Commuter"><ParkingReview /></RequireRole>} />
-          {/* Public Drive-In Parking Checkout & Payment */}
-          <Route path="/public-pay" element={<PublicParkingPayPage />} />
-          <Route path="/commuter/public-pay" element={<PublicParkingPayPage />} />
-          <Route path="*" element={<Navigate to={dashboardPath} replace />} />
-        </Routes>
-      </Suspense>
+      <RouteErrorBoundary resetKey={location.pathname} onNavigateHome={() => navigate(dashboardPath, { replace: true })}>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Routes>
+            <Route path="/login" element={<Navigate to={dashboardPath} replace />} />
+            <Route path="/management/invitation" element={<ManagementInvitationPage />} />
+            <Route path="/" element={<Navigate to={dashboardPath} replace />} />
+            <Route path="/home" element={<Navigate to={dashboardPath} replace />} />
+            <Route path="/landing" element={<Navigate to={dashboardPath} replace />} />
+            <Route path="/admin" element={<RequireRole role="Admin"><AdminDashboard /></RequireRole>} />
+            <Route path="/owner" element={<RequireRole role="Owner"><OwnerDashboard /></RequireRole>} />
+            <Route path="/management" element={<RequireRole role="PropertyManagement"><PropertyManagementDashboard /></RequireRole>} />
+            <Route path="/notifications" element={<NotificationCenterPage />} />
+            <Route path="/commuter" element={<RequireRole role="Commuter"><CommuterDashboard /></RequireRole>} />
+            <Route path="/commuter/parking/:id" element={<RequireRole role="Commuter"><ParkingDetail /></RequireRole>} />
+            <Route path="/commuter/parking/:id/review" element={<RequireRole role="Commuter"><ParkingReview /></RequireRole>} />
+            {/* Public Drive-In Parking Checkout & Payment */}
+            <Route path="/public-pay" element={<PublicParkingPayPage />} />
+            <Route path="/commuter/public-pay" element={<PublicParkingPayPage />} />
+            <Route path="*" element={<Navigate to={dashboardPath} replace />} />
+          </Routes>
+        </Suspense>
+      </RouteErrorBoundary>
     </div>
   );
 }

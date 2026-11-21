@@ -1,4 +1,5 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
+import { normalizeVehiclePlate, validateVehiclePlate } from '@/features/commuter/lib/plateValidation';
 import type { AdminVehicleDto } from '../types';
 
 export interface AdminVehiclePayload {
@@ -102,8 +103,13 @@ const normalizeVehicle = (value: VehicleWireData | null | undefined): AdminVehic
 };
 
 const sanitizeVehiclePayload = (vehicle: AdminVehiclePayload): AdminVehiclePayload => {
+  const plateError = validateVehiclePlate(vehicle.numberPlate);
+  if (plateError) {
+    throw new Error(plateError);
+  }
+
   const sanitized: AdminVehiclePayload = {
-    numberPlate: vehicle.numberPlate.trim().toUpperCase(),
+    numberPlate: normalizeVehiclePlate(vehicle.numberPlate),
     vehicleBrand: vehicle.vehicleBrand.trim(),
     vehicleModel: vehicle.vehicleModel.trim(),
     vehicleColor: vehicle.vehicleColor.trim(),

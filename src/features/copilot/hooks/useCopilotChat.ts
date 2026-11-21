@@ -3,7 +3,8 @@ import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { sendCopilotMessage } from '../api/copilotApi';
-import type { CopilotChatMessage } from '../types';
+import { sanitizeCopilotCard, sanitizeCopilotInput } from '../lib/copilotGuards';
+import type { CopilotCard, CopilotChatMessage } from '../types';
 
 const STORAGE_PREFIX = 'parkjom_copilot_chat_';
 const MAX_STORED_MESSAGES = 30;
@@ -45,8 +46,31 @@ export function useCopilotChat() {
     if (!storageKey) { setMessages([]); return; }
     try {
       const saved = sessionStorage.getItem(storageKey);
-      const parsed = saved ? (JSON.parse(saved) as CopilotChatMessage[]) : [];
-      setMessages(Array.isArray(parsed) ? parsed.filter((m) => !m.isError) : []);
+      const parsed = saved ? (JSON.parse(saved) as unknown) : [];
+      if (!Array.isArray(parsed)) {
+        setMessages([]);
+        return;
+      }
+      const restored = parsed.flatMap((entry): CopilotChatMessage[] => {
+        if (!entry || typeof entry !== 'object') return [];
+        const item = entry as Partial<CopilotChatMessage>;
+        if (item.isError || (item.role !== 'user' && item.role !== 'model') || typeof item.text !== 'string') {
+          return [];
+        }
+        const text = sanitizeCopilotInput(item.text, 4000);
+        if (!text) return [];
+        const cards = Array.isArray(item.cards)
+          ? item.cards.map(sanitizeCopilotCard).filter((card): card is CopilotCard => card !== null)
+          : undefined;
+        return [{
+          id: typeof item.id === 'string' && item.id ? item.id : newId(),
+          role: item.role,
+          text,
+          context: item.role === 'model' && typeof item.context === 'string' ? item.context : null,
+          cards,
+        }];
+      });
+      setMessages(restored);
     } catch {
       setMessages([]);
     }
@@ -63,13 +87,17 @@ export function useCopilotChat() {
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const send = useCallback(async (text: string) => {
-    const trimmed = text.trim();
+    const trimmed = sanitizeCopilotInput(text, 1000);
     if (!trimmed || !user?.token || isSending) return;
 
     const userMessage: CopilotChatMessage = { id: newId(), role: 'user', text: trimmed };
     const history = messages
       .filter((m) => !m.isError)
-      .map((m) => ({ role: m.role, text: m.text, context: m.context ?? null }));
+      .map((m) => ({
+        role: m.role,
+        text: m.text,
+        context: m.role === 'model' ? (m.context ?? null) : null,
+      }));
 
     setMessages((current) => [...current, userMessage]);
     setIsSending(true);

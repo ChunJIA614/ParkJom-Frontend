@@ -52,6 +52,18 @@ import {
   saveParkingReview,
   type ParkingReview,
 } from '../lib/parkingReviews';
+import {
+  dateFromIsoKey,
+  findNearestAvailableDate,
+  formatIsoDateShort,
+  getDatesBetween,
+  getMonthsBetween,
+  isDateAvailableInMap,
+  isValidIsoDateKey,
+  toIsoDateKey,
+  validateBookingDateRange,
+  validateQuoteMatchesSelection,
+} from '../lib/bookingDateValidation';
 
 /* ================================================================
    ParkingDetail — Parking spot detail page
@@ -84,12 +96,7 @@ interface WalkingInfo {
 
 const REVIEW_PAGE_SIZE = 10;
 
-const toDateInput = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const toDateInput = toIsoDateKey;
 
 const addDays = (date: Date, days: number) => {
   const result = new Date(date);
@@ -107,13 +114,9 @@ const toMonthInput = (date: Date) => {
   return `${year}-${month}`;
 };
 
-const dateFromKey = (dateKey: string) => new Date(`${dateKey}T00:00:00`);
+const dateFromKey = dateFromIsoKey;
 
-const formatDateKey = (dateKey: string) => dateFromKey(dateKey).toLocaleDateString('en-MY', {
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-});
+const formatDateKey = formatIsoDateShort;
 
 const getCalendarDateKeys = (month: Date) => {
   const firstDay = startOfMonth(month);
@@ -283,9 +286,11 @@ export default function ParkingDetail() {
   const [endDate, setEndDate] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(addDays(new Date(), 1)));
   const [availabilityByMonth, setAvailabilityByMonth] = useState<Record<string, BookingAvailabilityResponse>>({});
+  const [availabilityRetryKey, setAvailabilityRetryKey] = useState(0);
   const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [dateSelectionError, setDateSelectionError] = useState<string | null>(null);
+  const [pendingCopilotPrefill, setPendingCopilotPrefill] = useState<{ startDate: string; endDate: string } | null>(null);
   const [quote, setQuote] = useState<BookingQuote | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<ConfirmedBooking | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -483,18 +488,47 @@ export default function ParkingDetail() {
   }, [user?.userId, user?.token]);
 
   useEffect(() => {
-    if (!spot) return;
+    const spotId = spot?.parkingSpotId;
+    if (!spotId) return;
+    if (!user?.token) {
+      setIsAvailabilityLoading(false);
+      setAvailabilityError(null);
+      return;
+    }
 
-    const month = toMonthInput(calendarMonth);
-    if (availabilityByMonth[month]) return;
+    const monthsSet = new Set<string>([toMonthInput(calendarMonth)]);
+    if (startDate && endDate && endDate >= startDate) {
+      for (const spannedMonth of getMonthsBetween(startDate, endDate).slice(0, 3)) {
+        monthsSet.add(spannedMonth);
+      }
+    }
+    if (pendingCopilotPrefill) {
+      for (const spannedMonth of getMonthsBetween(pendingCopilotPrefill.startDate, pendingCopilotPrefill.endDate).slice(0, 3)) {
+        monthsSet.add(spannedMonth);
+      }
+    }
+
+    const missingMonths = [...monthsSet].filter((month) => !availabilityByMonth[month]);
+    if (missingMonths.length === 0) return;
 
     const controller = new AbortController();
     setIsAvailabilityLoading(true);
     setAvailabilityError(null);
-    void getBookingAvailability(user.token, spot.parkingSpotId, month, controller.signal)
-      .then((result) => {
+    void Promise.all(
+      missingMonths.map(async (month) => {
+        const result = await getBookingAvailability(user.token, spotId, month, controller.signal);
+        return { requestedMonth: month, result };
+      }),
+    )
+      .then((entries) => {
         if (controller.signal.aborted) return;
-        setAvailabilityByMonth((current) => ({ ...current, [result.month || month]: result }));
+        setAvailabilityByMonth((current) => {
+          const next = { ...current };
+          for (const { requestedMonth, result } of entries) {
+            next[result.month || requestedMonth] = result;
+          }
+          return next;
+        });
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
@@ -506,12 +540,13 @@ export default function ParkingDetail() {
       });
 
     return () => controller.abort();
-  }, [availabilityByMonth, calendarMonth, spot, user?.token]);
+  }, [availabilityByMonth, availabilityRetryKey, calendarMonth, endDate, pendingCopilotPrefill, spot?.parkingSpotId, startDate, user?.token]);
 
   useEffect(() => {
     setAvailabilityByMonth({});
     setAvailabilityError(null);
     setDateSelectionError(null);
+    setPendingCopilotPrefill(null);
     setStartDate('');
     setEndDate('');
     setQuote(null);
@@ -519,18 +554,17 @@ export default function ParkingDetail() {
     setCalendarMonth(startOfMonth(addDays(new Date(), 1)));
   }, [spot?.parkingSpotId]);
 
-  // Apply Copilot-proposed dates once, after the reset above has run for this spot.
+  // Capture Copilot-proposed dates once per spot, then validate after availability loads.
   useEffect(() => {
     const prefill = state?.copilotPrefill;
     if (!spot || !prefill) return;
     const key = `${spot.parkingSpotId}:${prefill.startDate}:${prefill.endDate}`;
     if (appliedPrefillRef.current === key) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(prefill.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(prefill.endDate)) return;
+    if (!isValidIsoDateKey(prefill.startDate) || !isValidIsoDateKey(prefill.endDate)) return;
     appliedPrefillRef.current = key;
-    setStartDate(prefill.startDate);
-    setEndDate(prefill.endDate);
     setCalendarMonth(startOfMonth(dateFromKey(prefill.startDate)));
-  }, [spot, state?.copilotPrefill]);
+    setPendingCopilotPrefill(prefill);
+  }, [spot?.parkingSpotId, state?.copilotPrefill]);
 
   useEffect(() => {
     setIsFavorite(Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
@@ -763,59 +797,78 @@ export default function ParkingDetail() {
     return monthAvailability?.availableDates.find((availableDate) => availableDate.date === dateKey);
   }
 
-  const isDateAvailable = (dateKey: string) => dateKey >= minimumBookingDate && Boolean(getAvailabilityForDate(dateKey));
+  const isDateAvailable = (dateKey: string) =>
+    isDateAvailableInMap(dateKey, availabilityByMonth, minimumBookingDate);
 
-  const getDatesBetween = (fromDate: string, toDate: string) => {
-    if (!fromDate || !toDate || toDate < fromDate) return [];
-    const dates: string[] = [];
-    let cursor = dateFromKey(fromDate);
-    const lastDate = dateFromKey(toDate);
-    while (cursor <= lastDate) {
-      dates.push(toDateInput(cursor));
-      cursor = addDays(cursor, 1);
+  useEffect(() => {
+    if (!spot || !pendingCopilotPrefill) return;
+    if (!user?.token) {
+      setPendingCopilotPrefill(null);
+      return;
     }
-    return dates;
-  };
-
-  const getOpenDatesInRange = (fromDate: string, toDate: string) => {
-    return getDatesBetween(fromDate, toDate).filter((dateKey) => isDateAvailable(dateKey));
-  };
-
-  const getNextAvailableDate = (fromDateKey: string): string | null => {
-    let cursor = dateFromKey(fromDateKey);
-    for (let i = 1; i <= 31; i++) {
-      cursor = addDays(cursor, 1);
-      const candidate = toDateInput(cursor);
-      if (isDateAvailable(candidate)) {
-        return candidate;
-      }
+    if (availabilityError) {
+      setPendingCopilotPrefill(null);
+      return;
     }
-    return null;
-  };
 
-  const getPreviousAvailableDate = (fromDateKey: string): string | null => {
-    let cursor = dateFromKey(fromDateKey);
-    for (let i = 1; i <= 31; i++) {
-      cursor = addDays(cursor, -1);
-      const candidate = toDateInput(cursor);
-      if (candidate < minimumBookingDate) break;
-      if (isDateAvailable(candidate)) {
-        return candidate;
-      }
+    const spannedMonths = getMonthsBetween(pendingCopilotPrefill.startDate, pendingCopilotPrefill.endDate);
+    const requiredMonths = spannedMonths.length > 0
+      ? spannedMonths.slice(0, 3)
+      : [pendingCopilotPrefill.startDate.slice(0, 7)];
+    if (!requiredMonths.every((month) => Boolean(availabilityByMonth[month]))) {
+      return;
     }
-    return null;
-  };
 
-  const openDaysInRange = useMemo(() => {
-    if (!startDate || !endDate || endDate < startDate) return [];
-    return getOpenDatesInRange(startDate, endDate);
-  }, [startDate, endDate, availabilityByMonth]);
+    const prefill = pendingCopilotPrefill;
+    setPendingCopilotPrefill(null);
+    setQuote(null);
+    setBookingError(null);
+    idempotencyKeyRef.current = null;
 
-  const closedDaysInRangeCount = useMemo(() => {
-    if (!startDate || !endDate || endDate < startDate) return 0;
-    const totalDays = getDatesBetween(startDate, endDate).length;
-    return Math.max(0, totalDays - openDaysInRange.length);
-  }, [startDate, endDate, openDaysInRange]);
+    const validation = validateBookingDateRange({
+      startDate: prefill.startDate,
+      endDate: prefill.endDate,
+      availabilityByMonth,
+      minimumBookingDate,
+    });
+
+    if (validation.isValid) {
+      setStartDate(prefill.startDate);
+      setEndDate(prefill.endDate);
+      setDateSelectionError(null);
+      return;
+    }
+
+    setStartDate('');
+    setEndDate('');
+    const prefillLabel = prefill.startDate === prefill.endDate
+      ? formatDateKey(prefill.startDate)
+      : `${formatDateKey(prefill.startDate)} – ${formatDateKey(prefill.endDate)}`;
+    const nextOpen = findNearestAvailableDate(availabilityByMonth, prefill.startDate, minimumBookingDate);
+    setDateSelectionError(
+      `Copilot suggested ${prefillLabel}, which is not available.${
+        nextOpen
+          ? ` Next available date: ${formatDateKey(nextOpen)}.`
+          : ' Please choose an available date below.'
+      }`,
+    );
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById('booking-calendar-section')?.scrollIntoView({
+      behavior: reduceMotion ? 'instant' : 'smooth',
+    });
+  }, [availabilityByMonth, availabilityError, minimumBookingDate, pendingCopilotPrefill, spot?.parkingSpotId, user?.token]);
+
+  const rangeValidation = useMemo(
+    () => validateBookingDateRange({
+      startDate,
+      endDate,
+      availabilityByMonth,
+      minimumBookingDate,
+    }),
+    [availabilityByMonth, endDate, minimumBookingDate, startDate],
+  );
+
+  const openDaysInRange = rangeValidation.openDates;
 
   // Clean up grace period timer on unmount
   useEffect(() => {
@@ -854,26 +907,26 @@ export default function ParkingDetail() {
     );
   }
 
-  const invalidDates = !startDate
-    || !endDate
-    || endDate < startDate
-    || startDate < minimumBookingDate
-    || openDaysInRange.length === 0;
+  const invalidDates = !rangeValidation.isValid
+    || isAvailabilityLoading
+    || rangeValidation.isLoadingMonths
+    || Boolean(availabilityError);
   const showChooseDates = isMobile && !isBookingLoading && (activeTab !== 'reserve' || invalidDates);
   const bottomBookingUnavailable = activeTab === 'reserve' && !showChooseDates
     && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId));
   const displayedRate = quote?.ratePerDay ?? spot.dailyRate ?? 0;
   const displayedTotal = quote?.rentalSubtotal ?? 0;
 
-  const dateValidationError = startDate && endDate
-    ? endDate < startDate
-      ? 'Choose an end date on or after the start date.'
-      : startDate < minimumBookingDate
-        ? `Bookings open from ${formatDateKey(minimumBookingDate)}.`
-        : openDaysInRange.length === 0
-          ? 'No open booking dates are available within this range.'
-          : null
-    : null;
+  const dateValidationError = rangeValidation.error;
+
+  const clearSelectedDates = () => {
+    setStartDate('');
+    setEndDate('');
+    setQuote(null);
+    setBookingError(null);
+    setDateSelectionError(null);
+    idempotencyKeyRef.current = null;
+  };
 
   const handleDateSelection = (rawDateKey: string) => {
     if (isAvailabilityLoading) return;
@@ -887,47 +940,47 @@ export default function ParkingDetail() {
     setDateSelectionError(null);
     idempotencyKeyRef.current = null;
 
-    let targetDateKey = rawDateKey;
-
-    // If the clicked date is closed (e.g. weekend is closed):
-    if (!isDateAvailable(targetDateKey)) {
-      // Automatically ignore the closed date and continue with next week's open date
-      const nextOpen = getNextAvailableDate(targetDateKey);
-      if (nextOpen) {
-        targetDateKey = nextOpen;
-      } else {
-        const prevOpen = getPreviousAvailableDate(targetDateKey);
-        if (prevOpen && (!startDate || prevOpen >= startDate)) {
-          targetDateKey = prevOpen;
-        } else {
-          setDateSelectionError(`${formatDateKey(rawDateKey)} is not open for booking.`);
-          return;
-        }
-      }
+    if (!isDateAvailable(rawDateKey)) {
+      setDateSelectionError(`${formatDateKey(rawDateKey)} is unavailable for booking.`);
+      return;
     }
 
     if (!startDate) {
-      setStartDate(targetDateKey);
+      setStartDate(rawDateKey);
       setEndDate('');
       return;
     }
 
-    if (!endDate) {
-      if (targetDateKey >= startDate) {
-        setEndDate(targetDateKey);
+    if (!endDate || (startDate === endDate && rawDateKey > startDate)) {
+      if (rawDateKey >= startDate) {
+        const candidate = validateBookingDateRange({
+          startDate,
+          endDate: rawDateKey,
+          availabilityByMonth,
+          minimumBookingDate,
+        });
+        if (candidate.unavailableDates.length > 0) {
+          const firstBlocked = formatDateKey(candidate.unavailableDates[0]);
+          setDateSelectionError(
+            `${formatDateKey(startDate)} – ${formatDateKey(rawDateKey)} includes unavailable date (${firstBlocked}). Starting a new selection from ${formatDateKey(rawDateKey)}.`,
+          );
+          setStartDate(rawDateKey);
+          setEndDate('');
+          return;
+        }
+        if (!candidate.isValid && !candidate.isLoadingMonths && candidate.error) {
+          setDateSelectionError(candidate.error);
+          return;
+        }
+        setEndDate(rawDateKey);
         return;
       }
-      setStartDate(targetDateKey);
+      setStartDate(rawDateKey);
       setEndDate('');
       return;
     }
 
-    if (startDate === endDate && targetDateKey > startDate) {
-      setEndDate(targetDateKey);
-      return;
-    }
-
-    setStartDate(targetDateKey);
+    setStartDate(rawDateKey);
     setEndDate('');
   };
 
@@ -1015,8 +1068,14 @@ export default function ParkingDetail() {
       setIsGracePeriodActive(false);
       setReservationReady(true);
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to complete this booking.';
       setIsGracePeriodActive(false);
-      setBookingError(error instanceof Error ? error.message : 'Unable to complete this booking.');
+      setBookingError(message);
+      if (/no longer available|already booked|conflict|expired|period/i.test(message)) {
+        setQuote(null);
+        idempotencyKeyRef.current = null;
+        setAvailabilityByMonth({});
+      }
     } finally {
       setIsBookingLoading(false);
       setIsFinalizingBooking(false);
@@ -1027,6 +1086,12 @@ export default function ParkingDetail() {
     if (!user?.token || !quote) return;
     if (!selectedVehicleId) {
       setBookingError('Select a vehicle before confirming this booking.');
+      return;
+    }
+    const quoteError = validateQuoteMatchesSelection(quote, startDate, endDate, openDaysInRange.length);
+    if (quoteError) {
+      setQuote(null);
+      setBookingError(quoteError);
       return;
     }
 
@@ -1066,6 +1131,10 @@ export default function ParkingDetail() {
       promptLogin('Reserve Parking Bay', 'Sign in to select dates, book this parking bay, and receive automated gate access clearance.');
       return;
     }
+    if (!rangeValidation.isValid) {
+      setBookingError(rangeValidation.error || 'Select consecutive available dates before requesting a quote.');
+      return;
+    }
     if (invalidDates || isBookingLoading || isGracePeriodActive) return;
     setBookingError(null);
     setBookingNotice(null);
@@ -1075,6 +1144,22 @@ export default function ParkingDetail() {
       setIsBookingLoading(true);
       try {
         const result = await createBookingQuote(user.token, spot.parkingSpotId, { startDate, endDate });
+        const quoteMismatch = validateQuoteMatchesSelection(
+          result.data,
+          startDate,
+          endDate,
+          rangeValidation.openDates.length,
+        );
+        if (quoteMismatch) {
+          const spanned = getMonthsBetween(startDate, endDate);
+          setAvailabilityByMonth((current) => {
+            const next = { ...current };
+            for (const month of spanned) delete next[month];
+            return next;
+          });
+          setBookingError(quoteMismatch);
+          return;
+        }
         setQuote(result.data);
       } catch (error) {
         setBookingError(error instanceof Error ? error.message : 'Unable to create booking quote.');
@@ -1133,7 +1218,7 @@ export default function ParkingDetail() {
                 <p className="text-xs text-white/80 flex items-center gap-1 mt-0.5">
                   <MapPin size={12} className="shrink-0" />
                   <span>{stationName ? `Near ${stationName}` : spot.station || 'Klang Valley'}</span>
-                  {spot.distanceToStation > 0 && <span>· {(spot.distanceToStation / 1000).toFixed(2)} km</span>}
+                  {spot.distanceToStation > 0 && <span>· {spot.distanceToStation.toFixed(2)} km</span>}
                 </p>
               </div>
             </div>
@@ -1178,7 +1263,10 @@ export default function ParkingDetail() {
                     </div>
                   </div>
                   {vehicles.find(v => v.vehicleId === selectedVehicleId)?.plate && (
-                    <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-white/10 border border-black/[0.06] dark:border-white/10 text-[#111] dark:text-white">
+                    <span
+                      className="max-w-[160px] truncate font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-white/10 border border-black/[0.06] dark:border-white/10 text-[#111] dark:text-white"
+                      title={vehicles.find(v => v.vehicleId === selectedVehicleId)?.plate}
+                    >
                       {vehicles.find(v => v.vehicleId === selectedVehicleId)?.plate}
                     </span>
                   )}
@@ -1518,21 +1606,32 @@ export default function ParkingDetail() {
               {/* ── TAB 1: RESERVE BAY & UNBOXED CALENDAR ── */}
               {activeTab === 'reserve' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="text-base sm:text-lg font-bold text-[#111] dark:text-white">
                         Select Booking Dates
                       </h3>
                       <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA]">
-                        {isAvailabilityLoading
-                          ? 'Checking spot availability…'
-                          : currentMonthAvailability
-                            ? `${currentMonthAvailability.totalAvailableDates} available days published for this period`
-                            : 'Choose dates to reserve your bay'}
+                        {!user?.token
+                          ? 'Sign in to check live date availability'
+                          : isAvailabilityLoading
+                            ? 'Checking spot availability…'
+                            : currentMonthAvailability
+                              ? `${currentMonthAvailability.totalAvailableDates} available days published for this period`
+                              : 'Choose consecutive available dates to reserve your bay'}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-1.5">
+                      {startDate && (
+                        <button
+                          type="button"
+                          onClick={clearSelectedDates}
+                          className="mr-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/[0.08] hover:text-[#111] dark:hover:text-white transition cursor-pointer"
+                        >
+                          Clear dates
+                        </button>
+                      )}
                       <button
                         type="button"
                         aria-label="Previous month"
@@ -1557,6 +1656,41 @@ export default function ParkingDetail() {
                     </div>
                   </div>
 
+                  {!user?.token && (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#007AFF]/20 bg-[#f0f7ff] dark:border-blue-500/30 dark:bg-blue-950/30 p-3 text-xs text-[#007AFF] dark:text-[#3894FF]">
+                      <span>Sign in to view live availability dates and reserve this bay.</span>
+                      <button
+                        type="button"
+                        onClick={() => promptLogin('Reserve Parking Bay', 'Sign in to check live date availability and reserve this parking bay.')}
+                        className="shrink-0 rounded-lg bg-[#007AFF] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0066d6] cursor-pointer"
+                      >
+                        Sign in
+                      </button>
+                    </div>
+                  )}
+
+                  {availabilityError && (
+                    <div
+                      role="alert"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs text-rose-700 dark:text-rose-300"
+                    >
+                      <span className="flex items-start gap-2">
+                        <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                        <span>{availabilityError}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAvailabilityError(null);
+                          setAvailabilityRetryKey((value) => value + 1);
+                        }}
+                        className="shrink-0 font-semibold underline underline-offset-2 cursor-pointer"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
                   {/* Unboxed Calendar Grid */}
                   <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-[#FBFBFC] dark:bg-white/[0.02] p-4 sm:p-5">
                     <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#71717A] pb-2 border-b border-black/[0.04] dark:border-white/[0.06]" aria-hidden="true">
@@ -1573,40 +1707,38 @@ export default function ParkingDetail() {
                         const isEndpoint = isStart || isEnd;
                         const isInCalendarSpan = Boolean(startDate && endDate && dateKey > startDate && dateKey < endDate);
                         const isInRangeOpen = isInCalendarSpan && isAvailable;
-                        const isInRangeClosed = isInCalendarSpan && !isAvailable;
                         const isPast = dateKey < minimumBookingDate;
                         const isToday = dateKey === toDateInput(today);
+                        const isDisabled = isPast || !isAvailable || isAvailabilityLoading;
                         return (
                           <button
                             key={dateKey}
                             type="button"
-                            disabled={isPast || isAvailabilityLoading}
+                            disabled={isDisabled}
                             title={
-                              isEndpoint
-                                ? `${formatDateKey(dateKey)} (${isStart ? 'Booking Start' : 'Booking End'})`
-                                : isInRangeOpen
-                                  ? `${formatDateKey(dateKey)} (Available · Included in booking)`
-                                  : isInRangeClosed
-                                    ? `${formatDateKey(dateKey)} (Closed · Excluded from booking)`
+                              isEndpoint && !isAvailable
+                                ? `${formatDateKey(dateKey)} (Unavailable)`
+                                : isEndpoint
+                                  ? `${formatDateKey(dateKey)} (${isStart ? 'Booking Start' : 'Booking End'})`
+                                  : isInRangeOpen
+                                    ? `${formatDateKey(dateKey)} (Available · Included in booking)`
                                     : isAvailable
                                       ? `${formatDateKey(dateKey)} (Available)`
-                                      : `${formatDateKey(dateKey)} (Closed · Click to continue to next open date)`
+                                      : `${formatDateKey(dateKey)} (Unavailable / Booked)`
                             }
-                            aria-label={`${formatDateKey(dateKey)}${isAvailable ? ', available' : ', closed'}${isEndpoint ? ', selected' : isInRangeOpen ? ', in booking range' : isInRangeClosed ? ', closed and excluded' : ''}`}
-                            aria-pressed={isEndpoint}
+                            aria-label={`${formatDateKey(dateKey)}${isAvailable ? ', available' : ', unavailable'}${isEndpoint ? ', selected' : isInRangeOpen ? ', in booking range' : ''}`}
+                            aria-pressed={isEndpoint && isAvailable}
                             onClick={() => handleDateSelection(dateKey)}
-                            className={`relative flex min-h-10 sm:min-h-11 items-center justify-center rounded-xl text-xs sm:text-[13px] font-semibold transition cursor-pointer select-none ${
-                              isEndpoint
-                                ? 'bg-[#007AFF] dark:bg-[#0071E3] text-white shadow-sm font-bold'
-                                : isInRangeOpen
-                                  ? 'bg-[#e8f0fe] dark:bg-blue-950/60 text-[#0066d6] dark:text-blue-200 font-semibold'
-                                  : isInRangeClosed
-                                    ? 'bg-slate-100/70 dark:bg-white/[0.04] text-[#8e8e93] dark:text-[#71717A] border border-dashed border-slate-300/80 dark:border-white/10 line-through decoration-slate-400 dark:decoration-white/30'
-                                    : isAvailable
-                                      ? 'bg-white dark:bg-[#1E1E22] text-[#111] dark:text-white ring-1 ring-[#e8eaed] dark:ring-white/10 hover:bg-[#e8f0fe] dark:hover:bg-[#2C2C32] hover:text-[#0066d6] dark:hover:text-white'
-                                      : isPast
-                                        ? 'cursor-not-allowed bg-transparent text-[#c7c7cc] dark:text-[#3F3F46]'
-                                        : 'bg-transparent text-[#8e8e93] dark:text-[#71717A] hover:bg-slate-100 dark:hover:bg-white/[0.05]'
+                            className={`relative flex min-h-10 sm:min-h-11 items-center justify-center rounded-xl text-xs sm:text-[13px] font-semibold transition select-none ${
+                              isEndpoint && !isAvailable
+                                ? 'cursor-not-allowed bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 line-through'
+                                : isEndpoint
+                                  ? 'cursor-pointer bg-[#007AFF] dark:bg-[#0071E3] text-white shadow-sm font-bold'
+                                  : isInRangeOpen
+                                    ? 'cursor-pointer bg-[#e8f0fe] dark:bg-blue-950/60 text-[#0066d6] dark:text-blue-200 font-semibold'
+                                    : isAvailable && !isDisabled
+                                      ? 'cursor-pointer bg-white dark:bg-[#1E1E22] text-[#111] dark:text-white ring-1 ring-[#e8eaed] dark:ring-white/10 hover:bg-[#e8f0fe] dark:hover:bg-[#2C2C32] hover:text-[#0066d6] dark:hover:text-white'
+                                      : 'cursor-not-allowed bg-transparent text-[#c7c7cc] dark:text-[#3F3F46]'
                             } ${isToday && !isEndpoint ? 'ring-2 ring-[#007AFF]/30 dark:ring-[#0071E3]/50' : ''}`}
                           >
                             {dateFromKey(dateKey).getDate()}
@@ -1621,15 +1753,14 @@ export default function ParkingDetail() {
                     <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] pt-3 border-t border-black/[0.04] dark:border-white/[0.06]">
                       <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#34c759] dark:bg-[#30D158]" /> Available</span>
                       <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3]" /> Selected</span>
-                      <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#c7c7cc] dark:bg-[#52525B]" /> Unavailable / Closed</span>
-                      <span className="inline-flex items-center gap-1.5 text-slate-400 dark:text-[#71717A]"><span className="line-through decoration-slate-400">12</span> Excluded</span>
+                      <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#c7c7cc] dark:bg-[#52525B]" /> Unavailable / Booked</span>
                     </div>
                   </div>
 
                   {/* Range selection notices */}
                   {startDate && !endDate && !dateSelectionError && (
                     <div className="flex items-center justify-between gap-3 rounded-xl bg-[#f0f7ff] dark:bg-blue-950/30 p-3 border border-[#007AFF]/20 dark:border-blue-500/30">
-                      <p className="text-xs font-medium text-[#007AFF] dark:text-[#3894FF]">Choose an end date, or reserve for 1 day.</p>
+                      <p className="text-xs font-medium text-[#007AFF] dark:text-[#3894FF]">Choose a consecutive end date, or reserve for 1 day.</p>
                       <button
                         type="button"
                         onClick={() => handleDateSelection(startDate)}
@@ -1640,23 +1771,18 @@ export default function ParkingDetail() {
                     </div>
                   )}
 
-                  {startDate && endDate && startDate === endDate && !dateSelectionError && (
+                  {startDate && endDate && startDate === endDate && !dateSelectionError && !dateValidationError && (
                     <p className="text-xs font-medium text-[#16a34a]">
-                      ✓ 1-day booking selected for {formatDateKey(startDate)}. Click any later date on the calendar to extend your reservation.
+                      ✓ 1-day booking selected for {formatDateKey(startDate)}. Click any later consecutive available date on the calendar to extend your reservation.
                     </p>
                   )}
 
-                  {startDate && endDate && startDate !== endDate && !dateSelectionError && !dateValidationError && (
+                  {startDate && endDate && startDate !== endDate && !dateSelectionError && !dateValidationError && rangeValidation.isValid && (
                     <div className="rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/40 p-3 text-xs text-emerald-800 dark:text-emerald-300">
                       <div className="flex items-center gap-1.5 font-semibold">
                         <span>✓</span>
-                        <span>{openDaysInRange.length} open day{openDaysInRange.length === 1 ? '' : 's'} selected ({formatDateKey(startDate)} – {formatDateKey(endDate)})</span>
+                        <span>{openDaysInRange.length} consecutive day{openDaysInRange.length === 1 ? '' : 's'} selected ({formatDateKey(startDate)} – {formatDateKey(endDate)})</span>
                       </div>
-                      {closedDaysInRangeCount > 0 && (
-                        <p className="mt-0.5 text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
-                          {closedDaysInRangeCount} closed date{closedDaysInRangeCount === 1 ? '' : 's'} automatically excluded from pricing.
-                        </p>
-                      )}
                     </div>
                   )}
 
@@ -2196,7 +2322,7 @@ export default function ParkingDetail() {
               {quote && (
                 <div className="space-y-2 pt-2 text-xs border-t border-black/[0.06] dark:border-white/[0.08]">
                   <div className="flex justify-between">
-                    <span className="text-[#5f6368] dark:text-[#A1A1AA]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} open day{quote.bookedDays === 1 ? '' : 's'}</span>
+                    <span className="text-[#5f6368] dark:text-[#A1A1AA]">RM {quote.ratePerDay.toFixed(2)} × {quote.bookedDays} day{quote.bookedDays === 1 ? '' : 's'}</span>
                     <span className="font-semibold text-[#111] dark:text-white">RM {quote.rentalSubtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
@@ -2540,9 +2666,9 @@ export default function ParkingDetail() {
                 </span>
               </div>
               {activeVehicle && (
-                <div className="flex items-center justify-between">
-                  <span className="text-[#86868b]">Vehicle</span>
-                  <span className="font-medium text-white">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[#86868b] shrink-0">Vehicle</span>
+                  <span className="font-medium text-white truncate max-w-[220px]" title={`${activeVehicle.plate} ${activeVehicle.makeModel ? `· ${activeVehicle.makeModel}` : ''}`}>
                     {activeVehicle.plate} {activeVehicle.makeModel ? `· ${activeVehicle.makeModel}` : ''}
                   </span>
                 </div>
