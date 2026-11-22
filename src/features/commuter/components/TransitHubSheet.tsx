@@ -261,8 +261,8 @@ export default function TransitHubSheet({
     latitude: activeStop?.latitude || 0,
     longitude: activeStop?.longitude || 0,
     stationName: stop.stopName,
-    distanceToStation: spot.distanceMeters / 1000,
-    timeToStationInMinutes: spot.walkingTimeMinutes || calculateWalkingMinutes(spot.distanceMeters),
+    distanceToStation: Number((spot.distanceMeters / 1000).toFixed(2)),
+    timeToStationInMinutes: calculateWalkingMinutes(spot.distanceMeters, { isStationDestination: true }),
     availabilityStatus: spot.availabilityStatus,
     monthlyRate: spot.monthlyRate,
     dailyRate: spot.dailyRate,
@@ -430,7 +430,7 @@ export default function TransitHubSheet({
                         <span className="flex items-center gap-1 text-blue-600 font-medium">
                           <Navigation className="w-3 h-3" />
                           {formatDistance(activeStop.distanceMeters)}{' '}
-                          ({calculateWalkingMinutes(activeStop.distanceMeters)} min walk)
+                          ({calculateWalkingMinutes(activeStop.distanceMeters, { isStationDestination: true })} min walk)
                         </span>
                       )}
                     </div>
@@ -687,7 +687,7 @@ export default function TransitHubSheet({
                             </span>
                           </div>
                           <p className="text-[10px] text-slate-500 dark:text-[#A1A1AA] mt-0.5">
-                            Bay {spot.parkingLabel} · {calculateWalkingMinutes(spot.distanceMeters)} min walk ({formatDistance(spot.distanceMeters)})
+                            Bay {spot.parkingLabel} · {calculateWalkingMinutes(spot.distanceMeters, { isStationDestination: true })} min walk ({formatDistance(spot.distanceMeters)})
                           </p>
                         </div>
 
@@ -761,7 +761,7 @@ export default function TransitHubSheet({
                           </span>
                         </div>
                         <span className="text-[10px] font-mono font-medium text-slate-500 dark:text-[#A1A1AA] shrink-0 ml-1">
-                          {station.distanceMeters ? `${calculateWalkingMinutes(station.distanceMeters)}m` : (station.walkingTimeMinutes ? `${station.walkingTimeMinutes}m` : '')}
+                          {station.distanceMeters ? `${calculateWalkingMinutes(station.distanceMeters, { isStationDestination: true })}m` : (station.walkingTimeMinutes ? `${station.walkingTimeMinutes}m` : '')}
                         </span>
                       </button>
                     );

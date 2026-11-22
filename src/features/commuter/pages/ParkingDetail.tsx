@@ -25,7 +25,11 @@ import { Bus, Footprints, Sparkles, Compass, CheckCircle2, Zap, Umbrella, Access
 import { getPublicParkingSpot } from '../api/parkingApi';
 import { AiCongestionForecastCard } from '../components/AiCongestionForecastCard';
 import { GracePeriodRoadAnimation } from '../components/GracePeriodRoadAnimation';
-import { calculateWalkingMinutes } from '@/services/pedestrianWalkingService';
+import {
+  calculateWalkingMinutes,
+  resolveCanonicalStation,
+  resolveSpotStationWalkMetrics,
+} from '@/services/pedestrianWalkingService';
 import { getTransitStops } from '@/services/gtfsApi';
 import {
   confirmBooking,
@@ -183,6 +187,21 @@ export default function ParkingDetail() {
   ).trim();
 
   useEffect(() => {
+    const originHint =
+      spot && (spot.lat || spot.latitude) && (spot.lon || spot.lng || spot.longitude)
+        ? {
+            lat: Number(spot.lat || spot.latitude),
+            lng: Number(spot.lon || spot.lng || spot.longitude),
+          }
+        : null;
+    const canonical = resolveCanonicalStation(stationName, originHint, {
+      lat: stateStationCoords?.lat ?? spot?.stationLatitude,
+      lon: stateStationCoords?.lon ?? spot?.stationLongitude,
+    });
+    if (canonical) {
+      setResolvedStationCoords({ lat: canonical.lat, lon: canonical.lng });
+      return;
+    }
     if (stateStationCoords?.lat && stateStationCoords?.lon) {
       setResolvedStationCoords(stateStationCoords);
       return;
@@ -206,7 +225,18 @@ export default function ParkingDetail() {
         })
         .catch(() => {});
     }
-  }, [stateStationCoords?.lat, stateStationCoords?.lon, spot?.stationLatitude, spot?.stationLongitude, stationName]);
+  }, [
+    stateStationCoords?.lat,
+    stateStationCoords?.lon,
+    spot?.lat,
+    spot?.latitude,
+    spot?.lon,
+    spot?.lng,
+    spot?.longitude,
+    spot?.stationLatitude,
+    spot?.stationLongitude,
+    stationName,
+  ]);
 
   const [walkingInfo, setWalkingInfo] = useState<WalkingInfo | null>(null);
   const [multimodalPlan, setMultimodalPlan] = useState<MultimodalPlanResult | null>(null);
@@ -234,6 +264,15 @@ export default function ParkingDetail() {
         const latitude = d.latitude ?? 0;
         const longitude = d.longitude ?? 0;
         const hasCoordinates = latitude !== 0 || longitude !== 0;
+        const walkMetrics = resolveSpotStationWalkMetrics({
+          latitude,
+          longitude,
+          stationName: d.stationName,
+          stationLatitude: d.stationLatitude,
+          stationLongitude: d.stationLongitude,
+          rawDistanceToStationMeters: d.distanceToStationMeters,
+          rawTimeToStationInMinutes: d.timeToStationInMinutes,
+        });
         const mockSpot: MockParkingSpot = {
           id: String(d.parkingSpotId),
           parkingSpotId: d.parkingSpotId,
@@ -248,8 +287,10 @@ export default function ParkingDetail() {
           lon: longitude,
           hasCoordinates,
           stationName: d.stationName ?? '',
-          distanceToStation: (d.distanceToStationMeters ?? 0) / 1000,
-          timeToStationInMinutes: d.timeToStationInMinutes ?? 0,
+          stationLatitude: walkMetrics.stationCoords?.lat ?? d.stationLatitude ?? null,
+          stationLongitude: walkMetrics.stationCoords?.lng ?? d.stationLongitude ?? null,
+          distanceToStation: walkMetrics.distanceToStationKm,
+          timeToStationInMinutes: walkMetrics.timeToStationInMinutes,
           availabilityStatus: String(d.availabilityStatus),
           monthlyRate: d.monthlyRate,
           dailyRate: d.dailyRate,
@@ -261,7 +302,7 @@ export default function ParkingDetail() {
           station: d.stationName ?? '',
           name: d.propertyName || d.address,
           pricePerHour: d.dailyRate ?? 0,
-          distance: 0,
+          distance: walkMetrics.distanceToStationMeters,
           available: d.isPublished,
           type: 'Condo Bay',
           owner: d.ownerName || 'Bay Owner',
@@ -393,6 +434,12 @@ export default function ParkingDetail() {
   })();
 
   const calculatedWalkMinutes = useMemo(() => {
+    const directWalkItinerary = multimodalPlan?.allItineraries.find(
+      (it) => it.type === 'direct_walk',
+    );
+    if (directWalkItinerary?.totalDurationMinutes) {
+      return directWalkItinerary.totalDurationMinutes;
+    }
     if (walkingInfo?.durationMinutes) {
       return walkingInfo.durationMinutes;
     }
@@ -403,7 +450,12 @@ export default function ParkingDetail() {
       return calculateWalkingMinutes(spot.distanceToStation * 1000, { isStationDestination: true });
     }
     return null;
-  }, [walkingInfo?.durationMinutes, spot?.distanceToStation, spot?.timeToStationInMinutes]);
+  }, [
+    multimodalPlan,
+    walkingInfo?.durationMinutes,
+    spot?.distanceToStation,
+    spot?.timeToStationInMinutes,
+  ]);
 
   useEffect(() => {
     if (!bayCoordinates || !resolvedStationCoords) {
@@ -412,9 +464,22 @@ export default function ParkingDetail() {
       return;
     }
     setIsLoadingRoute(true);
-    getWalkingRoute(bayCoordinates.lat, bayCoordinates.lng, resolvedStationCoords.lat, resolvedStationCoords.lon)
-      .then(setWalkingInfo).finally(() => setIsLoadingRoute(false));
-  }, [bayCoordinates?.lat, bayCoordinates?.lng, resolvedStationCoords?.lat, resolvedStationCoords?.lon]);
+    getWalkingRoute(
+      bayCoordinates.lat,
+      bayCoordinates.lng,
+      resolvedStationCoords.lat,
+      resolvedStationCoords.lon,
+      stationName,
+    )
+      .then(setWalkingInfo)
+      .finally(() => setIsLoadingRoute(false));
+  }, [
+    bayCoordinates?.lat,
+    bayCoordinates?.lng,
+    resolvedStationCoords?.lat,
+    resolvedStationCoords?.lon,
+    stationName,
+  ]);
 
   useEffect(() => {
     if (!spot || !bayCoordinates) {

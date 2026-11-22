@@ -6,10 +6,16 @@ import {
   RapidBusStop,
 } from './rapidBusService';
 import {
+  buildCanonicalRouteCacheKey,
   calculateStepDurationSeconds,
   calculateWalkingMinutes,
+  cleanStationDisplayName,
   estimateNetworkWalkingDistanceMeters,
   formatDistance,
+  getCachedCanonicalRouteDistanceMeters,
+  normalizeStationKey,
+  resolveCanonicalStation,
+  setCachedCanonicalRouteDistanceMeters,
 } from './pedestrianWalkingService';
 import { RealtimeVehicle } from './gtfsRealtimeApi';
 import stationData from '../features/commuter/data/mrt_lrt_stations.json';
@@ -149,7 +155,7 @@ function distSq(lat1: number, lon1: number, lat2: number, lon2: number) {
 }
 
 /**
- * Step 1: 确定停车位的真实起点 (Passable street exit rather than building center)
+ * Step 1: 确定停车位的真实起点 (Keep canonical parking coordinates so all route views tally 100%)
  */
 export async function resolveParkingRealOrigin(origin: {
   name: string;
@@ -160,26 +166,6 @@ export async function resolveParkingRealOrigin(origin: {
   exitCoords: { lat: number; lng: number };
   exitName: string;
 }> {
-  try {
-    const url = `https://router.project-osrm.org/nearest/v1/foot/${origin.lng},${origin.lat}`;
-    const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      if (data.code === 'Ok' && data.waypoints && data.waypoints.length > 0) {
-        const wp = data.waypoints[0];
-        const snappedLat = wp.location[1];
-        const snappedLng = wp.location[0];
-        const streetName = wp.name ? `via ${wp.name}` : 'Pedestrian Gate';
-        return {
-          exitCoords: { lat: snappedLat, lng: snappedLng },
-          exitName: `${origin.name} (${streetName})`,
-        };
-      }
-    }
-  } catch (err) {
-    console.debug('[MultimodalRouter] OSRM origin snap fallback:', err);
-  }
-
   return {
     exitCoords: { lat: origin.lat, lng: origin.lng },
     exitName: `${origin.name} (Main Entrance)`,
@@ -187,7 +173,7 @@ export async function resolveParkingRealOrigin(origin: {
 }
 
 /**
- * Step 2: 找到候选 MRT/LRT 站点 (Spatial filtering & entrance determination)
+ * Step 2: 找到候选 MRT/LRT 站点 (Spatial filtering, canonical deduplication & entrance determination)
  */
 export function findCandidateTransitStations(
   originCoords: { lat: number; lng: number },
@@ -195,55 +181,84 @@ export function findCandidateTransitStations(
   maxCatchmentMeters = 3000,
 ): CandidateStation[] {
   const allStations = (stationData as any).features || [];
-  const candidates: CandidateStation[] = [];
+  const byKey = new Map<string, CandidateStation & { isTarget: boolean }>();
+  const targetKey = normalizeStationKey(targetStationHint);
 
-  for (const f of allStations) {
-    const coords = f.geometry?.coordinates;
-    if (!coords || coords.length < 2) continue;
-    const sLat = coords[1];
-    const sLng = coords[0];
-    const rawName = String(f.properties?.name || f.properties?.['name:en'] || '');
-    const cleanName = rawName
-      .replace(/^(?:(?:AG|SP|KJ|KG|PY|MR|SA|KT|KB|KC|KA|KD)\d*\s*)+/i, '')
-      .replace(/\s+(?:LRT|MRT|Station)$/i, '')
-      .trim() || rawName;
-    const ref = String(f.properties?.ref || '');
-
-    const dist = distanceMetersBetween(originCoords.lat, originCoords.lng, sLat, sLng);
-    const isTarget = targetStationHint && cleanName.toLowerCase().includes(targetStationHint.toLowerCase());
-
-    if (dist <= maxCatchmentMeters || isTarget) {
-      // Determine Station Entrance: Offset slightly towards pedestrian street link
-      const entranceOffsetMeters = 25;
-      const angle = Math.atan2(originCoords.lat - sLat, originCoords.lng - sLng);
-      const entranceLat = sLat + (entranceOffsetMeters / 111320) * Math.sin(angle);
-      const entranceLng =
-        sLng + (entranceOffsetMeters / (111320 * Math.cos((sLat * Math.PI) / 180))) * Math.cos(angle);
-
-      candidates.push({
-        name: cleanName,
-        code: ref,
-        centroid: { lat: sLat, lng: sLng },
+  if (targetKey) {
+    const canonicalTarget = resolveCanonicalStation(targetStationHint, originCoords);
+    if (canonicalTarget) {
+      const dist = distanceMetersBetween(
+        originCoords.lat,
+        originCoords.lng,
+        canonicalTarget.lat,
+        canonicalTarget.lng,
+      );
+      byKey.set(targetKey, {
+        name: canonicalTarget.name,
+        code: canonicalTarget.code,
+        centroid: { lat: canonicalTarget.lat, lng: canonicalTarget.lng },
         entrance: {
-          name: `${cleanName} - Entrance A (Pintu A)`,
-          lat: entranceLat,
-          lng: entranceLng,
+          name: `${canonicalTarget.name} - Entrance A (Pintu A)`,
+          lat: canonicalTarget.lat,
+          lng: canonicalTarget.lng,
         },
         euclideanDistanceMeters: Math.round(dist),
+        isTarget: true,
       });
     }
   }
 
-  // Sort candidates: Target station first, then closest
-  return candidates
-    .sort((a, b) => {
-      const aTarget = targetStationHint && a.name.toLowerCase().includes(targetStationHint.toLowerCase());
-      const bTarget = targetStationHint && b.name.toLowerCase().includes(targetStationHint.toLowerCase());
-      if (aTarget && !bTarget) return -1;
-      if (!aTarget && bTarget) return 1;
-      return a.euclideanDistanceMeters - b.euclideanDistanceMeters;
-    })
-    .slice(0, 3);
+  for (const f of allStations) {
+    const coords = f.geometry?.coordinates;
+    if (!coords || coords.length < 2) continue;
+    const rawName = String(f.properties?.name || f.properties?.['name:en'] || '');
+    const cleanName = cleanStationDisplayName(rawName) || rawName;
+    const key = normalizeStationKey(cleanName);
+    if (!key) continue;
+
+    const canonical = resolveCanonicalStation(cleanName, originCoords);
+    const sLat = canonical ? canonical.lat : Number(coords[1]);
+    const sLng = canonical ? canonical.lng : Number(coords[0]);
+    const ref = canonical?.code || String(f.properties?.ref || '');
+
+    const dist = distanceMetersBetween(originCoords.lat, originCoords.lng, sLat, sLng);
+    const isTarget = Boolean(
+      targetKey && (key === targetKey || key.includes(targetKey) || targetKey.includes(key)),
+    );
+
+    if (dist <= maxCatchmentMeters || isTarget) {
+      const existing = byKey.get(key);
+      if (!existing || dist < existing.euclideanDistanceMeters || (isTarget && !existing.isTarget)) {
+        const displayName = canonical?.name || cleanName;
+        byKey.set(key, {
+          name: displayName,
+          code: ref,
+          centroid: { lat: sLat, lng: sLng },
+          entrance: {
+            name: `${displayName} - Entrance A (Pintu A)`,
+            lat: sLat,
+            lng: sLng,
+          },
+          euclideanDistanceMeters: Math.round(dist),
+          isTarget,
+        });
+      }
+    }
+  }
+
+  const sorted = Array.from(byKey.values()).sort((a, b) => {
+    if (a.isTarget && !b.isTarget) return -1;
+    if (!a.isTarget && b.isTarget) return 1;
+    return a.euclideanDistanceMeters - b.euclideanDistanceMeters;
+  });
+
+  // When a target station is explicitly assigned to this parking spot, scope to it so we don't show duplicate or unrelated stations.
+  const targetMatches = sorted.filter((s) => s.isTarget);
+  if (targetMatches.length > 0) {
+    return [targetMatches[0]];
+  }
+
+  return sorted.slice(0, 2);
 }
 
 /**
@@ -288,20 +303,44 @@ function slicePolylineBetween(
   }
 }
 
+const pedestrianFullRouteCache = new Map<
+  string,
+  {
+    distanceMeters: number;
+    durationMinutes: number;
+    geometry: [number, number][];
+    steps: JourneyStepInstruction[];
+  }
+>();
+
 /**
  * Fetch true pedestrian foot route via OSRM, with fallback.
- * Uses calibrated Google Maps & OpenTripPlanner pedestrian speed (4.8 km/h, 1.33 m/s)
- * with urban turn & crossing delays.
+ * Uses the unified calculateWalkingMinutes(distance, { isStationDestination: true }) formula
+ * and canonical route cache so Browse cards, ParkingDetail header, and Station Route tab tally 100%.
  */
 export async function getPedestrianWalkingRoute(
   start: { lat: number; lng: number; name?: string },
   end: { lat: number; lng: number; name?: string },
+  stationNameHint?: string | null,
 ): Promise<{
   distanceMeters: number;
   durationMinutes: number;
   geometry: [number, number][];
   steps: JourneyStepInstruction[];
 }> {
+  const cacheKey = buildCanonicalRouteCacheKey(start.lat, start.lng, end.lat, end.lng);
+  const cachedFull = pedestrianFullRouteCache.get(cacheKey);
+  if (cachedFull) {
+    return cachedFull;
+  }
+
+  const cachedCanonicalDist = getCachedCanonicalRouteDistanceMeters(
+    start.lat,
+    start.lng,
+    end.lat,
+    end.lng,
+    stationNameHint,
+  );
   const directDistance = distanceMetersBetween(start.lat, start.lng, end.lat, end.lng);
 
   try {
@@ -316,8 +355,6 @@ export async function getPedestrianWalkingRoute(
         );
 
         const steps: JourneyStepInstruction[] = [];
-        let totalStepSeconds = 0;
-        let turnsCount = 0;
 
         if (route.legs && route.legs[0]?.steps) {
           route.legs[0].steps.forEach((s: any) => {
@@ -338,12 +375,8 @@ export async function getPedestrianWalkingRoute(
               text = `Continue ${name}`.trim();
             }
 
-            const isTurn = modifier.includes('left') || modifier.includes('right');
-            if (isTurn) turnsCount++;
-
             const stepDist = Math.round(s.distance || 0);
             const stepDurationSec = calculateStepDurationSeconds(stepDist, modifier, maneuverType);
-            totalStepSeconds += stepDurationSec;
 
             steps.push({
               instruction: text,
@@ -359,28 +392,42 @@ export async function getPedestrianWalkingRoute(
           });
         }
 
-        const totalDist = Math.round(route.distance);
-        const durationMinutes = Math.max(
-          1,
-          totalStepSeconds > 0
-            ? Math.round(totalStepSeconds / 60)
-            : calculateWalkingMinutes(totalDist, { turnsCount, isStationDestination: true }),
+        const rawOsrmDist = Math.round(route.distance);
+        const totalDist =
+          cachedCanonicalDist !== null && cachedCanonicalDist > 0
+            ? Math.round(cachedCanonicalDist)
+            : rawOsrmDist;
+
+        setCachedCanonicalRouteDistanceMeters(
+          start.lat,
+          start.lng,
+          end.lat,
+          end.lng,
+          totalDist,
+          stationNameHint,
         );
 
-        return {
+        const durationMinutes = calculateWalkingMinutes(totalDist, { isStationDestination: true });
+
+        const result = {
           distanceMeters: totalDist,
           durationMinutes,
-          geometry: geom.length > 0 ? geom : [[start.lat, start.lng], [end.lat, end.lng]],
+          geometry: geom.length > 0 ? geom : ([[start.lat, start.lng], [end.lat, end.lng]] as [number, number][]),
           steps: steps.length > 0 ? steps : createFallbackSteps(start, end, totalDist, durationMinutes),
         };
+        pedestrianFullRouteCache.set(cacheKey, result);
+        return result;
       }
     }
   } catch (err) {
     console.debug('[MultimodalRouter] OSRM fetch fallback:', err);
   }
 
-  // Fallback: Real urban network distance (circuity factor 1.30) & calibrated walking speed 4.8 km/h (1.33 m/s)
-  const networkDistance = estimateNetworkWalkingDistanceMeters(directDistance);
+  // Fallback: Use cached canonical distance if available, otherwise urban circuity factor (1.30)
+  const networkDistance =
+    cachedCanonicalDist !== null && cachedCanonicalDist > 0
+      ? Math.round(cachedCanonicalDist)
+      : estimateNetworkWalkingDistanceMeters(directDistance);
   const durationMins = calculateWalkingMinutes(networkDistance, { isStationDestination: true });
   return {
     distanceMeters: networkDistance,
@@ -542,6 +589,7 @@ export async function planMultimodalJourney(
     const directWalkData = await getPedestrianWalkingRoute(
       { ...realOrigin.exitCoords, name: realOrigin.exitName },
       station.entrance,
+      station.name,
     );
 
     const directCost = calculateGeneralizedCost(

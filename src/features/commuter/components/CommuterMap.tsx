@@ -2627,7 +2627,7 @@ export default function CommuterMap({
                     </span>
                     <span className="text-slate-400 dark:text-[#A1A1AA] font-normal text-[9.5px]">
                       {spot.distanceToStation ? spot.distanceToStation.toFixed(1) : (spot.distance / 1000).toFixed(1)}km
-                      {spot.timeToStationInMinutes ? ` · ${spot.timeToStationInMinutes}m` : (spot.distanceToStation ? ` · ${Math.max(1, Math.round(spot.distanceToStation * 12.5))}m` : '')}
+                      {spot.timeToStationInMinutes ? ` · ${Math.round(spot.timeToStationInMinutes)}m` : (spot.distanceToStation ? ` · ${Math.max(1, Math.round(spot.distanceToStation * 12.5 + 0.75))}m` : '')}
                     </span>
                   </div>
                   {spot.address && (

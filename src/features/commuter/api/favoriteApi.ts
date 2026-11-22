@@ -1,4 +1,5 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
+import { resolveSpotStationWalkMetrics } from '@/services/pedestrianWalkingService';
 import type { ParkingSpot } from '../types';
 
 export interface FavoriteParkingData {
@@ -126,6 +127,13 @@ export function favoriteParkingSpotToParkingSpot(
 ): ParkingSpot {
   const latitude = favorite.latitude ?? cachedSpot?.latitude ?? 0;
   const longitude = favorite.longitude ?? cachedSpot?.longitude ?? 0;
+  const walkMetrics = resolveSpotStationWalkMetrics({
+    latitude,
+    longitude,
+    stationName: favorite.stationName,
+    rawDistanceToStationKm: favorite.distanceToStation,
+    rawTimeToStationInMinutes: favorite.timeToStationInMinutes,
+  });
 
   return {
     id: String(favorite.parkingSpotId),
@@ -137,8 +145,8 @@ export function favoriteParkingSpotToParkingSpot(
     latitude,
     longitude,
     stationName: favorite.stationName,
-    distanceToStation: favorite.distanceToStation,
-    timeToStationInMinutes: favorite.timeToStationInMinutes,
+    distanceToStation: walkMetrics.distanceToStationKm,
+    timeToStationInMinutes: walkMetrics.timeToStationInMinutes,
     availabilityStatus: favorite.availabilityStatus,
     monthlyRate: favorite.monthlyRate,
     dailyRate: favorite.dailyRate,
@@ -146,7 +154,7 @@ export function favoriteParkingSpotToParkingSpot(
     station: favorite.stationName,
     name: favorite.propertyName,
     pricePerHour: cachedSpot?.pricePerHour ?? 0,
-    distance: Math.round(favorite.distanceToStation * 1000),
+    distance: walkMetrics.distanceToStationMeters,
     lat: latitude,
     lng: longitude,
     available: favorite.availabilityStatus.toLowerCase() === 'available',

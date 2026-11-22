@@ -113,7 +113,7 @@ function TransactionRow({ item }: { item: OwnerEarningsTransactionItem }) {
       amount={money(item.payout)}
     >
       {extras.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 dark:border-white/[0.08] pt-3">
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 dark:border-white/[0.08] pt-3">
           {extras.map((extra) => (
             <span key={extra.label} className="text-xs text-slate-500 dark:text-[#A1A1AA]">
               {extra.label} <span className="font-semibold text-slate-700 dark:text-white">{money(extra.amount)}</span>
@@ -380,7 +380,7 @@ export default function OwnerWalletPanel({ token, activeBank, onNavigateSettings
           <WorkspaceEmptyState icon={Clock3} title={typeFilter ? 'No matching transactions' : 'No earnings yet'} description={typeFilter ? 'Choose another transaction type.' : 'Payouts appear here when a booking is completed.'} />
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {items.map((item) => (
             <TransactionRow key={`${item.bookingId}-${item.createdAt}`} item={item} />
           ))}

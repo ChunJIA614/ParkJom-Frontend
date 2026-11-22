@@ -592,7 +592,7 @@ export default function CommuterBrowseView({
                           <span className="inline-flex items-center gap-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.07] px-2.5 py-1 text-[11px] font-medium text-[#3A3A3C] dark:text-[#D4D4D8]">
                             <TrainFront size={11} className="text-[#007AFF]" />
                             {spot.timeToStationInMinutes > 0
-                              ? `${spot.timeToStationInMinutes} min walk`
+                              ? `${Math.round(spot.timeToStationInMinutes)} min walk`
                               : 'Walking time unavailable'}
                           </span>
 

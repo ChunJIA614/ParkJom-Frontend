@@ -77,7 +77,10 @@ import {
 import type { DrivingRouteResult } from '@/services/drivingRouteService';
 import type { MultimodalPlanResult } from '@/services/multimodalRoutingService';
 import type { StationNearbyParkingSpot } from '@/services/gtfsApi';
-import { calculateWalkingMinutes } from '@/services/pedestrianWalkingService';
+import {
+  calculateWalkingMinutes,
+  resolveSpotStationWalkMetrics,
+} from '@/services/pedestrianWalkingService';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
@@ -175,27 +178,38 @@ const normalizePropertyAddress = (propertyName?: string, address?: string) => {
   return address;
 };
 
-const mapParkingResult = (spot: ParkingResultDto): ParkingSpot => ({
-  ...spot,
-  address: normalizePropertyAddress(spot.propertyName, spot.address),
-  id: String(spot.parkingSpotId),
-  station: spot.stationName,
-  name: spot.propertyName,
-  pricePerHour: 0,
-  distance: Math.round(spot.distanceToStation * 1000),
-  lat: spot.latitude,
-  lng: spot.longitude,
-  available: spot.availabilityStatus.toLowerCase() === 'available',
-  type: 'Condo Bay',
-  owner: spot.propertyName || `Property #${spot.propertyId}`,
-  hasEvCharging: Boolean(spot.hasEvCharging),
-  evChargingSpeed: spot.evChargingSpeed,
-  isCovered: Boolean(spot.isCovered),
-  isHandicapAccessible: Boolean(spot.isHandicapAccessible),
-  hasCctv: Boolean(spot.hasCctv),
-  averageRating: spot.averageRating ?? null,
-  totalReviews: spot.totalReviews ?? 0,
-});
+const mapParkingResult = (spot: ParkingResultDto): ParkingSpot => {
+  const walkMetrics = resolveSpotStationWalkMetrics({
+    latitude: spot.latitude,
+    longitude: spot.longitude,
+    stationName: spot.stationName,
+    rawDistanceToStationKm: spot.distanceToStation,
+    rawTimeToStationInMinutes: spot.timeToStationInMinutes,
+  });
+  return {
+    ...spot,
+    address: normalizePropertyAddress(spot.propertyName, spot.address),
+    id: String(spot.parkingSpotId),
+    station: spot.stationName,
+    name: spot.propertyName,
+    pricePerHour: 0,
+    distanceToStation: walkMetrics.distanceToStationKm,
+    timeToStationInMinutes: walkMetrics.timeToStationInMinutes,
+    distance: walkMetrics.distanceToStationMeters,
+    lat: spot.latitude,
+    lng: spot.longitude,
+    available: spot.availabilityStatus.toLowerCase() === 'available',
+    type: 'Condo Bay',
+    owner: spot.propertyName || `Property #${spot.propertyId}`,
+    hasEvCharging: Boolean(spot.hasEvCharging),
+    evChargingSpeed: spot.evChargingSpeed,
+    isCovered: Boolean(spot.isCovered),
+    isHandicapAccessible: Boolean(spot.isHandicapAccessible),
+    hasCctv: Boolean(spot.hasCctv),
+    averageRating: spot.averageRating ?? null,
+    totalReviews: spot.totalReviews ?? 0,
+  };
+};
 
 const BOOKING_HISTORY_PAGE_SIZE = 5;
 
@@ -1169,7 +1183,7 @@ export default function CommuterDashboard() {
   useEffect(() => {
     if (suggestedSpots.length > 0 || currentLocation) return;
     const controller = new AbortController();
-    getNearbyParking(3.1478, 101.6953, 30, controller.signal)
+    getNearbyParking(3.1478, 101.6953, 50, controller.signal)
       .then(async (res) => {
         const data = (await res.json().catch(() => null)) as ParkingSearchResponse | null;
         if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
@@ -1190,7 +1204,7 @@ export default function CommuterDashboard() {
       setSuggestionsError(null);
 
       try {
-        const response = await getNearbyParking(currentLocation.lat, currentLocation.lng, controller.signal);
+        const response = await getNearbyParking(currentLocation.lat, currentLocation.lng, 50, controller.signal);
         const data = await response.json().catch(() => null) as ParkingSearchResponse | null;
 
         if (!response.ok || !data?.success) {
@@ -1382,8 +1396,8 @@ export default function CommuterDashboard() {
       latitude: selectedStationCoords?.lat || 0,
       longitude: selectedStationCoords?.lng || 0,
       stationName: selectedStation,
-      distanceToStation: spot.distanceMeters / 1000,
-      timeToStationInMinutes: spot.walkingTimeMinutes,
+      distanceToStation: Number((spot.distanceMeters / 1000).toFixed(2)),
+      timeToStationInMinutes: calculateWalkingMinutes(spot.distanceMeters, { isStationDestination: true }),
       availabilityStatus: spot.availabilityStatus,
       monthlyRate: spot.monthlyRate,
       dailyRate: spot.dailyRate,

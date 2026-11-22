@@ -50,7 +50,7 @@ export default function ParkingPass({
               <div className="min-w-0">
                 <strong>{formatShortSpotName(spot.name)}</strong>
                 <span><MapPin size={12} /> Bay {spot.parkingLabel} · {spot.station}</span>
-                <span>{(spot.distanceToStation ?? 0).toFixed(2)} km · {spot.timeToStationInMinutes ?? 0} min · {formatShortAddress(spot.address, 30)}</span>
+                <span>{(spot.distanceToStation ?? 0).toFixed(2)} km · {Math.round(spot.timeToStationInMinutes ?? 0)} min · {formatShortAddress(spot.address, 30)}</span>
               </div>
               <span className="status-dot status-dot--success">{spot.availabilityStatus}</span>
             </div>
