@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -1127,7 +1128,7 @@ export default function ParkingDetail() {
       };
 
       const currentSession = loadJourneySession(user.userId);
-      if (!currentSession || new Date(currentSession.booking.endTime) <= new Date() || new Date(booking.startTime) <= new Date(currentSession.booking.startTime)) {
+      if (!currentSession || parseTimestamp(currentSession.booking.endTime) <= new Date() || parseTimestamp(booking.startTime) <= parseTimestamp(currentSession.booking.startTime)) {
         saveJourneySession(booking, 'reserved', user.userId);
       }
       setIsGracePeriodActive(false);
@@ -2203,7 +2204,7 @@ export default function ParkingDetail() {
                           </span>
                           <div>
                             <p className="text-xs sm:text-sm font-semibold text-[#111] dark:text-white">{review.reviewerName}</p>
-                            <p className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">Verified booking · {new Date(review.createdAt).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}</p>
+                            <p className="text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]">Verified booking · {parseTimestamp(review.createdAt).toLocaleDateString('en-MY', displayDateOptions({ month: 'short', day: 'numeric' }))}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -2398,7 +2399,7 @@ export default function ParkingDetail() {
                     <span>Total</span>
                     <span className="text-[#007AFF] dark:text-[#3894FF]">RM {quote.renterTotal.toFixed(2)}</span>
                   </div>
-                  <p className="text-[10px] text-[#9ca3af] dark:text-[#71717A] pt-0.5">Quote expires {new Date(quote.expiresAt).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}.</p>
+                  <p className="text-[10px] text-[#9ca3af] dark:text-[#71717A] pt-0.5">Quote expires {parseTimestamp(quote.expiresAt).toLocaleTimeString('en-MY', displayDateOptions({ hour: '2-digit', minute: '2-digit' }))}.</p>
                 </div>
               )}
 

@@ -1,3 +1,4 @@
+import { displayDateOptions } from '@/lib/dateTime';
 import React, { useState, useEffect } from 'react';
 import AdminPageHeader from '../components/AdminPageHeader';
 import DashboardHeader from '@/components/layout/DashboardHeader';
@@ -159,7 +160,7 @@ export default function AdminDashboard() {
       id: `LOG-${Date.now()}`,
       type,
       message,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date().toLocaleTimeString([], displayDateOptions({ hour: '2-digit', minute: '2-digit' })),
       user
     };
     setActivityLogs(prev => [newLog, ...prev]);

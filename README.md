@@ -151,3 +151,7 @@ npm run check
 ```
 
 All checks should finish without errors. The frontend CI workflow runs the same checks for pull requests and pushes to `main`.
+
+### Timestamp display timezone
+
+`VITE_TIME_ZONE=Asia/Kuala_Lumpur` displays timestamps in UTC+8 on every device. Restart development or rebuild after changing this Vite environment setting. Shared parsing accepts Unix seconds, milliseconds, numeric strings, and existing ISO dates. Formatting changes the display zone without shifting the instant or outgoing API values. Calendar-only dates keep their selected day.

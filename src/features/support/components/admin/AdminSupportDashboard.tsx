@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
@@ -146,12 +147,12 @@ function MetricCard({
 function formatMsgDate(value?: string | null) {
   if (!value) return '';
   try {
-    const d = new Date(value);
+    const d = parseTimestamp(value);
     if (isNaN(d.getTime())) return value;
-    return new Intl.DateTimeFormat('en-MY', {
+    return new Intl.DateTimeFormat('en-MY', displayDateOptions({
       hour: '2-digit',
       minute: '2-digit',
-    }).format(d);
+    })).format(d);
   } catch {
     return value;
   }
@@ -160,14 +161,14 @@ function formatMsgDate(value?: string | null) {
 function formatDateTime(value?: string | null) {
   if (!value) return '';
   try {
-    const d = new Date(value);
+    const d = parseTimestamp(value);
     if (isNaN(d.getTime())) return value;
-    return new Intl.DateTimeFormat('en-MY', {
+    return new Intl.DateTimeFormat('en-MY', displayDateOptions({
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-    }).format(d);
+    })).format(d);
   } catch {
     return value;
   }

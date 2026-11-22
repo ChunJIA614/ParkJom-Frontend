@@ -1,3 +1,4 @@
+import { displayDateOptions } from '@/lib/dateTime';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Bus, RefreshCw, Navigation, Gauge, Clock, ChevronRight, AlertCircle, Radio } from 'lucide-react';
 import {
@@ -314,7 +315,7 @@ export default function StationFeedersWidget({
             <span>{feeders.length} active vehicle{feeders.length === 1 ? '' : 's'} tracked</span>
             {lastUpdated && (
               <span className="text-[10px] text-slate-400 dark:text-[#71717a]">
-                Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                Updated {lastUpdated.toLocaleTimeString([], displayDateOptions({ hour: '2-digit', minute: '2-digit', second: '2-digit' }))}
               </span>
             )}
           </div>

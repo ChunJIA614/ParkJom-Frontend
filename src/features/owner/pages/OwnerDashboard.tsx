@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateKey } from '@/lib/dateTime';
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import {
   AlertCircle,
@@ -92,16 +93,16 @@ function saveNotifications(notifs: Notification[]) {
 }
 
 function toDateKey(value: string): string | null {
-  const isoDate = value.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  const isoDate = typeof value === 'string' ? value.match(/^\d{4}-\d{2}-\d{2}$/)?.[0] : undefined;
   if (isoDate) return isoDate;
-  const parsed = new Date(value);
+  const parsed = parseTimestamp(value);
   if (Number.isNaN(parsed.getTime())) return null;
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+  return displayDateKey(parsed);
 }
 
 function todayDateKey(): string {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return displayDateKey(now);
 }
 
 /**

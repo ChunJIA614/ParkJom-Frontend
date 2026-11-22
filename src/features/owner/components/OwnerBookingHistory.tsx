@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -38,16 +39,16 @@ const statusClasses: Record<string, string> = {
 };
 
 function formatDate(value: string): string {
-  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const dateOnly = typeof value === 'string' ? value.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
   const date = dateOnly
     ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
-    : new Date(value);
+    : parseTimestamp(value);
   if (Number.isNaN(date.getTime())) return value || '-';
-  return new Intl.DateTimeFormat('en-MY', {
+  return new Intl.DateTimeFormat('en-MY', displayDateOptions({
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-  }).format(date);
+  }, Boolean(dateOnly))).format(date);
 }
 
 function statusClass(status: string): string {

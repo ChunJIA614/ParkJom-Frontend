@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import AdminSummaryCounts from './AdminSummaryCounts';
 import AdminPageHeader from './AdminPageHeader';
 import SystemSelect from '@/components/ui/SystemSelect';
@@ -24,17 +25,17 @@ const getOutcome = (actions: string): Exclude<OutcomeFilter, 'all'> =>
   actions.toLowerCase().includes('[failed]') ? 'failed' : 'success';
 
 const formatAccessTime = (value: string) => {
-  const date = new Date(value);
+  const date = parseTimestamp(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleString([], {
+    : date.toLocaleString([], displayDateOptions({
         year: 'numeric',
         month: 'short',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
-      });
+      }));
 };
 
 const escapeCsvCell = (value: string | number | null) => {

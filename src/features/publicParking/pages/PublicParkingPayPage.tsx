@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
@@ -138,7 +139,7 @@ export default function PublicParkingPayPage() {
   useEffect(() => {
     if (!session || session.status === 'Exited' || session.exitTimeUtc) return;
 
-    const entryTime = new Date(session.entryTimeUtc).getTime();
+    const entryTime = parseTimestamp(session.entryTimeUtc).getTime();
     const update = () => {
       const diff = Math.max(0, Math.floor((Date.now() - entryTime) / 1000));
       setElapsedSeconds(diff);
@@ -542,7 +543,7 @@ export default function PublicParkingPayPage() {
                   </div>
                   <div className="flex justify-between gap-2">
                     <dt className="text-muted-foreground">Check-in time</dt>
-                    <dd className="tabular-nums">{new Date(session.entryTimeUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</dd>
+                    <dd className="tabular-nums">{parseTimestamp(session.entryTimeUtc).toLocaleTimeString([], displayDateOptions({ hour: '2-digit', minute: '2-digit' }))}</dd>
                   </div>
                   <div className="flex justify-between gap-2">
                     <dt className="text-muted-foreground">Hourly rate</dt>

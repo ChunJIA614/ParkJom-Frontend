@@ -1,3 +1,4 @@
+import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import AdminPageHeader from './AdminPageHeader';
 import React, { useState, useEffect } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
@@ -369,7 +370,7 @@ export default function AdminNotificationBroadcast() {
                       </td>
                       <td className="py-2.5 px-3 font-mono">{d.attemptCount}</td>
                       <td className="py-2.5 px-3 text-[#8e8e93]">
-                        {d.sentAt ? new Date(d.sentAt).toLocaleString() : 'Pending'}
+                        {d.sentAt ? parseTimestamp(d.sentAt).toLocaleString(undefined, displayDateOptions()) : 'Pending'}
                       </td>
                       <td className="py-2.5 px-3 max-w-xs truncate text-[#8e8e93]" title={d.lastError || ''}>
                         {d.lastError || '—'}

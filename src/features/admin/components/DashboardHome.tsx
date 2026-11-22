@@ -1,3 +1,4 @@
+import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
@@ -154,7 +155,7 @@ export default function DashboardHome({
           <Activity size={16} className="mt-0.5 shrink-0 text-[#007AFF]" />
           <p>
             {dashboard
-              ? `All counters and charts are aggregated live from platform records${dashboard.generatedAt ? ` as of ${new Date(dashboard.generatedAt).toLocaleString()}` : ''}.`
+              ? `All counters and charts are aggregated live from platform records${dashboard.generatedAt ? ` as of ${parseTimestamp(dashboard.generatedAt).toLocaleString(undefined, displayDateOptions())}` : ''}.`
               : 'Loading live platform metrics…'}
           </p>
         </div>

@@ -1,3 +1,4 @@
+import { parseTimestamp } from '@/lib/dateTime';
 import type { BookingAvailabilityResponse, BookingQuote } from '../api/bookingApi';
 
 export const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -263,7 +264,7 @@ export function validateQuoteMatchesSelection(
   if (quote.bookedDays !== expectedOpenDays) {
     return `The server returned a quote for ${quote.bookedDays} day${quote.bookedDays === 1 ? '' : 's'}, which does not match your ${expectedOpenDays} available selected day${expectedOpenDays === 1 ? '' : 's'}. Availability may have just changed — please review the calendar.`;
   }
-  const expiresMs = Date.parse(quote.expiresAt);
+  const expiresMs = parseTimestamp(quote.expiresAt).getTime();
   if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) {
     return 'This booking quote has expired. Please request a fresh quote.';
   }

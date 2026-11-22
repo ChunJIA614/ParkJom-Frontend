@@ -1,3 +1,4 @@
+import { displayDateOptions, DISPLAY_TIME_ZONE, parseTimestamp } from '@/lib/dateTime';
 /**
  * Date helpers for the management workspace.
  *
@@ -7,37 +8,45 @@
  * guard and an administrator abroad read the same clock.
  */
 
-export const PROPERTY_TIME_ZONE = 'Asia/Kuala_Lumpur';
+export const PROPERTY_TIME_ZONE = DISPLAY_TIME_ZONE;
 
 const HAS_ZONE = /(Z|[+-]\d{2}:?\d{2})$/i;
 
 /** Parse a backend naive local (MYT) timestamp. */
-export function parseLocalMyt(value: string | null | undefined): Date | null {
-  if (!value) return null;
+export function parseLocalMyt(value: string | number | null | undefined): Date | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' || /^-?\d+(?:\.\d+)?$/.test(value)) {
+    const date = parseTimestamp(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
   const parsed = new Date(HAS_ZONE.test(value) ? value : `${value}+08:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /** Parse a backend UTC timestamp that may be serialized without a `Z`. */
-export function parseUtc(value: string | null | undefined): Date | null {
-  if (!value) return null;
+export function parseUtc(value: string | number | null | undefined): Date | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' || /^-?\d+(?:\.\d+)?$/.test(value)) {
+    const date = parseTimestamp(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
   const parsed = new Date(HAS_ZONE.test(value) ? value : `${value}Z`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-const timeFormatter = new Intl.DateTimeFormat('en-MY', {
+const timeFormatter = new Intl.DateTimeFormat('en-MY', displayDateOptions({
   timeZone: PROPERTY_TIME_ZONE,
   hour: 'numeric',
   minute: '2-digit',
-});
+}));
 
-const dayFormatter = new Intl.DateTimeFormat('en-MY', {
+const dayFormatter = new Intl.DateTimeFormat('en-MY', displayDateOptions({
   timeZone: PROPERTY_TIME_ZONE,
   day: 'numeric',
   month: 'short',
-});
+}));
 
-const fullFormatter = new Intl.DateTimeFormat('en-MY', {
+const fullFormatter = new Intl.DateTimeFormat('en-MY', displayDateOptions({
   timeZone: PROPERTY_TIME_ZONE,
   weekday: 'short',
   day: 'numeric',
@@ -45,14 +54,14 @@ const fullFormatter = new Intl.DateTimeFormat('en-MY', {
   year: 'numeric',
   hour: 'numeric',
   minute: '2-digit',
-});
+}));
 
-const keyFormatter = new Intl.DateTimeFormat('en-CA', {
+const keyFormatter = new Intl.DateTimeFormat('en-CA', displayDateOptions({
   timeZone: PROPERTY_TIME_ZONE,
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
-});
+}));
 
 /** yyyy-MM-dd for a date as seen in Malaysia. */
 export function mytDateKey(date: Date = new Date()): string {

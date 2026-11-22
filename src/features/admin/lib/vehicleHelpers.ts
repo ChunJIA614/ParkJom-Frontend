@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import type { AdminVehicleDto } from '../types';
 import { validateVehiclePlate } from '@/features/commuter/lib/plateValidation';
 
@@ -60,16 +61,16 @@ export function getVehicleColorSwatch(color: string): string {
 }
 
 export function formatVehicleDate(value: string): string {
-  const date = new Date(value);
+  const date = parseTimestamp(value);
   return Number.isNaN(date.getTime())
     ? value || '—'
-    : date.toLocaleString([], {
+    : date.toLocaleString([], displayDateOptions({
         year: 'numeric',
         month: 'short',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-      });
+      }));
 }
 
 export function getVehicleOwnerKey(vehicle: AdminVehicleDto): string {
@@ -118,7 +119,7 @@ export function extractVehicleFilterOptions(vehicles: AdminVehicleDto[]): {
 }
 
 const toTimestamp = (value: string): number => {
-  const time = Date.parse(value);
+  const time = parseTimestamp(value).getTime();
   return Number.isFinite(time) ? time : 0;
 };
 

@@ -1,3 +1,4 @@
+import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -756,10 +757,10 @@ export const OwnerPublicParkingManager: React.FC = () => {
                             <Clock className="w-3 h-3" />
                             <span>
                               In:{' '}
-                              {new Date(session.entryTimeUtc).toLocaleTimeString([], {
+                              {parseTimestamp(session.entryTimeUtc).toLocaleTimeString([], displayDateOptions({
                                 hour: '2-digit',
                                 minute: '2-digit',
-                              })}
+                              }))}
                             </span>
                           </p>
                         </div>
