@@ -43,10 +43,74 @@ const validParking = sanitizeCopilotCard({
     stopId: 'KJ2',
     lineName: 'Kelana Jaya Line',
     primaryImageUrl: 'javascript:alert(1)',
+    isCovered: true,
+    hasEvCharging: true,
+    hasCctv: true,
+    availableOnRequestedDate: false,
+    nextAvailableDate: '2026-11-25',
   },
 });
 assert.equal(validParking?.type, 'parking');
 assert.equal(validParking?.data.primaryImageUrl, null);
+assert.equal(validParking?.data.isCovered, true);
+assert.equal(validParking?.data.hasEvCharging, true);
+assert.equal(validParking?.data.hasCctv, true);
+assert.equal(validParking?.data.availableOnRequestedDate, false);
+assert.equal(validParking?.data.nextAvailableDate, '2026-11-25');
+
+const validPublicLot = sanitizeCopilotCard({
+  type: 'publicParking',
+  data: {
+    publicParkingLotId: 7,
+    lotName: 'Subang Walk Public Lot',
+    address: 'Jalan SS 15/4, Subang Jaya',
+    latitude: 3.0762,
+    longitude: 101.5861,
+    distanceMeters: 180,
+    walkingTimeMinutes: 3,
+    availableSpaces: 42,
+    totalCapacity: 120,
+    isCurrentlyOpen: true,
+    openingTime: '06:00',
+    closingTime: '23:30',
+    hourlyRate: 2.5,
+    dailyCapRate: 12,
+    flatRatePerEntry: null,
+    nearestStationName: 'SS 15',
+    facilityPhotoUrl: 'data:text/html,<script>alert(1)</script>',
+  },
+});
+assert.equal(validPublicLot?.type, 'publicParking');
+assert.equal(validPublicLot?.data.facilityPhotoUrl, null);
+assert.equal(validPublicLot?.data.availableSpaces, 42);
+
+assert.equal(
+  sanitizeCopilotCard({
+    type: 'publicParking',
+    data: {
+      publicParkingLotId: 0,
+      lotName: 'Invalid Lot',
+      availableSpaces: -1,
+      totalCapacity: 10,
+      hourlyRate: 2,
+    },
+  }),
+  null,
+);
+
+assert.equal(
+  sanitizeCopilotCard({
+    type: 'publicParking',
+    data: {
+      publicParkingLotId: 9,
+      lotName: 'Bad Spaces',
+      availableSpaces: -5,
+      totalCapacity: 10,
+      hourlyRate: 2,
+    },
+  }),
+  null,
+);
 
 assert.equal(
   sanitizeCopilotCard({

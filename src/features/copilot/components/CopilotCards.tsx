@@ -31,6 +31,7 @@ import type {
   CopilotCard,
   CopilotDeparturesCardData,
   CopilotParkingCardData,
+  CopilotPublicParkingCardData,
 } from '../types';
 
 const AVAILABILITY_CACHE_TTL_MS = 30_000;
@@ -87,12 +88,29 @@ function ParkingCard({ data }: { data: CopilotParkingCardData }) {
           </p>
           <p className="truncate text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{data.address}</p>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
-            <span className="inline-flex items-center gap-1">
-              <Footprints size={12} /> {data.walkingTimeMinutes} min to {data.stationName}
-            </span>
+            {data.stationName && (
+              <span className="inline-flex items-center gap-1">
+                <Footprints size={12} /> {data.walkingTimeMinutes} min to {data.stationName}
+              </span>
+            )}
             {data.hasSmartBollard && (
               <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
                 <ShieldCheck size={12} /> Smart bollard
+              </span>
+            )}
+            {data.isCovered && (
+              <span className="rounded-md bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium">
+                Covered
+              </span>
+            )}
+            {data.hasEvCharging && (
+              <span className="rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 text-[10px] font-medium">
+                EV
+              </span>
+            )}
+            {data.hasCctv && (
+              <span className="rounded-md bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium">
+                CCTV
               </span>
             )}
             {data.predictedOccupancyPercent != null && (
@@ -100,13 +118,27 @@ function ParkingCard({ data }: { data: CopilotParkingCardData }) {
                 <Sparkles size={11} /> AI: {data.predictedOccupancyPercent}% est. occ ({data.riskLevel || 'Moderate'})
               </span>
             )}
+            {data.availableOnRequestedDate === false && data.nextAvailableDate && (
+              <span className="rounded-md bg-amber-500/12 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                Open {formatDate(data.nextAvailableDate)}
+              </span>
+            )}
           </div>
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between">
         <p className="text-[13px] font-semibold text-[#1d1d1f] dark:text-white">
-          {formatRm(data.dailyRate)}
-          <span className="text-[11px] font-normal text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
+          {data.dailyRate != null ? (
+            <>
+              {formatRm(data.dailyRate)}
+              <span className="text-[11px] font-normal text-[#6e6e73] dark:text-[#A1A1AA]"> / day</span>
+            </>
+          ) : (
+            <>
+              {formatRm(data.monthlyRate)}
+              <span className="text-[11px] font-normal text-[#6e6e73] dark:text-[#A1A1AA]"> / mo</span>
+            </>
+          )}
         </p>
         <button
           type="button"
@@ -115,6 +147,103 @@ function ParkingCard({ data }: { data: CopilotParkingCardData }) {
         >
           View bay
         </button>
+      </div>
+    </div>
+  );
+}
+
+function PublicParkingCard({ data }: { data: CopilotPublicParkingCardData }) {
+  const navigate = useNavigate();
+  const hasValidCoords = data.latitude !== 0 && data.longitude !== 0;
+  const mapsUrl = hasValidCoords
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${data.latitude},${data.longitude}`)}`
+    : null;
+
+  return (
+    <div className={cardShell}>
+      <div className="flex gap-3">
+        {data.facilityPhotoUrl ? (
+          <img
+            src={data.facilityPhotoUrl}
+            alt=""
+            className="h-16 w-16 flex-none rounded-xl object-cover bg-black/5"
+            loading="lazy"
+          />
+        ) : (
+          <div className="h-16 w-16 flex-none rounded-xl bg-emerald-500/10 grid place-items-center text-emerald-600 dark:text-emerald-400">
+            <MapPin size={22} />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="truncate text-[13px] font-semibold text-[#1d1d1f] dark:text-white">{data.lotName}</p>
+            <span className="rounded-full bg-[#007AFF]/10 px-2 py-0.5 text-[10px] font-semibold text-[#007AFF] dark:text-[#0A84FF]">
+              Drive-in
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                data.isCurrentlyOpen
+                  ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-rose-500/12 text-rose-700 dark:text-rose-400'
+              }`}
+            >
+              {data.isCurrentlyOpen ? 'Open now' : 'Closed'}
+            </span>
+          </div>
+          <p className="truncate text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{data.address}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
+            <span className="font-medium text-[#1d1d1f] dark:text-white">
+              {data.availableSpaces}/{data.totalCapacity} bays free
+            </span>
+            {data.nearestStationName && (
+              <span className="inline-flex items-center gap-1">
+                <Footprints size={12} /> {data.walkingTimeMinutes} min to {data.nearestStationName}
+              </span>
+            )}
+            {data.openingTime && (
+              <span className="inline-flex items-center gap-1">
+                <Clock size={11} />
+                {data.closingTime ? `${data.openingTime}–${data.closingTime}` : data.openingTime}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <p className="text-[13px] font-semibold text-[#1d1d1f] dark:text-white">
+          {data.flatRatePerEntry != null ? (
+            <>
+              Flat {formatRm(data.flatRatePerEntry)}
+              <span className="text-[11px] font-normal text-[#6e6e73] dark:text-[#A1A1AA]"> / entry</span>
+            </>
+          ) : (
+            <>
+              {formatRm(data.hourlyRate)}
+              <span className="text-[11px] font-normal text-[#6e6e73] dark:text-[#A1A1AA]">
+                {' '}/ hr{data.dailyCapRate != null ? ` · Cap ${formatRm(data.dailyCapRate)}` : ''}
+              </span>
+            </>
+          )}
+        </p>
+        <div className="flex items-center gap-1.5">
+          {mapsUrl && (
+            <a
+              href={mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full bg-slate-100 dark:bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-[#1d1d1f] dark:text-white hover:bg-slate-200 dark:hover:bg-white/15"
+            >
+              Directions
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate('/commuter/public-pay')}
+            className="rounded-full bg-[#007AFF]/10 px-3 py-1.5 text-[12px] font-semibold text-[#007AFF] dark:text-[#0A84FF] hover:bg-[#007AFF]/15 cursor-pointer"
+          >
+            Drive-in pay
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -315,6 +444,7 @@ function BookingProposalCard({ data }: { data: CopilotBookingProposalCardData })
 export function CopilotCardView({ card }: { card: CopilotCard }) {
   switch (card.type) {
     case 'parking': return <ParkingCard data={card.data} />;
+    case 'publicParking': return <PublicParkingCard data={card.data} />;
     case 'departures': return <DeparturesCard data={card.data} />;
     case 'bookingProposal': return <BookingProposalCard data={card.data} />;
     default: return null;

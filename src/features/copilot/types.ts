@@ -17,10 +17,36 @@ export interface CopilotParkingCardData {
   stopId: string;
   lineName: string | null;
   primaryImageUrl: string | null;
+  isCovered?: boolean;
+  hasEvCharging?: boolean;
+  hasCctv?: boolean;
+  isHandicapAccessible?: boolean;
+  availableOnRequestedDate?: boolean | null;
+  nextAvailableDate?: string | null;
   predictedOccupancyPercent?: number | null;
   probabilityFull?: number | null;
   riskLevel?: string | null;
   recommendedArriveBefore?: string | null;
+}
+
+export interface CopilotPublicParkingCardData {
+  publicParkingLotId: number;
+  lotName: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  walkingTimeMinutes: number;
+  availableSpaces: number;
+  totalCapacity: number;
+  isCurrentlyOpen: boolean;
+  openingTime: string | null;
+  closingTime: string | null;
+  hourlyRate: number;
+  dailyCapRate: number | null;
+  flatRatePerEntry: number | null;
+  nearestStationName: string;
+  facilityPhotoUrl: string | null;
 }
 
 export interface CopilotDeparture {
@@ -58,6 +84,7 @@ export interface CopilotBookingProposalCardData {
 
 export type CopilotCard =
   | { type: 'parking'; data: CopilotParkingCardData }
+  | { type: 'publicParking'; data: CopilotPublicParkingCardData }
   | { type: 'departures'; data: CopilotDeparturesCardData }
   | { type: 'bookingProposal'; data: CopilotBookingProposalCardData };
 

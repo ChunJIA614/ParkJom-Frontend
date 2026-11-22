@@ -3520,7 +3520,7 @@ export default function CommuterDashboard() {
                       {editPlateError ? (
                         <span className="block text-[11px] font-medium text-rose-600 dark:text-rose-400">{editPlateError}</span>
                       ) : (
-                        <span className="block text-[10px] text-[#8e8e93] dark:text-[#71717A]">Malaysian JPJ format, e.g. WXY 1234 or W 1234 A</span>
+                        <span className="block text-[10px] text-[#8e8e93] dark:text-[#71717A]">Malaysian JPJ format, e.g. WXY 1234, MADANI 88, or PUTRAJAYA 1234</span>
                       )}
                     </label>
                     <VehicleBrandModelFields
@@ -3576,7 +3576,7 @@ export default function CommuterDashboard() {
                       {addPlateError ? (
                         <span className="block text-[11px] font-medium text-rose-600 dark:text-rose-400">{addPlateError}</span>
                       ) : (
-                        <span className="block text-[10px] text-[#8e8e93] dark:text-[#71717A]">Malaysian JPJ format, e.g. WXY 1234 or W 1234 A</span>
+                        <span className="block text-[10px] text-[#8e8e93] dark:text-[#71717A]">Malaysian JPJ format, e.g. WXY 1234, MADANI 88, or PUTRAJAYA 1234</span>
                       )}
                     </label>
                     <VehicleBrandModelFields

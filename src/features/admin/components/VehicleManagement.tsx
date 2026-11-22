@@ -822,7 +822,7 @@ function VehicleFormFields({
           <span className="block text-[11px] font-medium text-rose-600 dark:text-rose-400">{plateError}</span>
         ) : (
           <span className="block text-[10px] text-slate-400 dark:text-[#71717A]">
-            Malaysian JPJ format, e.g. WXY 1234 or W 1234 A
+            Malaysian JPJ format, e.g. WXY 1234, MADANI 88, or PUTRAJAYA 1234
           </span>
         )}
       </label>

@@ -10,6 +10,7 @@ import type {
   CopilotCard,
   CopilotDeparturesCardData,
   CopilotParkingCardData,
+  CopilotPublicParkingCardData,
 } from '../types';
 
 const CONTROL_CHARS_REGEX = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
@@ -78,6 +79,8 @@ function sanitizeParkingCard(raw: Record<string, unknown>): CopilotParkingCardDa
   const walkingTimeMinutes = isNonNegativeFinite(raw.walkingTimeMinutes) ? raw.walkingTimeMinutes : 0;
   const distanceToStationMeters = isNonNegativeFinite(raw.distanceToStationMeters) ? raw.distanceToStationMeters : 0;
 
+  const nextDateRaw = asSafeString(raw.nextAvailableDate);
+
   return {
     parkingSpotId: raw.parkingSpotId,
     parkingLabel,
@@ -93,6 +96,13 @@ function sanitizeParkingCard(raw: Record<string, unknown>): CopilotParkingCardDa
     stopId: asSafeString(raw.stopId),
     lineName: raw.lineName == null ? null : asSafeString(raw.lineName),
     primaryImageUrl: sanitizeSafeImageUrl(raw.primaryImageUrl),
+    isCovered: typeof raw.isCovered === 'boolean' ? raw.isCovered : undefined,
+    hasEvCharging: typeof raw.hasEvCharging === 'boolean' ? raw.hasEvCharging : undefined,
+    hasCctv: typeof raw.hasCctv === 'boolean' ? raw.hasCctv : undefined,
+    isHandicapAccessible: typeof raw.isHandicapAccessible === 'boolean' ? raw.isHandicapAccessible : undefined,
+    availableOnRequestedDate:
+      typeof raw.availableOnRequestedDate === 'boolean' ? raw.availableOnRequestedDate : null,
+    nextAvailableDate: isValidIsoDateKey(nextDateRaw) ? nextDateRaw : null,
     predictedOccupancyPercent: isNonNegativeFinite(raw.predictedOccupancyPercent)
       ? Math.min(100, raw.predictedOccupancyPercent)
       : null,
@@ -101,6 +111,51 @@ function sanitizeParkingCard(raw: Record<string, unknown>): CopilotParkingCardDa
     recommendedArriveBefore: raw.recommendedArriveBefore == null
       ? null
       : asSafeString(raw.recommendedArriveBefore),
+  };
+}
+
+function isFiniteInRange(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+}
+
+function sanitizePublicParkingCard(raw: Record<string, unknown>): CopilotPublicParkingCardData | null {
+  if (!isPositiveInteger(raw.publicParkingLotId)) return null;
+  const lotName = asNonEmptyString(raw.lotName);
+  if (!lotName) return null;
+
+  if (!isNonNegativeFinite(raw.totalCapacity) || !isNonNegativeFinite(raw.availableSpaces)) return null;
+  if (!isNonNegativeFinite(raw.hourlyRate)) return null;
+
+  const dailyCapRate = raw.dailyCapRate == null
+    ? null
+    : (isNonNegativeFinite(raw.dailyCapRate) ? raw.dailyCapRate : null);
+  const flatRatePerEntry = raw.flatRatePerEntry == null
+    ? null
+    : (isNonNegativeFinite(raw.flatRatePerEntry) ? raw.flatRatePerEntry : null);
+  if (raw.dailyCapRate != null && dailyCapRate === null) return null;
+  if (raw.flatRatePerEntry != null && flatRatePerEntry === null) return null;
+
+  const latitude = isFiniteInRange(raw.latitude, -90, 90) ? raw.latitude : 0;
+  const longitude = isFiniteInRange(raw.longitude, -180, 180) ? raw.longitude : 0;
+
+  return {
+    publicParkingLotId: raw.publicParkingLotId,
+    lotName,
+    address: asSafeString(raw.address),
+    latitude,
+    longitude,
+    distanceMeters: isNonNegativeFinite(raw.distanceMeters) ? raw.distanceMeters : 0,
+    walkingTimeMinutes: isNonNegativeFinite(raw.walkingTimeMinutes) ? raw.walkingTimeMinutes : 0,
+    availableSpaces: Math.min(raw.availableSpaces, raw.totalCapacity),
+    totalCapacity: raw.totalCapacity,
+    isCurrentlyOpen: Boolean(raw.isCurrentlyOpen),
+    openingTime: raw.openingTime == null ? null : asSafeString(raw.openingTime),
+    closingTime: raw.closingTime == null ? null : asSafeString(raw.closingTime),
+    hourlyRate: raw.hourlyRate,
+    dailyCapRate,
+    flatRatePerEntry,
+    nearestStationName: asSafeString(raw.nearestStationName),
+    facilityPhotoUrl: sanitizeSafeImageUrl(raw.facilityPhotoUrl),
   };
 }
 
@@ -190,6 +245,10 @@ export function sanitizeCopilotCard(card: unknown): CopilotCard | null {
     case 'parking': {
       const data = sanitizeParkingCard(dataRecord);
       return data ? { type: 'parking', data } : null;
+    }
+    case 'publicParking': {
+      const data = sanitizePublicParkingCard(dataRecord);
+      return data ? { type: 'publicParking', data } : null;
     }
     case 'departures': {
       const data = sanitizeDeparturesCard(dataRecord);
