@@ -540,8 +540,8 @@ export default function AdminDashboard() {
   const adminSidebarGroups = buildAdminSidebarGroups({
     pendingListings: listings.filter((listing) => listing.status === 'pending').length,
     offlineBollards,
-    pendingPayouts: payouts.filter((payout) => payout.status === 'pending').length,
-    openOverstays: overstays.filter((overstay) => overstay.status !== 'resolved').length,
+    pendingPayouts: stats.pendingWithdrawalsCount ?? payouts.filter((payout) => payout.status === 'pending').length,
+    openOverstays: stats.activeOverstaysCount,
   });
 
   const renderActiveView = () => {
@@ -600,20 +600,28 @@ export default function AdminDashboard() {
       case 'settlement':
         return (
           <FinanceSettlement 
+            token={token}
             payouts={payouts} 
             setPayouts={setPayouts}
             transactions={transactions}
             setTransactions={setTransactions}
             addActivityLog={addActivityLog}
+            onRefreshDashboard={refreshDashboard}
             commissionRate={systemConfig?.commissionRate ?? null}
           />
         );
       case 'enforcement':
         return (
           <OverstayEnforcement 
+            token={token}
             overstays={overstays} 
             setOverstays={setOverstays}
             addActivityLog={addActivityLog}
+            onRefreshDashboard={refreshDashboard}
+            onSystemConfigUpdated={(updated) => {
+              setSystemConfig(updated);
+              void refreshDashboard();
+            }}
             gracePeriodMinutes={systemConfig?.gracePeriodMinutes ?? null}
           />
         );
@@ -669,8 +677,11 @@ export default function AdminDashboard() {
     offlineBollards > 0
       ? `${offlineBollards} smart bollards are offline.`
       : null,
-    overstays.filter((overstay) => overstay.status !== 'resolved').length > 0
-      ? `${overstays.filter((overstay) => overstay.status !== 'resolved').length} overstay cases need attention.`
+    stats.activeOverstaysCount > 0
+      ? `${stats.activeOverstaysCount} overstay cases need attention.`
+      : null,
+    (stats.pendingWithdrawalsCount ?? 0) > 0
+      ? `${stats.pendingWithdrawalsCount} owner payout requests await clearing.`
       : null,
   ].filter((message): message is string => Boolean(message));
   const adminNotificationActions = (

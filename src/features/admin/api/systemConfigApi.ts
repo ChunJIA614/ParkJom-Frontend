@@ -13,6 +13,10 @@ import type { SystemConfig } from '../types';
 interface SystemConfigWire {
   commissionRate?: number;
   gracePeriodMinutes?: number;
+  overstayPenaltyMultiplier?: number;
+  overstayMaxDailyPenalty?: number;
+  hardwareExitLockEnabled?: boolean;
+  taxRatePercent?: number;
   updatedAt?: string;
   updatedByUserId?: number | null;
   updatedByName?: string | null;
@@ -37,6 +41,18 @@ const toNumber = (value: unknown, fallback: number): number => {
 const normalize = (wire: SystemConfigWire | undefined): SystemConfig => ({
   commissionRate: toNumber(wire?.commissionRate, 0),
   gracePeriodMinutes: Math.round(toNumber(wire?.gracePeriodMinutes, 0)),
+  overstayPenaltyMultiplier: wire?.overstayPenaltyMultiplier !== undefined
+    ? toNumber(wire.overstayPenaltyMultiplier, 1.5)
+    : undefined,
+  overstayMaxDailyPenalty: wire?.overstayMaxDailyPenalty !== undefined
+    ? toNumber(wire.overstayMaxDailyPenalty, 30)
+    : undefined,
+  hardwareExitLockEnabled: typeof wire?.hardwareExitLockEnabled === 'boolean'
+    ? wire.hardwareExitLockEnabled
+    : undefined,
+  taxRatePercent: wire?.taxRatePercent !== undefined
+    ? toNumber(wire.taxRatePercent, 8)
+    : undefined,
   updatedAt: wire?.updatedAt ?? '',
   updatedByUserId: typeof wire?.updatedByUserId === 'number' ? wire.updatedByUserId : null,
   updatedByName: wire?.updatedByName?.trim() || null,
@@ -63,13 +79,24 @@ export async function getSystemConfig(token: string): Promise<SystemConfig> {
 export interface UpdateSystemConfigPayload {
   commissionRate?: number;
   gracePeriodMinutes?: number;
+  overstayPenaltyMultiplier?: number;
+  overstayMaxDailyPenalty?: number;
+  hardwareExitLockEnabled?: boolean;
+  taxRatePercent?: number;
 }
 
 export async function updateSystemConfig(
   token: string,
   payload: UpdateSystemConfigPayload,
 ): Promise<SystemConfig> {
-  if (payload.commissionRate === undefined && payload.gracePeriodMinutes === undefined) {
+  if (
+    payload.commissionRate === undefined
+    && payload.gracePeriodMinutes === undefined
+    && payload.overstayPenaltyMultiplier === undefined
+    && payload.overstayMaxDailyPenalty === undefined
+    && payload.hardwareExitLockEnabled === undefined
+    && payload.taxRatePercent === undefined
+  ) {
     throw new Error('Nothing to update.');
   }
 
@@ -78,9 +105,17 @@ export async function updateSystemConfig(
     headers: authorizationHeaders(token, 'application/json'),
     body: JSON.stringify({
       ...(payload.commissionRate !== undefined ? { commissionRate: payload.commissionRate } : {}),
-      ...(payload.gracePeriodMinutes !== undefined
-        ? { gracePeriodMinutes: payload.gracePeriodMinutes }
+      ...(payload.gracePeriodMinutes !== undefined ? { gracePeriodMinutes: payload.gracePeriodMinutes } : {}),
+      ...(payload.overstayPenaltyMultiplier !== undefined
+        ? { overstayPenaltyMultiplier: payload.overstayPenaltyMultiplier }
         : {}),
+      ...(payload.overstayMaxDailyPenalty !== undefined
+        ? { overstayMaxDailyPenalty: payload.overstayMaxDailyPenalty }
+        : {}),
+      ...(payload.hardwareExitLockEnabled !== undefined
+        ? { hardwareExitLockEnabled: payload.hardwareExitLockEnabled }
+        : {}),
+      ...(payload.taxRatePercent !== undefined ? { taxRatePercent: payload.taxRatePercent } : {}),
     }),
   });
 
