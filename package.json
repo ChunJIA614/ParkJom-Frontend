@@ -14,7 +14,7 @@
     "capacitor:sync:after": "node scripts/prepare-native.mjs",
     "deploy": "vite build && firebase deploy --only hosting",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/date-time.mjs && node tests/parking-coordinates.mjs && node tests/vehicle-storage.mjs && node tests/native-google-auth.mjs && node tests/mobile-navigation.mjs && node tests/browse-filters.mjs && node tests/magnetic-cars.mjs && node tests/bollard-unlock.mjs && node tests/iot-management.mjs && node tests/camera-stream.mjs && node tests/admin-vehicles.mjs && node tests/plate-validation.mjs && node tests/vehicle-color-validation.mjs && node tests/booking-date-validation.mjs && node tests/copilot-guards.mjs",
+    "test": "node tests/date-time.mjs && node tests/parking-coordinates.mjs && node tests/vehicle-storage.mjs && node tests/native-google-auth.mjs && node tests/mobile-navigation.mjs && node tests/browse-filters.mjs && node tests/magnetic-cars.mjs && node tests/bollard-unlock.mjs && node tests/iot-management.mjs && node tests/camera-stream.mjs && node tests/admin-vehicles.mjs && node tests/admin-settlement.mjs && node tests/admin-overstay.mjs && node tests/plate-validation.mjs && node tests/booking-date-validation.mjs && node tests/copilot-guards.mjs",
     "check": "npm run typecheck && npm test && npm run build",
     "test:ui": "node tests/login-browser.mjs",
     "test:ui:bollard": "node tests/commuter-bollard-browser.mjs"

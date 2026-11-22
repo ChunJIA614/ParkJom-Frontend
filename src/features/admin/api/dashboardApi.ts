@@ -34,6 +34,7 @@ interface StatsWire {
   openDisputesCount?: number;
   activeOverstaysCount?: number;
   openTicketsCount?: number;
+  pendingWithdrawalsCount?: number;
 }
 
 interface DashboardWire {
@@ -82,6 +83,7 @@ const normalizeStats = (wire: StatsWire | undefined): AdminDashboardStats => ({
   openDisputesCount: toInt(wire?.openDisputesCount),
   activeOverstaysCount: toInt(wire?.activeOverstaysCount),
   openTicketsCount: toInt(wire?.openTicketsCount),
+  pendingWithdrawalsCount: toInt(wire?.pendingWithdrawalsCount),
 });
 
 const normalizeBookingCounts = (
