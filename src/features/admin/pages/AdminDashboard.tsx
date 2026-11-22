@@ -23,7 +23,6 @@ import {
 } from '../api/verificationApi';
 import { getAccessLogs } from '../api/accessLogApi';
 import { getAllVehicles } from '../api/vehicleApi';
-import { getSuspendedAccounts, reintegrateAccount, suspendAccount } from '../api/accountSuspensionApi';
 import { getAdminDashboard } from '../api/dashboardApi';
 import { getSystemConfig } from '../api/systemConfigApi';
 
@@ -166,11 +165,6 @@ export default function AdminDashboard() {
     setActivityLogs(prev => [newLog, ...prev]);
     void refreshDashboard();
   };
-
-  const loadSuspendedAccounts = React.useCallback(async () => {
-    if (!token) return [];
-    return (await getSuspendedAccounts(token)).data;
-  }, [token]);
 
   // ---- Fetch verification requests from backend (pending + moderated) ----
   const fetchListings = React.useCallback(async () => {
@@ -574,9 +568,6 @@ export default function AdminDashboard() {
             onApprove={handleApproveListing} 
             onReject={handleRejectListing}
             onDeleteSpot={handleDeleteListingSpot}
-            onSuspend={async (email) => (await suspendAccount(token, email)).data}
-            onReintegrate={async (email) => (await reintegrateAccount(token, email)).data}
-            onLoadSuspensions={loadSuspendedAccounts}
             addActivityLog={addActivityLog}
           />
         );
@@ -592,8 +583,6 @@ export default function AdminDashboard() {
         return (
           <IotHealthMonitor 
             token={token}
-            totalBollards={stats.totalBollards}
-            onlineBollards={stats.onlineBollards}
             addActivityLog={addActivityLog}
           />
         );

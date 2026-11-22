@@ -96,7 +96,13 @@ export interface UserProfileResult {
   jwtToken?: string;
 }
 
+export type AdminUserSortColumn = 'id' | 'name' | 'email' | 'phone' | 'role' | 'status' | 'profile'
+  | 'wallet' | 'bookings' | 'assets' | 'tickets' | 'joined';
+export type AdminUserSortDirection = 'asc' | 'desc';
+
 export interface AdminUserListQuery {
+  sortBy?: AdminUserSortColumn;
+  sortDirection?: AdminUserSortDirection;
   search?: string;
   userType?: BackendUserType;
   accountStatus?: AccountStatus;

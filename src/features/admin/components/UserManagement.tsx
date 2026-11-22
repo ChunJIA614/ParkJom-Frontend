@@ -2,10 +2,13 @@ import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import AdminSummaryCounts from './AdminSummaryCounts';
 import AdminPageHeader from './AdminPageHeader';
 import SystemSelect from '@/components/ui/SystemSelect';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowDownUp,
+  ArrowUp,
   Building2,
   Car,
   ChevronLeft,
@@ -13,6 +16,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Eye,
+  Gavel,
   Loader2,
   RefreshCw,
   Save,
@@ -26,8 +30,10 @@ import {
 } from 'lucide-react';
 import { showAlert, showConfirm } from '@/components/common/ModalProvider';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { adminUpdateUser, getAdminUserDetail, getAdminUsers } from '@/features/profile/api/profileApi';
+import { adminUpdateUser, getAdminUserDetail, getAllAdminUsers } from '@/features/profile/api/profileApi';
+import { reintegrateAccount, suspendAccount } from '../api/accountSuspensionApi';
 import { deleteAdminParkingSpot } from '../api/verificationApi';
+import { getUserTableRows, type UserTableSort } from '../lib/userTable';
 import { mergeProfileIntoSession } from '@/features/profile/lib/session';
 import {
   ACCOUNT_STATUSES,
@@ -35,7 +41,6 @@ import {
   type AccountStatus,
   type AdminUpdateUserProfileRequest,
   type AdminUserDetail,
-  type AdminUserListResult,
   type BackendUserType,
   type UserProfile,
 } from '@/features/profile/types';
@@ -45,6 +50,18 @@ interface UserManagementProps {
 }
 
 const PAGE_SIZES = [10, 20, 50, 100];
+const SORTABLE_COLUMNS: { column: UserTableSort['column']; label: string; sortLabel?: string }[] = [
+  { column: 'id', label: 'User ID' },
+  { column: 'name', label: 'Name' },
+  { column: 'email', label: 'Email' },
+  { column: 'phone', label: 'Phone' },
+  { column: 'role', label: 'Role' },
+  { column: 'status', label: 'Status' },
+  { column: 'bookings', label: 'Bookings', sortLabel: 'Total bookings' },
+  { column: 'assets', label: 'Spots / vehicles' },
+  { column: 'joined', label: 'Joined' },
+];
+const userCellClass = 'border-b border-r border-slate-200 dark:border-white/10 px-3 py-3 text-[11px] text-slate-500 dark:text-[#A1A1AA]';
 
 const currency = (value: number) => `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -90,46 +107,45 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
   const token = currentUser?.token ?? '';
 
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [userType, setUserType] = useState<BackendUserType | ''>('');
   const [accountStatus, setAccountStatus] = useState<AccountStatus | ''>('');
   const [profileFilter, setProfileFilter] = useState<'' | 'true' | 'false'>('');
-  const [page, setPage] = useState(1);
+  const [requestedPage, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [sort, setSort] = useState<UserTableSort>({ column: 'joined', direction: 'desc' });
+  const listRequest = useRef<AbortController | null>(null);
+  const pendingRestriction = useRef(false);
+  const [changingUserId, setChangingUserId] = useState<number | null>(null);
+  const [restrictionNotice, setRestrictionNotice] = useState<{ message: string; error: boolean } | null>(null);
 
-  const [result, setResult] = useState<AdminUserListResult | null>(null);
+  const [records, setRecords] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
-    return () => window.clearTimeout(timer);
-  }, [search]);
-
   const loadUsers = useCallback(async () => {
     if (!token) return;
+    listRequest.current?.abort();
+    const controller = new AbortController();
+    listRequest.current = controller;
     setIsLoading(true);
     setError(null);
     try {
-      const response = await getAdminUsers(token, {
-        search: debouncedSearch,
-        userType: userType || undefined,
-        accountStatus: accountStatus || undefined,
-        isProfileComplete: profileFilter === '' ? undefined : profileFilter === 'true',
-        page,
-        pageSize,
-      });
-      setResult(response);
+      const users = await getAllAdminUsers(token, controller.signal);
+      if (!controller.signal.aborted) setRecords(users);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load users.');
+      if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : 'Unable to load users.');
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
-  }, [accountStatus, debouncedSearch, page, pageSize, profileFilter, token, userType]);
+  }, [token]);
 
   useEffect(() => {
+    setRecords([]);
+    setIsLoading(false);
+    setError(null);
     void loadUsers();
+    return () => listRequest.current?.abort();
   }, [loadUsers]);
 
   const resetPageAnd = <T,>(setter: (value: T) => void) => (value: T) => {
@@ -137,21 +153,79 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
     setPage(1);
   };
 
-  const users = result?.users ?? [];
-  const totalCount = result?.totalCount ?? 0;
-  const totalPages = result?.totalPages ?? 1;
-  const firstResult = users.length ? (page - 1) * pageSize + 1 : 0;
+  const matchingUsers = useMemo(() => getUserTableRows(records, {
+    search,
+    userType,
+    accountStatus,
+    isProfileComplete: profileFilter === '' ? undefined : profileFilter === 'true',
+    sort,
+  }), [records, search, userType, accountStatus, profileFilter, sort]);
+  const totalCount = matchingUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const offset = (page - 1) * pageSize;
+  const users = matchingUsers.slice(offset, offset + pageSize);
+  const firstResult = users.length ? offset + 1 : 0;
+
+  useEffect(() => {
+    setPage(current => Math.min(current, totalPages));
+  }, [totalPages]);
   const lastResult = users.length ? firstResult + users.length - 1 : 0;
   const pageCounts = {
     active: users.filter((entry) => entry.accountStatus.toLowerCase() === 'active').length,
     restricted: users.filter((entry) => entry.accountStatus.toLowerCase() !== 'active').length,
   };
 
+  const SortDirectionIcon = sort.direction === 'asc' ? ArrowUp : ArrowDown;
+
+  function sortBy(column: UserTableSort['column']) {
+    setSort(previous => ({
+      column,
+      direction: previous.column === column && previous.direction === 'asc' ? 'desc' : 'asc',
+    }));
+    setPage(1);
+  }
+
+  async function toggleSuspension(entry: UserProfile) {
+    if (!token || pendingRestriction.current || entry.userType === 1 || entry.userId === currentUser?.userId) return;
+    const suspended = entry.accountStatus.toLowerCase() === 'suspended';
+    const action = suspended ? 'Reinstate' : 'Suspend';
+    const ownerNote = entry.userType !== 2 ? '' : suspended
+      ? '\n\nTheir suspended parking spots will be restored to Available.'
+      : '\n\nTheir available parking spots will be suspended.';
+    pendingRestriction.current = true;
+    setChangingUserId(entry.userId);
+    setRestrictionNotice(null);
+    try {
+      const confirmed = await showConfirm({
+        title: action + ' this account?',
+        message: action + ' ' + (entry.fullName || entry.email) + ' (' + entry.email + ').' + ownerNote,
+        confirmText: action + ' account',
+        cancelText: 'Cancel',
+        variant: suspended ? 'warning' : 'danger',
+        icon: 'warning',
+      });
+      if (!confirmed) return;
+      const response = await (suspended ? reintegrateAccount : suspendAccount)(token, entry.email);
+      const account = response.data;
+      setRecords(current => current.map(user => user.userId === account.userId
+        ? { ...user, accountStatus: account.accountStatus, updatedAt: account.updatedAt || user.updatedAt }
+        : user));
+      void loadUsers();
+      setRestrictionNotice({ message: response.message || action + ' completed for ' + account.email + '.', error: false });
+      addActivityLog?.('governance', (suspended ? 'Reintegrated account: ' : 'Suspended account: ') + account.email, 'Admin');
+    } catch (failure) {
+      setRestrictionNotice({ message: failure instanceof Error ? failure.message : 'Unable to change account suspension.', error: true });
+      void loadUsers();
+    } finally {
+      pendingRestriction.current = false;
+      setChangingUserId(null);
+    }
+  }
+
   const handleUserUpdated = (updated: AdminUserDetail, message: string) => {
-    setResult((current) => current ? {
-      ...current,
-      users: current.users.map((entry) => entry.userId === updated.userId ? { ...entry, ...updated, summary: updated.summary } : entry),
-    } : current);
+    setRecords(current => current.map(entry => entry.userId === updated.userId ? updated : entry));
+    void loadUsers();
     addActivityLog?.('users', `${message} User #${updated.userId} (${updated.email}).`, 'Admin');
     if (currentUser && updated.userId === currentUser.userId) {
       setUser(mergeProfileIntoSession(currentUser, updated));
@@ -169,6 +243,14 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
         </div>
       )}
 
+      {restrictionNotice && (
+        <p role={restrictionNotice.error ? 'alert' : 'status'} className={'rounded-xl border px-4 py-3 text-sm ' + (restrictionNotice.error
+          ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300')}>
+          {restrictionNotice.message}
+        </p>
+      )}
+
       <AdminSummaryCounts items={[
         { label: 'Matching users', value: totalCount },
         { label: 'Active on page', value: pageCounts.active },
@@ -179,7 +261,7 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
         <label className="relative block">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 dark:text-[#A1A1AA]" />
           <input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }}
-            placeholder="Search name, email, or phone" aria-label="Search users"
+            placeholder="Search by ID, name, email, or phone" aria-label="Search users"
             className="min-h-9 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#121214] pl-9 pr-3 text-xs text-slate-700 dark:text-white placeholder:text-slate-400 dark:placeholder:text-[#71717A] outline-hidden focus:border-[#007AFF] dark:focus:border-[#0071E3] focus:ring-1 focus:ring-[#007AFF] transition-colors" />
         </label>
         <SystemSelect aria-label="Filter by role" value={userType} onChange={(event) => resetPageAnd(setUserType)(event.target.value ? Number(event.target.value) as BackendUserType : '')} className={fieldClass}>
@@ -199,6 +281,16 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
         </SystemSelect>
       </div>
 
+      <label className="block space-y-1 text-xs font-medium text-slate-500 dark:text-[#A1A1AA] md:hidden">
+        <span>Sort by</span>
+        <SystemSelect aria-label={'Sort users by column, ' + (sort.direction === 'asc' ? 'ascending' : 'descending')}
+          value={sort.column} className={fieldClass}
+          leadingIcon={<SortDirectionIcon className="size-3.5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />}
+          onChange={event => sortBy(event.target.value as UserTableSort['column'])}>
+          {SORTABLE_COLUMNS.map(({ column, label, sortLabel }) => <option key={column} value={column}>{sortLabel ?? label}</option>)}
+        </SystemSelect>
+      </label>
+
       {isLoading && users.length === 0 ? (
         <div className="flex min-h-52 items-center justify-center gap-2 text-sm text-slate-500 dark:text-[#A1A1AA]"><Loader2 className="h-4 w-4 animate-spin" /> Loading users</div>
       ) : users.length === 0 ? (
@@ -206,47 +298,78 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
       ) : (
         <div className={`overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] shadow-[0_8px_24px_rgba(15,23,42,0.06)] ${isLoading ? 'opacity-60' : ''}`}>
           <div className="overflow-x-auto">
-            <table role="table" className="workspace-record-table w-full min-w-[900px] border-separate border-spacing-0 text-left">
+            <table role="table" className="workspace-record-table w-full md:min-w-[1120px] border-separate border-spacing-0 text-left">
               <thead role="rowgroup" className="bg-slate-50 dark:bg-[#18181C] text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]"><tr role="row">
-                <th role="columnheader" scope="col" className="rounded-tl-2xl border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">User</th>
-                <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Role &amp; status</th>
-                <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Activity</th>
-                <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">Joined</th>
-                <th role="columnheader" scope="col" className="rounded-tr-2xl border-b border-slate-200 dark:border-white/10 px-4 py-3">Actions</th>
+                {SORTABLE_COLUMNS.map(({ column, label, sortLabel = label }, index) => {
+                  const current = sort.column === column;
+                  const Icon = current ? SortDirectionIcon : ArrowDownUp;
+                  return (
+                    <th key={column} role="columnheader" scope="col"
+                      aria-sort={current ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}
+                      className={'border-b border-r border-slate-200 dark:border-white/10 px-3 py-3 ' + (index === 0 ? 'rounded-tl-2xl' : '')}>
+                      <span className="md:hidden">{label}</span>
+                      <button type="button" aria-label={'Sort by ' + sortLabel} onClick={() => sortBy(column)}
+                        className="hidden items-center gap-1.5 whitespace-nowrap text-left uppercase tracking-wider md:inline-flex hover:text-slate-900 dark:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer">
+                        {label}<Icon className={'size-3 shrink-0 ' + (current ? 'text-blue-600 dark:text-blue-400' : 'opacity-50')} aria-hidden="true" />
+                      </button>
+                    </th>
+                  );
+                })}
+                <th role="columnheader" scope="col" className="rounded-tr-2xl border-b border-l border-slate-200 bg-slate-50 px-3 py-3 dark:border-white/10 dark:bg-[#18181C] md:sticky md:right-0">Actions</th>
               </tr></thead>
-              <tbody role="rowgroup">{users.map((entry) => (
-                <tr role="row" key={entry.userId} className="align-top hover:bg-slate-50/70 dark:hover:bg-white/[0.04] transition-colors">
-                  <td role="cell" data-label="User" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar user={entry} />
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-slate-800 dark:text-white">{entry.fullName || 'Unnamed user'}{currentUser?.userId === entry.userId && <span className="ml-1.5 text-[10px] font-medium text-blue-600 dark:text-[#0A84FF]">(you)</span>}</p>
-                        <p className="truncate text-[10px] text-slate-500 dark:text-[#A1A1AA]">{entry.email}</p>
-                        <p className="truncate text-[10px] text-slate-400 dark:text-[#71717A]">{entry.phoneNumber || 'No phone'} · #{entry.userId}</p>
+              <tbody role="rowgroup">{users.map((entry) => {
+                const suspended = entry.accountStatus.toLowerCase() === 'suspended';
+                const action = suspended ? 'Reinstate account' : 'Suspend account';
+                const canChangeSuspension = entry.userType !== 1 && entry.userId !== currentUser?.userId;
+                return (
+                  <tr role="row" key={entry.userId} className="group align-top hover:bg-slate-50/70 dark:hover:bg-white/[0.04] transition-colors">
+                    <td role="cell" data-label="User ID" className={userCellClass + ' font-semibold tabular-nums whitespace-nowrap'}>
+                      <span className="mr-1 md:hidden">User ID</span>#{entry.userId}
+                    </td>
+                    <td role="cell" data-label="Name" className={userCellClass + ' max-md:col-span-full max-md:before:hidden'}>
+                      <div className="flex items-center gap-2">
+                        <Avatar user={entry} />
+                        <p className="min-w-24 text-xs font-semibold text-slate-800 dark:text-white">
+                          {entry.fullName || 'Unnamed user'}{currentUser?.userId === entry.userId && <span className="ml-1.5 text-[10px] font-medium text-blue-600 dark:text-[#0A84FF]">(you)</span>}
+                        </p>
                       </div>
-                    </div>
-                  </td>
-                  <td role="cell" data-label="Role and status" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${roleTone[entry.userType]}`}>{USER_TYPE_LABELS[entry.userType]}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusTone(entry.accountStatus)}`}>{entry.accountStatus}</span>
-                      {!entry.isProfileComplete && <span className="rounded-full bg-orange-50 dark:bg-orange-950/50 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-800/60">Incomplete</span>}
-                    </div>
-                  </td>
-                  <td role="cell" data-label="Activity" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-[10px] text-slate-500 dark:text-[#A1A1AA]">
-                    <p><span className="font-semibold text-slate-700 dark:text-white">{currency(entry.summary.walletBalance)}</span> wallet</p>
-                    <p className="mt-0.5">{entry.summary.activeBookingsCount} active · {entry.summary.totalBookingsCount} total bookings</p>
-                    <p className="mt-0.5">{entry.userType === 2 ? `${entry.summary.ownedParkingSpotsCount} spots` : `${entry.summary.vehicleCount} vehicles`} · {entry.summary.openSupportTicketsCount} open tickets</p>
-                  </td>
-                  <td role="cell" data-label="Joined" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-[10px] text-slate-500 dark:text-[#A1A1AA] whitespace-nowrap">{formatDate(entry.createdAt)}</td>
-                  <td role="cell" data-label="Actions" className="border-b border-slate-200 dark:border-white/10 px-4 py-3">
-                    <button type="button" onClick={() => setSelectedUserId(entry.userId)}
-                      className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-slate-700 dark:text-white hover:bg-slate-50 dark:hover:bg-white/[0.08] transition-colors cursor-pointer">
-                      <Eye className="h-3.5 w-3.5 text-blue-600 dark:text-[#0A84FF]" /> Manage
-                    </button>
-                  </td>
-                </tr>
-              ))}</tbody>
+                    </td>
+                    <td role="cell" data-label="Email" className={userCellClass + ' [overflow-wrap:anywhere] md:min-w-36'}>{entry.email}</td>
+                    <td role="cell" data-label="Phone" className={userCellClass + ' whitespace-nowrap'}>{entry.phoneNumber || '—'}</td>
+                    <td role="cell" data-label="Role" className={userCellClass}>
+                      <span className={'whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ' + roleTone[entry.userType]}>{USER_TYPE_LABELS[entry.userType]}</span>
+                    </td>
+                    <td role="cell" data-label="Status" className={userCellClass}>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={'whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ' + statusTone(entry.accountStatus)}>{entry.accountStatus}</span>
+                        {!entry.isProfileComplete && <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200 dark:bg-orange-950/50 dark:text-orange-400 dark:ring-orange-800/60">Incomplete profile</span>}
+                      </div>
+                    </td>
+                    <td role="cell" data-label="Bookings" className={userCellClass + ' tabular-nums whitespace-nowrap'}>{entry.summary.totalBookingsCount} total · {entry.summary.activeBookingsCount} active</td>
+                    <td role="cell" data-label="Spots / vehicles" className={userCellClass + ' tabular-nums whitespace-nowrap'}>
+                      {entry.userType === 2 ? entry.summary.ownedParkingSpotsCount + ' spots' : entry.summary.vehicleCount + ' vehicles'}
+                    </td>
+                    <td role="cell" data-label="Joined" className={userCellClass + ' whitespace-nowrap'}>{formatDate(entry.createdAt)}</td>
+                    <td role="cell" data-label="Actions" className="border-b border-l border-slate-200 bg-white px-3 py-3 group-hover:bg-slate-50 dark:border-white/10 dark:bg-[#141417] dark:group-hover:bg-[#1e1e21] md:sticky md:right-0">
+                      <div className="flex items-center gap-2">
+                        <button type="button" disabled={changingUserId !== null} onClick={() => setSelectedUserId(entry.userId)}
+                          className="inline-flex min-h-8 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-3 text-[11px] font-semibold text-slate-700 dark:text-white hover:bg-slate-50 dark:hover:bg-white/[0.08] transition-colors disabled:opacity-50 cursor-pointer">
+                          <Eye className="h-3.5 w-3.5 text-blue-600 dark:text-[#0A84FF]" /> Manage
+                        </button>
+                        {canChangeSuspension && (
+                          <button type="button" aria-label={action + ' for ' + (entry.fullName || entry.email)} title={action}
+                            disabled={changingUserId !== null || isLoading} onClick={() => void toggleSuspension(entry)}
+                            className={'inline-flex min-h-8 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-[#18181C] cursor-pointer ' + (suspended
+                              ? 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40'
+                              : 'text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40')}>
+                            {changingUserId === entry.userId ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" /> : <Gavel className="size-4" aria-hidden="true" />}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}</tbody>
             </table>
           </div>
         </div>
@@ -262,9 +385,9 @@ export default function UserManagement({ addActivityLog }: UserManagementProps) 
           </label>
           <nav className="flex items-center gap-1" aria-label="User pagination">
             <button type="button" onClick={() => setPage(1)} disabled={isLoading || page <= 1} aria-label="First page" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-[#18181C] text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-50 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronsLeft className="h-4 w-4" /></button>
-            <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={isLoading || page <= 1} aria-label="Previous page" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-[#18181C] text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-50 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setPage(page - 1)} disabled={isLoading || page <= 1} aria-label="Previous page" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-[#18181C] text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-50 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronLeft className="h-4 w-4" /></button>
             <span className="min-w-20 text-center text-xs font-semibold text-slate-700 dark:text-white">Page {page} of {totalPages}</span>
-            <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={isLoading || page >= totalPages} aria-label="Next page" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-[#18181C] text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-50 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setPage(page + 1)} disabled={isLoading || page >= totalPages} aria-label="Next page" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-[#18181C] text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-50 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronRight className="h-4 w-4" /></button>
             <button type="button" onClick={() => setPage(totalPages)} disabled={isLoading || page >= totalPages} aria-label="Last page" className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 dark:border-white/10 bg-white dark:bg-[#18181C] text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-50 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"><ChevronsRight className="h-4 w-4" /></button>
           </nav>
         </div>

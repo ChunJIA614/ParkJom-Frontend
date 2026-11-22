@@ -250,7 +250,7 @@ assert.deepEqual(
     searchQuery: '#6',
     brandFilter: '',
     ownerFilter: '',
-    sortBy: 'newest-id',
+    sort: { column: 'id', direction: 'desc' },
     currentUserEmail: 'support.parkjom@gmail.com',
   }).map((v) => v.vehicleId),
   [6],
@@ -261,7 +261,7 @@ assert.deepEqual(
     searchQuery: '',
     brandFilter: '',
     ownerFilter: '__mine__',
-    sortBy: 'newest-id',
+    sort: { column: 'id', direction: 'desc' },
     currentUserEmail: 'SUPPORT.PARKJOM@GMAIL.COM',
   }).map((v) => v.vehicleId),
   [6],
@@ -272,9 +272,19 @@ assert.deepEqual(
     searchQuery: '',
     brandFilter: '',
     ownerFilter: '',
-    sortBy: 'plate-asc',
+    sort: { column: 'plate', direction: 'asc' },
   }).map((v) => v.numberPlate),
   ['E4444A', 'VEN6993', 'VIP 8'],
+);
+
+assert.deepEqual(
+  helpers.filterAndSortVehicles(sampleVehicles, {
+    searchQuery: '',
+    brandFilter: '',
+    ownerFilter: '',
+    sort: { column: 'plate', direction: 'desc' },
+  }).map((vehicle) => vehicle.numberPlate),
+  ['VIP 8', 'VEN6993', 'E4444A'],
 );
 
 assert.equal(helpers.validateVehicleForm({ numberPlate: 'ABC 123', vehicleBrand: 'Honda', vehicleModel: 'City', vehicleColor: 'White' }), null);

@@ -1,357 +1,350 @@
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ArrowLeft, ArrowRight, ChevronRight, Copy, Loader2, Lock, Radio, RefreshCw, Search, Unlock } from 'lucide-react';
+import { showConfirm } from '@/components/common/ModalProvider';
+import { displayDateOptions, parseTimestamp, type Timestamp } from '@/lib/dateTime';
+import { adminLockDevice, adminUnlockDevice, getIoTStatus, IoTCommandError, scanIoTStatus, type IoTStatusData } from '@/services/iotManagementApi';
+import { bollardSearchModes, searchSupportBollards, validateBollardSearch, type BollardSearch, type BollardSearchMode, type BollardSearchPage, type SupportBollard } from '../api/bollardSupportApi';
 import AdminPageHeader from './AdminPageHeader';
-import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, HardDrive, Loader2, Lock, Radio, ShieldCheck, Unlock, Wifi } from 'lucide-react';
-import {
-  adminLockBooking,
-  adminUnlockBooking,
-  adminUnlockDevice,
-  adminUnlockParkingSpot,
-} from '@/services/iotManagementApi';
 
-interface IotHealthMonitorProps {
+type Command = 'lock' | 'unlock';
+type Notice = { tone: 'error' | 'success'; text: string };
+type LogActivity = (type: string, message: string, user: string) => void;
+
+const fieldClass = 'min-h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:opacity-60';
+const utcClock = new Intl.DateTimeFormat('en-MY', displayDateOptions({
+  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+}));
+const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
+
+function utcDate(value: Timestamp) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value)) {
+    return parseTimestamp(value + 'Z');
+  }
+  return parseTimestamp(value);
+}
+
+function reportedTime(value: Timestamp, now: number) {
+  const date = utcDate(value);
+  if (!Number.isFinite(date.getTime())) return 'Not reported';
+  const seconds = Math.max(0, Math.floor((now - date.getTime()) / 1000));
+  const age = seconds < 60 ? relativeTime.format(-seconds, 'second')
+    : seconds < 3600 ? relativeTime.format(-Math.floor(seconds / 60), 'minute')
+    : seconds < 86400 ? relativeTime.format(-Math.floor(seconds / 3600), 'hour')
+    : relativeTime.format(-Math.floor(seconds / 86400), 'day');
+  return utcClock.format(date) + ' · ' + age;
+}
+
+function bayName(device: SupportBollard) {
+  const spot = device.parkingSpot;
+  return spot ? (spot.parkingLabel ? 'Bay ' + spot.parkingLabel : 'Spot #' + spot.parkingSpotId) : 'Unassigned bollard';
+}
+
+function activeSession(device: SupportBollard) {
+  return device.booking?.bookingStatus === 'Active' && device.booking.actualExitAt == null;
+}
+
+function errorText(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function Detail({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm font-medium">{children}</dd></div>;
+}
+
+function BollardInspector({ token, device, now, needsScan, onNeedsScan, onCommandBusy, addActivityLog }: {
   token: string;
-  totalBollards: number;
-  onlineBollards: number;
-  addActivityLog?: (type: string, message: string, user: string) => void;
-}
+  device: SupportBollard;
+  now: number;
+  needsScan: boolean;
+  onNeedsScan: (uuid: string, value: boolean) => void;
+  onCommandBusy: (value: boolean) => void;
+  addActivityLog?: LogActivity;
+}) {
+  const [status, setStatus] = useState<IoTStatusData | null>(null);
+  const [reading, setReading] = useState<'stored' | 'scan' | null>('stored');
+  const [readError, setReadError] = useState<string | null>(null);
+  const [command, setCommand] = useState<Command | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [copied, setCopied] = useState(false);
+  const request = useRef<AbortController | null>(null);
+  const sending = useRef(false);
+  const uuid = device.deviceUuid;
 
-type Command = 'booking-lock' | 'booking-unlock' | 'spot-unlock' | 'device-unlock';
-type Feedback = { tone: 'success' | 'error'; message: string } | null;
-
-const inputClass =
-  'min-h-11 w-full rounded-xl border border-black/[0.1] bg-[#f5f5f7] px-3.5 text-sm text-[#1d1d1f] placeholder:text-[#8e8e93] outline-none transition focus:border-[#0071e3] focus:bg-white focus:ring-3 focus:ring-[#0071e3]/15 dark:border-white/[0.1] dark:bg-[#1c1c1f] dark:text-[#f5f5f7] dark:placeholder:text-[#8e8e93] dark:focus:border-[#0a84ff] dark:focus:bg-[#222226] dark:focus:ring-[#0a84ff]/20';
-
-const unlockIconTone = 'bg-[#0071e3]/10 text-[#0071e3] dark:bg-[#0a84ff]/15 dark:text-[#0a84ff]';
-const unlockButtonTone =
-  'bg-[#0071e3] text-white shadow-xs hover:bg-[#0062cc] dark:bg-[#0a84ff] dark:hover:bg-[#2994ff]';
-const lockIconTone = 'bg-[#ff3b30]/10 text-[#d70015] dark:bg-[#ff453a]/15 dark:text-[#ff453a]';
-const lockButtonTone =
-  'border border-[#ff3b30]/25 bg-[#ff3b30]/10 text-[#d70015] hover:bg-[#ff3b30]/18 dark:border-[#ff453a]/30 dark:bg-[#ff453a]/15 dark:text-[#ff6961] dark:hover:bg-[#ff453a]/25';
-
-export default function IotHealthMonitor({ token, totalBollards, onlineBollards, addActivityLog }: IotHealthMonitorProps) {
-  const [bookingId, setBookingId] = useState('');
-  const [parkingSpotId, setParkingSpotId] = useState('');
-  const [iotDeviceId, setIoTDeviceId] = useState('');
-  const [unlockRoute, setUnlockRoute] = useState<'direct' | 'booking-alias'>('direct');
-  const [busy, setBusy] = useState<Command | null>(null);
-  const [feedback, setFeedback] = useState<Feedback>(null);
-  const offlineBollards = Math.max(0, totalBollards - onlineBollards);
-
-  const requireId = (value: string, label: string) => {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`Enter a valid ${label}.`);
-    return parsed;
-  };
-
-  const execute = async (command: Command, label: string, task: () => Promise<{ message: string }>) => {
-    if (busy || !window.confirm(`${label}? This sends a live command to the assigned bollard.`)) return;
-    setBusy(command);
-    setFeedback(null);
+  async function readStatus(mode: 'stored' | 'scan') {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setReading(mode);
+    setReadError(null);
     try {
-      const result = await task();
-      const message = result.message || `${label} confirmed by the device.`;
-      setFeedback({ tone: 'success', message });
-      addActivityLog?.('iot', message, 'Administrator');
+      const result = mode === 'scan' ? await scanIoTStatus(token, uuid, controller.signal)
+        : await getIoTStatus(token, { deviceUuid: uuid }, controller.signal);
+      if (controller.signal.aborted) return;
+      if (result.deviceUuid.toLowerCase() !== uuid.toLowerCase()) throw new Error('The reading belongs to a different device.');
+      setStatus(result);
+      if (mode === 'scan' && result.bollardPosition) {
+        onNeedsScan(uuid, false);
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'The IoT command could not be completed.';
-      setFeedback({ tone: 'error', message });
-      addActivityLog?.('iot', message, 'Administrator');
+      if (!controller.signal.aborted) setReadError(errorText(error, 'Unable to load device status.'));
     } finally {
-      setBusy(null);
+      if (!controller.signal.aborted) setReading(null);
     }
-  };
+  }
+
+  useEffect(() => {
+    if (uuid) void readStatus('stored');
+    else setReading(null);
+    return () => request.current?.abort();
+  }, [token, uuid]);
+
+  async function runCommand(action: Command) {
+    if (!device.canControl || !uuid || needsScan || reading || sending.current) return;
+    sending.current = true;
+    onCommandBusy(true);
+    const label = action === 'lock' ? 'Lock' : 'Unlock';
+    try {
+      const confirmed = await showConfirm({
+        title: label + ' this bollard?',
+        message: bayName(device) + ' · ' + (device.parkingSpot?.property.propertyName || 'Device #' + device.ioTDeviceId)
+          + '\nDevice ' + uuid + '\nConfirm the device with the customer. Make sure the bay is clear before moving the bollard.',
+        confirmText: label + ' bollard',
+        cancelText: 'Cancel',
+        variant: action === 'lock' ? 'danger' : 'info',
+      });
+      if (!confirmed) return;
+      setCommand(action);
+      setNotice(null);
+      const send = action === 'lock' ? adminLockDevice : adminUnlockDevice;
+      const result = await send(token, uuid);
+      setNotice({ tone: 'success', text: result.message || (label + ' confirmed by the device.') });
+      addActivityLog?.('IoT', label + ' confirmed for ' + bayName(device) + ' (' + uuid + ')', 'Admin');
+      await readStatus('stored');
+    } catch (error) {
+      const uncertain = !(error instanceof IoTCommandError) || error.needsPositionCheck;
+      if (uncertain) onNeedsScan(uuid, true);
+      setNotice({ tone: 'error', text: errorText(error, 'The command result could not be confirmed.') });
+    } finally {
+      setCommand(null);
+      sending.current = false;
+      onCommandBusy(false);
+    }
+  }
+
+  const spot = device.parkingSpot;
+  const booking = device.booking;
+  const position = status?.bollardPosition === 'LOCKED' ? 'Locked' : status?.bollardPosition === 'UNLOCKED' ? 'Unlocked' : 'Unknown';
+  const movementDisabled = !device.canControl || !uuid || !!reading || !!command || needsScan;
 
   return (
-    <div id="iot-health-monitor" className="space-y-5">
-      <AdminPageHeader headingId="iot-title" title="Smart bollards" description="Check device health and manage verified hardware overrides." />
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Metric
-          label="Registered"
-          value={totalBollards}
-          iconTone="bg-[#0071e3]/10 text-[#0071e3] dark:bg-[#0a84ff]/15 dark:text-[#0a84ff]"
-          icon={<HardDrive className="h-4 w-4" aria-hidden="true" />}
-        />
-        <Metric
-          label="Online"
-          value={onlineBollards}
-          valueTone="text-[#1f7a34] dark:text-[#30d158]"
-          iconTone="bg-[#34c759]/12 text-[#1f7a34] dark:bg-[#30d158]/15 dark:text-[#30d158]"
-          icon={<Wifi className="h-4 w-4" aria-hidden="true" />}
-        />
-        <Metric
-          label="Offline"
-          value={offlineBollards}
-          valueTone={offlineBollards > 0 ? 'text-[#b25000] dark:text-[#ff9f0a]' : 'text-[#1d1d1f] dark:text-[#f5f5f7]'}
-          iconTone={
-            offlineBollards > 0
-              ? 'bg-[#ff9500]/12 text-[#b25000] dark:bg-[#ff9f0a]/15 dark:text-[#ff9f0a]'
-              : 'bg-black/[0.05] text-[#6e6e73] dark:bg-white/[0.06] dark:text-[#a1a1aa]'
-          }
-          icon={<AlertTriangle className="h-4 w-4" aria-hidden="true" />}
-        />
-      </div>
-
-      <div className="flex items-start gap-3.5 rounded-2xl border border-black/[0.07] bg-white p-4 shadow-xs dark:border-white/[0.08] dark:bg-[#141417]">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#ff9500]/12 text-[#b25000] dark:bg-[#ff9f0a]/15 dark:text-[#ff9f0a]">
-          <ShieldCheck className="h-4.5 w-4.5" aria-hidden="true" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">Live hardware override</p>
-            <span className="rounded-full bg-[#ff9500]/12 px-2 py-0.5 text-xs font-semibold text-[#b25000] dark:bg-[#ff9f0a]/15 dark:text-[#ff9f0a]">
-              Caution
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs leading-relaxed text-[#6e6e73] dark:text-[#a1a1aa]">
-            Confirm the target ID before sending. Lock commands retain the ESP32 obstacle interlock, and timeout responses mean the final physical position is unknown.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ActionCard
-          icon={<Lock className="h-5 w-5" aria-hidden="true" />}
-          iconTone={lockIconTone}
-          title="Lock by booking"
-          description="Uses the device assigned to the booking."
-          footer={
-            <CommandButton
-              tone={lockButtonTone}
-              busy={busy === 'booking-lock'}
-              disabled={busy !== null}
-              icon={<Lock className="h-4 w-4" aria-hidden="true" />}
-              onClick={() =>
-                void execute('booking-lock', `Lock booking #${bookingId}`, async () =>
-                  adminLockBooking(token, requireId(bookingId, 'booking ID')),
-                )
-              }
-            >
-              Lock bollard
-            </CommandButton>
-          }
-        >
-          <IdField label="Booking ID" value={bookingId} onChange={setBookingId} placeholder="e.g. 214" disabled={busy !== null} />
-        </ActionCard>
-
-        <ActionCard
-          icon={<Unlock className="h-5 w-5" aria-hidden="true" />}
-          iconTone={unlockIconTone}
-          title="Unlock by booking"
-          description="Both documented booking routes share this control."
-          footer={
-            <CommandButton
-              tone={unlockButtonTone}
-              busy={busy === 'booking-unlock'}
-              disabled={busy !== null}
-              icon={<Unlock className="h-4 w-4" aria-hidden="true" />}
-              onClick={() =>
-                void execute('booking-unlock', `Unlock booking #${bookingId}`, async () =>
-                  adminUnlockBooking(token, requireId(bookingId, 'booking ID'), unlockRoute),
-                )
-              }
-            >
-              Unlock booking bollard
-            </CommandButton>
-          }
-        >
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.4fr)]">
-            <IdField label="Booking ID" value={bookingId} onChange={setBookingId} placeholder="e.g. 214" disabled={busy !== null} />
-            <label className="space-y-1.5 text-xs font-medium text-[#6e6e73] dark:text-[#a1a1aa]">
-              API route
-              <select
-                className={inputClass}
-                value={unlockRoute}
-                onChange={(event) => setUnlockRoute(event.target.value as 'direct' | 'booking-alias')}
-                disabled={busy !== null}
-              >
-                <option value="direct">/admin/iot/&#123;bookingId&#125;/unlock</option>
-                <option value="booking-alias">/admin/iot/bookings/&#123;bookingId&#125;/unlock</option>
-              </select>
-            </label>
-          </div>
-        </ActionCard>
-
-        <ActionCard
-          icon={<Radio className="h-5 w-5" aria-hidden="true" />}
-          iconTone={unlockIconTone}
-          title="Unlock by parking spot"
-          description="Finds the assigned bollard without a booking."
-          footer={
-            <CommandButton
-              tone={unlockButtonTone}
-              busy={busy === 'spot-unlock'}
-              disabled={busy !== null}
-              icon={<Unlock className="h-4 w-4" aria-hidden="true" />}
-              onClick={() =>
-                void execute('spot-unlock', `Unlock parking spot #${parkingSpotId}`, async () =>
-                  adminUnlockParkingSpot(token, requireId(parkingSpotId, 'parking spot ID')),
-                )
-              }
-            >
-              Unlock spot bollard
-            </CommandButton>
-          }
-        >
-          <IdField label="Parking spot ID" value={parkingSpotId} onChange={setParkingSpotId} placeholder="e.g. 31" disabled={busy !== null} />
-        </ActionCard>
-
-        <ActionCard
-          icon={<HardDrive className="h-5 w-5" aria-hidden="true" />}
-          iconTone={unlockIconTone}
-          title="Unlock by IoT device"
-          description="Targets an assigned database device ID directly."
-          footer={
-            <CommandButton
-              tone={unlockButtonTone}
-              busy={busy === 'device-unlock'}
-              disabled={busy !== null}
-              icon={<Unlock className="h-4 w-4" aria-hidden="true" />}
-              onClick={() =>
-                void execute('device-unlock', `Unlock IoT device #${iotDeviceId}`, async () =>
-                  adminUnlockDevice(token, requireId(iotDeviceId, 'IoT device ID')),
-                )
-              }
-            >
-              Unlock device bollard
-            </CommandButton>
-          }
-        >
-          <IdField label="IoT device ID" value={iotDeviceId} onChange={setIoTDeviceId} placeholder="e.g. 8" disabled={busy !== null} />
-        </ActionCard>
-      </div>
-
-      {feedback && (
-        <div
-          role={feedback.tone === 'error' ? 'alert' : 'status'}
-          className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 text-sm ${
-            feedback.tone === 'error'
-              ? 'border-[#ff3b30]/25 bg-[#ff3b30]/10 text-[#d70015] dark:border-[#ff453a]/30 dark:bg-[#ff453a]/15 dark:text-[#ff6961]'
-              : 'border-[#34c759]/25 bg-[#34c759]/10 text-[#1f7a34] dark:border-[#30d158]/30 dark:bg-[#30d158]/15 dark:text-[#30d158]'
-          }`}
-        >
-          {feedback.tone === 'error' ? (
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          ) : (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          )}
-          <span>{feedback.message}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  icon,
-  iconTone,
-  valueTone = 'text-[#1d1d1f] dark:text-[#f5f5f7]',
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  iconTone: string;
-  valueTone?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-black/[0.07] bg-white p-4 shadow-xs dark:border-white/[0.08] dark:bg-[#141417]">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-[#6e6e73] dark:text-[#a1a1aa]">{label}</span>
-        <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${iconTone}`}>{icon}</span>
-      </div>
-      <p className={`mt-2.5 text-2xl font-bold tabular-nums ${valueTone}`}>{value}</p>
-    </div>
-  );
-}
-
-function ActionCard({
-  icon,
-  iconTone,
-  title,
-  description,
-  children,
-  footer,
-}: {
-  icon: React.ReactNode;
-  iconTone: string;
-  title: string;
-  description: string;
-  children: React.ReactNode;
-  footer: React.ReactNode;
-}) {
-  return (
-    <section className="flex flex-col justify-between gap-4 rounded-2xl border border-black/[0.07] bg-white p-4 shadow-xs sm:p-5 dark:border-white/[0.08] dark:bg-[#141417]">
-      <div className="space-y-4">
-        <div className="flex items-start gap-3">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconTone}`}>{icon}</div>
+    <div className="divide-y divide-border">
+      <div className="space-y-4 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]">{title}</h3>
-            <p className="mt-0.5 text-xs text-[#6e6e73] dark:text-[#a1a1aa]">{description}</p>
+            <p className="text-xs font-medium text-muted-foreground">Device #{device.ioTDeviceId}</p>
+            <h2 id="selected-bollard-title" className="mt-1 break-words text-xl font-semibold">{bayName(device)}</h2>
+            {spot && <p className="mt-1 text-sm text-muted-foreground">{spot.property.propertyName}</p>}
+          </div>
+          <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium">{device.isAssigned ? 'Assigned' : 'Unassigned'}</span>
+        </div>
+        <div className="flex min-w-0 items-center gap-1 rounded-xl bg-muted p-2.5">
+          <code className="min-w-0 flex-1 break-all text-xs">{uuid || 'UUID unavailable'}</code>
+          {uuid && <button type="button" aria-label={copied ? 'Device UUID copied' : 'Copy device UUID'} title={copied ? 'Copied' : 'Copy device UUID'}
+            className="grid size-9 shrink-0 place-items-center rounded-lg hover:bg-card focus-visible:outline-2"
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(uuid); setCopied(true); }
+              catch { setCopied(false); }
+            }}><Copy size={15} aria-hidden="true" /></button>}
+        </div>
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <Detail label="Owner">{spot ? spot.owner.name || 'User #' + spot.owner.userId : 'No linked parking spot'}</Detail>
+          <Detail label="Firmware">{device.firmwareVersion || 'Unknown'}</Detail>
+          {spot && <Detail label="Address">{spot.property.address || 'Unavailable'}</Detail>}
+          {spot && <Detail label="Parking spot">#{spot.parkingSpotId} · {spot.availabilityStatus}</Detail>}
+        </dl>
+      </div>
+
+      <section className="space-y-3 p-4 sm:p-5" aria-labelledby="bollard-reading-title" aria-busy={!!reading}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id="bollard-reading-title" className="text-sm font-semibold">Device status</h3>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="workspace-button workspace-button--secondary" disabled={!uuid || !!reading || !!command} onClick={() => void readStatus('stored')}>
+              <RefreshCw size={15} aria-hidden="true" /> {reading === 'stored' ? 'Reading…' : 'Refresh status'}
+            </button>
+            <button type="button" className="workspace-button workspace-button--secondary" disabled={!uuid || !!reading || !!command} onClick={() => void readStatus('scan')}>
+              <Radio size={15} aria-hidden="true" /> {reading === 'scan' ? 'Scanning…' : 'Scan device'}
+            </button>
           </div>
         </div>
-        <div>{children}</div>
-      </div>
-      <div>{footer}</div>
-    </section>
+        {reading && <p role="status" className="text-xs text-muted-foreground">{reading === 'scan' ? 'Waiting for a fresh reading from the bollard…' : 'Loading the latest stored reading…'}</p>}
+        {readError && <p role="alert" className="rounded-lg bg-rose-500/10 p-2.5 text-sm text-rose-700 dark:text-rose-300">{readError}{status && ' Showing the previous reading.'}</p>}
+        <dl className="grid grid-cols-2 gap-3 rounded-xl bg-muted/60 p-3">
+          <Detail label="Reported position">{position}</Detail>
+          <Detail label="Heartbeat">{status?.heartbeatStatus === 'online' ? 'Online' : status?.heartbeatStatus === 'offline' ? 'Offline' : 'Unknown'}</Detail>
+          <Detail label="Distance">{status?.distanceCm != null ? status.distanceCm.toFixed(1) + ' cm' : 'Not reported'}</Detail>
+          <Detail label="Distance sensor">{status?.sensorStatus === 'ok' ? 'OK' : status?.sensorStatus === 'unavailable' ? <span className="text-amber-700 dark:text-amber-300">Unavailable</span> : 'Unknown'}</Detail>
+          <Detail label="Reading time">{reportedTime(status?.receivedAt, now)}</Detail>
+          <Detail label="Last device contact">{reportedTime(status?.lastHeartbeatAt, now)}</Detail>
+        </dl>
+        {status && !status.receivedAt && <p className="text-xs text-muted-foreground">No device reading has been recorded.</p>}
+      </section>
+
+      <section className="space-y-3 p-4 sm:p-5" aria-labelledby="bollard-control-title">
+        <h3 id="bollard-control-title" className="text-sm font-semibold">Move bollard</h3>
+        {!device.canControl && <p className="text-sm text-muted-foreground">Movement is unavailable for this device. You can still inspect its status.</p>}
+        {needsScan && <p role="status" className="rounded-lg bg-amber-500/10 p-2.5 text-sm text-amber-800 dark:text-amber-300">The command outcome is uncertain. Scan the device to verify its position before sending another command.</p>}
+        {notice && <p role={notice.tone === 'error' ? 'alert' : 'status'} className={notice.tone === 'error' ? 'text-sm text-rose-700 dark:text-rose-300' : 'text-sm text-emerald-700 dark:text-emerald-300'}>{notice.text}</p>}
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" className="workspace-button workspace-button--secondary" disabled={movementDisabled} onClick={() => void runCommand('lock')}>
+            {command === 'lock' ? <Loader2 size={16} className="motion-safe:animate-spin" aria-hidden="true" /> : <Lock size={16} aria-hidden="true" />}
+            {command === 'lock' ? 'Locking…' : 'Lock'}
+          </button>
+          <button type="button" className="workspace-button workspace-button--primary" disabled={movementDisabled} onClick={() => void runCommand('unlock')}>
+            {command === 'unlock' ? <Loader2 size={16} className="motion-safe:animate-spin" aria-hidden="true" /> : <Unlock size={16} aria-hidden="true" />}
+            {command === 'unlock' ? 'Unlocking…' : 'Unlock'}
+          </button>
+        </div>
+      </section>
+
+      <section className="space-y-3 p-4 sm:p-5" aria-labelledby="bollard-booking-title">
+        <h3 id="bollard-booking-title" className="text-sm font-semibold">{activeSession(device) ? 'Active renter session' : 'Booking context'}</h3>
+        {booking ? <dl className="grid grid-cols-2 gap-3">
+          <Detail label="Booking">{booking.bookingReference || '#' + booking.bookingId}</Detail>
+          <Detail label="Status">{booking.bookingStatus}</Detail>
+          <Detail label="Renter">{booking.renter.name || 'User #' + booking.renter.userId}</Detail>
+          <Detail label="Start date (Malaysia)">{booking.startDate.slice(0, 10)}</Detail>
+          <Detail label="End date (exclusive)">{booking.endDate.slice(0, 10)}</Detail>
+          <Detail label="Check-in">{reportedTime(booking.checkedInAt, now)}</Detail>
+          <Detail label="Exit">{reportedTime(booking.actualExitAt, now)}</Detail>
+        </dl> : <p className="text-sm text-muted-foreground">No booking context</p>}
+      </section>
+    </div>
   );
 }
 
-function IdField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  disabled: boolean;
-}) {
-  return (
-    <label className="block space-y-1.5 text-xs font-medium text-[#6e6e73] dark:text-[#a1a1aa]">
-      {label}
-      <input
-        type="number"
-        min="1"
-        inputMode="numeric"
-        className={inputClass}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-      />
-    </label>
-  );
-}
+export default function IotHealthMonitor({ token, addActivityLog }: { token: string; addActivityLog?: LogActivity }) {
+  const [by, setBy] = useState<BollardSearchMode>('bookingReference');
+  const [query, setQuery] = useState('');
+  const [pageSize, setPageSize] = useState(20);
+  const [submitted, setSubmitted] = useState<BollardSearch | null>(null);
+  const [results, setResults] = useState<{ search: BollardSearch; data: BollardSearchPage } | null>(null);
+  const [selected, setSelected] = useState<SupportBollard | null>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [commandBusy, setCommandBusy] = useState(false);
+  const [uncertain, setUncertain] = useState<Record<string, boolean>>({});
+  const [now, setNow] = useState(Date.now);
+  const searchRequest = useRef<AbortController | null>(null);
+  const detailPanel = useRef<HTMLElement | null>(null);
+  const mode = bollardSearchModes.find(option => option.value === by)!;
 
-function CommandButton({
-  tone,
-  busy,
-  disabled,
-  icon,
-  onClick,
-  children,
-}: {
-  tone: string;
-  busy: boolean;
-  disabled: boolean;
-  icon: React.ReactNode;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+  useEffect(() => () => searchRequest.current?.abort(), [token]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (selected && window.matchMedia('(max-width: 1279px)').matches) {
+      detailPanel.current?.focus({ preventScroll: true });
+      detailPanel.current?.scrollIntoView({ block: 'start' });
+    }
+  }, [selected]);
+
+  async function runSearch(search: BollardSearch) {
+    if (commandBusy) return;
+    searchRequest.current?.abort();
+    const controller = new AbortController();
+    searchRequest.current = controller;
+    setSubmitted(search);
+    setSearching(true);
+    setSearchError(null);
+    setSelected(null);
+    try {
+      const data = await searchSupportBollards(token, search, controller.signal);
+      if (!controller.signal.aborted) setResults({ search, data });
+    } catch (error) {
+      if (!controller.signal.aborted) setSearchError(errorText(error, 'Could not search for bollards. Try again.'));
+    } finally {
+      if (!controller.signal.aborted) setSearching(false);
+    }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const error = validateBollardSearch(by, query);
+    setFieldError(error);
+    if (!error) void runSearch({ by, q: query.trim(), page: 1, pageSize });
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${tone}`}
-    >
-      {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : icon}
-      {children}
-    </button>
+    <div className="space-y-5">
+      <AdminPageHeader title="Smart bollards" description="Find a customer's bollard, check its status, and help them lock or unlock it." />
+      <form onSubmit={submit} className="workspace-panel p-4 sm:p-5" aria-label="Search bollards">
+        <fieldset disabled={commandBusy} className="grid gap-3 sm:grid-cols-[minmax(10rem,1fr)_minmax(0,1.8fr)] lg:grid-cols-[minmax(10rem,1fr)_minmax(0,1.8fr)_7rem_auto] lg:items-end">
+          <label className="grid gap-1.5 text-sm font-medium">Search by
+            <select value={by} onChange={event => { setBy(event.target.value as BollardSearchMode); setFieldError(null); }} className={fieldClass}>
+              {bollardSearchModes.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">{mode.label}
+            <input value={query} onChange={event => { setQuery(event.target.value); setFieldError(null); }}
+              placeholder={mode.placeholder} maxLength={120} inputMode={mode.kind === 'id' ? 'numeric' : 'text'} className={fieldClass}
+              aria-invalid={!!fieldError} aria-describedby={fieldError ? 'bollard-search-validation' : undefined} />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">Per page
+            <select value={pageSize} onChange={event => setPageSize(Number(event.target.value))} className={fieldClass}>
+              {[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
+          <button type="submit" className="workspace-button workspace-button--primary min-h-11 self-end"><Search size={16} aria-hidden="true" /> Search</button>
+        </fieldset>
+        {fieldError && <p id="bollard-search-validation" role="alert" className="mt-2 text-sm text-rose-700 dark:text-rose-300">{fieldError}</p>}
+      </form>
+
+      {searchError && <div className="workspace-panel flex flex-wrap items-center justify-between gap-3 p-4">
+        <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{searchError}</p>
+        {submitted && <button type="button" disabled={searching || commandBusy} className="workspace-button workspace-button--secondary" onClick={() => void runSearch(submitted)}>Retry search</button>}
+      </div>}
+
+      {results || searching ? <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <section aria-label="Matching bollards" aria-busy={searching} className="workspace-panel min-w-0 overflow-hidden">
+          <div className="border-b border-border p-4">
+            <h2 className="font-semibold">Matching bollards</h2>
+            {searching ? <p role="status" className="mt-1 text-sm text-muted-foreground">Searching…</p>
+              : results && <p className="mt-1 break-words text-sm text-muted-foreground">{bollardSearchModes.find(option => option.value === results.search.by)?.label} · {results.search.q}{searchError ? ' · Previous results' : ''}</p>}
+          </div>
+          {results?.data.items.length === 0 && !searching && <p className="p-4 text-sm text-muted-foreground">No matching bollards found.</p>}
+          <ul className="divide-y divide-border">
+            {results?.data.items.map(device => {
+              const current = selected?.ioTDeviceId === device.ioTDeviceId;
+              return <li key={device.ioTDeviceId}>
+                <button type="button" aria-pressed={current} disabled={commandBusy || searching} onClick={() => setSelected(device)}
+                  className={'flex w-full items-start gap-3 p-4 text-left hover:bg-muted/70 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 disabled:opacity-60 ' + (current ? 'bg-blue-500/10' : '')}>
+                  <Radio size={18} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 space-y-1">
+                    <span className="block break-words text-sm font-semibold">{bayName(device)}{device.parkingSpot && ' · ' + device.parkingSpot.property.propertyName}</span>
+                    <span className="block break-words text-xs text-muted-foreground">{device.parkingSpot ? 'Owner ' + (device.parkingSpot.owner.name || '#' + device.parkingSpot.owner.userId) : 'No linked parking spot'}</span>
+                    {device.booking && <span className="block break-words text-xs text-muted-foreground">{device.booking.renter.name || 'Renter #' + device.booking.renter.userId} · {device.booking.bookingReference || '#' + device.booking.bookingId} · {activeSession(device) ? 'Active session' : device.booking.bookingStatus}</span>}
+                    <span className="block break-all text-xs text-muted-foreground">#{device.ioTDeviceId}{device.deviceUuid && ' · ' + device.deviceUuid.slice(-8)} · Last contact {reportedTime(device.lastHeartbeatAt, now)}</span>
+                  </span>
+                  <ChevronRight size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                </button>
+              </li>;
+            })}
+          </ul>
+          {results && <nav aria-label="Search result pages" className="flex flex-wrap items-center justify-between gap-2 border-t border-border p-3">
+            <button type="button" className="workspace-button workspace-button--secondary" disabled={searching || commandBusy || results.data.page <= 1} onClick={() => void runSearch({ ...results.search, page: results.data.page - 1 })}><ArrowLeft size={14} aria-hidden="true" /> Previous</button>
+            <span className="text-sm text-muted-foreground">Page {results.data.page}</span>
+            <button type="button" className="workspace-button workspace-button--secondary" disabled={searching || commandBusy || !results.data.hasMore || results.data.page >= 10000} onClick={() => void runSearch({ ...results.search, page: results.data.page + 1 })}>Next <ArrowRight size={14} aria-hidden="true" /></button>
+          </nav>}
+        </section>
+        {selected ? <section ref={detailPanel} tabIndex={-1} aria-labelledby="selected-bollard-title" className="workspace-panel min-w-0 scroll-mt-24">
+          <BollardInspector key={selected.ioTDeviceId} token={token} device={selected} now={now}
+            needsScan={uncertain[selected.deviceUuid] === true} onNeedsScan={(uuid, value) => setUncertain(previous => ({ ...previous, [uuid]: value }))}
+            onCommandBusy={setCommandBusy} addActivityLog={addActivityLog} />
+        </section> : results && results.data.items.length > 0 && <div className="workspace-panel hidden p-5 text-sm text-muted-foreground xl:block">Select a bollard to see its status and controls.</div>}
+      </div> : !searchError && <p className="px-1 text-sm text-muted-foreground">Start with a booking reference, customer name, or device ID.</p>}
+    </div>
   );
 }

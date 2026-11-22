@@ -1,6 +1,8 @@
+import BollardStatusDetails from '@/components/ui/BollardStatusDetails';
+import type { IoTStatusData } from '@/services/iotManagementApi';
 import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import ParkingPhoto from './ParkingPhoto';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -11,6 +13,7 @@ import {
   Copy,
   ExternalLink,
   Headphones,
+  Info,
   Loader2,
   Lock,
   MapPin,
@@ -19,6 +22,7 @@ import {
   Phone,
   Plus,
   Receipt,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
   Unlock,
@@ -32,6 +36,7 @@ import {
 } from '../api/bookingApi';
 import {
   completeBollardUnlock,
+  getBookingBollardStatus,
   findRememberedBollard,
   isUnlockChallengeCurrent,
   performLockBollardCommand,
@@ -70,6 +75,7 @@ export interface MyParkingPassesWorkspaceProps {
   onFindMoreParking: () => void;
   onBookingUnlocked?: (bookingId: number) => void;
   onBookingCompleted?: (booking: Booking) => void;
+  onDetailViewChange?: (isDetail: boolean) => void;
   onReviewSubmitted?: (booking: Booking) => void;
 }
 
@@ -109,14 +115,22 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
   onBookingUnlocked,
   onBookingCompleted,
   onReviewSubmitted,
+  onDetailViewChange,
 }) => {
   const [subView, setSubView] = useState<SubViewMode>('grid');
+  const bollardScreenRef = useRef<HTMLDivElement>(null);
+  useEffect(() => () => onDetailViewChange?.(false), [onDetailViewChange]);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
 
   // Per-booking bollard state (tracks whether each booking's bollard is currently unlocked/lowered)
   const [unlockedByBookingId, setUnlockedByBookingId] = useState<Record<string, boolean | undefined>>({});
   const [openedOnceByBookingId, setOpenedOnceByBookingId] = useState<Record<string, boolean>>({});
+  const [lastCommandByBookingId, setLastCommandByBookingId] = useState<Record<string, boolean>>({});
   const [bollardMotion, setBollardMotion] = useState<'idle' | 'lowering' | 'raising'>('idle');
+  const [isCheckingPosition, setIsCheckingPosition] = useState(false);
+  const [bollardStatus, setBollardStatus] = useState<IoTStatusData | null>(null);
+  const [positionError, setPositionError] = useState<string | null>(null);
+  const [statusRefreshKey, setStatusRefreshKey] = useState(0);
   const [iotError, setIotError] = useState<string | null>(null);
   const [iotStatusNote, setIotStatusNote] = useState<string | null>(null);
   const [pendingUnlock, setPendingUnlock] = useState<UnlockChallenge | null>(null);
@@ -160,8 +174,70 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
     ? Boolean(unlockedByBookingId[effectiveBooking.id])
     : false;
 
+  useEffect(() => {
+    const bookingId = selectedBooking?.bookingId;
+    const bookingKey = selectedBooking?.id;
+    if (subView !== 'bollard' || !bookingId || !bookingKey || !token) return;
+    const controller = new AbortController();
+    setIsCheckingPosition(true);
+    setIotError(null);
+    setIotStatusNote(null);
+    setPositionError(null);
+    setBollardStatus(null);
+    setUnlockedByBookingId(previous => ({ ...previous, [bookingKey]: undefined }));
+    setLastCommandByBookingId(previous => { const next = { ...previous }; delete next[bookingKey]; return next; });
+    void getBookingBollardStatus(token, bookingId, controller.signal)
+      .then(status => {
+        if (controller.signal.aborted) return;
+        setBollardStatus(status);
+        setUnlockedByBookingId(previous => ({ ...previous, [bookingKey]: status.bollardPosition === null ? undefined : status.bollardPosition === 'UNLOCKED' }));
+      })
+      .catch(error => {
+        if (!controller.signal.aborted) setPositionError(error instanceof Error ? error.message : 'Unable to check the bollard position.');
+      })
+      .finally(() => { if (!controller.signal.aborted) setIsCheckingPosition(false); });
+    return () => controller.abort();
+  }, [subView, selectedBooking?.bookingId, selectedBooking?.id, token, statusRefreshKey]);
+
+  const isDetailView = subView !== 'grid' && effectiveBooking !== null;
+  useEffect(() => { onDetailViewChange?.(isDetailView); }, [isDetailView, onDetailViewChange]);
+
+  useLayoutEffect(() => {
+    if (subView !== 'bollard') return;
+    const screen = bollardScreenRef.current;
+    if (!screen) return;
+    window.scrollTo(0, 0);
+    const content = screen.closest('.commuter-content-grid');
+    const visualSpace = screen.querySelector<HTMLElement>('[data-bollard-visual-space]');
+    let frame = 0;
+    const update = () => {
+      const bottomPadding = content ? parseFloat(getComputedStyle(content).paddingBottom) || 0 : 16;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const available = Math.max(0, Math.floor(viewportHeight - screen.getBoundingClientRect().top - bottomPadding - 1));
+      const height = available + 'px';
+      if (screen.style.getPropertyValue('--bollard-screen-height') !== height) screen.style.setProperty('--bollard-screen-height', height);
+      screen.dataset.compact = String(available < 590);
+      if (visualSpace) screen.style.setProperty('--bollard-visual-scale', String(Math.min(1, Math.max(0.2, visualSpace.clientHeight / 160))));
+    };
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(content ?? screen.parentElement ?? screen);
+    if (visualSpace) observer.observe(visualSpace);
+    window.addEventListener('resize', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+    update(); schedule();
+    const settled = window.setTimeout(schedule, 400);
+    return () => {
+      observer.disconnect(); cancelAnimationFrame(frame); window.clearTimeout(settled);
+      window.removeEventListener('resize', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule);
+    };
+  }, [subView, selectedBookingId]);
+
   const handleOpenBollardView = (booking: Booking) => {
     setSelectedBookingId(booking.id);
+    setIsCheckingPosition(Boolean(token && booking.bookingId));
+    setPositionError(null);
     setIotError(null);
     setIotStatusNote(null);
     setPendingUnlock(null);
@@ -186,7 +262,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
   };
 
   const handleToggleBollard = async (targetUnlock: boolean) => {
-    if (!effectiveBooking || activeCommand.current) return;
+    if (!effectiveBooking || activeCommand.current || isCheckingPosition) return;
     const numericId = effectiveBooking.bookingId;
     if (!token || !numericId) {
       setIotError('Sign in and select a confirmed booking to control its bollard.');
@@ -197,6 +273,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
     activeCommand.current = controller;
     const { signal } = controller;
     const bookingKey = effectiveBooking.id;
+    setLastCommandByBookingId((previous) => ({ ...previous, [bookingKey]: targetUnlock }));
     setIotError(null);
     setIotStatusNote(null);
     setBollardMotion(targetUnlock ? 'lowering' : 'raising');
@@ -417,32 +494,32 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
     return (
       <div className="w-full max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200">
         {/* Top Navigation Bar */}
-        <div className="flex items-center justify-between gap-3">
+        <nav aria-label="Receipt navigation" className="mx-auto w-full max-w-7xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <button
             type="button"
             onClick={() => setSubView('grid')}
-            className="inline-flex items-center gap-2 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] px-3.5 py-2 text-xs font-bold text-[#111] dark:text-white hover:bg-slate-50 dark:hover:bg-[#1C1C1E] transition-colors cursor-pointer shadow-xs"
+            className="inline-flex min-h-10 self-start items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
           >
             <ArrowLeft size={15} /> Back to My Passes
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => onNavigateToMap(effectiveBooking)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-xs font-bold text-[#007AFF] hover:bg-slate-50 dark:hover:bg-[#1C1C1E] transition-colors cursor-pointer"
+              className="workspace-button workspace-button--secondary"
             >
               <Navigation size={14} /> Transit Map
             </button>
             <button
               type="button"
               onClick={() => handleOpenBollardView(effectiveBooking)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF] px-4 py-2 text-xs font-bold text-white hover:bg-[#0066d6] transition-colors cursor-pointer shadow-xs"
+              className="workspace-button workspace-button--primary"
             >
               <Unlock size={14} /> Open Bollard Control
             </button>
           </div>
-        </div>
+        </nav>
 
         {/* 2-COLUMN FULL-PAGE LAYOUT (Utilizing Left and Right Space) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -540,7 +617,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                   <button
                     type="button"
                     onClick={() => onNavigateToMap(effectiveBooking)}
-                    className="flex-1 rounded-xl bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-3 py-2 text-[11px] font-bold text-[#007AFF] hover:bg-[#007AFF]/20 transition-colors cursor-pointer text-center"
+                    className="workspace-button workspace-button--secondary flex-1"
                   >
                     Transit Map
                   </button>
@@ -548,7 +625,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 rounded-xl border border-black/10 dark:border-white/10 px-3 py-2 text-[11px] font-semibold text-[#111] dark:text-white hover:bg-slate-50 dark:hover:bg-white/5"
+                    className="workspace-button workspace-button--secondary"
                   >
                     Google Maps <ExternalLink size={12} />
                   </a>
@@ -608,7 +685,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                 <button
                   type="button"
                   onClick={() => void handleCopyBookingRef(bookingRef)}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-white dark:bg-[#2C2C2E] border border-black/10 dark:border-white/15 px-3 py-1.5 text-xs font-semibold text-[#111] dark:text-white hover:bg-slate-50 dark:hover:bg-white/15 transition-colors cursor-pointer shadow-xs"
+                  className="workspace-button workspace-button--secondary"
                 >
                   {copiedReference ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
                   {copiedReference ? 'Copied' : 'Copy'}
@@ -641,11 +718,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                   setCancelError(null);
                   setShowCancelModal(true);
                 }}
-                className={`w-full rounded-2xl py-3 text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                  eligibility.canCancel
-                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 cursor-pointer shadow-xs'
-                    : 'bg-black/[0.04] dark:bg-white/[0.04] text-[#9ca3af] dark:text-[#71717A] border border-black/[0.06] dark:border-white/[0.06] cursor-not-allowed'
-                }`}
+                className="workspace-button workspace-button--danger w-full"
               >
                 Cancel Booking
               </button>
@@ -775,245 +848,128 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
     const isMoving = bollardMotion !== 'idle';
     const hasConfirmedPosition = unlockedByBookingId[effectiveBooking.id] !== undefined;
     const canConnect = pendingUnlock !== null && pendingUnlock.bookingId === effectiveBooking.bookingId;
-    const positionLabel = !hasConfirmedPosition ? 'Position unconfirmed' : isSelectedUnlocked ? 'Unlocked (Down)' : 'Locked (Up)';
+    const positionLabel = isCheckingPosition ? 'Checking position…' : !hasConfirmedPosition ? 'Position unconfirmed' : isSelectedUnlocked ? 'Unlocked (Down)' : 'Locked (Up)';
+    const controlError = iotError || positionError;
+    const toggleTargetUnlock = hasConfirmedPosition
+      ? !isSelectedUnlocked
+      : lastCommandByBookingId[effectiveBooking.id] ?? true;
 
     return (
-      <div className="w-full max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200">
-        {/* Top Header */}
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            disabled={isMoving}
-            onClick={() => { setPendingUnlock(null); setSubView('grid'); }}
-            className="inline-flex items-center gap-2 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] px-3.5 py-2 text-xs font-bold text-[#111] dark:text-white hover:bg-slate-50 dark:hover:bg-[#1C1C1E] transition-colors cursor-pointer shadow-xs"
-          >
-            <ArrowLeft size={15} /> Back to My Passes
+      <div ref={bollardScreenRef} className="commuter-bollard-screen mx-auto w-full max-w-7xl">
+        <nav aria-label="Bollard navigation" className="bollard-screen-nav">
+          <button type="button" disabled={isMoving} onClick={() => { setPendingUnlock(null); setSubView('grid'); }} className="bollard-screen-back">
+            <ArrowLeft size={16} aria-hidden="true" /><span><span className="hidden sm:inline">Back to </span>My Passes</span>
           </button>
-
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={isMoving}
-              onClick={() => onNavigateToMap(effectiveBooking)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-xs font-bold text-[#007AFF] hover:bg-slate-50 dark:hover:bg-[#1C1C1E] transition-colors cursor-pointer"
-              title="Bring to map"
-            >
-              <Navigation size={14} /> Navigate
+            <button type="button" aria-label="Navigate" disabled={isMoving} onClick={() => onNavigateToMap(effectiveBooking)} className="workspace-button workspace-button--secondary bollard-nav-action">
+              <Navigation size={16} aria-hidden="true" /><span className="hidden sm:inline">Navigate</span>
             </button>
-            <button
-              type="button"
-              disabled={isMoving}
-              onClick={() => handleOpenConfirmationView(effectiveBooking)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] px-3.5 py-2 text-xs font-bold text-[#111] dark:text-white hover:bg-slate-50 dark:hover:bg-[#1C1C1E] transition-colors cursor-pointer"
-              aria-label="Configure booking"
-              title="Booking details & cancellation"
-            >
-              <MoreVertical size={15} />
-              <span>Details &amp; Cancel</span>
+            <button type="button" aria-label="Booking details" disabled={isMoving} onClick={() => handleOpenConfirmationView(effectiveBooking)} className="workspace-button workspace-button--secondary bollard-nav-action">
+              <Receipt size={16} aria-hidden="true" /><span className="hidden sm:inline">Booking details</span>
             </button>
           </div>
-        </div>
+        </nav>
 
-        {/* 2-COLUMN FULL-PAGE LAYOUT (Utilizing Left & Right Space) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-          {/* LEFT COLUMN: Spot Summary + Visual Bollard Up/Down Animation Stage */}
-          <div className="lg:col-span-7 flex flex-col">
-            <div className="h-full rounded-3xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] p-6 shadow-sm flex flex-col justify-between space-y-4">
-              {/* Spot Summary Header */}
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <span
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-2.5 py-0.5 text-[11px] font-bold text-[#007AFF] truncate"
-                    title={`Bay ${effectiveBooking.spot.parkingLabel} · ${effectiveBooking.vehiclePlate}`}
-                  >
-                    Bay {effectiveBooking.spot.parkingLabel} &middot; {effectiveBooking.vehiclePlate}
-                  </span>
-                  <h2 className="mt-1.5 text-xl sm:text-2xl font-extrabold tracking-tight text-[#111] dark:text-white">
-                    {effectiveBooking.spot.propertyName || effectiveBooking.spot.name}
-                  </h2>
-                  <p className="mt-0.5 text-xs text-[#5f6368] dark:text-[#A1A1AA]">
-                    Period: {formatBookingDate(effectiveBooking.startTime)} &ndash;{' '}
-                    {formatBookingDate(inclusiveEnd)}
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider shrink-0 ${
+        <section aria-label="Bollard control" className="workspace-panel commuter-bollard-card mx-auto w-full max-w-2xl">
+          <header className="bollard-parking-summary">
+            <h2 title={effectiveBooking.spot.propertyName || effectiveBooking.spot.name}>{effectiveBooking.spot.propertyName || effectiveBooking.spot.name}</h2>
+            <div className="bollard-parking-meta">
+              <span className="font-semibold text-foreground">Bay {effectiveBooking.spot.parkingLabel}</span>
+              <span className="font-mono">{effectiveBooking.vehiclePlate}</span>
+              <span>{formatBookingDate(effectiveBooking.startTime)} – {formatBookingDate(inclusiveEnd)}</span>
+            </div>
+          </header>
+
+          <div className="bollard-compact-stage">
+            <div className="bollard-stage-status">
+              <p role="status" aria-live="polite" className="font-semibold">
+                {isMoving ? (bollardMotion === 'lowering' ? 'Unlocking…' : 'Locking…') : positionLabel}
+              </p>
+              <div className="flex items-center gap-1">
+                <details className="bollard-device-details">
+                  <summary aria-label="Device status details" title="Device status details"><Info size={16} aria-hidden="true" /></summary>
+                  <div className="bollard-device-popover"><BollardStatusDetails status={bollardStatus} />{!bollardStatus && <p className="text-sm text-muted-foreground">No device reading available yet.</p>}</div>
+                </details>
+                <button type="button" disabled={isMoving || isCheckingPosition} onClick={() => { setIsCheckingPosition(true); setStatusRefreshKey(value => value + 1); }} aria-label="Check position" title="Check position" className="bollard-status-refresh">
+                  {isCheckingPosition ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={16} aria-hidden="true" />}<span className="sr-only">Check position</span>
+                </button>
+              </div>
+            </div>
+            <div data-bollard-visual-space className="bollard-visual-space">
+              <div role="img" aria-label={'Bollard animation: ' + positionLabel} className="bollard-compact-visual">
+              {/* Bollard Post (Animates Up and Down into the Ground Slot) */}
+              <div className="relative z-10 flex flex-col items-center justify-end h-32 w-28">
+                <div
+                  className={`w-14 rounded-t-2xl border-2 transition-all duration-700 ease-in-out flex flex-col items-center justify-between py-2 shadow-2xl ${
                     isSelectedUnlocked
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                      ? 'h-4 translate-y-2 bg-emerald-500/80 border-emerald-300 shadow-emerald-500/30'
+                      : 'h-28 translate-y-0 bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 border-amber-200 shadow-amber-500/30'
                   }`}
                 >
-                  {bollardMotion === 'lowering'
-                    ? 'Verifying unlock…'
-                    : bollardMotion === 'raising'
-                      ? 'Locking…'
-                      : positionLabel}
-                </span>
-              </div>
-
-              {/* 1. UPPER PART: BOLLARD UP & DOWN VISUAL ANIMATION */}
-              <div className="relative flex-1 min-h-[260px] overflow-hidden rounded-2xl border border-black/[0.08] dark:border-white/10 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 p-6 text-white shadow-inner flex flex-col justify-between">
-                {/* Status Indicator Top Row */}
-                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300">
-                  <span className="inline-flex items-center gap-2">
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${
-                        isMoving
-                          ? 'bg-sky-400 animate-ping'
-                          : isSelectedUnlocked
-                            ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]'
-                            : 'bg-amber-400 shadow-[0_0_10px_#fbbf24]'
-                      }`}
-                    />
-                    {isMoving
-                      ? bollardMotion === 'lowering'
-                        ? 'Verifying access and waiting for the bollard…'
-                        : 'Checking bay clearance and waiting for the bollard…'
-                      : positionLabel}
-                  </span>
-                  <span className="font-mono text-[10px] text-slate-400">
-                    IoT Smart Barrier
-                  </span>
-                </div>
-
-                {/* Animated Bollard Stage */}
-                <div className="relative h-48 w-full flex flex-col items-center justify-end overflow-hidden pt-4">
-                  {/* Motion Direction Arrows */}
-                  <div className="absolute top-2 flex flex-col items-center">
-                    <div
-                      className={`text-xs font-bold tracking-widest uppercase px-3 py-1 rounded-full border backdrop-blur-xs transition-all duration-500 ${
-                        isSelectedUnlocked
-                          ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                          : 'border-amber-500/40 bg-amber-500/15 text-amber-300'
-                      }`}
-                    >
-                      {positionLabel}
-                    </div>
-                  </div>
-
-                  {/* Bollard Post (Animates Up and Down into the Ground Slot) */}
-                  <div className="relative z-10 flex flex-col items-center justify-end h-32 w-28">
-                    <div
-                      className={`w-14 rounded-t-2xl border-2 transition-all duration-700 ease-in-out flex flex-col items-center justify-between py-2 shadow-2xl ${
-                        isSelectedUnlocked
-                          ? 'h-4 translate-y-2 bg-emerald-500/80 border-emerald-300 shadow-emerald-500/30'
-                          : 'h-28 translate-y-0 bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 border-amber-200 shadow-amber-500/30'
-                      }`}
-                    >
-                      {/* LED Strip on Bollard Top */}
-                      <div
-                        className={`w-8 h-1.5 rounded-full transition-colors duration-500 ${
-                          isSelectedUnlocked ? 'bg-emerald-200' : 'bg-white animate-pulse'
-                        }`}
-                      />
-                      {/* Reflective Warning Stripes when Raised */}
-                      {!isSelectedUnlocked && (
-                        <div className="w-full px-1.5 space-y-1.5">
-                          <div className="h-2 w-full rounded-xs bg-slate-950/75" />
-                          <div className="h-2 w-full rounded-xs bg-slate-950/75" />
-                        </div>
-                      )}
-                      <div className="text-[9px] font-black tracking-tighter text-slate-950">
-                        PJ
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Ground / Asphalt Base & Recess Slot */}
-                  <div className="relative z-20 w-full">
-                    <div className="mx-auto h-3 w-36 rounded-t-lg bg-slate-700 border-t border-x border-slate-500 flex items-center justify-center">
-                      <div className="h-1 w-20 rounded-full bg-slate-900" />
-                    </div>
-                    <div className="h-5 w-full rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-between px-4">
-                      <div className="h-1 w-10 bg-amber-400/70 rounded-full" />
-                      <span className="text-[9px] font-mono uppercase tracking-widest text-slate-400">
-                        Bay {effectiveBooking.spot.parkingLabel} Surface
-                      </span>
-                      <div className="h-1 w-10 bg-amber-400/70 rounded-full" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN: Error Display + Tactile Toggle + Support Button */}
-          <div className="lg:col-span-5 flex flex-col">
-            <div className="h-full rounded-3xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] p-6 shadow-sm flex flex-col justify-between space-y-6">
-              {/* 2. ERROR / STATUS DISPLAY BOX */}
-              <div className="min-h-[52px]">
-                {iotError ? (
+                  {/* LED Strip on Bollard Top */}
                   <div
-                    role="alert"
-                    className="rounded-2xl border border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-950/50 p-4 text-xs text-rose-700 dark:text-rose-200 space-y-2.5 animate-in fade-in duration-150"
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <AlertCircle size={17} className="shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-bold text-rose-800 dark:text-rose-200">
-                          Verification / Device Error
-                        </p>
-                        <p className="mt-0.5 leading-relaxed">{iotError}</p>
-                      </div>
+                    className={`w-8 h-1.5 rounded-full transition-colors duration-500 ${
+                      isSelectedUnlocked ? 'bg-emerald-200' : 'bg-white animate-pulse'
+                    }`}
+                  />
+                  {/* Reflective Warning Stripes when Raised */}
+                  {!isSelectedUnlocked && (
+                    <div className="w-full px-1.5 space-y-1.5">
+                      <div className="h-2 w-full rounded-xs bg-slate-950/75" />
+                      <div className="h-2 w-full rounded-xs bg-slate-950/75" />
                     </div>
+                  )}
+                  <div className="text-[9px] font-black tracking-tighter text-slate-950">
+                    PJ
                   </div>
-                ) : iotStatusNote ? (
-                  <div role="status" className="rounded-2xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/80 dark:bg-emerald-950/40 p-3.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2.5">
-                    <ShieldCheck size={17} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                    <span>{iotStatusNote}</span>
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-black/10 dark:border-white/10 bg-[#f8f9fa] dark:bg-[#1C1C1E]/60 px-4 py-3 text-center text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
-                    Unlock verifies your location and connects to the bollard. Clear the bay before locking.
-                  </div>
-                )}
+                </div>
               </div>
 
-              <div className="grid gap-3">
-                <button
-                  type="button"
-                  disabled={isMoving}
-                  onClick={() => void handleToggleBollard(true)}
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#0071e3] px-4 text-sm font-semibold text-white hover:bg-[#0062c5] disabled:opacity-60"
-                >
-                  {bollardMotion === 'lowering' ? <Loader2 size={17} className="animate-spin" /> : <Unlock size={17} />}
-                  {canConnect ? 'Connect Bluetooth and unlock' : 'Unlock bollard'}
-                </button>
-                {canConnect && !isMoving && (
-                  <p role="status" className="text-xs text-[#5f6368] dark:text-[#A1A1AA]">
-                    Tap Connect Bluetooth and unlock, then select your bollard.
-                  </p>
-                )}
-                <button
-                  type="button"
-                  disabled={isMoving}
-                  onClick={() => void handleToggleBollard(false)}
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-black/10 px-4 text-sm font-semibold dark:border-white/15 disabled:opacity-60"
-                >
-                  {bollardMotion === 'raising' ? <Loader2 size={17} className="animate-spin" /> : <Lock size={17} />}
-                  Lock bollard
-                </button>
-              </div>
-
-              {/* 4. BOTTOM SUPPORT BUTTON & QUICK ACTIONS */}
-              <div className="flex items-center justify-between pt-3 border-t border-black/[0.06] dark:border-white/10">
-                <span className="text-[11px] text-[#8e8e93] dark:text-[#71717A]">
-                  Having trouble with the barrier?
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onOpenSupport(effectiveBooking)}
-                  className="inline-flex items-center gap-2 rounded-full border border-black/10 dark:border-white/15 bg-[#f8f9fa] dark:bg-[#1C1C1E] px-4 py-2 text-xs font-bold text-[#111] dark:text-white hover:border-[#007AFF] hover:text-[#007AFF] transition-all shadow-xs cursor-pointer"
-                >
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#007AFF] text-white">
-                    <Phone size={12} />
+              {/* Ground / Asphalt Base & Recess Slot */}
+              <div className="relative z-20 w-full">
+                <div className="mx-auto h-3 w-36 rounded-t-lg bg-slate-300 dark:bg-slate-700 border-t border-x border-slate-400 dark:border-slate-500 flex items-center justify-center">
+                  <div className="h-1 w-20 rounded-full bg-slate-500 dark:bg-slate-900" />
+                </div>
+                <div className="h-5 w-full rounded-lg bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-between px-4">
+                  <div className="h-1 w-10 bg-amber-400/70 rounded-full" />
+                  <span className="text-[9px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                    Bay {effectiveBooking.spot.parkingLabel} Surface
                   </span>
-                  <span>Get Support</span>
-                </button>
+                  <div className="h-1 w-10 bg-amber-400/70 rounded-full" />
+                </div>
+              </div>
               </div>
             </div>
+
           </div>
-        </div>
+
+          <div className="bollard-compact-controls">
+            <button type="button" role="switch" aria-label="Bollard unlocked" aria-checked={hasConfirmedPosition && isSelectedUnlocked} aria-busy={isMoving || isCheckingPosition} aria-describedby="commuter-bollard-toggle-help"
+              disabled={isMoving || isCheckingPosition || (!hasConfirmedPosition && lastCommandByBookingId[effectiveBooking.id] === undefined) || !token || !effectiveBooking.bookingId}
+              onClick={() => void handleToggleBollard(toggleTargetUnlock)}
+              className={'bollard-compact-switch ' + (hasConfirmedPosition && isSelectedUnlocked ? 'is-unlocked' : '')}>
+              <span className={'bollard-switch-thumb ' + (hasConfirmedPosition ? (isSelectedUnlocked ? 'is-unlocked' : 'is-locked') : 'is-unknown')}>
+                {isMoving || isCheckingPosition ? <Loader2 size={20} className="motion-safe:animate-spin" aria-hidden="true" /> : isSelectedUnlocked ? <Unlock size={20} aria-hidden="true" /> : <Lock size={20} aria-hidden="true" />}
+              </span>
+            </button>
+            <div aria-hidden="true" className="bollard-switch-labels"><span>Lock</span><span>Unlock</span></div>
+          </div>
+
+          <footer className="bollard-compact-footer">
+            <div id="commuter-bollard-toggle-help" className="bollard-compact-feedback">
+              {controlError ? <p role="alert" className="text-rose-600 dark:text-rose-300">{controlError}</p>
+                : iotStatusNote ? <p role="status" className="text-emerald-700 dark:text-emerald-300">{iotStatusNote}</p>
+                : <p className="text-muted-foreground">{isCheckingPosition ? 'Loading the latest reported position…'
+                : isMoving ? 'Waiting for device confirmation…'
+                : canConnect ? 'Tap toggle again to connect Bluetooth.'
+                : positionError ? 'Unable to load status. Tap refresh to retry.'
+                : !hasConfirmedPosition ? 'Position unavailable. Tap refresh to check again.'
+                : bollardStatus?.heartbeatStatus === 'offline' ? 'Device offline · last reported position'
+                : isSelectedUnlocked ? 'Clear the bay before locking.' : 'Toggle to verify access and unlock.'}</p>}
+            </div>
+            <button type="button" onClick={() => onOpenSupport(effectiveBooking)} className="workspace-button workspace-button--secondary bollard-support-button"><Phone size={16} aria-hidden="true" />Get Support</button>
+          </footer>
+        </section>
       </div>
     );
   }
@@ -1043,15 +999,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
   return (
     <div className="space-y-5">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-[#111] dark:text-white">
-            Parking passes ({bookings.length})
-          </h2>
-          <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA]">
-            Get directions, manage the booking, or open gate controls.
-          </p>
-        </div>
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={onFindMoreParking}

@@ -1,0 +1,372 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ParkJom combined stored IoT status",
+    "version": "2.0.0",
+    "description": "Canonical GET contract from ParkJom-IoT-Bollard-Postman.md. Reads persisted ACK/telemetry only; no MQTT scan is sent."
+  },
+  "servers": [
+    {
+      "url": "https://parkjom-api-gbgcbycbcjghczgu.malaysiawest-01.azurewebsites.net/api"
+    }
+  ],
+  "paths": {
+    "/iot/status": {
+      "get": {
+        "summary": "Read latest stored status for exactly one authorized target",
+        "operationId": "getIoTStatus",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "bookingId",
+            "required": false,
+            "description": "Exactly one selector is required.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "deviceUuid",
+            "required": false,
+            "description": "Exactly one selector is required.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parkingSpotId",
+            "required": false,
+            "description": "Exactly one selector is required.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest stored status, including valid empty or partial sensor reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "deviceUuid",
+                        "bookingId",
+                        "heartbeatStatus",
+                        "sensorStatus",
+                        "bollardPosition",
+                        "receivedAt",
+                        "distanceCm",
+                        "checkedAt"
+                      ],
+                      "properties": {
+                        "bookingId": {
+                          "type": "integer",
+                          "nullable": true
+                        },
+                        "deviceUuid": {
+                          "type": "string"
+                        },
+                        "bollardPosition": {
+                          "type": "string",
+                          "enum": [
+                            "LOCKED",
+                            "UNLOCKED",
+                            null
+                          ],
+                          "nullable": true
+                        },
+                        "receivedAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "heartbeatStatus": {
+                          "type": "string",
+                          "enum": [
+                            "online",
+                            "offline",
+                            "unknown"
+                          ]
+                        },
+                        "sensorStatus": {
+                          "type": "string",
+                          "enum": [
+                            "ok",
+                            "unknown",
+                            "unavailable"
+                          ]
+                        },
+                        "distanceCm": {
+                          "type": "number",
+                          "minimum": 0,
+                          "nullable": true
+                        },
+                        "lastHeartbeatAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "checkedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "offlineAfterSeconds": {
+                          "type": "integer"
+                        },
+                        "parkingSpot": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "parkingSpotId": {
+                              "type": "integer"
+                            },
+                            "parkingLabel": {
+                              "type": "string"
+                            },
+                            "propertyId": {
+                              "type": "integer"
+                            },
+                            "propertyName": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "code": 200,
+                  "success": true,
+                  "message": "Latest logged bollard status retrieved.",
+                  "data": {
+                    "deviceUuid": "7d9f2c41-8a63-4b72-9e15-6c2a0f84b731",
+                    "bookingId": 42,
+                    "heartbeatStatus": "online",
+                    "lastHeartbeatAt": "2026-11-22T08:00:00Z",
+                    "checkedAt": "2026-11-22T08:00:05Z",
+                    "offlineAfterSeconds": 90,
+                    "distanceCm": 75,
+                    "sensorStatus": "ok",
+                    "bollardPosition": "UNLOCKED",
+                    "receivedAt": "2026-11-22T08:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, missing, or multiple selectors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "errorCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "errorCode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected or device position unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "errorCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "errorCode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller role is not authorized for this selector",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "errorCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "errorCode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request rejected or device position unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "errorCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "errorCode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected or device position unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "errorCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "errorCode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unexpected service or intermediary failure; never infer a bollard position",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "errorCode",
+                    "message"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "errorCode": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Supply exactly one selector. bookingId requires the booking renter; deviceUuid/parkingSpotId require the device owner or admin. This GET reads persisted ACK/telemetry and never sends MQTT. No logs is a successful unknown status; receivedAt remains the log time. Explicit fresh scans use POST /iot/{uuid}/status/scan."
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

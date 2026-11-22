@@ -1,3 +1,4 @@
+import { getIoTStatus, type IoTStatusData } from '@/services/iotManagementApi';
 import { parseTimestamp } from '@/lib/dateTime';
 import { apiRequest, authorizationHeaders } from '@/services/apiClient';
 
@@ -220,4 +221,13 @@ export async function completeBollardUnlock(
 export async function performLockBollardCommand(token: string, bookingId: number) {
   const result = await postBollardRequest<CommandConfirmation>(token, bookingId, 'lock');
   return confirmPosition(result, 'LOCKED');
+}
+
+export type BookingBollardPosition = 'LOCKED' | 'UNLOCKED';
+
+/** Reads the latest stored status for this commuter's booking; it never issues a scan. */
+export async function getBookingBollardStatus(token: string, bookingId: number, signal?: AbortSignal): Promise<IoTStatusData> {
+  const status = await getIoTStatus(token, { bookingId }, signal);
+  if (status.bookingId !== bookingId) throw new Error('The status report does not belong to this booking.');
+  return status;
 }

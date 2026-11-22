@@ -1,0 +1,16 @@
+version: 1
+id: 82dde1dc-e981-4c01-a8dc-f52d16d298c8
+name: parkjom-bollard-status
+slug: parkjom-bollard-status
+protocol: http
+port: 4500
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
+generatedFrom:
+  type: spec
+  mode: static
+  path: ../../contracts/booking-bollard-status.openapi.json
+
+interceptRequests: true

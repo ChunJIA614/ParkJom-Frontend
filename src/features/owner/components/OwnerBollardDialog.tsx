@@ -1,9 +1,10 @@
+import BollardStatusDetails from '@/components/ui/BollardStatusDetails';
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { Dialog } from '@base-ui/react/dialog';
 import { ChevronDown, LoaderCircle, Lock, LockOpen, MapPin, RefreshCw, X } from 'lucide-react';
 import {
-  bindIoTDevice, ownerLockParkingSpot, ownerUnlockParkingSpot, scanBollardPosition,
-  type BollardPosition, type IoTDeviceInfo,
+  bindIoTDevice, ownerLockParkingSpot, ownerUnlockParkingSpot, getIoTStatus,
+  type BollardPosition, type IoTDeviceInfo, type IoTStatusData,
 } from '@/services/iotManagementApi';
 import type { ParkingBay } from '../types';
 
@@ -174,6 +175,7 @@ function BollardControl({ token, spotId, deviceUuid, busy, setBusy }: {
   setBusy: (busy: boolean) => void;
 }) {
   const [position, setPosition] = useState<BollardPosition | null>(null);
+  const [status, setStatus] = useState<IoTStatusData | null>(null);
   const [pending, setPending] = useState<BollardPosition | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [scanning, setScanning] = useState(Boolean(deviceUuid));
@@ -184,10 +186,11 @@ function BollardControl({ token, spotId, deviceUuid, busy, setBusy }: {
     const controller = new AbortController();
     setScanning(true);
     setPosition(null);
+    setStatus(null);
     setError(null);
-    scanBollardPosition(token, deviceUuid, controller.signal)
+    getIoTStatus(token, { deviceUuid }, controller.signal)
       .then((reported) => {
-        if (!controller.signal.aborted) setPosition(reported);
+        if (!controller.signal.aborted) { setStatus(reported); setPosition(reported.bollardPosition); }
       })
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -250,6 +253,7 @@ function BollardControl({ token, spotId, deviceUuid, busy, setBusy }: {
           </div>
         </div>
       </div>
+      <BollardStatusDetails status={status} />
       {error && <p role="alert" className={errorClass + ' mb-4 text-center'}>{error}</p>}
       {!deviceUuid && <p className={errorClass + ' mb-4 text-center'}>Refresh device status and try again.</p>}
       {deviceUuid && (
@@ -257,7 +261,7 @@ function BollardControl({ token, spotId, deviceUuid, busy, setBusy }: {
           <button type="button" onClick={() => setRefresh((value) => value + 1)} disabled={busy || scanning}
             className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-slate-300 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:opacity-50 dark:border-white/20 dark:text-slate-100 dark:hover:bg-white/10">
             <RefreshCw className={`size-4 ${scanning ? 'motion-safe:animate-spin' : ''}`} aria-hidden="true" />
-            {error && !position ? 'Retry scan' : 'Check position'}
+            {error && !position ? 'Retry status' : 'Check position'}
           </button>
         </div>
       )}

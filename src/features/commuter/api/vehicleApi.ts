@@ -1,5 +1,6 @@
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
 import { normalizeVehiclePlate, validateVehiclePlate } from '../lib/plateValidation';
+import { validateVehicleColor } from '../lib/vehicleColorValidation';
 
 export interface AddVehicleRequest {
   numberPlate: string;
@@ -148,9 +149,13 @@ export async function addVehicle(
   if (plateError) {
     throw new Error(plateError);
   }
+  const colorError = validateVehicleColor(vehicle.vehicleColor);
+  if (colorError) throw new Error(colorError);
+
   const normalizedVehicle: AddVehicleRequest = {
     ...vehicle,
     numberPlate: normalizeVehiclePlate(vehicle.numberPlate),
+    vehicleColor: vehicle.vehicleColor.trim(),
   };
 
   const response = await apiRequest('/vehicle/add', {

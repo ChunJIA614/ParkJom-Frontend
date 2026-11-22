@@ -9,6 +9,7 @@ interface VehicleBrandModelFieldsProps {
   model: string;
   catalog: VehicleCatalogEntry[];
   disabled?: boolean;
+  showHints?: boolean;
   onBrandChange: (value: string) => void;
   onModelChange: (value: string) => void;
 }
@@ -20,6 +21,7 @@ export default function VehicleBrandModelFields({
   model,
   catalog,
   disabled = false,
+  showHints = true,
   onBrandChange,
   onModelChange,
 }: VehicleBrandModelFieldsProps) {
@@ -121,7 +123,7 @@ export default function VehicleBrandModelFields({
             className="min-h-9 w-full rounded-xl border border-[#dadce0] dark:border-white/10 bg-white dark:bg-[#121214] px-3 py-2 text-[12px] text-[#111] dark:text-white placeholder:text-[#9ca3af] dark:placeholder:text-[#71717A] focus:border-[#007AFF] dark:focus:border-[#0071E3] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           />
         )}
-        {!brand && (
+        {showHints && !brand && (
           <p className="text-[10px] text-[#80868b] dark:text-[#71717A]">Select a brand first.</p>
         )}
       </label>

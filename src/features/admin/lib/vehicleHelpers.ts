@@ -2,13 +2,16 @@ import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import type { AdminVehicleDto } from '../types';
 import { validateVehiclePlate } from '@/features/commuter/lib/plateValidation';
 
-export type VehicleSortOption = 'newest-id' | 'updated-desc' | 'updated-asc' | 'plate-asc' | 'owner-asc';
+export interface VehicleTableSort {
+  column: 'id' | 'plate' | 'brand' | 'model' | 'color' | 'owner' | 'created' | 'updated';
+  direction: 'asc' | 'desc';
+}
 
 export interface VehicleFilterState {
   searchQuery: string;
   brandFilter: string;
   ownerFilter: string;
-  sortBy: VehicleSortOption;
+  sort: VehicleTableSort;
   currentUserEmail?: string | null;
 }
 
@@ -118,14 +121,26 @@ export function extractVehicleFilterOptions(vehicles: AdminVehicleDto[]): {
   };
 }
 
-const toTimestamp = (value: string): number => {
+const toTimestamp = (value: string): number | undefined => {
   const time = parseTimestamp(value).getTime();
-  return Number.isFinite(time) ? time : 0;
+  return Number.isFinite(time) ? time : undefined;
+};
+
+const textOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const sortValue: Record<VehicleTableSort['column'], (vehicle: AdminVehicleDto) => string | number | undefined> = {
+  id: vehicle => vehicle.vehicleId,
+  plate: vehicle => vehicle.numberPlate || undefined,
+  brand: vehicle => vehicle.vehicleBrand || undefined,
+  model: vehicle => vehicle.vehicleModel || undefined,
+  color: vehicle => vehicle.vehicleColor || undefined,
+  owner: vehicle => vehicle.ownerName || vehicle.ownerEmail || undefined,
+  created: vehicle => toTimestamp(vehicle.createdAt),
+  updated: vehicle => toTimestamp(vehicle.updatedAt || vehicle.createdAt),
 };
 
 export function filterAndSortVehicles(
   vehicles: AdminVehicleDto[],
-  { searchQuery, brandFilter, ownerFilter, sortBy, currentUserEmail }: VehicleFilterState,
+  { searchQuery, brandFilter, ownerFilter, sort, currentUserEmail }: VehicleFilterState,
 ): AdminVehicleDto[] {
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const normalizedBrand = brandFilter.trim().toLowerCase();
@@ -155,33 +170,17 @@ export function filterAndSortVehicles(
     ].some((value) => String(value ?? '').toLowerCase().includes(normalizedSearch));
   });
 
-  const sorted = [...filtered];
-  sorted.sort((a, b) => {
-    switch (sortBy) {
-      case 'updated-desc':
-        return (
-          toTimestamp(b.updatedAt || b.createdAt) - toTimestamp(a.updatedAt || a.createdAt)
-          || b.vehicleId - a.vehicleId
-        );
-      case 'updated-asc':
-        return (
-          toTimestamp(a.updatedAt || a.createdAt) - toTimestamp(b.updatedAt || b.createdAt)
-          || a.vehicleId - b.vehicleId
-        );
-      case 'plate-asc':
-        return a.numberPlate.localeCompare(b.numberPlate) || b.vehicleId - a.vehicleId;
-      case 'owner-asc':
-        return (
-          (a.ownerName || a.ownerEmail || 'zzz').localeCompare(b.ownerName || b.ownerEmail || 'zzz')
-          || a.numberPlate.localeCompare(b.numberPlate)
-        );
-      case 'newest-id':
-      default:
-        return b.vehicleId - a.vehicleId;
+  const direction = sort.direction === 'asc' ? 1 : -1;
+  return filtered.map(vehicle => ({ vehicle, value: sortValue[sort.column](vehicle) })).sort((left, right) => {
+    const byId = left.vehicle.vehicleId - right.vehicle.vehicleId;
+    if (left.value === undefined || right.value === undefined) {
+      return Number(left.value === undefined) - Number(right.value === undefined) || byId;
     }
-  });
-
-  return sorted;
+    const order = typeof left.value === 'number' && typeof right.value === 'number'
+      ? left.value - right.value
+      : textOrder.compare(String(left.value), String(right.value));
+    return direction * (order || byId);
+  }).map(({ vehicle }) => vehicle);
 }
 
 export function validateVehicleForm(values: VehicleFormValues): string | null {

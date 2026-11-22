@@ -155,3 +155,7 @@ All checks should finish without errors. The frontend CI workflow runs the same 
 ### Timestamp display timezone
 
 `VITE_TIME_ZONE=Asia/Kuala_Lumpur` displays timestamps in UTC+8 on every device. Restart development or rebuild after changing this Vite environment setting. Shared parsing accepts Unix seconds, milliseconds, numeric strings, and existing ISO dates. Formatting changes the display zone without shifting the instant or outgoing API values. Calendar-only dates keep their selected day.
+
+### Bollard control verification
+
+Run the local frontend with `node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4187 --mode production`, then start `postman simulation run postman/simulations/commuter-bollard-status/commuter-bollard-status.sim.yaml --port 4010 --no-history --output ndjson` in another terminal. Run `npm run test:ui:bollard` for the light/dark desktop/mobile checks. The status request uses the real HTTP client against a contract-based local mock; movement commands are fixture functions and never reach hardware. The simulation context records tested guarantees and remaining hardware/deployment verification. Status reads use the canonical `GET /api/iot/status?bookingId={bookingId}` endpoint. GET reads stored logs; it never triggers an MQTT scan. The contract also supports owner/admin UUID or parking-spot selectors.

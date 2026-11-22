@@ -242,7 +242,7 @@ export async function deactivateMyAccount(token: string, reason?: string): Promi
 // ---------------------------------------------------------------------------
 
 /** GET /api/admin/users */
-export async function getAdminUsers(token: string, query: AdminUserListQuery = {}): Promise<AdminUserListResult> {
+export async function getAdminUsers(token: string, query: AdminUserListQuery = {}, signal?: AbortSignal): Promise<AdminUserListResult> {
   const params = new URLSearchParams();
   if (query.search?.trim()) params.set('search', query.search.trim());
   if (query.userType) params.set('userType', String(query.userType));
@@ -250,11 +250,14 @@ export async function getAdminUsers(token: string, query: AdminUserListQuery = {
   if (typeof query.isProfileComplete === 'boolean') params.set('isProfileComplete', String(query.isProfileComplete));
   const page = Math.max(1, Math.floor(query.page ?? 1));
   const pageSize = Math.min(100, Math.max(1, Math.floor(query.pageSize ?? 20)));
+  if (query.sortBy) params.set('sortBy', query.sortBy);
+  if (query.sortDirection) params.set('sortDirection', query.sortDirection);
   params.set('page', String(page));
   params.set('pageSize', String(pageSize));
 
   const response = await apiRequest(`/admin/users?${params.toString()}`, {
     method: 'GET',
+    signal,
     headers: authorizationHeaders(token),
   });
   const payload = await parseEnvelope(response, 'Unable to load users.');
@@ -281,6 +284,23 @@ export async function getAdminUsers(token: string, query: AdminUserListQuery = {
     totalCount,
     totalPages: Math.max(1, totalPages),
   };
+}
+
+/** Load every API page so the user table can sort and filter across the full list. */
+export async function getAllAdminUsers(token: string, signal?: AbortSignal): Promise<UserProfile[]> {
+  const users = new Map<number, UserProfile>();
+  let totalPages = 1;
+  let pageSize = 100;
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    const result = await getAdminUsers(token, { page, pageSize }, signal);
+    if (result.page !== page) throw new Error('The user service returned the wrong page.');
+    totalPages = result.totalPages;
+    pageSize = result.pageSize;
+    for (const user of result.users) users.set(user.userId, user);
+  }
+
+  return [...users.values()];
 }
 
 /** GET /api/admin/users/{userId} */

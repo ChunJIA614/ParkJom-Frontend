@@ -16,6 +16,9 @@ import React, { useEffect, useMemo, useState, type FormEvent, type ReactNode } f
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowDownUp,
+  ArrowUp,
   Car,
   ChevronLeft,
   ChevronRight,
@@ -48,7 +51,7 @@ import {
   isVehicleOwnedByUser,
   validateVehicleForm,
   type VehicleFormValues,
-  type VehicleSortOption,
+  type VehicleTableSort,
 } from '../lib/vehicleHelpers';
 import type { AdminVehicleDto } from '../types';
 
@@ -61,6 +64,18 @@ interface VehicleManagementProps {
 }
 
 const PAGE_SIZES = [10, 20, 50, 100];
+const DEFAULT_SORT: VehicleTableSort = { column: 'id', direction: 'desc' };
+const SORTABLE_COLUMNS: { column: VehicleTableSort['column']; label: string }[] = [
+  { column: 'id', label: 'Vehicle ID' },
+  { column: 'plate', label: 'Plate' },
+  { column: 'brand', label: 'Brand' },
+  { column: 'model', label: 'Model' },
+  { column: 'color', label: 'Color' },
+  { column: 'owner', label: 'Owner' },
+  { column: 'created', label: 'Added' },
+  { column: 'updated', label: 'Updated' },
+];
+const vehicleCellClass = 'border-b border-r border-slate-200 dark:border-white/10 px-3 py-3 text-xs text-slate-600 dark:text-[#A1A1AA]';
 
 const EMPTY_FORM: VehicleFormValues = {
   numberPlate: '',
@@ -106,7 +121,7 @@ export default function VehicleManagement({
   const [searchQuery, setSearchQuery] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [ownerFilter, setOwnerFilter] = useState('');
-  const [sortBy, setSortBy] = useState<VehicleSortOption>('newest-id');
+  const [sort, setSort] = useState<VehicleTableSort>(DEFAULT_SORT);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -115,7 +130,7 @@ export default function VehicleManagement({
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<VehicleFormValues>(EMPTY_FORM);
   const [deletingVehicleId, setDeletingVehicleId] = useState<number | null>(null);
-  const [scannerTarget, setScannerTarget] = useState<'create' | 'edit' | null>(null);
+  const [showCreateScanner, setShowCreateScanner] = useState(false);
 
   const { brands, owners } = useMemo(() => extractVehicleFilterOptions(vehicles), [vehicles]);
   const hasOwnVehicles = useMemo(
@@ -129,10 +144,10 @@ export default function VehicleManagement({
         searchQuery,
         brandFilter,
         ownerFilter,
-        sortBy,
+        sort,
         currentUserEmail,
       }),
-    [brandFilter, currentUserEmail, ownerFilter, searchQuery, sortBy, vehicles],
+    [brandFilter, currentUserEmail, ownerFilter, searchQuery, sort, vehicles],
   );
 
   const uniqueOwnerCount = useMemo(
@@ -151,13 +166,21 @@ export default function VehicleManagement({
     [selectedVehicleId, vehicles],
   );
 
-  const hasActiveFilters = Boolean(searchQuery.trim() || brandFilter || ownerFilter || sortBy !== 'newest-id');
+  const hasActiveFilters = Boolean(searchQuery.trim() || brandFilter || ownerFilter);
+  const SortDirectionIcon = sort.direction === 'asc' ? ArrowUp : ArrowDown;
+
+  function sortBy(column: VehicleTableSort['column']) {
+    setSort(previous => ({
+      column,
+      direction: previous.column === column && previous.direction === 'asc' ? 'desc' : 'asc',
+    }));
+    setPage(1);
+  }
 
   const clearFilters = () => {
     setSearchQuery('');
     setBrandFilter('');
     setOwnerFilter('');
-    setSortBy('newest-id');
     setPage(1);
   };
 
@@ -228,11 +251,7 @@ export default function VehicleManagement({
       vehicleColor: extracted.color?.trim() || current.vehicleColor,
     });
 
-    if (scannerTarget === 'create') {
-      setCreateForm(patch);
-    } else if (scannerTarget === 'edit') {
-      setEditForm(patch);
-    }
+    setCreateForm(patch);
   };
 
   return (
@@ -283,7 +302,7 @@ export default function VehicleManagement({
       />
 
       <div className="space-y-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-3 shadow-sm sm:p-4">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(2,minmax(0,1fr))]">
           <label className="relative block">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 dark:text-[#A1A1AA]" aria-hidden="true" />
             <input
@@ -347,21 +366,6 @@ export default function VehicleManagement({
             ))}
           </SystemSelect>
 
-          <SystemSelect
-            aria-label="Sort vehicles"
-            value={sortBy}
-            onChange={(event) => {
-              setSortBy(event.target.value as VehicleSortOption);
-              setPage(1);
-            }}
-            className={fieldClass}
-          >
-            <option value="newest-id">Newest ID</option>
-            <option value="updated-desc">Recently updated</option>
-            <option value="updated-asc">Oldest updated</option>
-            <option value="plate-asc">Plate (A–Z)</option>
-            <option value="owner-asc">Owner (A–Z)</option>
-          </SystemSelect>
         </div>
 
         {hasActiveFilters && (
@@ -381,6 +385,16 @@ export default function VehicleManagement({
           </div>
         )}
       </div>
+
+      <label className="block space-y-1 text-xs font-medium text-slate-500 dark:text-[#A1A1AA] md:hidden">
+        <span>Sort by</span>
+        <SystemSelect aria-label={'Sort vehicles by column, ' + (sort.direction === 'asc' ? 'ascending' : 'descending')}
+          value={sort.column} className={fieldClass}
+          leadingIcon={<SortDirectionIcon className="size-3.5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />}
+          onChange={event => sortBy(event.target.value as VehicleTableSort['column'])}>
+          {SORTABLE_COLUMNS.map(({ column, label }) => <option key={column} value={column}>{label}</option>)}
+        </SystemSelect>
+      </label>
 
       {isLoading && vehicles.length === 0 ? (
         <div className="flex min-h-52 items-center justify-center gap-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141417] text-sm text-slate-500 dark:text-[#A1A1AA]">
@@ -413,22 +427,25 @@ export default function VehicleManagement({
           }`}
         >
           <div className="overflow-x-auto">
-            <table role="table" className="workspace-record-table w-full min-w-[900px] border-separate border-spacing-0 text-left">
+            <table role="table" className="workspace-record-table w-full md:min-w-[1060px] border-separate border-spacing-0 text-left">
               <thead role="rowgroup" className="bg-slate-50 dark:bg-[#18181C] text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]">
                 <tr role="row">
-                  <th role="columnheader" scope="col" className="rounded-tl-2xl border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
-                    Vehicle
-                  </th>
-                  <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
-                    Owner
-                  </th>
-                  <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
-                    Details
-                  </th>
-                  <th role="columnheader" scope="col" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
-                    Updated
-                  </th>
-                  <th role="columnheader" scope="col" className="rounded-tr-2xl border-b border-slate-200 dark:border-white/10 px-4 py-3">
+                  {SORTABLE_COLUMNS.map(({ column, label }, index) => {
+                    const current = sort.column === column;
+                    const Icon = current ? SortDirectionIcon : ArrowDownUp;
+                    return (
+                      <th key={column} role="columnheader" scope="col"
+                        aria-sort={current ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}
+                        className={'border-b border-r border-slate-200 dark:border-white/10 px-3 py-3 ' + (index === 0 ? 'rounded-tl-2xl' : '')}>
+                        <span className="md:hidden">{label}</span>
+                        <button type="button" aria-label={'Sort by ' + label} onClick={() => sortBy(column)}
+                          className="hidden items-center gap-1.5 whitespace-nowrap text-left uppercase tracking-wider md:inline-flex hover:text-slate-900 dark:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer">
+                          {label}<Icon className={'size-3 shrink-0 ' + (current ? 'text-blue-600 dark:text-blue-400' : 'opacity-50')} aria-hidden="true" />
+                        </button>
+                      </th>
+                    );
+                  })}
+                  <th role="columnheader" scope="col" className="rounded-tr-2xl border-b border-l border-slate-200 bg-slate-50 px-3 py-3 dark:border-white/10 dark:bg-[#18181C] md:sticky md:right-0">
                     Actions
                   </th>
                 </tr>
@@ -443,9 +460,12 @@ export default function VehicleManagement({
                     <tr
                       role="row"
                       key={vehicle.vehicleId}
-                      className="align-top hover:bg-slate-50/70 dark:hover:bg-white/[0.04] transition-colors"
+                      className="group align-top hover:bg-slate-50/70 dark:hover:bg-white/[0.04] transition-colors"
                     >
-                      <td role="cell" data-label="Vehicle" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3">
+                      <td role="cell" data-label="Vehicle ID" className={vehicleCellClass + ' font-semibold tabular-nums whitespace-nowrap'}>
+                        <span className="mr-1 md:hidden">Vehicle ID</span>#{vehicle.vehicleId}
+                      </td>
+                      <td role="cell" data-label="Plate" className={vehicleCellClass}>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="inline-flex items-center rounded-lg border border-slate-200 dark:border-white/15 bg-slate-100 dark:bg-[#1E1E24] px-2.5 py-0.5 font-mono text-xs font-bold tracking-wider text-slate-800 dark:text-white">
                             {vehicle.numberPlate}
@@ -456,12 +476,19 @@ export default function VehicleManagement({
                             </span>
                           )}
                         </div>
-                        <p className="mt-1 font-mono text-[10px] text-slate-400 dark:text-[#71717A]">
-                          Vehicle #{vehicle.vehicleId}
-                        </p>
                       </td>
-
-                      <td role="cell" data-label="Owner" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-xs text-slate-600 dark:text-[#A1A1AA]">
+                      <td role="cell" data-label="Brand" className={vehicleCellClass}>{vehicle.vehicleBrand || '—'}</td>
+                      <td role="cell" data-label="Model" className={vehicleCellClass}>{vehicle.vehicleModel || '—'}</td>
+                      <td role="cell" data-label="Color" className={vehicleCellClass}>
+                        {vehicle.vehicleColor ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="size-2.5 shrink-0 rounded-full ring-1 ring-black/15 dark:ring-white/25"
+                              style={{ backgroundColor: swatch }} aria-hidden="true" />
+                            {vehicle.vehicleColor}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td role="cell" data-label="Owner" className={vehicleCellClass}>
                         <div className="flex items-start gap-2.5">
                           <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-white/[0.06] text-slate-500 dark:text-[#A1A1AA] ring-1 ring-slate-200 dark:ring-white/10">
                             <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
@@ -477,31 +504,15 @@ export default function VehicleManagement({
                         </div>
                       </td>
 
-                      <td role="cell" data-label="Details" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-xs text-slate-600 dark:text-[#A1A1AA]">
-                        <p className="font-semibold text-slate-700 dark:text-white">
-                          {[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Unspecified model'}
-                        </p>
-                        <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-[#A1A1AA]">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/15 dark:ring-white/25"
-                            style={{ backgroundColor: swatch }}
-                            aria-hidden="true"
-                          />
-                          <span>{vehicle.vehicleColor || 'Unspecified color'}</span>
-                        </div>
+                      <td role="cell" data-label="Added" className={vehicleCellClass + ' whitespace-nowrap'}>
+                        {formatVehicleDate(vehicle.createdAt)}
+                      </td>
+                      <td role="cell" data-label="Updated" className={vehicleCellClass + ' whitespace-nowrap'}>
+                        {formatVehicleDate(vehicle.updatedAt || vehicle.createdAt)}
                       </td>
 
-                      <td role="cell" data-label="Updated" className="border-b border-r border-slate-200 dark:border-white/10 px-4 py-3 text-xs text-slate-600 dark:text-[#A1A1AA]">
-                        <p className="whitespace-nowrap text-slate-700 dark:text-white">
-                          {formatVehicleDate(vehicle.updatedAt || vehicle.createdAt)}
-                        </p>
-                        <p className="mt-1 text-[10px] text-slate-400 dark:text-[#71717A]">
-                          Added {formatVehicleDate(vehicle.createdAt)}
-                        </p>
-                      </td>
-
-                      <td role="cell" data-label="Actions" className="border-b border-slate-200 dark:border-white/10 px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                      <td role="cell" data-label="Actions" className="border-b border-l border-slate-200 bg-white px-3 py-3 group-hover:bg-slate-50 dark:border-white/10 dark:bg-[#141417] dark:group-hover:bg-[#1e1e21] md:sticky md:right-0">
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleOpenDetail(vehicle)}
@@ -574,7 +585,7 @@ export default function VehicleManagement({
             </button>
             <button
               type="button"
-              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              onClick={() => setPage(currentPage - 1)}
               disabled={isLoading || currentPage <= 1}
               title="Previous page"
               aria-label="Previous page"
@@ -587,7 +598,7 @@ export default function VehicleManagement({
             </span>
             <button
               type="button"
-              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              onClick={() => setPage(currentPage + 1)}
               disabled={isLoading || currentPage >= totalPages}
               title="Next page"
               aria-label="Next page"
@@ -615,8 +626,8 @@ export default function VehicleManagement({
           currentUserEmail={currentUserEmail}
           form={createForm}
           setForm={setCreateForm}
-          disableEscapeClose={scannerTarget !== null}
-          onOpenScanner={() => setScannerTarget('create')}
+          disableEscapeClose={showCreateScanner}
+          onOpenScanner={() => setShowCreateScanner(true)}
           onClose={() => setCreateOpen(false)}
           onCreated={async (createdPlate, message) => {
             setCreateOpen(false);
@@ -639,8 +650,6 @@ export default function VehicleManagement({
           currentUserEmail={currentUserEmail}
           form={editForm}
           setForm={setEditForm}
-          disableEscapeClose={scannerTarget !== null}
-          onOpenScanner={() => setScannerTarget('edit')}
           onClose={() => setSelectedVehicleId(null)}
           onUpdated={async (updated, message) => {
             addActivityLog?.(
@@ -675,10 +684,10 @@ export default function VehicleManagement({
       )}
 
       <VehicleAiScannerModal
-        open={scannerTarget !== null}
+        open={showCreateScanner}
         mode="onboarding"
         token={token}
-        onClose={() => setScannerTarget(null)}
+        onClose={() => setShowCreateScanner(false)}
         onApplyVehicle={handleScannerApply}
       />
     </div>
@@ -691,11 +700,12 @@ export default function VehicleManagement({
 
 interface VehicleDrawerFrameProps {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   titleId: string;
   closeLabel: string;
   isBusy: boolean;
   disableEscapeClose?: boolean;
+  panelClassName?: string;
   onClose: () => void;
   children: ReactNode;
 }
@@ -707,6 +717,7 @@ function VehicleDrawerFrame({
   closeLabel,
   isBusy,
   disableEscapeClose = false,
+  panelClassName = '',
   onClose,
   children,
 }: VehicleDrawerFrameProps) {
@@ -732,14 +743,14 @@ function VehicleDrawerFrame({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="admin-drawer-panel relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#121214] shadow-2xl animate-in slide-in-from-right duration-200"
+        className={'admin-drawer-panel relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#121214] shadow-2xl animate-in slide-in-from-right duration-200 ' + panelClassName}
       >
         <header className="flex shrink-0 items-center justify-between border-b border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] px-5 py-4">
           <div className="min-w-0">
             <h3 id={titleId} className="text-base font-bold text-slate-800 dark:text-white">
               {title}
             </h3>
-            <p className="truncate text-xs text-slate-500 dark:text-[#A1A1AA]">{subtitle}</p>
+            {subtitle && <p className="truncate text-xs text-slate-500 dark:text-[#A1A1AA]">{subtitle}</p>}
           </div>
           <button
             type="button"
@@ -764,7 +775,7 @@ interface VehicleFormFieldsProps {
   values: VehicleFormValues;
   onChange: (next: VehicleFormValues) => void;
   disabled: boolean;
-  onOpenScanner: () => void;
+  onOpenScanner?: () => void;
   scannerDisabled?: boolean;
 }
 
@@ -779,26 +790,28 @@ function VehicleFormFields({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-2.5 rounded-xl border border-blue-200/80 dark:border-white/10 bg-blue-50/70 dark:bg-white/[0.04] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-white">
-            <Sparkles className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-[#0A84FF]" aria-hidden="true" />
-            AI Plate &amp; Vehicle Scanner
-          </p>
-          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-[#A1A1AA]">
-            Auto-fill plate, brand, model, and color from a vehicle or road-tax photo.
-          </p>
+      {onOpenScanner && (
+        <div className="flex flex-col gap-2.5 rounded-xl border border-blue-200/80 dark:border-white/10 bg-blue-50/70 dark:bg-white/[0.04] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-white">
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-[#0A84FF]" aria-hidden="true" />
+              AI Plate &amp; Vehicle Scanner
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-[#A1A1AA]">
+              Auto-fill plate, brand, model, and color from a vehicle or road-tax photo.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenScanner}
+            disabled={disabled || scannerDisabled}
+            className="inline-flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-blue-200 dark:border-white/15 bg-white dark:bg-[#1E1E24] px-3 text-[11px] font-semibold text-blue-600 dark:text-[#0A84FF] hover:bg-blue-50 dark:hover:bg-white/[0.08] transition-colors disabled:opacity-40 cursor-pointer"
+          >
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+            Scan with AI
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onOpenScanner}
-          disabled={disabled || scannerDisabled}
-          className="inline-flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-blue-200 dark:border-white/15 bg-white dark:bg-[#1E1E24] px-3 text-[11px] font-semibold text-blue-600 dark:text-[#0A84FF] hover:bg-blue-50 dark:hover:bg-white/[0.08] transition-colors disabled:opacity-40 cursor-pointer"
-        >
-          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-          Scan with AI
-        </button>
-      </div>
+      )}
 
       <label className="block space-y-1">
         <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-[#A1A1AA]">
@@ -1019,8 +1032,6 @@ interface VehicleDetailDrawerProps {
   currentUserEmail: string | null;
   form: VehicleFormValues;
   setForm: (next: VehicleFormValues) => void;
-  disableEscapeClose: boolean;
-  onOpenScanner: () => void;
   onClose: () => void;
   onUpdated: (vehicle: AdminVehicleDto, message: string) => Promise<void>;
   onDeleted: (vehicle: AdminVehicleDto, message: string) => Promise<void>;
@@ -1032,8 +1043,6 @@ function VehicleDetailDrawer({
   currentUserEmail,
   form,
   setForm,
-  disableEscapeClose,
-  onOpenScanner,
   onClose,
   onUpdated,
   onDeleted,
@@ -1116,18 +1125,17 @@ function VehicleDetailDrawer({
 
   return (
     <VehicleDrawerFrame
-      title={`Vehicle #${vehicle.vehicleId}`}
-      subtitle={`${vehicle.numberPlate} · ${[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Vehicle'}`}
+      title="Manage Vehicle"
       titleId="admin-vehicle-detail-title"
       closeLabel="Close vehicle details"
       isBusy={isBusy}
-      disableEscapeClose={disableEscapeClose}
+      panelClassName="[&_header_h3]:text-xl"
       onClose={onClose}
     >
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-xs text-rose-800 dark:text-rose-300"
+          className="flex items-start gap-2 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-sm text-rose-800 dark:text-rose-300"
         >
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span className="flex-1">{error}</span>
@@ -1142,10 +1150,10 @@ function VehicleDetailDrawer({
             </span>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-lg border border-slate-200 dark:border-white/15 bg-slate-100 dark:bg-[#1E1E24] px-2.5 py-0.5 font-mono text-sm font-bold tracking-wider text-slate-900 dark:text-white">
+                <span className="rounded-lg border border-slate-200 dark:border-white/15 bg-slate-100 dark:bg-[#1E1E24] px-2.5 py-0.5 font-mono text-base font-bold tracking-wider text-slate-900 dark:text-white">
                   {vehicle.numberPlate}
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-[#A1A1AA]">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-[#A1A1AA]">
                   <span
                     className="h-2.5 w-2.5 rounded-full ring-1 ring-black/15 dark:ring-white/25"
                     style={{ backgroundColor: getVehicleColorSwatch(vehicle.vehicleColor) }}
@@ -1154,61 +1162,45 @@ function VehicleDetailDrawer({
                   {vehicle.vehicleColor || 'Unspecified'}
                 </span>
               </div>
-              <p className="mt-1 text-xs font-semibold text-slate-700 dark:text-[#A1A1AA]">
+              <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-[#A1A1AA]">
                 {[vehicle.vehicleBrand, vehicle.vehicleModel].filter(Boolean).join(' ') || 'Unspecified make & model'}
               </p>
             </div>
           </div>
 
-          <span
-            className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ring-1 ${
-              isSelfOwned
-                ? 'bg-blue-50 dark:bg-white/[0.06] text-blue-700 dark:text-[#0A84FF] ring-blue-200 dark:ring-blue-800/60'
-                : 'bg-slate-100 dark:bg-white/[0.06] text-slate-600 dark:text-[#A1A1AA] ring-slate-200 dark:ring-white/10'
-            }`}
-          >
-            {isSelfOwned ? 'Your account' : 'Commuter owned'}
-          </span>
+          {isSelfOwned && (
+            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200 dark:bg-white/[0.06] dark:text-[#0A84FF] dark:ring-blue-800/60">
+              Your account
+            </span>
+          )}
         </div>
 
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-100 dark:border-white/[0.06] pt-3 text-[11px]">
-          <dt className="text-slate-400 dark:text-[#71717A]">Owner</dt>
+        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-100 dark:border-white/[0.06] pt-3 text-sm">
+          <dt className="text-slate-500 dark:text-[#A1A1AA]">Owner</dt>
           <dd className="truncate font-semibold text-slate-700 dark:text-white">
             {vehicle.ownerName || 'Unknown owner'}
           </dd>
-          <dt className="text-slate-400 dark:text-[#71717A]">Owner email</dt>
+          <dt className="text-slate-500 dark:text-[#A1A1AA]">Owner email</dt>
           <dd className="truncate text-slate-700 dark:text-white">{vehicle.ownerEmail || '—'}</dd>
-          <dt className="text-slate-400 dark:text-[#71717A]">Registered</dt>
+          <dt className="text-slate-500 dark:text-[#A1A1AA]">Registered</dt>
           <dd className="text-slate-700 dark:text-white">{formatVehicleDate(vehicle.createdAt)}</dd>
-          <dt className="text-slate-400 dark:text-[#71717A]">Last updated</dt>
+          <dt className="text-slate-500 dark:text-[#A1A1AA]">Last updated</dt>
           <dd className="text-slate-700 dark:text-white">{formatVehicleDate(vehicle.updatedAt)}</dd>
         </dl>
       </section>
 
       <form
         onSubmit={handleSave}
-        className="space-y-3 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 shadow-sm"
+        className="space-y-4 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#18181C] p-4 shadow-sm [&_input]:min-h-11 [&_input]:text-base [&_[role=combobox]]:min-h-11 [&_[role=combobox]]:text-base [&_label>span:first-child]:text-sm [&_[role=group]_button]:text-xs"
       >
-        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-[#A1A1AA]">
+        <h4 className="text-base font-semibold text-slate-800 dark:text-white">
           Edit vehicle
         </h4>
-
-        {!isSelfOwned && (
-          <div className="flex items-start gap-2 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span>
-              Owned by <strong>{vehicle.ownerName || vehicle.ownerEmail || 'another user'}</strong>.{' '}
-              <code className="font-mono text-[10px]">PUT /api/vehicle/modify</code> currently enforces vehicle ownership on the live backend unless admin override is enabled.
-            </span>
-          </div>
-        )}
 
         <VehicleFormFields
           values={form}
           onChange={setForm}
           disabled={isBusy}
-          onOpenScanner={onOpenScanner}
-          scannerDisabled={!token}
         />
 
         <div className="flex justify-end gap-2 border-t border-slate-100 dark:border-white/[0.06] pt-3">
@@ -1219,14 +1211,14 @@ function VehicleDetailDrawer({
               setForm(formFromVehicle(vehicle));
               setError(null);
             }}
-            className="min-h-9 rounded-xl px-3 text-xs font-semibold text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
+            className="min-h-11 rounded-xl px-3 text-sm font-semibold text-slate-600 dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
           >
             Reset
           </button>
           <button
             type="submit"
             disabled={!hasChanges || isBusy}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-blue-600 dark:bg-[#0071E3] px-4 text-xs font-semibold text-white hover:bg-blue-700 dark:hover:bg-[#0077ED] shadow-sm transition-colors disabled:opacity-40 cursor-pointer"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-blue-600 dark:bg-[#0071E3] px-4 text-sm font-semibold text-white hover:bg-blue-700 dark:hover:bg-[#0077ED] shadow-sm transition-colors disabled:opacity-40 cursor-pointer"
           >
             {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             {isSaving ? 'Saving…' : 'Save changes'}
@@ -1237,18 +1229,18 @@ function VehicleDetailDrawer({
       <section className="rounded-2xl border border-rose-200 dark:border-rose-900/40 bg-white dark:bg-[#18181C] p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+            <h4 className="text-base font-semibold text-rose-600 dark:text-rose-400">
               Remove vehicle
             </h4>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-[#A1A1AA]">
-              Admin deletion uses <code className="font-mono text-[10px]">DELETE /api/vehicle/delete/{vehicle.vehicleId}</code>. Vehicles with active bookings cannot be removed.
+            <p className="mt-1 text-sm text-slate-500 dark:text-[#A1A1AA]">
+              Vehicles with active bookings cannot be removed.
             </p>
           </div>
           <button
             type="button"
             onClick={() => void handleDelete()}
             disabled={isBusy}
-            className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/10 px-3.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors disabled:opacity-40 cursor-pointer"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/10 px-3.5 text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors disabled:opacity-40 cursor-pointer"
           >
             {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             {isDeleting ? 'Deleting…' : 'Delete vehicle'}

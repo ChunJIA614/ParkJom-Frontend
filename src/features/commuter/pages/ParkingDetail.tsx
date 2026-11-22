@@ -1,3 +1,4 @@
+import { formatHostingDuration } from '../lib/hostingDuration';
 import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
@@ -78,6 +79,7 @@ import {
 // ── Types ──
 type DetailTab = 'reserve' | 'forecast' | 'route';
 interface MockParkingSpot extends ParkingSpot {
+  createdAt?: string | number | null;
   stationLatitude?: number | null;
   stationLongitude?: number | null;
   lon: number;
@@ -307,6 +309,7 @@ export default function ParkingDetail() {
           available: d.isPublished,
           type: 'Condo Bay',
           owner: d.ownerName || 'Bay Owner',
+          createdAt: d.createdAt,
         };
         setFetchedSpot({ routeId: cleanSpotId, spot: mockSpot });
       })
@@ -981,6 +984,7 @@ export default function ParkingDetail() {
   const bottomBookingUnavailable = activeTab === 'reserve' && !showChooseDates
     && (invalidDates || isBookingLoading || (Boolean(quote) && !selectedVehicleId));
   const displayedRate = quote?.ratePerDay ?? spot.dailyRate ?? 0;
+  const hostingDuration = formatHostingDuration(spot.createdAt);
   const displayedTotal = quote?.rentalSubtotal ?? 0;
 
   const dateValidationError = rangeValidation.error;
@@ -1424,101 +1428,86 @@ export default function ParkingDetail() {
       />
 
       <main className="parking-detail-content w-[92vw] max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 pt-4 pb-12">
-        {/* Top Navigation & Breadcrumb */}
-        <div className="flex items-center justify-between pb-3 shrink-0">
-          <button
-            onClick={() => stateSpotMatchesRoute ? navigate(-1) : navigate('/commuter?tab=home')}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white transition-colors cursor-pointer"
-          >
-            <ArrowLeft size={16} /> Back to parking
-          </button>
-          <span className="text-xs font-semibold text-[#8e8e93] dark:text-[#71717A] hidden sm:inline-flex items-center gap-1.5">
-            <CheckCircle2 size={13} className="text-[#34C759]" /> Verified Bay · Instant Reservation
-          </span>
-        </div>
+        <nav className="mb-4" aria-label="Parking navigation">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => stateSpotMatchesRoute ? navigate(-1) : navigate('/commuter?tab=home')}
+              className="inline-flex min-h-10 items-center gap-1.5 text-xs font-medium text-[#6e6e73] transition-colors hover:text-[#111] dark:text-[#A1A1AA] dark:hover:text-white sm:text-[13px] cursor-pointer"
+            >
+              <ArrowLeft size={16} aria-hidden="true" /> Back to parking
+            </button>
 
-        {/* ── Title & Header Info Bar (Airbnb Style) ── */}
-        <div className="workspace-heading space-y-2 pt-1">
-          <h1 className="break-words">
-            {spot.propertyName || spot.name || spot.address}
-          </h1>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            {displayedRate > 0 && <span className="font-semibold text-foreground tabular-nums">RM {displayedRate.toFixed(2)} / day</span>}
-            {calculatedWalkMinutes != null && <span>{calculatedWalkMinutes} min walk to {stationName || 'the station'}</span>}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-4 text-xs sm:text-[13px] text-[#5f6368] dark:text-[#A1A1AA]">
-            <div className="flex flex-wrap items-center gap-2">
-            {totalReviewCount > 0 ? (
-              <span className="inline-flex items-center gap-1 font-bold text-[#111] dark:text-white">
-                <Star size={14} className="text-[#ff9500] fill-[#ff9500]" />
-                <span>{averageRating.toFixed(1)}</span>
-                <span className="font-normal text-[#5f6368] dark:text-[#A1A1AA]">·</span>
-                <button
-                  type="button"
-                  onClick={() => document.getElementById('commuter-reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="font-normal underline hover:text-[#111] dark:hover:text-white cursor-pointer"
-                >
-                  {totalReviewCount} {totalReviewCount === 1 ? 'review' : 'reviews'}
-                </button>
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 font-semibold text-[#8e8e93] dark:text-[#A1A1AA]">
-                <Star size={14} className="text-[#8e8e93] dark:text-[#71717A]" />
-                <span>New</span>
-              </span>
-            )}
-              <span>·</span>
-              <span className="inline-flex items-center gap-1">
-                <MapPin size={14} className="text-[#007AFF] shrink-0" />
-                <span>{stationName ? `Near ${stationName}` : 'Klang Valley'}</span>
-                {spot.address && spot.address !== (spot.propertyName || spot.name) && (
-                  <span className="hidden md:inline text-[#8e8e93] dark:text-[#71717A]">({spot.address})</span>
-                )}
-              </span>
-            </div>
-
-            {/* Share & Save Buttons (Airbnb Top Right) */}
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1" aria-label="Parking actions">
               <button
                 type="button"
                 onClick={handleShare}
-                className="workspace-button workspace-button--secondary"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[#5f6368] transition-colors hover:bg-black/[0.04] dark:text-[#A1A1AA] dark:hover:bg-white/[0.06] cursor-pointer"
               >
-                {isLinkCopied ? (
-                  <>
-                    <Check size={14} className="text-[#34C759]" />
-                    <span>Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Share2 size={14} />
-                    <span>Share</span>
-                  </>
-                )}
+                {isLinkCopied ? <Check size={15} className="text-[#34C759]" aria-hidden="true" /> : <Share2 size={15} aria-hidden="true" />}
+                <span>{isLinkCopied ? 'Copied!' : 'Share'}</span>
               </button>
-
               <button
                 type="button"
                 onClick={() => void handleToggleFavorite()}
                 disabled={isFavoriteLoading || isFavoriteUpdating}
                 aria-pressed={isFavorite}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition cursor-pointer text-xs font-semibold ${
-                  isFavorite
-                    ? 'border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-400'
-                    : 'border-[#dadce0] dark:border-white/10 hover:bg-[#F5F5F7] dark:hover:bg-white/[0.06] text-[#111] dark:text-white'
-                }`}
+                className={'inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06] disabled:cursor-wait disabled:opacity-60 cursor-pointer ' + (isFavorite ? 'text-rose-500 dark:text-rose-400' : 'text-[#5f6368] dark:text-[#A1A1AA]')}
               >
-                {isFavoriteLoading || isFavoriteUpdating ? (
-                  <Loader2 size={14} className="animate-spin text-[#007AFF]" />
-                ) : (
-                  <Heart size={14} fill={isFavorite ? 'currentColor' : 'none'} className={isFavorite ? 'text-rose-500' : ''} />
-                )}
+                {isFavoriteLoading || isFavoriteUpdating
+                  ? <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                  : <Heart size={15} fill={isFavorite ? 'currentColor' : 'none'} aria-hidden="true" />}
                 <span>{isFavorite ? 'Saved' : 'Save'}</span>
               </button>
             </div>
           </div>
-        </div>
+
+        </nav>
+
+        <section className="mb-6" aria-labelledby="parking-detail-title">
+          <div className="space-y-3">
+            <h1 id="parking-detail-title" className="parking-detail-title max-w-5xl break-words text-[#111] dark:text-white">
+              {spot.propertyName || spot.name || spot.address}
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#6e6e73] dark:text-[#A1A1AA] sm:text-[13px]">
+              {totalReviewCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('commuter-reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="inline-flex items-center gap-1.5 hover:text-[#111] dark:hover:text-white cursor-pointer"
+                >
+                  <Star size={14} className="fill-[#ff9500] text-[#ff9500]" aria-hidden="true" />
+                  <span className="font-semibold text-[#111] dark:text-white">{averageRating.toFixed(1)}</span>
+                  <span className="underline underline-offset-2">({totalReviewCount} {totalReviewCount === 1 ? 'review' : 'reviews'})</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5"><Star size={14} aria-hidden="true" /> New listing</span>
+              )}
+              {(calculatedWalkMinutes != null || stationName) && (
+                <div className="inline-flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <Footprints size={15} className="shrink-0" aria-hidden="true" />
+                    <span>{calculatedWalkMinutes != null ? calculatedWalkMinutes + ' min walk to ' + (stationName || 'the station') : 'Near ' + stationName}</span>
+                  </span>
+                  {calculatedWalkMinutes != null && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('route');
+                        document.getElementById('booking-calendar-section')?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="font-medium text-[#007AFF] underline underline-offset-2 hover:text-[#0066d6] dark:text-[#64a8ff] dark:hover:text-[#90c2ff] cursor-pointer"
+                      aria-label="View route to the station"
+                    >
+                      View route
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </section>
 
         {displayPhotos.length > 0 ? (
           <section aria-label="Parking photos" className={`mb-6 grid gap-2 ${displayPhotos.length > 1 ? 'sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]' : ''}`}>
@@ -1562,19 +1551,15 @@ export default function ParkingDetail() {
               <h2 id="parking-bay-heading" className="text-xl font-semibold">
                 {spot.parkingLabel ? `Bay ${spot.parkingLabel}` : 'Private parking bay'}
               </h2>
-              <p className="text-sm text-muted-foreground">Use your parking pass to access the bay after booking.</p>
-              {calculatedWalkMinutes !== null && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('route');
-                    document.getElementById('booking-calendar-section')?.scrollIntoView();
-                  }}
-                  className="workspace-button workspace-button--secondary"
-                >
-                  <Footprints size={16} aria-hidden="true" /> View route to the station
-                </button>
-              )}
+              <div aria-label="Parking location">
+                {spot.address && (
+                  <p className="flex max-w-4xl items-start gap-2 text-sm leading-relaxed text-[#6e6e73] dark:text-[#A1A1AA]">
+                    <MapPin size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <span>{spot.address}</span>
+                  </p>
+                )}
+              </div>
+
             </section>
 
             {/* 2. PARKING SPACE DETAILS */}
@@ -1607,9 +1592,15 @@ export default function ParkingDetail() {
               <h2 className="text-xs font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#A1A1AA]">
                 About this bay
               </h2>
-              <p className="text-sm text-[#333] dark:text-[#D4D4D8] leading-relaxed">
-                {spot.propertyName || spot.name || 'Private parking bay'} near {stationName || 'the station'}.
-              </p>
+              <div className="flex items-center gap-3">
+                <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e8eaed] text-sm font-semibold text-[#5f6368] dark:bg-white/10 dark:text-[#D4D4D8]">
+                  {(spot.owner || 'Bay Owner').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <p className="break-words text-base font-semibold text-[#111] dark:text-white">Hosted by {spot.owner || 'Bay Owner'}</p>
+                  {hostingDuration && <p className="mt-0.5 text-sm text-[#6e6e73] dark:text-[#A1A1AA]">{hostingDuration}</p>}
+                </div>
+              </div>
               <p className="text-sm text-[#5f6368] dark:text-[#A1A1AA] leading-relaxed">
                 Your reservation reserves this bay and connects directly to the barrier gate so it opens when you arrive.
               </p>
@@ -2302,14 +2293,13 @@ export default function ParkingDetail() {
                   <button type="button" disabled={reviewPage >= reviewMeta.totalPages || isReviewsLoading} onClick={() => setReviewPage((current) => Math.min(reviewMeta.totalPages, current + 1))} className="min-h-8 rounded-lg border border-[#d2d2d7] dark:border-white/12 bg-white dark:bg-[#18181C] px-3 text-xs font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#242429] dark:hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">Next</button>
                 </nav>
               )}
-              <p className="pt-1 flex items-center gap-1.5 text-[10px] text-[#8e8e93] dark:text-[#A1A1AA]"><ShieldCheck size={12} /> Only commuters with a completed booking can publish a review.</p>
             </section>
           </div>
 
           {/* ════════ RIGHT COLUMN (35% Width) - Sticky Floating Booking Card ════════ */}
           <div className="w-full lg:sticky lg:top-8">
             <div className="bg-white dark:bg-[#141417] rounded-3xl border border-black/[0.08] dark:border-white/10 shadow-xl lg:shadow-2xl p-6 sm:p-7 space-y-5 backdrop-blur-xl">
-              {/* Card Header: Price per day & rating snippet */}
+              {/* Card Header: Price per day */}
               <div className="flex items-baseline justify-between gap-3 pb-1 border-b border-black/[0.06] dark:border-white/[0.08]">
                 <div>
                   <span className="text-2xl sm:text-3xl font-black text-[#111] dark:text-white">
@@ -2319,25 +2309,7 @@ export default function ParkingDetail() {
                     / day
                   </span>
                 </div>
-                {totalReviewCount > 0 ? (
-                  <div className="flex items-center gap-1 text-xs font-bold text-[#111] dark:text-white">
-                    <Star size={13} className="text-[#ff9500] fill-[#ff9500]" />
-                    <span>{averageRating.toFixed(1)}</span>
-                    <span className="font-normal text-[#8e8e93] dark:text-[#71717A]">·</span>
-                    <button
-                      type="button"
-                      onClick={() => document.getElementById('commuter-reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
-                      className="font-normal underline text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white cursor-pointer"
-                    >
-                      {totalReviewCount} {totalReviewCount === 1 ? 'review' : 'reviews'}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 text-xs font-semibold text-[#8e8e93] dark:text-[#A1A1AA]">
-                    <Star size={13} className="text-[#8e8e93] dark:text-[#71717A]" />
-                    <span>New</span>
-                  </div>
-                )}
+
               </div>
 
               {/* Airbnb Signature Reservation Twin-Box */}

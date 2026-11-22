@@ -29,3 +29,18 @@ try {
 const utc = await load('src/lib/dateTime.ts', 'UTC');
 assert.equal(utc.displayDateKey(utc.parseTimestamp(expected)), '2026-11-21');
 console.log('Timestamp parsing, UTC+8 rollover, device-zone independence, environment override, and calendar dates passed.');
+
+const hosting = await load('src/features/commuter/lib/hostingDuration.ts');
+const now = new Date('2026-11-22T04:00:00Z');
+for (const [createdAt, expected] of [
+  ['2024-11-22T04:00:00Z', 'Hosted for 2 years'],
+  ['2025-11-23T04:00:00Z', 'Hosted for 11 months'],
+  ['2026-10-22T04:00:00Z', 'Hosted for 1 month'],
+  ['2026-11-21T04:00:00Z', 'Hosted for 1 day'],
+  ['2026-11-22T03:00:00Z', 'Hosted for less than a day'],
+  ['2027-01-01T00:00:00Z', null],
+  ['invalid', null], [null, null], [undefined, null],
+]) assert.equal(hosting.formatHostingDuration(createdAt, now), expected);
+const created = Date.parse('2024-11-22T04:00:00Z');
+for (const value of [created, created / 1000, String(created / 1000)]) assert.equal(hosting.formatHostingDuration(value, now), 'Hosted for 2 years');
+console.log('Listing hosting duration: epoch parsing, anniversary boundaries, and missing/invalid/future dates passed.');
