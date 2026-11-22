@@ -1,3 +1,4 @@
+import { parseTimestamp } from '@/lib/dateTime';
 import type { Booking } from '../types';
 
 export type JourneyStage = 'reserved' | 'arrived' | 'unlocked' | 'parked';
@@ -71,8 +72,8 @@ export function loadJourneySession(userId?: number | null): JourneySession | nul
       stage: payload.stage,
       booking: {
         ...payload.booking,
-        startTime: new Date(payload.booking.startTime),
-        endTime: new Date(payload.booking.endTime),
+        startTime: parseTimestamp(payload.booking.startTime),
+        endTime: parseTimestamp(payload.booking.endTime),
       },
     };
   } catch {

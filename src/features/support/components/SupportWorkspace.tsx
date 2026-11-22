@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions, displayDateKey } from '@/lib/dateTime';
 import SystemSelect from '@/components/ui/SystemSelect';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import {
@@ -181,24 +182,24 @@ const isImageFile = (file: File) => {
 
 const formatDate = (value?: string | null) => {
   if (!value) return '';
-  const date = new Date(value);
+  const date = parseTimestamp(value);
   if (isNaN(date.getTime())) return value;
   const now = new Date();
-  const isToday = date.toDateString() === now.toDateString();
+  const isToday = displayDateKey(date) === displayDateKey(now);
 
   if (isToday) {
-    return new Intl.DateTimeFormat('en-MY', {
+    return new Intl.DateTimeFormat('en-MY', displayDateOptions({
       hour: '2-digit',
       minute: '2-digit',
-    }).format(date);
+    })).format(date);
   }
 
-  return new Intl.DateTimeFormat('en-MY', {
+  return new Intl.DateTimeFormat('en-MY', displayDateOptions({
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(date);
+  })).format(date);
 };
 
 const formatFileSize = (size?: number) => {

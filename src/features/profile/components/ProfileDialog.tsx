@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -46,8 +47,8 @@ const currency = (value: number) => `RM ${value.toLocaleString('en-MY', { minimu
 
 const formatDate = (value?: string) => {
   if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+  const date = parseTimestamp(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString([], displayDateOptions({ year: 'numeric', month: 'short', day: 'numeric' }));
 };
 
 const inputClass = 'w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#121214] px-3.5 py-2.5 text-[13px] text-[#1d1d1f] dark:text-white transition-colors focus:border-[var(--workspace-accent,#007AFF)] focus:outline-none focus:ring-2 focus:ring-[var(--workspace-accent-soft,#e8f0fe)] disabled:bg-[#f5f5f7] dark:disabled:bg-white/[0.04] disabled:text-[#8e8e93] dark:disabled:text-[#71717A]';

@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions, displayDateKey } from '@/lib/dateTime';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Popover } from '@base-ui/react/popover';
 import {
@@ -100,20 +101,17 @@ function hasRate(bay: ParkingBay): boolean {
 }
 
 function dateKey(value: string): string | null {
-  const isoDate = value.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  const isoDate = typeof value === 'string' ? value.match(/^\d{4}-\d{2}-\d{2}$/)?.[0] : undefined;
   if (isoDate) return isoDate;
 
-  const parsed = new Date(value);
+  const parsed = parseTimestamp(value);
   if (Number.isNaN(parsed.getTime())) return null;
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, '0');
-  const day = String(parsed.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return displayDateKey(parsed);
 }
 
 function todayKey(): string {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return displayDateKey(now);
 }
 
 function isBookingForBay(booking: Booking, bay: ParkingBay): boolean {
@@ -361,12 +359,12 @@ export default function DashboardHome({
     }
   };
 
-  const today = new Intl.DateTimeFormat('en-MY', {
+  const today = new Intl.DateTimeFormat('en-MY', displayDateOptions({
     weekday: 'long',
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-  }).format(new Date());
+  })).format(new Date());
 
   const parkingStatuses = bays.map((bay) => ({ bay, schedule: scheduleStatus(bay, bookings) }));
   const filters = parkingFilters.map((filter) => ({ ...filter, spots: parkingStatuses.filter(filter.matches) }));

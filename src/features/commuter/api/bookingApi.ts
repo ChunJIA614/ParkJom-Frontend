@@ -1,3 +1,4 @@
+import { parseTimestamp } from '@/lib/dateTime';
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
 import type { Booking, ParkingSpot } from '../types';
 
@@ -354,7 +355,7 @@ export function evaluateBookingCancellationEligibility(booking: Booking): {
   }
 
   if (booking.createdAt) {
-    const createdMs = new Date(booking.createdAt).getTime();
+    const createdMs = parseTimestamp(booking.createdAt).getTime();
     if (!Number.isNaN(createdMs)) {
       const hoursElapsed = (Date.now() - createdMs) / (1000 * 60 * 60);
       if (hoursElapsed > 24) {
@@ -409,8 +410,8 @@ export function normalizeActiveBooking(data: ActiveBookingData): Booking {
     bookingId: data.bookingId,
     bookingReference: data.bookingReference,
     spot,
-    startTime: new Date(data.startTime),
-    endTime: new Date(data.endTime),
+    startTime: parseTimestamp(data.startTime),
+    endTime: parseTimestamp(data.endTime),
     vehiclePlate: data.vehiclePlate,
     status: data.status === 'Completed' ? 'Completed' : data.status === 'Confirmed' ? 'Upcoming' : 'Active',
     totalPaid: data.totalPaid,

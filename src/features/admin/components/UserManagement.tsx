@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import AdminSummaryCounts from './AdminSummaryCounts';
 import AdminPageHeader from './AdminPageHeader';
 import SystemSelect from '@/components/ui/SystemSelect';
@@ -49,10 +50,10 @@ const currency = (value: number) => `RM ${value.toLocaleString('en-MY', { minimu
 
 const formatDate = (value?: string) => {
   if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], {
+  const date = parseTimestamp(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], displayDateOptions({
     year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
+  }));
 };
 
 const statusTone = (status: string) => {

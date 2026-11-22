@@ -1,3 +1,4 @@
+import { displayDateOptions } from '@/lib/dateTime';
 import { apiRequest } from '@/services/apiClient';
 
 export interface WeatherContext {
@@ -165,7 +166,7 @@ export function buildFallbackCongestionForecast(
   }
 
   const format12h = (d: Date) =>
-    d.toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit', hour12: true });
+    d.toLocaleTimeString('en-MY', displayDateOptions({ hour: '2-digit', minute: '2-digit', hour12: true }));
 
   const next8Am = new Date(now);
   next8Am.setHours(8, 0, 0, 0);

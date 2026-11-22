@@ -1,3 +1,4 @@
+import { parseTimestamp } from '@/lib/dateTime';
 import { apiRequest, authorizationHeaders, readApiError } from '@/services/apiClient';
 
 export interface BookingHistoryBooking {
@@ -401,8 +402,8 @@ export async function getOwnerAllSpotsBookingHistory(
   }
 
   allBookings.sort((a, b) => {
-    const timeA = new Date(a.createdAt || a.startDate).getTime();
-    const timeB = new Date(b.createdAt || b.startDate).getTime();
+    const timeA = parseTimestamp(a.createdAt || a.startDate).getTime();
+    const timeB = parseTimestamp(b.createdAt || b.startDate).getTime();
     return timeB - timeA;
   });
 

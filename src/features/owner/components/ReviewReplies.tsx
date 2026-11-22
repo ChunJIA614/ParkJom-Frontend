@@ -1,3 +1,4 @@
+import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
@@ -40,14 +41,14 @@ interface ReplyDraft {
   ownerReply: string;
 }
 
-const reviewDateFormatter = new Intl.DateTimeFormat('en-MY', {
+const reviewDateFormatter = new Intl.DateTimeFormat('en-MY', displayDateOptions({
   day: 'numeric',
   month: 'short',
   year: 'numeric',
-});
+}));
 
 function formatReviewDate(value: string) {
-  const date = new Date(value);
+  const date = parseTimestamp(value);
   return Number.isNaN(date.getTime()) ? 'Recently' : reviewDateFormatter.format(date);
 }
 
@@ -90,7 +91,7 @@ export default function ReviewReplies({ token, bays, baysLoading }: ReviewReplie
           : []
       ));
       loaded.sort((left, right) => (
-        new Date(right.review.createdAt).getTime() - new Date(left.review.createdAt).getTime()
+        parseTimestamp(right.review.createdAt).getTime() - parseTimestamp(left.review.createdAt).getTime()
       ));
       setItems(loaded);
 

@@ -1,3 +1,4 @@
+import { parseTimestamp } from '@/lib/dateTime';
 import { apiRequest, authorizationHeaders } from '@/services/apiClient';
 
 const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -101,7 +102,7 @@ async function postBollardRequest<T>(
 }
 
 export function isUnlockChallengeCurrent(challenge: UnlockChallenge): boolean {
-  return Date.parse(challenge.expiresAt) > Date.now();
+  return parseTimestamp(challenge.expiresAt).getTime() > Date.now();
 }
 
 function requireCurrentChallenge(challenge: UnlockChallenge): void {

@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import WorkspaceActivityRow from '@/components/ui/WorkspaceActivityRow';
 import WorkspaceEmptyState from '@/components/ui/WorkspaceEmptyState';
 import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from 'react';
@@ -214,8 +215,8 @@ const historyItemToBooking = ({ booking }: BookingHistoryItem): Booking => ({
     station: 'ParkJom parking', name: booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
     pricePerHour: 0, distance: 0, lat: 0, lng: 0, available: false, type: 'Condo Bay', owner: '',
   },
-  startTime: new Date(booking.startDate),
-  endTime: new Date(booking.endDate),
+  startTime: parseTimestamp(booking.startDate),
+  endTime: parseTimestamp(booking.endDate),
   vehiclePlate: '',
   status: booking.bookingStatus === 'Completed' ? 'Completed' : 'Upcoming',
   totalPaid: booking.totalAmount,
@@ -287,7 +288,7 @@ const loadPendingWalletTopUp = (userId?: number): PendingWalletTopUp | null => {
       return null;
     }
     const createdAt = value.createdAt || new Date().toISOString();
-    const createdAtTime = Date.parse(createdAt);
+    const createdAtTime = parseTimestamp(createdAt).getTime();
     if (!Number.isFinite(createdAtTime) || Date.now() - createdAtTime > WALLET_TOP_UP_EXPIRY_MS) {
       clearPendingWalletTopUp(userId);
       return null;
@@ -1700,7 +1701,7 @@ export default function CommuterDashboard() {
       }
 
       const dateStr = item.createdAt
-        ? new Date(item.createdAt).toLocaleDateString('en-MY')
+        ? parseTimestamp(item.createdAt).toLocaleDateString('en-MY', displayDateOptions())
         : '';
 
       const refPart = item.bookingId
@@ -1736,7 +1737,7 @@ export default function CommuterDashboard() {
 
       if (isPending || walletTransactions.length === 0) {
         const dateStr = item.createdAt
-          ? new Date(item.createdAt).toLocaleDateString('en-MY')
+          ? parseTimestamp(item.createdAt).toLocaleDateString('en-MY', displayDateOptions())
           : '';
         list.push({
           id: `topup-${item.paymentId}`,
@@ -1754,8 +1755,8 @@ export default function CommuterDashboard() {
     }
 
     return list.sort((a, b) => {
-      const timeA = new Date(a.createdAt).getTime() || 0;
-      const timeB = new Date(b.createdAt).getTime() || 0;
+      const timeA = parseTimestamp(a.createdAt).getTime() || 0;
+      const timeB = parseTimestamp(b.createdAt).getTime() || 0;
       return timeB - timeA;
     });
   }, [walletTransactions, topUpHistory]);
@@ -3636,7 +3637,7 @@ export default function CommuterDashboard() {
                             <p className="text-[13px] font-semibold text-[#111] dark:text-white truncate">{booking.parkingLabel || 'Parking lot #' + booking.parkingSpotId}</p>
                             <span className="rounded-full bg-[#eef5ff] dark:bg-white/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#007AFF] dark:text-white">Parking ID #{booking.parkingSpotId}</span>
                           </div>
-                          <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{new Date(booking.startDate).toLocaleDateString('en-MY')} – {new Date(booking.endDate).toLocaleDateString('en-MY')}</p>
+                          <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{parseTimestamp(booking.startDate).toLocaleDateString('en-MY', displayDateOptions())} – {parseTimestamp(booking.endDate).toLocaleDateString('en-MY', displayDateOptions())}</p>
                           <p className="mt-0.5 break-all text-[10px] text-[#9ca3af] dark:text-[#71717A]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
                         </div>
                       </div>
@@ -3657,7 +3658,7 @@ export default function CommuterDashboard() {
                         </button>
                       )}
                       {booking.bookingStatus.toLowerCase() === 'confirmed' &&
-                        (Date.now() - new Date(booking.createdAt).getTime()) <= 24 * 60 * 60 * 1000 && (
+                        (Date.now() - parseTimestamp(booking.createdAt).getTime()) <= 24 * 60 * 60 * 1000 && (
                         <button
                           type="button"
                           disabled={cancelingBookingId === booking.bookingId}
@@ -3685,7 +3686,7 @@ export default function CommuterDashboard() {
                       </div>
                       <p className="review-comment-text mt-3 whitespace-pre-line text-[11px] leading-5">{review.comment || 'You submitted a rating without a written comment.'}</p>
                       <div className="review-owner-reply-box mt-3 rounded-lg px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-2"><p className="review-owner-reply-title text-[9px] font-semibold uppercase tracking-wide">Owner reply</p>{review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="review-owner-reply-time text-[9px]">{new Date(review.ownerReplyAt).toLocaleDateString('en-MY')}</time>}</div>
+                        <div className="flex items-center justify-between gap-2"><p className="review-owner-reply-title text-[9px] font-semibold uppercase tracking-wide">Owner reply</p>{review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="review-owner-reply-time text-[9px]">{parseTimestamp(review.ownerReplyAt).toLocaleDateString('en-MY', displayDateOptions())}</time>}</div>
                         <p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'review-owner-reply-text' : 'text-[#9ca3af] dark:text-[#71717A]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p>
                       </div>
                     </div>}

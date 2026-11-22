@@ -1,3 +1,4 @@
+import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import ParkingPhoto from './ParkingPhoto';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -76,11 +77,11 @@ type SubViewMode = 'grid' | 'bollard' | 'confirmation' | 'completed_review';
 
 function formatBookingDate(date: Date): string {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('en-MY', {
+  return date.toLocaleDateString('en-MY', displayDateOptions({
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-  });
+  }));
 }
 
 function formatInclusiveEndDate(startDate: Date, endDate: Date): Date {
@@ -125,7 +126,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
 
   useEffect(() => {
     if (!pendingUnlock) return;
-    const expiresIn = Math.max(0, Date.parse(pendingUnlock.expiresAt) - Date.now());
+    const expiresIn = Math.max(0, parseTimestamp(pendingUnlock.expiresAt).getTime() - Date.now());
     const timeout = window.setTimeout(() => {
       setPendingUnlock((current) => current === pendingUnlock ? null : current);
     }, expiresIn);
@@ -244,7 +245,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
         const inclusiveEnd = formatInclusiveEndDate(effectiveBooking.startTime, effectiveBooking.endTime);
         const isBookingComplete = completionCheck
           ? completionCheck.isLastDay || completionCheck.isComplete
-          : new Date().toLocaleDateString('en-CA') >= inclusiveEnd.toLocaleDateString('en-CA');
+          : new Date().toLocaleDateString('en-CA', displayDateOptions()) >= inclusiveEnd.toLocaleDateString('en-CA', displayDateOptions());
 
         if (isBookingComplete) {
           onBookingCompleted?.(effectiveBooking);

@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import AdminPageHeader from './AdminPageHeader';
 import SystemSelect from '@/components/ui/SystemSelect';
 import React, { useState, useEffect } from 'react';
@@ -125,13 +126,13 @@ export default function ListingGovernance({
   ];
 
   const formatSubmittedAt = (value: string) => {
-    const date = new Date(value);
+    const date = parseTimestamp(value);
     if (Number.isNaN(date.getTime())) return value || '—';
 
-    return new Intl.DateTimeFormat('en-MY', {
+    return new Intl.DateTimeFormat('en-MY', displayDateOptions({
       dateStyle: 'medium',
       timeStyle: 'short',
-    }).format(date);
+    })).format(date);
   };
 
   const documentTypeLabels: Record<number, string> = {

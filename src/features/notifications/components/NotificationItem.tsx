@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import React from 'react';
 import {
   CalendarCheck,
@@ -27,13 +28,13 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
 
   const formatTime = (isoString: string) => {
     try {
-      const date = new Date(isoString);
+      const date = parseTimestamp(isoString);
       const diffMinutes = Math.floor((Date.now() - date.getTime()) / 60000);
       if (diffMinutes < 1) return 'Just now';
       if (diffMinutes < 60) return `${diffMinutes}m ago`;
       const diffHours = Math.floor(diffMinutes / 60);
       if (diffHours < 24) return `${diffHours}h ago`;
-      return date.toLocaleDateString('en-MY', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString('en-MY', displayDateOptions({ month: 'short', day: 'numeric' }));
     } catch {
       return '';
     }

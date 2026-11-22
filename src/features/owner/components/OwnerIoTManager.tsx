@@ -1,3 +1,4 @@
+import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import { useEffect, useRef, useState } from 'react';
 import { Activity, ChevronRight, Cpu, Link2, RefreshCw } from 'lucide-react';
 import { listOwnerIoTDevices, type IoTDeviceInfo, type OwnerIoTDevice } from '@/services/iotManagementApi';
@@ -26,7 +27,7 @@ const connectionLabels: Record<Connection, string> = {
 
 function heartbeatTime(value: string | null | undefined): number | null {
   if (!value) return null;
-  const time = Date.parse(/(?:Z|[+-]\d\d:\d\d)$/i.test(value) ? value : `${value}Z`);
+  const time = parseTimestamp(typeof value === 'number' || /^-?\d+(?:\.\d+)?$/.test(value) || /(?:Z|[+-]\d\d:\d\d)$/i.test(value) ? value : `${value}Z`).getTime();
   return Number.isFinite(time) ? time : null;
 }
 
@@ -43,7 +44,7 @@ function formatLastHeartbeat(lastSeen: number | null, now: number): string {
   if (seconds < 10) return 'Just now';
   if (seconds < 60) return `${seconds} sec ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  return new Date(lastSeen).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return parseTimestamp(lastSeen).toLocaleString([], displayDateOptions({ month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
 }
 
 function Heartbeat({ connection, expanded = false }: { connection: Connection; expanded?: boolean }) {
@@ -183,7 +184,7 @@ export default function OwnerIoTManager({ token, bays, baysLoading, baysError, o
                   <div>
                     <dt className="text-slate-500 dark:text-slate-400">Last heartbeat</dt>
                     <dd className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
-                      {lastSeen === null ? 'Not reported' : <time dateTime={new Date(lastSeen).toISOString()}>{formatLastHeartbeat(lastSeen, now)}</time>}
+                      {lastSeen === null ? 'Not reported' : <time dateTime={parseTimestamp(lastSeen).toISOString()}>{formatLastHeartbeat(lastSeen, now)}</time>}
                     </dd>
                   </div>
                   <div className="min-w-0">

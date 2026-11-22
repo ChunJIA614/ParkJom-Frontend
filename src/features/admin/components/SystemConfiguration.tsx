@@ -1,3 +1,4 @@
+import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import AdminPageHeader from './AdminPageHeader';
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
@@ -137,7 +138,7 @@ export default function SystemConfiguration({
   };
 
   const updatedAtLabel = config?.updatedAt
-    ? new Date(config.updatedAt).toLocaleString()
+    ? parseTimestamp(config.updatedAt).toLocaleString(undefined, displayDateOptions())
     : 'Not recorded';
 
   return (

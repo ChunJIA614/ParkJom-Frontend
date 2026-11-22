@@ -1,3 +1,4 @@
+import { parseTimestamp, displayDateOptions } from '@/lib/dateTime';
 import WorkspaceActivityRow from '@/components/ui/WorkspaceActivityRow';
 import WorkspaceEmptyState from '@/components/ui/WorkspaceEmptyState';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -44,12 +45,12 @@ function money(value: number | null | undefined): string {
 
 function formatDate(value: string): string {
   if (!value) return '-';
-  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const dateOnly = typeof value === 'string' ? value.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
   const date = dateOnly
     ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
-    : new Date(value);
+    : parseTimestamp(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('en-MY', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+  return new Intl.DateTimeFormat('en-MY', displayDateOptions({ day: 'numeric', month: 'short', year: 'numeric' }, Boolean(dateOnly))).format(date);
 }
 
 function StatCard({
