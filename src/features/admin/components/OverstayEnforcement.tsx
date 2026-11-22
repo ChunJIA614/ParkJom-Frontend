@@ -13,14 +13,12 @@ import {
   DollarSign,
   Gavel,
   Loader2,
-  Lock,
   Play,
   Save,
   Search,
   Settings2,
   ShieldAlert,
   ShieldCheck,
-  Unlock,
   X,
 } from 'lucide-react';
 import {
@@ -28,7 +26,6 @@ import {
   dispatchOverstayWarning,
   getOverstayCases,
   getOverstaySummary,
-  releaseOverstayHardwareLock,
   reviewOverstayDispute,
   triggerOverstayScan,
   updateOverstayPolicy,
@@ -47,7 +44,7 @@ interface OverstayEnforcementProps {
   gracePeriodMinutes: number | null;
 }
 
-type OverstayFilterTab = 'all' | 'open' | 'PaymentDue' | 'Disputed' | 'locked' | 'closed';
+type OverstayFilterTab = 'all' | 'open' | 'PaymentDue' | 'Disputed' | 'closed';
 
 const money = (value: number) =>
   `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -112,7 +109,6 @@ export default function OverstayEnforcement({
   const [policyGrace, setPolicyGrace] = useState(15);
   const [policyMultiplier, setPolicyMultiplier] = useState(1.5);
   const [policyMaxDaily, setPolicyMaxDaily] = useState(30);
-  const [policyHardwareLock, setPolicyHardwareLock] = useState(true);
   const [savingPolicy, setSavingPolicy] = useState(false);
 
   // Waive modal
@@ -126,12 +122,6 @@ export default function OverstayEnforcement({
   const [disputeAction, setDisputeAction] = useState<'flag' | 'uphold' | 'partial_waive' | 'waive'>('flag');
   const [disputeWaiverAmount, setDisputeWaiverAmount] = useState('');
   const [disputeNotes, setDisputeNotes] = useState('');
-
-  // Security Release modal
-  const [releaseTarget, setReleaseTarget] = useState<OverstayCaseDto | null>(null);
-  const [releaseReason, setReleaseReason] = useState('');
-  const [triggerBollardUnlock, setTriggerBollardUnlock] = useState(true);
-  const [markResolved, setMarkResolved] = useState(true);
 
   useEffect(() => {
     if (!toast) return;
@@ -149,7 +139,6 @@ export default function OverstayEnforcement({
         getOverstayCases(token, {
           status: filterTab === 'open' || filterTab === 'Disputed' || filterTab === 'closed' ? filterTab : undefined,
           paymentStatus: filterTab === 'PaymentDue' ? 'PaymentDue' : undefined,
-          hardwareLocked: filterTab === 'locked' ? true : undefined,
           search: searchQuery.trim() || undefined,
           page,
           pageSize,
@@ -174,7 +163,6 @@ export default function OverstayEnforcement({
     setPolicyGrace(summary?.gracePeriodMinutes ?? gracePeriodMinutes ?? 15);
     setPolicyMultiplier(summary?.penaltyMultiplier ?? 1.5);
     setPolicyMaxDaily(summary?.maxDailyPenalty ?? 30);
-    setPolicyHardwareLock(summary?.hardwareExitLockEnabled ?? true);
     setShowPolicyModal(true);
   };
 
@@ -188,7 +176,7 @@ export default function OverstayEnforcement({
         gracePeriodMinutes: policyGrace,
         overstayPenaltyMultiplier: policyMultiplier,
         overstayMaxDailyPenalty: policyMaxDaily,
-        hardwareExitLockEnabled: policyHardwareLock,
+        hardwareExitLockEnabled: false,
       });
       setShowPolicyModal(false);
       setToast(message);
@@ -309,30 +297,6 @@ export default function OverstayEnforcement({
     }
   };
 
-  const handleConfirmRelease = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token || !releaseTarget || busyCaseKey) return;
-    setBusyCaseKey(`release-${releaseTarget.overstayCaseId}`);
-    setError(null);
-    try {
-      const { message } = await releaseOverstayHardwareLock(token, releaseTarget.overstayCaseId, {
-        reason: releaseReason.trim(),
-        triggerBollardUnlock,
-        markResolved,
-      });
-      setReleaseTarget(null);
-      setReleaseReason('');
-      setToast(message);
-      addActivityLog?.('enforcement', message, 'Admin');
-      await loadData();
-      await onRefreshDashboard?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to execute security release.');
-    } finally {
-      setBusyCaseKey(null);
-    }
-  };
-
   const liveGrace = summary?.gracePeriodMinutes ?? gracePeriodMinutes;
   const worker = summary?.workerStatus;
 
@@ -341,7 +305,7 @@ export default function OverstayEnforcement({
       <AdminPageHeader
         headingId="enforcement-title"
         title="Overstay enforcement"
-        description="Continuous background scanning, Push & SMS warnings, automated 1.5x tariff debiting, dispute audit, and IoT exit lock release."
+        description="Scheduled cron endpoint scanning, Push & SMS warnings, automated 1.5x tariff debiting, penalty waivers, and dispute audit."
         isLoading={loading}
         onRefresh={() => void loadData()}
       >
@@ -383,7 +347,7 @@ export default function OverstayEnforcement({
             <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Live Grace Period Window</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-800/50">
               <Activity className="h-3 w-3" />
-              {worker?.isRunning ? `Worker Active (${worker.intervalSeconds}s)` : 'Active System Policy'}
+              {worker?.isRunning ? 'Cron Endpoint Active' : 'Active System Policy'}
             </span>
           </div>
           <div className="flex items-baseline gap-2">
@@ -394,8 +358,8 @@ export default function OverstayEnforcement({
           </div>
           <p className="text-[11px] text-slate-500 leading-normal">
             {worker?.lastScanCompletedAtUtc
-              ? `Last background scan ${formatDateTime(worker.lastScanCompletedAtUtc)} (${worker.totalScansCompleted} total scans).`
-              : `Drivers receive a ${liveGrace ?? 15}-minute buffer before automated Push & SMS warnings trigger.`}
+              ? `Last cron scan ${formatDateTime(worker.lastScanCompletedAtUtc)} (${worker.totalScansCompleted} total scans).`
+              : `Triggered via cron endpoint after a ${liveGrace ?? 15}-minute buffer before automated Push & SMS warnings trigger.`}
           </p>
         </div>
 
@@ -422,24 +386,22 @@ export default function OverstayEnforcement({
 
         <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Hardware Exit Lock</span>
-            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-              summary?.hardwareExitLockEnabled ?? true
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-800/50'
-                : 'bg-slate-100 text-slate-600 border-slate-200'
-            }`}>
-              <Lock className="h-3 w-3" />
-              {(summary?.hardwareExitLockEnabled ?? true) ? 'Solenoid Enforcement On' : 'Disabled'}
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Citation &amp; Dispute Audit</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-800/50">
+              <BellRing className="h-3 w-3" />
+              Multi-Channel Alerts
             </span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-900 dark:text-white">
-              {summary?.hardwareLockedCount ?? 0} Locked Bay(s)
+              {summary?.warningsSentCount ?? 0} Warnings
             </span>
-            <span className="text-xs text-slate-500 font-medium">IoT Solenoid Gate</span>
+            <span className="text-xs text-slate-500 font-medium">
+              {summary?.disputedCount ?? 0} Disputed
+            </span>
           </div>
           <p className="text-[11px] text-slate-500 leading-normal">
-            Blocks next physical bollard unlock (`402 PENALTY_DUE`) until unpaid penalties settle or an operator issues a security release.
+            Unpaid overstay penalties block new parking bookings while allowing already-confirmed bookings to proceed normally until settled.
           </p>
         </div>
       </div>
@@ -451,7 +413,6 @@ export default function OverstayEnforcement({
           { label: 'Warnings Sent', value: summary?.warningsSentCount ?? 0 },
           { label: 'Payment Due', value: summary?.paymentDueCount ?? 0 },
           { label: 'Disputed', value: summary?.disputedCount ?? 0 },
-          { label: 'Hardware Locked', value: summary?.hardwareLockedCount ?? 0 },
           { label: 'Waived / Resolved', value: summary?.waivedOrResolvedCount ?? 0 },
         ]}
       />
@@ -465,7 +426,6 @@ export default function OverstayEnforcement({
               { id: 'open', label: 'Open' },
               { id: 'PaymentDue', label: 'Payment Due' },
               { id: 'Disputed', label: 'Disputed' },
-              { id: 'locked', label: 'Hardware Locked' },
               { id: 'closed', label: 'Waived / Resolved' },
             ] as const
           ).map((tab) => (
@@ -523,7 +483,7 @@ export default function OverstayEnforcement({
                 <tr>
                   <th className="border-b border-slate-200 px-4 py-3">Case &amp; Booking</th>
                   <th className="border-b border-slate-200 px-4 py-3">Vehicle &amp; Driver</th>
-                  <th className="border-b border-slate-200 px-4 py-3">Bay &amp; Bollard Lock</th>
+                  <th className="border-b border-slate-200 px-4 py-3">Bay &amp; IoT Telemetry</th>
                   <th className="border-b border-slate-200 px-4 py-3">Overstay &amp; Tariff</th>
                   <th className="border-b border-slate-200 px-4 py-3">Notifications &amp; Status</th>
                   <th className="border-b border-slate-200 px-4 py-3 text-right">Operator Audit Actions</th>
@@ -559,11 +519,6 @@ export default function OverstayEnforcement({
                           <p className="mt-0.5 font-mono text-[10px] text-slate-500">
                             ESP32: {item.esp32Serial} ({item.deviceStatus ?? 'Unknown'})
                           </p>
-                        )}
-                        {item.hardwareLockActive && (
-                          <span className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">
-                            <Lock className="h-3 w-3" /> Exit Lock Active
-                          </span>
                         )}
                       </td>
 
@@ -653,20 +608,6 @@ export default function OverstayEnforcement({
                                 Waive
                               </button>
                             )}
-                            {(item.hardwareLockActive || !isClosed) && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setReleaseTarget(item);
-                                  setReleaseReason('');
-                                  setTriggerBollardUnlock(Boolean(item.esp32Serial));
-                                  setMarkResolved(true);
-                                }}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                              >
-                                <Unlock className="h-3 w-3" /> Security Release
-                              </button>
-                            )}
                           </div>
                         </div>
                       </td>
@@ -750,18 +691,6 @@ export default function OverstayEnforcement({
                   className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-800 dark:border-white/10 dark:bg-[#1c1c1f] dark:text-white"
                 />
               </div>
-              <label className="flex items-center gap-2.5 rounded-xl border border-slate-200 p-3 dark:border-white/10">
-                <input
-                  type="checkbox"
-                  checked={policyHardwareLock}
-                  onChange={(e) => setPolicyHardwareLock(e.target.checked)}
-                  className="h-4 w-4 accent-blue-600"
-                />
-                <span>
-                  <strong className="block text-slate-800 dark:text-white">Enable Hardware Exit Lock</strong>
-                  <span className="text-slate-500 dark:text-zinc-400">Engage IoT bollard unlock block when wallet balance cannot cover penalty.</span>
-                </span>
-              </label>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowPolicyModal(false)} className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-600 dark:border-white/10 dark:text-zinc-300 dark:hover:bg-white/[0.06]">
@@ -911,73 +840,6 @@ export default function OverstayEnforcement({
                 </button>
                 <button type="submit" disabled={busyCaseKey?.startsWith('dispute-')} className="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white hover:bg-blue-700">
                   Record Decision
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body,
-      )}
-
-      {/* MODAL: HARDWARE SECURITY RELEASE */}
-      {releaseTarget && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-white/10 dark:bg-[#141417]">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-white/10">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Security Release &amp; Exit Lock Override</h3>
-              <button type="button" onClick={() => setReleaseTarget(null)} aria-label="Close modal" className="text-slate-400 hover:text-slate-700 dark:hover:text-white">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={(e) => void handleConfirmRelease(e)} className="mt-4 space-y-4 text-xs">
-              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-300">
-                Releases the software/hardware exit lock on <strong>{releaseTarget.spotLabel}</strong> ({releaseTarget.vehiclePlate}).
-              </div>
-
-              <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 p-3 dark:border-white/10">
-                <input
-                  type="checkbox"
-                  checked={triggerBollardUnlock}
-                  onChange={(e) => setTriggerBollardUnlock(e.target.checked)}
-                  disabled={!releaseTarget.esp32Serial}
-                  className="mt-0.5 h-4 w-4 accent-emerald-600"
-                />
-                <span>
-                  <strong className="block text-slate-800 dark:text-white">Send live MQTT UNLOCK to ESP32 bollard</strong>
-                  <span className="text-slate-500 dark:text-zinc-400">
-                    {releaseTarget.esp32Serial ? `Target device: ${releaseTarget.esp32Serial}` : 'No ESP32 device assigned to this bay.'}
-                  </span>
-                </span>
-              </label>
-
-              <label className="flex items-center gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={markResolved}
-                  onChange={(e) => setMarkResolved(e.target.checked)}
-                  className="h-4 w-4 accent-blue-600"
-                />
-                <span className="font-semibold text-slate-700 dark:text-zinc-300">Mark overstay case as Resolved</span>
-              </label>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-zinc-300 mb-1">Security Release Reason</label>
-                <textarea
-                  required
-                  rows={3}
-                  value={releaseReason}
-                  onChange={(e) => setReleaseReason(e.target.value)}
-                  placeholder="e.g. Driver paid offline or emergency vehicle clearance"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-800 dark:border-white/10 dark:bg-[#1c1c1f] dark:text-white"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setReleaseTarget(null)} className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-600 dark:border-white/10 dark:text-zinc-300 dark:hover:bg-white/[0.06]">
-                  Cancel
-                </button>
-                <button type="submit" disabled={busyCaseKey?.startsWith('release-')} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white hover:bg-emerald-700">
-                  <Unlock className="h-3.5 w-3.5" /> Execute Release
                 </button>
               </div>
             </form>
