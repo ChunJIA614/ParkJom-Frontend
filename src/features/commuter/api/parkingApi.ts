@@ -86,6 +86,7 @@ function normalizeParkingDetail(
     ...detail,
     latitude,
     longitude,
+    description: readWireString(source, ['description', 'Description']),
     stationName: readWireString(source, ['stationName', 'StationName']),
     stationLatitude: readWireNumber(source, ['stationLatitude', 'StationLatitude']),
     stationLongitude: readWireNumber(source, ['stationLongitude', 'StationLongitude']),

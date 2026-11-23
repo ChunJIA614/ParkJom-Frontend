@@ -4,6 +4,7 @@ import {
   Compass,
   CreditCard,
   Heart,
+  History,
   Map,
   Menu,
   Unlock,
@@ -18,6 +19,7 @@ export type CommuterTab =
   | 'active'
   | 'wallet'
   | 'profile'
+  | 'history'
   | 'map'
   | 'favorites'
   | 'support'
@@ -28,6 +30,7 @@ export const COMMUTER_VIEW_META: Record<CommuterTab, { title: string; descriptio
   map: { title: 'Transit map', description: 'Choose a rail station and compare nearby verified parking bays.' },
   active: { title: 'My parking pass', description: 'Everything you need to arrive, unlock, park, and leave.' },
   wallet: { title: 'Wallet', description: 'Top up securely and keep track of every parking payment.' },
+  history: { title: 'Booking History', description: '' },
   profile: { title: 'Vehicles', description: 'Choose the vehicle attached to your next parking session.' },
   support: { title: 'Support', description: 'Report booking, access, wallet, payment, or account issues.' },
   favorites: { title: 'Favorites', description: 'Keep parking spaces you are interested in within easy reach.' },
@@ -38,6 +41,7 @@ export const COMMUTER_RESTRICTED_TAB_LABELS: Record<string, string> = {
   active: 'My Parking Pass',
   wallet: 'Digital Wallet',
   profile: 'Vehicle Management',
+  history: 'Booking History',
   favorites: 'Saved Favorites',
   support: 'Customer Support',
 };
@@ -68,6 +72,7 @@ export function buildCommuterSidebarGroups({
       label: 'My Parking',
       items: [
         { id: 'active', icon: Unlock, label: 'My Pass', dot: hasActiveBooking },
+        { id: 'history', icon: History, label: 'Booking History' },
         { id: 'publicPay', icon: CreditCard, label: 'Express Drive-Out' },
         { id: 'favorites', icon: Heart, label: 'Favorites', badge: favoritesCount },
       ],

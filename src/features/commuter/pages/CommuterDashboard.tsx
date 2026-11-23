@@ -3,7 +3,7 @@ import WorkspaceActivityRow from '@/components/ui/WorkspaceActivityRow';
 import WorkspaceEmptyState from '@/components/ui/WorkspaceEmptyState';
 import { useState, useEffect, useRef, useCallback, useMemo, type FormEvent } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { NotificationBell } from '@/features/notifications';
 import {
   MapPin,
@@ -47,7 +47,6 @@ import {
   Trash2,
   Heart,
   List,
-  ExternalLink,
 } from 'lucide-react';
 import {
   ParkingSpot,
@@ -61,7 +60,7 @@ import {
   WalletTransactionItem,
 } from '../types';
 import MyParkingPassesWorkspace from '../components/MyParkingPassesWorkspace';
-import ParkingPhoto from '../components/ParkingPhoto';
+import ParkingResultCard from '../components/ParkingResultCard';
 import CommuterBrowseView from '../components/CommuterBrowseView';
 import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
@@ -82,6 +81,7 @@ import {
   calculateWalkingMinutes,
   resolveSpotStationWalkMetrics,
 } from '@/services/pedestrianWalkingService';
+import { BookingHistoryRow, BookingReceipt, confirmBookingCancellation, formatBookingHistoryDate } from '../components/BookingReceipt';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import AppSidebar from '@/components/layout/AppSidebar';
 import BottomNav from '@/components/layout/BottomNav';
@@ -110,11 +110,9 @@ import {
   updateJourneyStage,
 } from '../lib/journeySession';
 import type { JourneyStage } from '../lib/journeySession';
-import { getNearbyParking, searchParking } from '../api/parkingApi';
+import { getNearbyParking, getPublicParkingSpot, searchParking } from '../api/parkingApi';
 import { fetchPublicLots } from '@/features/publicParking/api/publicParkingApi';
 import type { PublicParkingLot } from '@/features/publicParking/types';
-import { DEFAULT_PUBLIC_PARKING_PHOTO, getPublicLotPhotoUrl } from '@/features/publicParking/types';
-import { PublicLotDetailModal } from '@/features/publicParking/components/PublicLotDetailModal';
 import { fuzzyFilterSpots, getFuzzySuggestions } from '../lib/fuzzySearch';
 import {
   favoriteParkingSpotToParkingSpot,
@@ -128,7 +126,7 @@ import {
   getWalletTopUpHistory,
   getWalletTopUpStatus,
 } from '../api/walletApi';
-import { cancelBooking, getActiveBooking, normalizeActiveBooking } from '../api/bookingApi';
+import { cancelBooking, evaluateBookingCancellationEligibility, getActiveBooking, normalizeActiveBooking } from '../api/bookingApi';
 import type { VehicleCatalogEntry } from '../data/vehicleCatalog';
 import {
   addVehicle as createVehicleRequest,
@@ -214,7 +212,7 @@ const mapParkingResult = (spot: ParkingResultDto): ParkingSpot => {
 
 const BOOKING_HISTORY_PAGE_SIZE = 5;
 
-const historyItemToBooking = ({ booking }: BookingHistoryItem): Booking => ({
+const historyItemToBooking = ({ booking, propertyName, vehiclePlate }: BookingHistoryItem): Booking => ({
   id: booking.bookingReference,
   bookingId: booking.bookingId,
   spot: {
@@ -222,18 +220,21 @@ const historyItemToBooking = ({ booking }: BookingHistoryItem): Booking => ({
     parkingSpotId: booking.parkingSpotId,
     parkingLabel: booking.parkingLabel,
     propertyId: 0,
-    propertyName: booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
+    propertyName: propertyName || booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
     address: booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
     latitude: 0, longitude: 0, stationName: '', distanceToStation: 0, timeToStationInMinutes: 0,
     availabilityStatus: '', monthlyRate: 0, dailyRate: null, primaryImageUrl: null,
-    station: 'ParkJom parking', name: booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
+    station: 'ParkJom parking', name: propertyName || booking.parkingLabel || 'Parking spot #' + booking.parkingSpotId,
     pricePerHour: 0, distance: 0, lat: 0, lng: 0, available: false, type: 'Condo Bay', owner: '',
   },
   startTime: parseTimestamp(booking.startDate),
   endTime: parseTimestamp(booking.endDate),
-  vehiclePlate: '',
+  vehiclePlate: vehiclePlate || '',
   status: booking.bookingStatus === 'Completed' ? 'Completed' : 'Upcoming',
   totalPaid: booking.totalAmount,
+  createdAt: booking.createdAt,
+  canCancel: booking.canCancel,
+  hasOpenedBollard: booking.hasOpenedBollard,
 });
 
 const formatParkingRate = (spot: ParkingSpot) => {
@@ -365,6 +366,7 @@ export default function CommuterDashboard() {
     || queryTab === 'active'
     || queryTab === 'wallet'
     || queryTab === 'profile'
+    || queryTab === 'history'
     || queryTab === 'map'
     || queryTab === 'support'
     || queryTab === 'favorites'
@@ -374,7 +376,7 @@ export default function CommuterDashboard() {
   const persistedTab = (() => {
     try {
       const stored = localStorage.getItem('parkjom_commuter_tab');
-      return stored === 'home' || stored === 'active' || stored === 'wallet' || stored === 'profile' || stored === 'map' || stored === 'support' || stored === 'favorites'
+      return stored === 'home' || stored === 'active' || stored === 'wallet' || stored === 'profile' || stored === 'history' || stored === 'map' || stored === 'support' || stored === 'favorites'
         ? stored as CommuterTab
         : undefined;
     } catch {
@@ -413,6 +415,7 @@ export default function CommuterDashboard() {
       );
       return;
     }
+    if (id !== 'history') setSelectedHistoryBooking(null);
     setActiveTab(id);
     setSelectedSpot(null);
   };
@@ -444,7 +447,6 @@ export default function CommuterDashboard() {
   const [favoriteSpots, setFavoriteSpots] = useState<ParkingSpot[]>(() => user?.userId ? loadFavoriteParking(user.userId) : []);
   const [isFavoritesLoading, setIsFavoritesLoading] = useState(false);
   const [favoriteUpdatingIds, setFavoriteUpdatingIds] = useState<number[]>([]);
-  const [isClearingFavorites, setIsClearingFavorites] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
   const [nearbySpots, setNearbySpots] = useState<ParkingSpot[]>([]);
   const [isNearbyLoading, setIsNearbyLoading] = useState<boolean>(false);
@@ -469,8 +471,6 @@ export default function CommuterDashboard() {
   const [locationRequestKey, setLocationRequestKey] = useState(0);
   const [suggestedSpots, setSuggestedSpots] = useState<ParkingSpot[]>([]);
   const [publicLots, setPublicLots] = useState<PublicParkingLot[]>([]);
-  const [selectedPublicLot, setSelectedPublicLot] = useState<PublicParkingLot | null>(null);
-  const [inspectingPublicLot, setInspectingPublicLot] = useState<PublicParkingLot | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -497,6 +497,7 @@ export default function CommuterDashboard() {
       ...suggestedSpots,
       ...nearbySpots,
       ...searchSpots,
+      ...(activeTab === 'favorites' ? favoriteSpots : []),
     ];
     const missingSpotIds = Array.from(new Set(allVisibleSpots.map((s) => s.parkingSpotId)))
       .filter((id) => id > 0 && !(id in spotRatings));
@@ -525,7 +526,7 @@ export default function CommuterDashboard() {
     return () => {
       isMounted = false;
     };
-  }, [user?.token, suggestedSpots, nearbySpots, searchSpots, spotRatings]);
+  }, [user?.token, suggestedSpots, nearbySpots, searchSpots, spotRatings, activeTab, favoriteSpots]);
 
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
@@ -749,7 +750,6 @@ export default function CommuterDashboard() {
       setFavoriteSpots([]);
       setIsFavoritesLoading(false);
       setFavoriteUpdatingIds([]);
-      setIsClearingFavorites(false);
       setFavoriteError(null);
       return;
     }
@@ -759,7 +759,6 @@ export default function CommuterDashboard() {
     setFavoriteSpots(cachedFavorites);
     setIsFavoritesLoading(true);
     setFavoriteUpdatingIds([]);
-    setIsClearingFavorites(false);
     setFavoriteError(null);
 
     void getFavoriteParking(user.token, controller.signal)
@@ -793,7 +792,7 @@ export default function CommuterDashboard() {
       );
       return;
     }
-    if (isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)) return;
+    if (isFavoritesLoading || favoriteUpdatingIds.includes(spot.parkingSpotId)) return;
 
     setFavoriteUpdatingIds((current) => [...current, spot.parkingSpotId]);
     setFavoriteError(null);
@@ -807,41 +806,21 @@ export default function CommuterDashboard() {
     }
   };
 
-  const handleClearFavorites = async () => {
-    if (!user?.userId || !user.token || favoriteSpots.length === 0 || isFavoritesLoading || isClearingFavorites) return;
-    const confirmed = await showConfirm({
-      title: 'Clear Favorites',
-      message: 'Remove all parking spaces from your favorites?',
-      confirmText: 'Remove All',
-      cancelText: 'Keep Favorites',
-      variant: 'danger',
-      icon: 'trash',
-    });
-    if (!confirmed) return;
-
-    const spotsToRemove = [...favoriteSpots];
-    let failureCount = 0;
-    setIsClearingFavorites(true);
-    setFavoriteError(null);
-
-    for (const spot of spotsToRemove) {
-      try {
-        const result = await updateFavoriteParking(user.token, spot.parkingSpotId);
-        setFavoriteSpots(setParkingFavorite(user.userId, spot, result.data.isFavorite));
-        if (result.data.isFavorite) failureCount += 1;
-      } catch {
-        failureCount += 1;
-      }
-    }
-
-    if (failureCount > 0) {
-      setFavoriteError(`${failureCount} favorite${failureCount === 1 ? '' : 's'} could not be removed. Please try again.`);
-    }
-    setIsClearingFavorites(false);
-  };
-
   // Booking history from the authenticated commuter endpoint.
   const [history, setHistory] = useState<Booking[]>([]);
+  const [selectedHistoryBooking, setSelectedHistoryBooking] = useState<BookingHistoryItem | Booking | null>(null);
+  const [historySpotResult, setHistorySpotResult] = useState<Awaited<ReturnType<typeof getPublicParkingSpot>>['data'] | null>(null);
+  const selectedHistorySpotId = selectedHistoryBooking
+    ? 'booking' in selectedHistoryBooking ? selectedHistoryBooking.booking.parkingSpotId : selectedHistoryBooking.spot.parkingSpotId
+    : undefined;
+  useEffect(() => {
+    if (activeTab !== 'history' || !selectedHistorySpotId) return;
+    const controller = new AbortController();
+    void getPublicParkingSpot(selectedHistorySpotId, controller.signal).then(({ data }) => {
+      if (!controller.signal.aborted) setHistorySpotResult(data);
+    }).catch(() => { /* Booking data remains available for delisted bays. */ });
+    return () => controller.abort();
+  }, [activeTab, selectedHistorySpotId]);
   const [bookingHistory, setBookingHistory] = useState<BookingHistoryItem[]>([]);
   const [bookingHistoryPage, setBookingHistoryPage] = useState(1);
   const [bookingHistoryMeta, setBookingHistoryMeta] = useState({ page: 0, pageSize: BOOKING_HISTORY_PAGE_SIZE, totalPages: 0, totalCount: 0 });
@@ -876,6 +855,13 @@ export default function CommuterDashboard() {
   const cancelReviewEdit = () => {
     if (isReviewSaving) return;
     resetReviewEdit();
+  };
+
+  const openHistoryBooking = (booking: BookingHistoryItem | Booking) => {
+    resetReviewEdit();
+    setHistorySpotResult(null);
+    setSelectedHistoryBooking(booking);
+    window.scrollTo({ top: 0 });
   };
 
   const changeBookingHistoryPage = (page: number) => {
@@ -923,7 +909,7 @@ export default function CommuterDashboard() {
   };
 
   useEffect(() => {
-    if (activeTab !== 'profile' || !user?.token) return;
+    if (activeTab !== 'history' || !user?.token) return;
     const controller = new AbortController();
     setIsBookingHistoryLoading(true);
     setBookingHistoryError(null);
@@ -1415,6 +1401,10 @@ export default function CommuterDashboard() {
     navigate('/commuter', { replace: true, state: { activeTab: 'home' } });
   };
 
+  const openPublicLotDetail = (lot: PublicParkingLot) => {
+    navigate('/commuter/public-parking/' + lot.publicParkingLotId, { state: { returnTab: activeTab } });
+  };
+
   const openParkingDetail = (
     spot: ParkingSpot,
     origin: StationCoordinates | null = selectedStationCoords,
@@ -1782,14 +1772,7 @@ export default function CommuterDashboard() {
 
   const handleCancelBooking = async (bookingId: number) => {
     if (!user?.token || cancelingBookingId !== null) return;
-    const confirmed = await showConfirm({
-      title: 'Cancel Booking',
-      message: 'Are you sure you want to cancel this booking? Cancellations 3+ days before start receive a 100% refund; less than 3 days before start receive a 50% refund.',
-      confirmText: 'Yes, Cancel',
-      cancelText: 'Keep Booking',
-      variant: 'danger',
-      icon: 'trash',
-    });
+    const confirmed = await confirmBookingCancellation();
     if (!confirmed) return;
 
     setCancelingBookingId(bookingId);
@@ -2421,8 +2404,104 @@ export default function CommuterDashboard() {
     </div>
   );
 
-  const showCopilot = !['support', 'wallet', 'profile'].includes(activeTab);
+  const showCopilot = !['support', 'wallet', 'profile', 'history'].includes(activeTab);
 
+  if (activeTab === 'history' && selectedHistoryBooking) {
+    const item = 'booking' in selectedHistoryBooking
+      ? bookingHistory.find(entry => entry.booking.bookingId === selectedHistoryBooking.booking.bookingId) || selectedHistoryBooking
+      : null;
+    const localBooking = 'booking' in selectedHistoryBooking ? historyItemToBooking(item || selectedHistoryBooking) : selectedHistoryBooking;
+    const record = item?.booking;
+    const spot = historySpotResult?.parkingSpotId === selectedHistorySpotId ? historySpotResult : null;
+    const status = record?.bookingStatus || localBooking.status;
+    const canUsePass = ['active', 'confirmed', 'upcoming'].includes(status.toLowerCase());
+    const latitude = spot?.latitude ?? localBooking.spot.latitude;
+    const longitude = spot?.longitude ?? localBooking.spot.longitude;
+    const address = spot?.address || ('booking' in selectedHistoryBooking ? undefined : localBooking.spot.address);
+    const booking = record;
+    const cancellation = record && status.toLowerCase() === 'confirmed'
+      ? evaluateBookingCancellationEligibility(localBooking) : null;
+    const review = item?.review;
+    const isEditingReview = review?.reviewId === editingReviewId;
+    return (
+      <div className="page-shell min-h-screen text-foreground">
+        <DashboardHeader role="commuter" user={user}
+          onSignOut={() => { logout(); navigate('/'); }}
+          onBrandClick={() => handleNavigateTab('home')} />
+        <BookingReceipt backLabel="Back to booking history"
+          onBack={() => { resetReviewEdit(); setSelectedHistoryBooking(null); }}
+          onParkingPass={canUsePass ? () => { setSelectedHistoryBooking(null); handleNavigateTab('active'); } : undefined}
+          onCancel={record && cancellation?.canCancel ? () => void handleCancelBooking(record.bookingId) : undefined}
+          cancelling={cancelingBookingId === record?.bookingId}
+          cancellationUnavailableReason={cancellation?.reason}
+          data={{
+            title: spot?.propertyName || item?.propertyName || localBooking.spot.propertyName || localBooking.spot.name,
+            status, photo: spot?.images?.[0]?.secureUrl || localBooking.spot.primaryImageUrl,
+            bay: record?.parkingLabel || localBooking.spot.parkingLabel, station: spot?.stationName || localBooking.spot.stationName,
+            startDate: formatBookingHistoryDate(localBooking.startTime), endDate: formatBookingHistoryDate(localBooking.endTime),
+            days: record?.bookedDays ?? localBooking.bookedDays, rate: record?.ratePerDay ?? localBooking.ratePerDay,
+            total: localBooking.totalPaid, reference: record?.bookingReference || localBooking.bookingReference,
+            plate: item?.vehiclePlate || localBooking.vehiclePlate || vehicles.find(vehicle => vehicle.vehicleId === record?.vehicleId)?.plate,
+            platformFee: record?.platformFee ?? localBooking.platformFee,
+            address,
+            cancellationReason: record?.cancellationReason,
+            directions: latitude && longitude || address ? 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(latitude && longitude ? latitude + ',' + longitude : address || '') : undefined,
+          }}
+        >
+          {item && booking && <>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        {(item.canReview || booking.bookingStatus.toLowerCase() === 'completed') && !review && (
+          <button
+            type="button"
+            onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-3 py-1.5 text-[11px] font-bold text-[#007AFF] hover:bg-[#007AFF]/20 transition-colors cursor-pointer"
+          >
+            <Star size={12} /> Write a review
+          </button>
+        )}
+      </div>
+
+      {review && !isEditingReview && <div className="mt-3 rounded-xl border border-[#e8eaed] dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[11px] font-semibold text-[#111] dark:text-white">Your commuter review</p>
+              {review.isVerifiedBooking && <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf3] dark:bg-emerald-950/60 px-2 py-0.5 text-[9px] font-semibold text-[#15803d] dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50"><ShieldCheck size={11} /> Verified stay</span>}
+            </div>
+            <div className="mt-1 flex items-center gap-1" aria-label={`${review.rating} out of 5 stars`}>
+              {[1, 2, 3, 4, 5].map((value) => <Star key={value} size={13} className={value <= review.rating ? 'text-[#f59e0b]' : 'text-[#d1d5db] dark:text-[#71717A]'} fill={value <= review.rating ? 'currentColor' : 'none'} />)}
+              <span className="ml-1 text-[10px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA]">{review.rating}/5</span>
+            </div>
+          </div>
+          <button type="button" onClick={() => startReviewEdit(item)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[#dbeafe] dark:border-white/14 bg-white dark:bg-[#242429] px-2.5 text-[10px] font-semibold text-[#007AFF] dark:text-white hover:bg-[#eff6ff] dark:hover:bg-[#2C2C32] cursor-pointer"><Pencil size={12} /> Edit</button>
+        </div>
+        <p className="review-comment-text mt-3 whitespace-pre-line text-[11px] leading-5">{review.comment || 'You submitted a rating without a written comment.'}</p>
+        <div className="review-owner-reply-box mt-3 rounded-lg px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2"><p className="review-owner-reply-title text-[9px] font-semibold uppercase tracking-wide">Owner reply</p>{review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="review-owner-reply-time text-[9px]">{parseTimestamp(review.ownerReplyAt).toLocaleDateString('en-MY', displayDateOptions())}</time>}</div>
+          <p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'review-owner-reply-text' : 'text-[#9ca3af] dark:text-[#71717A]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p>
+        </div>
+      </div>}
+
+      {review && isEditingReview && <div className="mt-3 rounded-xl border border-[#bfdbfe] dark:border-white/10 bg-[#eff6ff] dark:bg-[#18181C] p-3">
+        <div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold text-[#111] dark:text-white">Edit your review</p><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="text-[10px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white disabled:opacity-50 cursor-pointer">Cancel</button></div>
+        <div className="mt-3"><span className="block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Rating</span><div className="mt-1 flex items-center gap-1" role="radiogroup" aria-label="Review rating">
+          {[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" role="radio" aria-checked={editingReviewRating === value} aria-label={`${value} star${value === 1 ? '' : 's'}`} onClick={() => setEditingReviewRating(value)} disabled={isReviewSaving} className="rounded p-0.5 hover:bg-white dark:hover:bg-[#202025] disabled:opacity-50 cursor-pointer"><Star size={19} className={value <= editingReviewRating ? 'text-[#f59e0b]' : 'text-[#cbd5e1] dark:text-[#71717A]'} fill={value <= editingReviewRating ? 'currentColor' : 'none'} /></button>)}
+        </div></div>
+        <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Comment<textarea value={editingReviewComment} onChange={(event) => setEditingReviewComment(event.target.value)} maxLength={1000} rows={4} disabled={isReviewSaving} placeholder="Share what you thought about this parking lot." className="mt-1 w-full resize-y rounded-lg border border-[#dbeafe] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-[11px] font-normal leading-5 text-[#111] dark:text-white outline-none focus:border-[#007AFF] disabled:opacity-60" /></label>
+        <div className="review-owner-reply-box mt-3 rounded-lg px-3 py-2.5"><p className="review-owner-reply-title text-[9px] font-semibold uppercase tracking-wide">Owner reply</p><p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'review-owner-reply-text' : 'text-[#9ca3af] dark:text-[#71717A]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p></div>
+        <div className="mt-1 flex items-center justify-between gap-3"><span className="text-[10px] text-[#6e6e73] dark:text-[#A1A1AA]">{editingReviewComment.length}/1000</span>{editingReviewError && <span role="alert" className="text-right text-[10px] text-[#dc2626] dark:text-red-400">{editingReviewError}</span>}</div>
+        <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="rounded-lg border border-[#d1d5db] dark:border-white/14 bg-white dark:bg-[#242429] px-3 py-2 text-[10px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#2C2C32] disabled:opacity-50 cursor-pointer">Cancel</button><button type="button" onClick={() => void saveReviewEdit()} disabled={isReviewSaving || !editingReviewRating} className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-[10px] font-semibold text-white hover:bg-[#0066d6] disabled:cursor-wait disabled:opacity-60 cursor-pointer">{isReviewSaving && <Loader2 size={12} className="animate-spin" />}{isReviewSaving ? 'Saving…' : 'Save changes'}</button></div>
+      </div>}
+
+          </>}
+          {!item && localBooking.status === 'Completed' && <button type="button" className="workspace-button workspace-button--secondary"
+            onClick={() => navigate('/commuter/parking/' + localBooking.spot.parkingSpotId + '/review', { state: { booking: localBooking } })}>
+            Write a review
+          </button>}
+        </BookingReceipt>
+      </div>
+    );
+  }
   return (
     <div className="app-workspace commuter-workspace page-shell text-[#1d1d1f] flex" data-workspace-role="commuter" data-commuter-tab={activeTab}>
       <AppSidebar
@@ -2536,7 +2615,6 @@ export default function CommuterDashboard() {
               matchingPublicLots={matchingPublicLots}
               favoriteSpots={favoriteSpots}
               isFavoritesLoading={isFavoritesLoading}
-              isClearingFavorites={isClearingFavorites}
               favoriteUpdatingIds={favoriteUpdatingIds}
               spotRatings={spotRatings}
               locationStatus={locationStatus}
@@ -2556,7 +2634,7 @@ export default function CommuterDashboard() {
               onRequestLocation={() => setLocationRequestKey((k) => k + 1)}
               onOpenParkingDetail={(spot, station) => openParkingDetail(spot, null, station)}
               onToggleFavorite={(spot) => void handleToggleFavorite(spot)}
-              onInspectPublicLot={(lot) => setInspectingPublicLot(lot)}
+              onInspectPublicLot={openPublicLotDetail}
             />
           )}
 
@@ -2662,11 +2740,7 @@ export default function CommuterDashboard() {
                     onExitNavigation={() => setTransitWorkspaceMode('explore')}
                     onRoutesCalculated={setNavigationRoutes}
                     publicLots={publicLots}
-                    selectedPublicLot={selectedPublicLot}
-                    onPublicLotClick={(lot) => {
-                      setSelectedPublicLot(lot);
-                      setInspectingPublicLot(lot);
-                    }}
+                    onPublicLotClick={openPublicLotDetail}
                   />
 
                   {/* Desktop Parking Pass Card Overlay (Apple Maps Style) */}
@@ -2695,93 +2769,6 @@ export default function CommuterDashboard() {
                   )}
 
                   {/* Desktop Public Parking Pass Card Overlay */}
-                  {!selectedSpot && selectedPublicLot && (
-                    <div className="hidden lg:block absolute bottom-4 left-4 z-[1000] w-84 max-w-[calc(100%-2rem)] shadow-2xl animate-in fade-in-0 duration-200">
-                      <div className="relative rounded-3xl bg-white dark:bg-[#1c1c1e] border border-black/[0.08] dark:border-white/10 overflow-hidden shadow-2xl">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedPublicLot(null)}
-                          className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-black/50 hover:bg-black/70 text-white transition cursor-pointer backdrop-blur-md"
-                          aria-label="Close public parking card"
-                        >
-                          <X size={14} />
-                        </button>
-                        <div className="w-full h-32 overflow-hidden bg-slate-100 dark:bg-slate-800">
-                          <img
-                            src={getPublicLotPhotoUrl(selectedPublicLot.facilityPhotoUrl)}
-                            alt={selectedPublicLot.lotName}
-                            onError={(e) => {
-                              const target = e.currentTarget;
-                              if (target.src !== DEFAULT_PUBLIC_PARKING_PHOTO) {
-                                target.src = DEFAULT_PUBLIC_PARKING_PHOTO;
-                              }
-                            }}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div className="p-4 space-y-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <span className="text-[10px] font-bold tracking-wider uppercase text-indigo-600 dark:text-indigo-400">
-                                Public Commercial Bay
-                              </span>
-                              <h3 className="font-bold text-sm text-[#111] dark:text-white mt-0.5 line-clamp-1">
-                                {selectedPublicLot.lotName}
-                              </h3>
-                              <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] line-clamp-1 mt-0.5">
-                                {selectedPublicLot.address}
-                              </p>
-                            </div>
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                                selectedPublicLot.availableSpaces <= 0
-                                  ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
-                                  : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                              }`}
-                            >
-                              {selectedPublicLot.availableSpaces} bays left
-                            </span>
-                          </div>
-
-                          <div className="bg-slate-50 dark:bg-white/5 rounded-2xl p-2.5 text-xs space-y-1 border border-black/[0.04] dark:border-white/5">
-                            <div className="flex justify-between items-center">
-                              <span className="text-slate-500 dark:text-slate-400">Hourly Tariff:</span>
-                              <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                                {selectedPublicLot.flatRatePerEntry
-                                  ? `Flat RM ${selectedPublicLot.flatRatePerEntry.toFixed(2)}/entry`
-                                  : `RM ${selectedPublicLot.hourlyRate.toFixed(2)}/hr`}
-                              </span>
-                            </div>
-                            {selectedPublicLot.nearestStationName && (
-                              <div className="flex justify-between items-center">
-                                <span className="text-slate-500 dark:text-slate-400">Transit:</span>
-                                <span className="font-medium text-[#0071e3]">
-                                  {selectedPublicLot.nearestStationName} (~{selectedPublicLot.distanceToStation || 0}m)
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => setInspectingPublicLot(selectedPublicLot)}
-                              className="flex-1 h-9 rounded-xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-800 dark:text-white font-medium text-xs transition flex items-center justify-center cursor-pointer"
-                            >
-                              View Details
-                            </button>
-                            <Link
-                              to={`/public-pay?lot=${selectedPublicLot.publicParkingLotId}`}
-                              className="flex-1 h-9 rounded-xl bg-[#0071e3] hover:bg-[#0077ed] text-white font-medium text-xs transition flex items-center justify-center gap-1 shadow-xs"
-                            >
-                              <span>Drive-In</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* 3. MOBILE-ONLY NEARBY BAYS TAB */}
@@ -3471,11 +3458,14 @@ export default function CommuterDashboard() {
                   );
                 })()}
               </div>
-              {/* History */}
-              <section aria-labelledby="commuter-booking-history-title" className="workspace-panel p-5">
+            </div>
+          )}
+
+          {activeTab === 'history' && (
+              <section aria-labelledby="commuter-booking-history-title" className="workspace-panel p-4 sm:p-5">
                 <header className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <h3 id="commuter-booking-history-title" ref={bookingHistoryHeadingRef} tabIndex={-1} className="scroll-mt-24 font-semibold">Booking history</h3>
+                    <h3 id="commuter-booking-history-title" ref={bookingHistoryHeadingRef} tabIndex={-1} className="scroll-mt-24 font-semibold">Your bookings</h3>
                     {visibleBookingHistory.length > 0 && (
                       <p className="mt-0.5 text-sm text-muted-foreground tabular-nums" role="status">
                         Showing {bookingHistoryStart}–{bookingHistoryStart + visibleBookingHistory.length - 1}
@@ -3489,113 +3479,25 @@ export default function CommuterDashboard() {
                 </header>
                 {bookingHistoryError && <div role="alert" className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200/50 dark:border-red-900/50 px-3 py-2 text-[11px] text-red-700 dark:text-red-300"><AlertCircle size={14} />{bookingHistoryError}</div>}
                 {isBookingHistoryLoading && visibleBookingHistory.length === 0 && <p className="py-5 text-center text-sm text-muted-foreground" role="status"><Loader2 size={18} aria-hidden="true" className="mx-auto mb-2 text-primary motion-safe:animate-spin" />Loading booking history…</p>}
-                {visibleBookingHistory.map((item) => {
-                  const { booking, review } = item;
-                  const isEditingReview = review?.reviewId === editingReviewId;
-                  return <article key={booking.bookingId} className="border-b border-[#f1f3f4] dark:border-white/10 py-4 last:border-0">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <img
-                          src={`https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800&auto=format&fit=crop&q=80`}
-                          alt=""
-                          className="w-14 h-14 rounded-xl object-cover ring-1 ring-black/5 dark:ring-white/10 shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[13px] font-semibold text-[#111] dark:text-white truncate">{booking.parkingLabel || 'Parking lot #' + booking.parkingSpotId}</p>
-                            <span className="rounded-full bg-[#eef5ff] dark:bg-white/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-[#007AFF] dark:text-white">Parking ID #{booking.parkingSpotId}</span>
-                          </div>
-                          <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">{parseTimestamp(booking.startDate).toLocaleDateString('en-MY', displayDateOptions())} – {parseTimestamp(booking.endDate).toLocaleDateString('en-MY', displayDateOptions())}</p>
-                          <p className="mt-0.5 break-all text-[10px] text-[#9ca3af] dark:text-[#71717A]">Booking {booking.bookingReference || '#' + booking.bookingId}</p>
-                        </div>
-                      </div>
-                      <div className="text-left sm:text-right shrink-0">
-                        <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {booking.totalAmount.toFixed(2)}</span>
-                        <p className={`text-[10px] font-medium ${booking.bookingStatus.toLowerCase() === 'cancelled' ? 'text-[#dc2626]' : 'text-[#16a34a]'}`}>{booking.bookingStatus}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      {(item.canReview || booking.bookingStatus.toLowerCase() === 'completed') && !review && (
-                        <button
-                          type="button"
-                          onClick={() => navigate('/commuter/parking/' + booking.parkingSpotId + '/review', { state: { booking: historyItemToBooking(item) } })}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-3 py-1.5 text-[11px] font-bold text-[#007AFF] hover:bg-[#007AFF]/20 transition-colors cursor-pointer"
-                        >
-                          <Star size={12} /> Write a review
-                        </button>
-                      )}
-                      {booking.bookingStatus.toLowerCase() === 'confirmed' &&
-                        (Date.now() - parseTimestamp(booking.createdAt).getTime()) <= 24 * 60 * 60 * 1000 && (
-                        <button
-                          type="button"
-                          disabled={cancelingBookingId === booking.bookingId}
-                          onClick={() => void handleCancelBooking(booking.bookingId)}
-                          className="text-[11px] font-semibold text-[#dc2626] hover:underline disabled:opacity-50 cursor-pointer"
-                        >
-                          {cancelingBookingId === booking.bookingId ? 'Cancelling…' : 'Cancel booking'}
-                        </button>
-                      )}
-                    </div>
-
-                    {review && !isEditingReview && <div className="mt-3 rounded-xl border border-[#e8eaed] dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C] p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[11px] font-semibold text-[#111] dark:text-white">Your commuter review</p>
-                            {review.isVerifiedBooking && <span className="inline-flex items-center gap-1 rounded-full bg-[#ecfdf3] dark:bg-emerald-950/60 px-2 py-0.5 text-[9px] font-semibold text-[#15803d] dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50"><ShieldCheck size={11} /> Verified stay</span>}
-                          </div>
-                          <div className="mt-1 flex items-center gap-1" aria-label={`${review.rating} out of 5 stars`}>
-                            {[1, 2, 3, 4, 5].map((value) => <Star key={value} size={13} className={value <= review.rating ? 'text-[#f59e0b]' : 'text-[#d1d5db] dark:text-[#71717A]'} fill={value <= review.rating ? 'currentColor' : 'none'} />)}
-                            <span className="ml-1 text-[10px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA]">{review.rating}/5</span>
-                          </div>
-                        </div>
-                        <button type="button" onClick={() => startReviewEdit(item)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-[#dbeafe] dark:border-white/14 bg-white dark:bg-[#242429] px-2.5 text-[10px] font-semibold text-[#007AFF] dark:text-white hover:bg-[#eff6ff] dark:hover:bg-[#2C2C32] cursor-pointer"><Pencil size={12} /> Edit</button>
-                      </div>
-                      <p className="review-comment-text mt-3 whitespace-pre-line text-[11px] leading-5">{review.comment || 'You submitted a rating without a written comment.'}</p>
-                      <div className="review-owner-reply-box mt-3 rounded-lg px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-2"><p className="review-owner-reply-title text-[9px] font-semibold uppercase tracking-wide">Owner reply</p>{review.ownerReplyAt && <time dateTime={review.ownerReplyAt} className="review-owner-reply-time text-[9px]">{parseTimestamp(review.ownerReplyAt).toLocaleDateString('en-MY', displayDateOptions())}</time>}</div>
-                        <p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'review-owner-reply-text' : 'text-[#9ca3af] dark:text-[#71717A]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p>
-                      </div>
-                    </div>}
-
-                    {review && isEditingReview && <div className="mt-3 rounded-xl border border-[#bfdbfe] dark:border-white/10 bg-[#eff6ff] dark:bg-[#18181C] p-3">
-                      <div className="flex items-center justify-between gap-3"><p className="text-[11px] font-semibold text-[#111] dark:text-white">Edit your review</p><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="text-[10px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white disabled:opacity-50 cursor-pointer">Cancel</button></div>
-                      <div className="mt-3"><span className="block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Rating</span><div className="mt-1 flex items-center gap-1" role="radiogroup" aria-label="Review rating">
-                        {[1, 2, 3, 4, 5].map((value) => <button key={value} type="button" role="radio" aria-checked={editingReviewRating === value} aria-label={`${value} star${value === 1 ? '' : 's'}`} onClick={() => setEditingReviewRating(value)} disabled={isReviewSaving} className="rounded p-0.5 hover:bg-white dark:hover:bg-[#202025] disabled:opacity-50 cursor-pointer"><Star size={19} className={value <= editingReviewRating ? 'text-[#f59e0b]' : 'text-[#cbd5e1] dark:text-[#71717A]'} fill={value <= editingReviewRating ? 'currentColor' : 'none'} /></button>)}
-                      </div></div>
-                      <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wide text-[#5f6368] dark:text-[#A1A1AA]">Comment<textarea value={editingReviewComment} onChange={(event) => setEditingReviewComment(event.target.value)} maxLength={1000} rows={4} disabled={isReviewSaving} placeholder="Share what you thought about this parking lot." className="mt-1 w-full resize-y rounded-lg border border-[#dbeafe] dark:border-white/10 bg-white dark:bg-[#141417] px-3 py-2 text-[11px] font-normal leading-5 text-[#111] dark:text-white outline-none focus:border-[#007AFF] disabled:opacity-60" /></label>
-                      <div className="review-owner-reply-box mt-3 rounded-lg px-3 py-2.5"><p className="review-owner-reply-title text-[9px] font-semibold uppercase tracking-wide">Owner reply</p><p className={`mt-1 text-[10px] leading-4 ${review.ownerReply ? 'review-owner-reply-text' : 'text-[#9ca3af] dark:text-[#71717A]'}`}>{review.ownerReply || 'The owner has not replied to this review yet.'}</p></div>
-                      <div className="mt-1 flex items-center justify-between gap-3"><span className="text-[10px] text-[#6e6e73] dark:text-[#A1A1AA]">{editingReviewComment.length}/1000</span>{editingReviewError && <span role="alert" className="text-right text-[10px] text-[#dc2626] dark:text-red-400">{editingReviewError}</span>}</div>
-                      <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={cancelReviewEdit} disabled={isReviewSaving} className="rounded-lg border border-[#d1d5db] dark:border-white/14 bg-white dark:bg-[#242429] px-3 py-2 text-[10px] font-semibold text-[#5f6368] dark:text-[#A1A1AA] hover:bg-[#f8f9fa] dark:hover:bg-[#2C2C32] disabled:opacity-50 cursor-pointer">Cancel</button><button type="button" onClick={() => void saveReviewEdit()} disabled={isReviewSaving || !editingReviewRating} className="inline-flex items-center gap-1.5 rounded-lg bg-[#007AFF] px-3 py-2 text-[10px] font-semibold text-white hover:bg-[#0066d6] disabled:cursor-wait disabled:opacity-60 cursor-pointer">{isReviewSaving && <Loader2 size={12} className="animate-spin" />}{isReviewSaving ? 'Saving…' : 'Save changes'}</button></div>
-                    </div>}
-                  </article>;
-                })}
+                <ul className="divide-y divide-border">
+                  {visibleBookingHistory.map((item) => {
+                    const { booking } = item;
+                    const name = item.propertyName || allKnownBrowseSpots.find(spot => spot.parkingSpotId === booking.parkingSpotId)?.propertyName;
+                    const bay = booking.parkingLabel ? 'Bay ' + booking.parkingLabel : 'Parking reservation';
+                    return <li key={booking.bookingId}>
+                      <BookingHistoryRow title={name || bay} detail={name ? bay : undefined}
+                        start={parseTimestamp(booking.startDate)} end={parseTimestamp(booking.endDate)}
+                        status={booking.bookingStatus} total={booking.totalAmount} onOpen={() => openHistoryBooking(item)} />
+                    </li>;
+                  })}
+                  {recentCompletions.map(booking => <li key={booking.id}>
+                    <BookingHistoryRow title={booking.spot.propertyName || booking.spot.name}
+                      detail={booking.spot.parkingLabel ? 'Bay ' + booking.spot.parkingLabel : undefined}
+                      start={booking.startTime} end={booking.endTime} status={booking.status} total={booking.totalPaid}
+                      onOpen={() => openHistoryBooking(booking)} />
+                  </li>)}
+                </ul>
                 {visibleBookingHistory.length === 0 && recentCompletions.length === 0 && !isBookingHistoryLoading && !bookingHistoryError && <p className="py-4 text-center text-sm text-muted-foreground">No booking history yet.</p>}
-                {recentCompletions.length > 0 && <h4 className="mt-3 text-sm font-semibold">Recent completions</h4>}
-                {recentCompletions.map((b) => (
-                  <div key={b.id} className="flex items-center justify-between py-2.5 border-b border-[#f1f3f4] dark:border-white/10 last:border-0 gap-3">
-                    <div>
-                      <p className="text-[13px] font-medium text-[#111] dark:text-white">{b.spot.name}</p>
-                      <p className="text-[11px] text-[#9ca3af] dark:text-[#71717A]">{b.spot.station}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {b.status === 'Completed' && (
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/commuter/parking/${b.spot.parkingSpotId}/review`, { state: { booking: b } })}
-                          className="inline-flex items-center gap-1 rounded-xl bg-[#007AFF]/10 dark:bg-[#007AFF]/20 px-2.5 py-1 text-[11px] font-bold text-[#007AFF] hover:bg-[#007AFF]/20 transition-colors cursor-pointer"
-                        >
-                          <Star size={11} /> Write a review
-                        </button>
-                      )}
-                      <div className="text-right">
-                        <span className="text-[13px] font-semibold text-[#111] dark:text-white">RM {(b.totalPaid ?? 0).toFixed(2)}</span>
-                        <p className="text-[10px] text-[#16a34a] font-medium">{b.status}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
                 {bookingHistoryMeta.totalPages > 1 && (
                   <nav aria-label="Booking history pagination" className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                     <button type="button" onClick={() => changeBookingHistoryPage(bookingHistoryPage - 1)} disabled={bookingHistoryPage <= 1 || isBookingHistoryLoading || isReviewSaving} className="workspace-button workspace-button--secondary px-2.5!">
@@ -3608,7 +3510,6 @@ export default function CommuterDashboard() {
                   </nav>
                 )}
               </section>
-            </div>
           )}
 
           {activeTab === 'support' && (
@@ -3617,10 +3518,6 @@ export default function CommuterDashboard() {
 
           {activeTab === 'favorites' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#e8eaed] dark:border-white/10 bg-white dark:bg-[#141417] px-4 py-3 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
-                <div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-500 dark:text-rose-400">{isFavoritesLoading ? <Loader2 size={17} className="animate-spin" /> : <Heart size={17} fill="currentColor" />}</span><div><p className="text-[13px] font-semibold text-[#111] dark:text-white">Saved parking</p><p className="text-[11px] text-[#5f6368] dark:text-[#A1A1AA]">{isFavoritesLoading ? 'Refreshing favorites…' : `${favoriteSpots.length} space${favoriteSpots.length === 1 ? '' : 's'} ready to revisit`}</p></div></div>
-                {favoriteSpots.length > 0 && <button type="button" onClick={() => void handleClearFavorites()} disabled={isFavoritesLoading || isClearingFavorites} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:cursor-wait disabled:opacity-70 cursor-pointer">{isClearingFavorites && <Loader2 size={13} className="animate-spin" />}{isClearingFavorites ? 'Clearing…' : 'Clear all'}</button>}
-              </div>
               {isFavoritesLoading && favoriteSpots.length === 0 ? (
                 <div className="rounded-2xl border border-[#e8eaed] dark:border-white/10 bg-white dark:bg-[#141417] p-10 text-center" role="status">
                   <Loader2 size={28} className="mx-auto animate-spin text-[#007AFF]" />
@@ -3635,20 +3532,17 @@ export default function CommuterDashboard() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
-                  {favoriteSpots.map((spot) => (
-                    <article key={spot.parkingSpotId} className="parking-result workspace-panel">
-                      <div className="parking-result__photo">
-                        <ParkingPhoto key={spot.primaryImageUrl} src={spot.primaryImageUrl} />
-                        <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 shadow-sm backdrop-blur">{spot.availabilityStatus}</span>
-                        <button type="button" onClick={() => void handleToggleFavorite(spot)} disabled={isFavoritesLoading || isClearingFavorites || favoriteUpdatingIds.includes(spot.parkingSpotId)} aria-label={`Remove ${spot.propertyName} from favorites`} className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.06] bg-white/95 text-rose-500 shadow-md backdrop-blur active:scale-95 disabled:cursor-wait disabled:opacity-70">{favoriteUpdatingIds.includes(spot.parkingSpotId) ? <Loader2 size={18} className="animate-spin text-[#007AFF]" /> : <Heart size={18} fill="currentColor" />}</button>
-                      </div>
-                      <div className="flex flex-1 flex-col p-4">
-                        <div className="min-w-0"><h3 className="truncate text-[15px] font-semibold text-[#111] dark:text-[#f5f5f7]">{spot.propertyName}</h3><p className="mt-1 text-[11px] text-[#5f6368]">Bay {spot.parkingLabel} · Near {spot.stationName}</p></div>
-                        <p className="mt-2 line-clamp-2 text-[11px] text-[#6e6e73] dark:text-[#a1a1a6]">{spot.address}</p>
-                        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-[#f8f9fa] dark:bg-white/[0.06] p-3 text-[11px]"><div><span className="block text-[10px] text-[#9ca3af] dark:text-[#a1a1a6]">Daily rate</span><strong className="mt-0.5 block text-[#111] dark:text-[#f5f5f7]">{spot.dailyRate === null ? 'Not set' : `RM ${spot.dailyRate.toFixed(2)}`}</strong></div><div><span className="block text-[10px] text-[#9ca3af] dark:text-[#a1a1a6]">To station</span><strong className="mt-0.5 block text-[#111] dark:text-[#f5f5f7]">{(spot.distanceToStation ?? 0).toFixed(2)} km</strong></div></div>
-                        <button type="button" onClick={() => openParkingDetail(spot, null, spot.stationName)} className="mt-auto flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#007AFF] px-4 text-[12px] font-semibold text-white hover:bg-[#0066d6]">View parking <ChevronRight size={15} /></button>
-                      </div>
-                    </article>
+                  {favoriteSpots.map(spot => (
+                    <ParkingResultCard
+                      key={spot.parkingSpotId}
+                      spot={spot}
+                      isSaved
+                      favoritePending={isFavoritesLoading || favoriteUpdatingIds.includes(spot.parkingSpotId)}
+                      ratingData={spotRatings[spot.parkingSpotId]}
+                      userDistanceKm={currentLocation ? distanceFromUser(currentLocation, spot) : null}
+                      onOpen={() => openParkingDetail(spot, null, spot.stationName || spot.station)}
+                      onToggleFavorite={() => void handleToggleFavorite(spot)}
+                    />
                   ))}
                 </div>
               )}
@@ -3663,7 +3557,7 @@ export default function CommuterDashboard() {
 
       <BottomNav
         items={buildCommuterBottomNavItems(!!activeBooking || upcomingBookings.length > 0)}
-        activeId={['profile', 'favorites', 'support', 'publicPay'].includes(activeTab) ? 'more' : activeTab}
+        activeId={['profile', 'history', 'favorites', 'support', 'publicPay'].includes(activeTab) ? 'more' : activeTab}
         onChange={(id) => {
           if (id === 'more') {
             setSidebarOpen(true);
@@ -3857,13 +3751,6 @@ export default function CommuterDashboard() {
         }}
       />
 
-      {/* Public Parking Lot Detail Modal */}
-      {inspectingPublicLot && (
-        <PublicLotDetailModal
-          lot={inspectingPublicLot}
-          onClose={() => setInspectingPublicLot(null)}
-        />
-      )}
 
       {/* Search & Filters Bottom Sheet / Modal */}
       <ParkingSearchSheet

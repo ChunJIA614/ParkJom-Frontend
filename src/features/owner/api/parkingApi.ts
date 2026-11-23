@@ -143,6 +143,20 @@ export function getOwnerAvailabilityCalendar(
   });
 }
 
+export function getOwnerBookingsByDate(
+  token: string,
+  parkingSpotId: number,
+  date: string,
+  signal: AbortSignal,
+): Promise<Response> {
+  const query = new URLSearchParams({ parking_spot_id: String(parkingSpotId), date });
+  return apiRequest('/owner/bookings/by-date?' + query.toString(), {
+    method: 'GET',
+    headers: authorizationHeaders(token),
+    signal,
+  }, { preserveSessionOnForbidden: true });
+}
+
 export function getOwnerSpotBookings(
   token: string,
   parkingSpotId: number,

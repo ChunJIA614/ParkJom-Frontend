@@ -2,16 +2,13 @@ import BollardStatusDetails from '@/components/ui/BollardStatusDetails';
 import type { IoTStatusData } from '@/services/iotManagementApi';
 import { displayDateOptions, parseTimestamp } from '@/lib/dateTime';
 import ParkingPhoto from './ParkingPhoto';
+import { BookingReceiptCard } from './BookingReceipt';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
   Calendar,
-  Car,
-  Check,
   CheckCircle2,
-  Copy,
-  ExternalLink,
   Headphones,
   Info,
   Loader2,
@@ -153,7 +150,6 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
   const [otherCancelReason, setOtherCancelReason] = useState<string>('');
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
-  const [copiedReference, setCopiedReference] = useState(false);
 
   const selectedBooking =
     bookings.find((b) => b.id === selectedBookingId || String(b.bookingId) === selectedBookingId) ??
@@ -249,16 +245,6 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
     setCancelError(null);
     setShowCancelModal(false);
     setSubView('confirmation');
-  };
-
-  const handleCopyBookingRef = async (refText: string) => {
-    try {
-      await navigator.clipboard.writeText(refText);
-      setCopiedReference(true);
-      window.setTimeout(() => setCopiedReference(false), 1800);
-    } catch {
-      // ignore clipboard failure
-    }
   };
 
   const handleToggleBollard = async (targetUnlock: boolean) => {
@@ -458,27 +444,6 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
       effectiveBooking.startTime,
       effectiveBooking.endTime,
     );
-    const diffDays = Math.max(
-      1,
-      Math.round(
-        (inclusiveEnd.getTime() - effectiveBooking.startTime.getTime()) /
-          (1000 * 60 * 60 * 24),
-      ) + 1,
-    );
-    const bookedDays = effectiveBooking.bookedDays || diffDays;
-    const totalPaid = effectiveBooking.totalPaid ?? 0;
-    const platformFee =
-      effectiveBooking.platformFee ?? Number((totalPaid * 0.1).toFixed(2));
-    const rentalSubtotal =
-      effectiveBooking.rentalSubtotal ?? Number((totalPaid - platformFee).toFixed(2));
-    const ratePerDay =
-      effectiveBooking.ratePerDay ??
-      effectiveBooking.spot.dailyRate ??
-      Number((totalPaid / Math.max(1, bookedDays)).toFixed(2));
-    const bookingRef =
-      effectiveBooking.bookingReference ||
-      `PJ-${String(effectiveBooking.bookingId ?? effectiveBooking.id).padStart(6, '0')}`;
-
     const eligibility = evaluateBookingCancellationEligibility({
       ...effectiveBooking,
       status: isSelectedUnlocked ? 'Active' : effectiveBooking.status,
@@ -494,7 +459,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
     return (
       <div className="w-full max-w-7xl mx-auto space-y-4 animate-in fade-in duration-200">
         {/* Top Navigation Bar */}
-        <nav aria-label="Receipt navigation" className="mx-auto w-full max-w-7xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <nav aria-label="Receipt navigation" className="mx-auto w-full max-w-7xl">
           <button
             type="button"
             onClick={() => setSubView('grid')}
@@ -502,232 +467,35 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
           >
             <ArrowLeft size={15} /> Back to My Passes
           </button>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onNavigateToMap(effectiveBooking)}
-              className="workspace-button workspace-button--secondary"
-            >
-              <Navigation size={14} /> Transit Map
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOpenBollardView(effectiveBooking)}
-              className="workspace-button workspace-button--primary"
-            >
-              <Unlock size={14} /> Open Bollard Control
-            </button>
-          </div>
         </nav>
 
-        {/* 2-COLUMN FULL-PAGE LAYOUT (Utilizing Left and Right Space) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* LEFT COLUMN: Hero Photo + Booking Dates + Barrier Access */}
-          <div className="lg:col-span-7 space-y-4">
-            {/* Spot Hero Card */}
-            <div className="overflow-hidden rounded-3xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] shadow-sm">
-              <div className="relative h-56 sm:h-64 w-full overflow-hidden bg-slate-900">
-                <ParkingPhoto key={effectiveBooking.spot.primaryImageUrl} src={effectiveBooking.spot.primaryImageUrl} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/15" />
-
-                <div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/95 px-3 py-1 text-[11px] font-bold text-white shadow-md backdrop-blur-md">
-                    <CheckCircle2 size={13} /> Booking Confirmed
-                  </span>
-                  <span className="inline-flex items-center rounded-full bg-white/95 dark:bg-black/80 px-3 py-1 text-[11px] font-extrabold text-[#111] dark:text-white backdrop-blur-md shadow-xs">
-                    Bay {effectiveBooking.spot.parkingLabel}
-                  </span>
-                </div>
-
-                <div className="absolute bottom-4 left-5 right-5 text-white">
-                  <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-                    {effectiveBooking.spot.propertyName || effectiveBooking.spot.name}
-                  </h2>
-                  <p className="mt-0.5 text-xs text-white/85 flex items-center gap-1.5">
-                    <MapPin size={13} className="shrink-0 text-sky-400" />
-                    <span className="truncate">
-                      {effectiveBooking.spot.address || effectiveBooking.spot.stationName || 'Kuala Lumpur'}
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Check-In & Check-Out Twin Box Inside Hero Card */}
-              <div className="p-4 sm:p-5 border-t border-black/[0.06] dark:border-white/10 bg-[#f8f9fa] dark:bg-[#18181C]">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-[#A1A1AA]">
-                      Check-In Date
-                    </p>
-                    <p className="mt-1 text-sm sm:text-base font-extrabold text-[#111] dark:text-white">
-                      {formatBookingDate(effectiveBooking.startTime)}
-                    </p>
-                    <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
-                      From 12:00 AM
-                    </p>
-                  </div>
-                  <div className="border-l border-black/[0.08] dark:border-white/10 pl-4">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-[#A1A1AA]">
-                      Check-Out Date
-                    </p>
-                    <p className="mt-1 text-sm sm:text-base font-extrabold text-[#111] dark:text-white">
-                      {formatBookingDate(inclusiveEnd)}
-                    </p>
-                    <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
-                      Until 11:59 PM ({bookedDays} day{bookedDays > 1 ? 's' : ''})
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Smart Barrier & Vehicle Info + Directions */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] p-4 flex items-start gap-3 shadow-xs">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/50 text-[#007AFF]">
-                  <Car size={20} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-[#111] dark:text-white">
-                    Smart Bollard Access
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-[#5f6368] dark:text-[#A1A1AA]">
-                    Assigned Plate:{' '}
-                    <span className="font-mono font-bold text-[#111] dark:text-white break-all">
-                      {effectiveBooking.vehiclePlate || 'Registered Vehicle'}
-                    </span>
-                  </p>
-                  <p className="mt-1 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">
-                    {effectiveBooking.hasOpenedBollard
-                      ? 'Bollard has been unlocked during this booking'
-                      : 'Bollard has not been opened yet'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] p-4 flex flex-col justify-between gap-2 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#111] dark:text-white">
-                    Directions &amp; Navigation
-                  </span>
-                  <Navigation size={15} className="text-[#007AFF]" />
-                </div>
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToMap(effectiveBooking)}
-                    className="workspace-button workspace-button--secondary flex-1"
-                  >
-                    Transit Map
-                  </button>
-                  <a
-                    href={googleMapsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="workspace-button workspace-button--secondary"
-                  >
-                    Google Maps <ExternalLink size={12} />
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN: Payment Receipt + Reference + Cancellation Card */}
-          <div className="lg:col-span-5 space-y-4">
-            {/* Price Breakdown Receipt */}
-            <div className="rounded-3xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] p-5 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-[#111] dark:text-white">
-                  <Receipt size={15} className="text-[#007AFF]" />
-                  <span>Payment Receipt</span>
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/50">
-                  Paid
-                </span>
-              </div>
-
-              <div className="space-y-2 text-xs text-[#5f6368] dark:text-[#A1A1AA] pt-1">
-                <div className="flex justify-between">
-                  <span>
-                    RM {ratePerDay.toFixed(2)} &times; {bookedDays} day
-                    {bookedDays > 1 ? 's' : ''}
-                  </span>
-                  <span className="font-semibold text-[#111] dark:text-white">
-                    RM {rentalSubtotal.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Included platform service fee</span>
-                  <span>RM {platformFee.toFixed(2)}</span>
-                </div>
-                <div className="border-t border-black/[0.06] dark:border-white/10 pt-2.5 flex justify-between items-baseline">
-                  <span className="text-sm font-extrabold text-[#111] dark:text-white">
-                    Total Paid
-                  </span>
-                  <span className="text-lg font-black text-[#007AFF]">
-                    RM {totalPaid.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Booking Reference Copy Pill */}
-              <div className="border-t border-black/[0.06] dark:border-white/10 pt-3 flex items-center justify-between rounded-2xl bg-[#f8f9fa] dark:bg-[#1C1C1E] px-3.5 py-2.5">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#6e6e73] dark:text-[#A1A1AA]">
-                    Booking Reference
-                  </p>
-                  <p className="font-mono text-xs font-bold text-[#111] dark:text-white mt-0.5">
-                    {bookingRef}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleCopyBookingRef(bookingRef)}
-                  className="workspace-button workspace-button--secondary"
-                >
-                  {copiedReference ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
-                  {copiedReference ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-            </div>
-
-            {/* Cancel Booking Card */}
-            <div className="rounded-3xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#141417] p-5 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#5f6368] dark:text-[#A1A1AA]">
-                  Booking Management
-                </h3>
-                <span className="text-[10px] text-[#8e8e93] dark:text-[#71717A]">
-                  24h Policy
-                </span>
-              </div>
-
-              {!eligibility.canCancel && eligibility.reason && (
-                <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/50 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                  <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                  <span>{eligibility.reason}</span>
-                </div>
-              )}
-
-              <button
-                type="button"
-                disabled={!eligibility.canCancel}
-                onClick={() => {
-                  setCancelError(null);
-                  setShowCancelModal(true);
-                }}
-                className="workspace-button workspace-button--danger w-full"
-              >
-                Cancel Booking
-              </button>
-
-              <p className="text-center text-[11px] text-[#8e8e93] dark:text-[#71717A] leading-relaxed">
-                Cancellation is available only within 24 hours of booking if the smart bollard has never been opened.
-              </p>
-            </div>
-          </div>
+        <div className="mx-auto w-full max-w-2xl">
+          <BookingReceiptCard
+            heading="h2"
+            data={{
+              title: effectiveBooking.spot.propertyName || effectiveBooking.spot.name,
+              status: isSelectedUnlocked ? 'Active' : effectiveBooking.status === 'Upcoming' ? 'Confirmed' : effectiveBooking.status,
+              photo: effectiveBooking.spot.primaryImageUrl,
+              bay: effectiveBooking.spot.parkingLabel,
+              station: effectiveBooking.spot.stationName || effectiveBooking.spot.station,
+              startDate: formatBookingDate(effectiveBooking.startTime),
+              endDate: formatBookingDate(inclusiveEnd),
+              days: effectiveBooking.bookedDays,
+              rate: effectiveBooking.ratePerDay,
+              platformFee: effectiveBooking.platformFee,
+              total: effectiveBooking.totalPaid,
+              reference: effectiveBooking.bookingReference,
+              plate: effectiveBooking.vehiclePlate,
+              address: effectiveBooking.spot.address,
+              directions: googleMapsUrl,
+            }}
+            onCancel={eligibility.canCancel && effectiveBooking.bookingId && token ? () => {
+              setCancelError(null);
+              setShowCancelModal(true);
+            } : undefined}
+            cancelling={isCancelling}
+            cancellationUnavailableReason={eligibility.reason}
+          />
         </div>
 
         {/* POP UP: "Tell us why?" Cancellation Modal */}
@@ -874,7 +642,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
           <header className="bollard-parking-summary">
             <h2 title={effectiveBooking.spot.propertyName || effectiveBooking.spot.name}>{effectiveBooking.spot.propertyName || effectiveBooking.spot.name}</h2>
             <div className="bollard-parking-meta">
-              <span className="font-semibold text-foreground">Bay {effectiveBooking.spot.parkingLabel}</span>
+              <span className="font-semibold text-foreground">{effectiveBooking.spot.parkingLabel}</span>
               <span className="font-mono">{effectiveBooking.vehiclePlate}</span>
               <span>{formatBookingDate(effectiveBooking.startTime)} – {formatBookingDate(inclusiveEnd)}</span>
             </div>
@@ -933,7 +701,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                 <div className="h-5 w-full rounded-lg bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-between px-4">
                   <div className="h-1 w-10 bg-amber-400/70 rounded-full" />
                   <span className="text-[9px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                    Bay {effectiveBooking.spot.parkingLabel} Surface
+                    {effectiveBooking.spot.parkingLabel}
                   </span>
                   <div className="h-1 w-10 bg-amber-400/70 rounded-full" />
                 </div>
@@ -1053,7 +821,7 @@ export const MyParkingPassesWorkspace: React.FC<MyParkingPassesWorkspaceProps> =
                 {/* Bottom-Left Bay & Plate Overlay */}
                 <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2 text-white pointer-events-none">
                   <span className="shrink-0 rounded-lg bg-black/55 backdrop-blur-md px-2.5 py-1 text-[11px] font-extrabold border border-white/15">
-                    Bay {booking.spot.parkingLabel}
+                    {booking.spot.parkingLabel}
                   </span>
                   <span
                     className="min-w-0 max-w-[60%] truncate font-mono text-[11px] font-bold bg-black/55 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/15"

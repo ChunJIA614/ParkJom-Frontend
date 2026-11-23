@@ -17,6 +17,7 @@ const PropertyManagementDashboard = lazy(() => import('@/features/management/pag
 const AdminDashboard = lazy(() => import('@/features/admin/pages/AdminDashboard'));
 const loadCommuterDashboard = () => import('@/features/commuter/pages/CommuterDashboard');
 const CommuterDashboard = lazy(loadCommuterDashboard);
+const PublicLotDetailPage = lazy(() => import('@/features/publicParking/pages/PublicLotDetailPage'));
 const ParkingDetail = lazy(() => import('@/features/commuter/pages/ParkingDetail'));
 const ParkingReview = lazy(() => import('@/features/commuter/pages/ParkingReview'));
 const LandingPage = lazy(() => import('@/features/landing/pages/LandingPage'));
@@ -93,6 +94,7 @@ export function AppRoutes() {
               {/* Guest mode allows viewing Commuter dashboard (browse & transit maps) and parking details */}
               <Route path="/commuter" element={<CommuterDashboard />} />
               <Route path="/commuter/parking/:id" element={<ParkingDetail />} />
+              <Route path="/commuter/public-parking/:id" element={<PublicLotDetailPage />} />
               {/* Public Drive-In Parking Checkout & Payment */}
               <Route path="/public-pay" element={<PublicParkingPayPage />} />
               <Route path="/commuter/public-pay" element={<PublicParkingPayPage />} />
@@ -133,6 +135,7 @@ export function AppRoutes() {
             <Route path="/commuter" element={<RequireRole role="Commuter"><CommuterDashboard /></RequireRole>} />
             <Route path="/commuter/parking/:id" element={<RequireRole role="Commuter"><ParkingDetail /></RequireRole>} />
             <Route path="/commuter/parking/:id/review" element={<RequireRole role="Commuter"><ParkingReview /></RequireRole>} />
+            <Route path="/commuter/public-parking/:id" element={<RequireRole role="Commuter"><PublicLotDetailPage /></RequireRole>} />
             {/* Public Drive-In Parking Checkout & Payment */}
             <Route path="/public-pay" element={<PublicParkingPayPage />} />
             <Route path="/commuter/public-pay" element={<PublicParkingPayPage />} />

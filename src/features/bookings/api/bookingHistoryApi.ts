@@ -12,6 +12,11 @@ export interface BookingHistoryBooking {
   endDate: string;
   bookingStatus: string;
   totalAmount: number;
+  bookedDays?: number;
+  ratePerDay?: number;
+  platformFee?: number;
+  canCancel?: boolean;
+  hasOpenedBollard?: boolean;
   cancellationReason: string | null;
   cancelledAt: string | null;
   createdAt: string;
@@ -37,6 +42,8 @@ export interface BookingHistoryFilters {
 
 export interface BookingHistoryItem {
   booking: BookingHistoryBooking;
+  propertyName?: string;
+  vehiclePlate?: string;
   canReview: boolean;
   review: BookingHistoryReview | null;
 }
@@ -106,6 +113,9 @@ function normalizeBooking(value: unknown): BookingHistoryBooking | null {
   const parkingSpotId = readField(data, 'parkingSpotId', 'ParkingSpotId');
   const vehicleId = readField(data, 'vehicleId', 'VehicleId');
   const totalAmount = readField(data, 'totalAmount', 'TotalAmount');
+  const platformFee = readField(data, 'platformFee', 'PlatformFee');
+  const canCancel = readField(data, 'canCancel', 'CanCancel');
+  const hasOpenedBollard = readField(data, 'hasOpenedBollard', 'HasOpenedBollard');
   if (
     typeof bookingId !== 'number'
     || typeof renterId !== 'number'
@@ -125,6 +135,11 @@ function normalizeBooking(value: unknown): BookingHistoryBooking | null {
     endDate: String(readField(data, 'endDate', 'EndDate') ?? ''),
     bookingStatus: String(readField(data, 'bookingStatus', 'BookingStatus') ?? ''),
     totalAmount,
+    bookedDays: Number(readField(data, 'bookedDays', 'BookedDays')) || undefined,
+    ratePerDay: typeof readField(data, 'ratePerDay', 'RatePerDay') === 'number' ? Number(readField(data, 'ratePerDay', 'RatePerDay')) : undefined,
+    platformFee: typeof platformFee === 'number' ? platformFee : undefined,
+    canCancel: typeof canCancel === 'boolean' ? canCancel : undefined,
+    hasOpenedBollard: typeof hasOpenedBollard === 'boolean' ? hasOpenedBollard : undefined,
     cancellationReason: readField(data, 'cancellationReason', 'CancellationReason') as string | null ?? null,
     cancelledAt: readField(data, 'cancelledAt', 'CancelledAt') as string | null ?? null,
     createdAt: String(readField(data, 'createdAt', 'CreatedAt') ?? ''),
@@ -170,7 +185,11 @@ function normalizeItem(value: unknown): BookingHistoryItem | null {
   const review = reviewValue === null || reviewValue === undefined ? null : normalizeReview(reviewValue);
   if (!booking || typeof canReview !== 'boolean' || (reviewValue != null && !review)) return null;
 
-  return { booking, canReview, review };
+  return {
+    booking, canReview, review,
+    propertyName: String(readField(data, 'propertyName', 'PropertyName') ?? ''),
+    vehiclePlate: String(readField(data, 'vehiclePlate', 'VehiclePlate') ?? ''),
+  };
 }
 
 function normalizeOwnerBooking(value: unknown): OwnerBookingHistoryItem | null {

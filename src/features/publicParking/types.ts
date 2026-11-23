@@ -46,6 +46,14 @@ export interface PublicParkingLot {
   createdAt: string;
 }
 
+export type PublicParkingLotDetail = Omit<PublicParkingLot, 'availableSpaces' | 'occupiedSpaces' | 'isFull'> & {
+  availableSpaces: number | null;
+  occupiedSpaces: number | null;
+  isFull: boolean | null;
+  occupancyStatus?: 'live' | 'stale' | 'unknown';
+  occupancyUpdatedAt?: string | null;
+};
+
 export interface PublicParkingSession {
   publicParkingSessionId: number;
   sessionCode: string;

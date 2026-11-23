@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import SystemSelect from '@/components/ui/SystemSelect';
-import { UploadCloud, CheckCircle, FileText, Landmark, ShieldCheck, HelpCircle, FileCheck, Loader2, Search, AlertCircle } from 'lucide-react';
+import { UploadCloud, Check, CheckCircle, FileText, Landmark, ShieldCheck, HelpCircle, FileCheck, Loader2, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/AuthContext';
 import { showAlert } from '@/components/common/ModalProvider';
 import { createParking, searchMalaysiaLocations } from '../api/propertyApi';
@@ -35,7 +35,6 @@ interface PropertyOnboardingProps {
     propertyName: string;
     stationName: string;
     bayNumber: string;
-    level: string;
     docName: string;
     lat?: number;
     lon?: number;
@@ -52,13 +51,13 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
   const [stationName, setStationName] = useState('');
   const [distanceToStation, setDistanceToStation] = useState<number>(0);
   const [bayNumber, setBayNumber] = useState('');
-  const [level, setLevel] = useState('');
   const [documentType, setDocumentType] = useState<number>(1);
   const [hasEvCharging, setHasEvCharging] = useState(false);
   const [evChargingSpeed, setEvChargingSpeed] = useState('Medium (7.4kW)');
   const [isCovered, setIsCovered] = useState(false);
   const [isHandicapAccessible, setIsHandicapAccessible] = useState(false);
   const [hasCctv, setHasCctv] = useState(false);
+  const [openAmenityHelp, setOpenAmenityHelp] = useState<string | null>(null);
 
   // Auto-detect station state
   const [allStops, setAllStops] = useState<{ name: string; lat: number; lon: number }[]>([]);
@@ -255,6 +254,11 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       setSubmitError('Search for and select the property location before submitting.');
       return;
     }
+    const bay = bayNumber.trim();
+    if (!bay) {
+      setSubmitError('Enter the parking bay.');
+      return;
+    }
     const token = user?.token ?? '';
     if (!token) {
       setSubmitError('Your owner session is missing an authorization token. Please sign in again.');
@@ -271,8 +275,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       formData.append('osmId', osmId);
       formData.append('address', address.trim());
       formData.append('nearestStationName', stationName.trim());
-      formData.append('bayNumber', bayNumber.trim());
-      formData.append('Level', level.trim());
+      formData.append('bayNumber', bay);
       formData.append('DocumentType', String(documentType));
       formData.append('Document', uploadedFileObject);
       formData.append('hasEvCharging', String(hasEvCharging));
@@ -306,8 +309,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       onOnboardProperty({
         propertyName: propName,
         stationName,
-        bayNumber,
-        level,
+        bayNumber: bay,
         docName: uploadedFile.name,
         lat: mapLat,
         lon: mapLon,
@@ -321,7 +323,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
           `Property: ${propName}\n` +
           `Parking Spot ID: ${parkResult.parkingSpotId}\n` +
           `Verification Request ID: ${parkResult.verificationRequestId}\n` +
-          `Bay: ${bayNumber} (Level ${level})\n` +
+          `Bay: ${bay}\n` +
           `Station: ${stationName}\n\n` +
           `Our administration team will review your submitted verification documents shortly.`,
         variant: 'success',
@@ -335,7 +337,6 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       setStationName('');
       setDistanceToStation(0);
       setBayNumber('');
-      setLevel('');
       setDocumentType(1);
       setMapLat(undefined);
       setMapLon(undefined);
@@ -347,6 +348,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
       setIsCovered(false);
       setIsHandicapAccessible(false);
       setHasCctv(false);
+      setOpenAmenityHelp(null);
     } catch (err: any) {
       console.error('❌ Registration failed:', err.message);
       setSubmitError(err.message);
@@ -366,16 +368,16 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                 <Landmark className="w-5 h-5 text-slate-800" />
               </div>
               <div>
-                <h2 className="font-bold text-slate-900 text-sm">Regulatory Compliance & Registry Form</h2>
-                <span className="text-[10px] text-slate-400 font-medium">Malaysia Strata Management Act 2013 (SMA 2013) Form</span>
+                <h2 className="font-bold text-slate-900 text-lg">Regulatory Compliance & Registry Form</h2>
+                <span className="text-sm text-slate-400 font-medium">Malaysia Strata Management Act 2013 (SMA 2013) Form</span>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-5 [&_button[role=combobox]]:text-base">
               {/* Property Name + Type row */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Condominium / Property Name *</label>
+                  <label className="block text-sm font-bold text-slate-600 mb-1.5">Condominium / Property Name *</label>
                   <div className="relative">
                     <input
                       type="text"
@@ -388,7 +390,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                         setSearchError(null);
                       }}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handlePropertySearch(); } }}
-                      className="w-full text-xs border border-slate-200 rounded-lg pl-3 pr-10 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                      className="min-h-11 w-full text-base border border-slate-200 rounded-lg pl-3 pr-10 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
                       required
                     />
                     <button
@@ -407,7 +409,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                     </button>
                   </div>
                   {searchError && (
-                    <p className="text-[10px] text-rose-600 mt-1 flex items-center gap-1">
+                    <p className="text-sm text-rose-600 mt-1 flex items-center gap-1">
                       <span>⚠️</span> {searchError}
                     </p>
                   )}
@@ -415,11 +417,11 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
 
                 {/* Property Type */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Property Type *</label>
+                  <label className="block text-sm font-bold text-slate-600 mb-1.5">Property Type *</label>
                   <SystemSelect
                     value={propertyType}
                     onChange={(e) => setPropertyType(Number(e.target.value))}
-                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 bg-white"
+                    className="min-h-11 w-full text-base border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 bg-white"
                     required
                   >
                     <option value={1}>Condominium</option>
@@ -428,17 +430,16 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                 </div>
               </div>
 
-              {/* Location verification fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                  <label className="block text-sm font-bold text-slate-600 mb-1.5">
                     Closest RapidKL Transit Station *
                   </label>
                   <div className="relative">
                     {isSearchingStation ? (
                       <div className="flex items-center gap-2 border border-slate-200 rounded-lg px-3 py-2.5 bg-slate-50">
                         <Loader2 size={14} className="animate-spin text-blue-600" />
-                        <span className="text-xs text-slate-500">Detecting nearest station...</span>
+                        <span className="text-sm text-slate-500">Detecting nearest station...</span>
                       </div>
                     ) : (
                       <input
@@ -446,13 +447,13 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                         value={stationName}
                         readOnly
                         disabled
-                        placeholder={propName ? 'Press Enter on Property Name to auto-detect' : 'Enter property name above first'}
-                        className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-slate-50 text-slate-700 cursor-not-allowed disabled:opacity-70"
+                        placeholder="Search for a property first"
+                        className="min-h-11 w-full text-base border border-slate-200 rounded-lg px-3 py-2.5 bg-slate-50 text-slate-700 cursor-not-allowed disabled:opacity-70"
                       />
                     )}
                   </div>
                   {stationName && (
-                    <p className="text-[10px] text-emerald-600 mt-1 flex items-center gap-1">
+                    <p className="text-sm text-emerald-600 mt-1 flex items-center gap-1">
                       <CheckCircle size={11} /> {distanceToStation > 1000
                         ? `${(distanceToStation / 1000).toFixed(2)} km`
                         : `${Math.round(distanceToStation)} m`}{' '}
@@ -461,23 +462,9 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">
-                    OpenStreetMap ID *
-                  </label>
-                  <input
-                    type="text"
-                    value={osmId}
-                    readOnly
-                    disabled
-                    placeholder="Detected from property search"
-                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-slate-50 text-slate-700 cursor-not-allowed disabled:opacity-70"
-                  />
-                </div>
-
                 {/* Distance to station (read-only, auto-calculated) */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                  <label className="block text-sm font-bold text-slate-600 mb-1.5">
                     Distance to Station (km)
                   </label>
                   <input
@@ -486,148 +473,98 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                     value={distanceToStation > 0 ? parseFloat((distanceToStation / 1000).toFixed(2)) : ''}
                     readOnly
                     disabled
-                    placeholder="Auto-calculated from coordinates"
-                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 bg-slate-50 text-slate-700 cursor-not-allowed disabled:opacity-70"
+                    placeholder="Calculated after property search"
+                    className="min-h-11 w-full text-base border border-slate-200 rounded-lg px-3 py-2.5 bg-slate-50 text-slate-700 cursor-not-allowed disabled:opacity-70"
                   />
                 </div>
               </div>
 
-              {/* Address */}
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1.5">Full Address *</label>
-                <input
-                  type="text"
+                <label htmlFor="owner-registration-address" className="mb-1.5 block text-sm font-bold text-slate-600">Full address *</label>
+                <textarea
+                  id="owner-registration-address"
+                  rows={2}
                   placeholder="e.g. Jln Langkawi, Taman Setapak, 53000 Kuala Lumpur"
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
+                  onChange={(event) => setAddress(event.target.value)}
+                  className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2.5 text-base leading-normal focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100"
                   required
                 />
               </div>
 
-              {/* Bay Number + Level row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Exact Bay Number *</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Bay 104"
-                    value={bayNumber}
-                    onChange={(e) => setBayNumber(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Level / Floor *</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Level 3 (Basement, Block A)"
-                    value={level}
-                    onChange={(e) => setLevel(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600"
-                    required
-                  />
-                </div>
+              <div>
+                <label htmlFor="owner-registration-bay" className="mb-1.5 block text-sm font-bold text-slate-600">Bay *</label>
+                <input
+                  id="owner-registration-bay"
+                  name="bayNumber"
+                  type="text"
+                  placeholder="e.g. L3-405"
+                  value={bayNumber}
+                  onChange={(event) => setBayNumber(event.target.value)}
+                  maxLength={50}
+                  className="min-h-12 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-base focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  required
+                />
               </div>
 
-              {/* Bay Amenities */}
-              <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700">Bay Amenities & Features</label>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Tick all amenities provided at this bay so commuters can find them via filters.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                    isCovered ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}>
-                    <input
-                      type="checkbox"
-                      checked={isCovered}
-                      onChange={(e) => setIsCovered(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <div className="min-w-0">
-                      <span className="block text-xs font-bold text-slate-900">☂️ Covered Bay</span>
-                      <span className="block text-[10px] text-slate-500 mt-0.5">Sheltered from rain and sun</span>
-                    </div>
-                  </label>
-
-                  <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                    hasCctv ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}>
-                    <input
-                      type="checkbox"
-                      checked={hasCctv}
-                      onChange={(e) => setHasCctv(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <div className="min-w-0">
-                      <span className="block text-xs font-bold text-slate-900">🛡️ 24/7 CCTV & Security</span>
-                      <span className="block text-[10px] text-slate-500 mt-0.5">Active premises video surveillance</span>
-                    </div>
-                  </label>
-
-                  <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                    isHandicapAccessible ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}>
-                    <input
-                      type="checkbox"
-                      checked={isHandicapAccessible}
-                      onChange={(e) => setIsHandicapAccessible(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <div className="min-w-0">
-                      <span className="block text-xs font-bold text-slate-900">♿ OKU / Handicap Accessible</span>
-                      <span className="block text-[10px] text-slate-500 mt-0.5">Wider berth & step-free path</span>
-                    </div>
-                  </label>
-
-                  <div className={`p-3 rounded-xl border transition-all ${
-                    hasEvCharging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}>
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={hasEvCharging}
-                        onChange={(e) => setHasEvCharging(e.target.checked)}
-                        className="mt-0.5 h-4 w-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <span className="block text-xs font-bold text-slate-900">⚡ EV Charging Point</span>
-                        <span className="block text-[10px] text-slate-500 mt-0.5">Electric vehicle charging station</span>
+              <fieldset className="space-y-3 border-t border-slate-100 pt-3 dark:border-white/10">
+                <legend className="pr-2 text-base font-semibold text-slate-900 dark:text-white">Bay amenities</legend>
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+                  {[
+                    { id: 'covered', label: 'Covered parking', help: 'Select this if a roof or overhead structure covers the bay.', checked: isCovered, setChecked: setIsCovered },
+                    { id: 'cctv', label: 'CCTV coverage', help: 'Select this if a working camera covers the bay or the area immediately around it.', checked: hasCctv, setChecked: setHasCctv },
+                    { id: 'accessible', label: 'Wheelchair-accessible bay', help: 'Select this if there is room for wheelchair transfers and a step-free path to the entrance or lift.', checked: isHandicapAccessible, setChecked: setIsHandicapAccessible },
+                    { id: 'ev', label: 'EV charging at this bay', help: 'Select this if drivers can charge while parked here. Then choose the charger speed.', checked: hasEvCharging, setChecked: setHasEvCharging },
+                  ].map(({ id, label, help, checked, setChecked }) => {
+                    const helpId = "owner-bay-help-" + id;
+                    const expanded = openAmenityHelp === id;
+                    return (
+                      <div key={id} className={'rounded-xl border px-3.5 py-2 transition-colors ' + (checked ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30' : 'border-slate-200 dark:border-white/10')}>
+                        <div className="flex items-center gap-2">
+                          <label className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-3 text-sm font-semibold text-slate-900 dark:text-white">
+                            <input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} className="peer sr-only" />
+                            <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-md border border-slate-400 text-transparent transition-colors peer-checked:border-blue-600 peer-checked:bg-blue-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-blue-600 peer-focus-visible:ring-offset-2 dark:border-slate-500">
+                              <Check size={14} strokeWidth={3} />
+                            </span>
+                            {label}
+                          </label>
+                          <button type="button" aria-label={"What counts as " + label.toLowerCase() + "?"}
+                            aria-expanded={expanded} aria-controls={helpId}
+                            onClick={() => setOpenAmenityHelp(expanded ? null : id)}
+                            className="grid size-9 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white">
+                            <HelpCircle size={17} aria-hidden="true" />
+                          </button>
+                        </div>
+                        <p id={helpId} hidden={!expanded} className="mb-2 mt-1 pl-8 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{help}</p>
+                        {id === 'ev' && checked && (
+                          <div className="mt-2 pt-2 border-t border-blue-200/60">
+                            <span className="block text-sm font-semibold text-slate-600 mb-1">Charger speed</span>
+                            <SystemSelect
+                              value={evChargingSpeed}
+                              onChange={(e) => setEvChargingSpeed(e.target.value)}
+                              className="w-full text-sm"
+                            >
+                              <option value="Slow (3.7kW)">Slow (3.7kW - 3-pin Standard)</option>
+                              <option value="Medium (7.4kW)">Medium (7.4kW - AC Wallbox)</option>
+                              <option value="Fast (11kW / 22kW)">Fast (11kW / 22kW - 3-Phase AC)</option>
+                              <option value="Rapid DC (50kW+)">Rapid DC (50kW+ DC Fast Charger)</option>
+                            </SystemSelect>
+                          </div>
+                        )}
                       </div>
-                    </label>
-
-                    {hasEvCharging && (
-                      <div className="mt-2 pt-2 border-t border-blue-200/60">
-                        <span className="block text-[10px] font-semibold text-slate-600 mb-1">Charging Speed</span>
-                        <SystemSelect
-                          value={evChargingSpeed}
-                          onChange={(e) => setEvChargingSpeed(e.target.value)}
-                          className="w-full text-xs"
-                        >
-                          <option value="Slow (3.7kW)">Slow (3.7kW - 3-pin Standard)</option>
-                          <option value="Medium (7.4kW)">Medium (7.4kW - AC Wallbox)</option>
-                          <option value="Fast (11kW / 22kW)">Fast (11kW / 22kW - 3-Phase AC)</option>
-                          <option value="Rapid DC (50kW+)">Rapid DC (50kW+ DC Fast Charger)</option>
-                        </SystemSelect>
-                      </div>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
-              </div>
+              </fieldset>
 
               {/* Drag and Drop Zone */}
               <div>
                 <div className="mb-3">
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Supporting Document Type *</label>
+                  <label className="block text-sm font-bold text-slate-600 mb-1.5">Supporting Document Type *</label>
                   <SystemSelect
                     value={documentType}
                     onChange={(event) => setDocumentType(Number(event.target.value))}
-                    className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 bg-white sm:max-w-xs"
+                    className="min-h-11 w-full text-base border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-600 bg-white sm:max-w-xs"
                     required
                   >
                     <option value={1}>SPA / Sale and Purchase Agreement</option>
@@ -638,7 +575,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                   </SystemSelect>
                 </div>
 
-                <label className="block text-xs font-bold text-slate-600 mb-1.5">Ownership Document File *</label>
+                <label className="block text-sm font-bold text-slate-600 mb-1.5">Ownership Document File *</label>
                 
                 <div
                   onDragEnter={handleDragEnter}
@@ -654,9 +591,9 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                   `}
                 >
                   <UploadCloud className="w-10 h-10 text-slate-400 mb-3" />
-                  <h3 className="font-bold text-xs text-slate-700 dark:text-white mb-1">Drag & drop an ownership document here</h3>
-                  <p className="text-[10px] text-slate-400 dark:text-[#A1A1AA] mb-3">JPG, JPEG, PNG, or PDF only · maximum 10 MB</p>
-                  <span className="bg-white dark:bg-[#1C1C1E] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-sm">
+                  <h3 className="font-bold text-sm text-slate-700 dark:text-white mb-1">Drag & drop an ownership document here</h3>
+                  <p className="text-sm text-slate-400 dark:text-[#A1A1AA] mb-3">JPG, JPEG, PNG, or PDF only · maximum 10 MB</p>
+                  <span className="bg-white dark:bg-[#1C1C1E] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm">
                     Browse Files
                   </span>
                   
@@ -669,12 +606,12 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                   />
                 </div>
 
-                {uploadError && <p role="alert" className="mt-2 text-[11px] font-semibold text-rose-600">{uploadError}</p>}
+                {uploadError && <p role="alert" className="mt-2 text-sm font-semibold text-rose-600">{uploadError}</p>}
 
                 {/* Upload Loading Simulator */}
                 {isUploading && (
                   <div className="mt-3 p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
-                    <div className="flex justify-between items-center text-[10px]">
+                    <div className="flex justify-between items-center text-sm">
                       <span className="font-bold text-slate-600 flex items-center gap-1.5 animate-pulse">
                         <FileText className="w-3.5 h-3.5 text-slate-400" /> Uploading Strata File...
                       </span>
@@ -694,11 +631,11 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                         <FileCheck className="w-5 h-5" />
                       </div>
                       <div>
-                        <span className="block font-bold text-xs text-slate-800">{uploadedFile.name}</span>
-                        <span className="block text-[10px] text-slate-400 font-mono">{uploadedFile.size}</span>
+                        <span className="block font-bold text-sm text-slate-800">{uploadedFile.name}</span>
+                        <span className="block text-sm text-slate-400 font-mono">{uploadedFile.size}</span>
                       </div>
                     </div>
-                    <span className="bg-blue-600 text-white font-mono text-[9px] font-extrabold px-2 py-0.5 rounded flex items-center gap-0.5 uppercase tracking-wider">
+                    <span className="bg-blue-600 text-white font-mono text-sm font-extrabold px-2 py-0.5 rounded flex items-center gap-0.5 uppercase tracking-wider">
                       <CheckCircle className="w-3 h-3" /> LOADED
                     </span>
                   </div>
@@ -706,7 +643,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
               </div>
 
               {/* Legal Declaration */}
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex gap-3 text-[10px] leading-relaxed text-slate-500">
+              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex gap-3 text-sm leading-relaxed text-slate-500">
                 <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                 <div>
                   <strong className="text-slate-800 font-bold">Onboarding Legal Affirmation</strong>
@@ -718,7 +655,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
 
               {/* Submit error */}
               {submitError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-[11px] text-rose-700">
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-sm text-rose-700">
                   <AlertCircle size={14} className="shrink-0" />
                   {submitError}
                 </div>
@@ -729,7 +666,7 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-[#0f172a] hover:bg-[#1e293b] disabled:bg-slate-400 text-white font-bold text-xs py-3 px-6 rounded-xl transition-colors shadow flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+                  className="bg-[#0f172a] hover:bg-[#1e293b] disabled:bg-slate-400 text-white font-bold text-sm py-3 px-6 rounded-xl transition-colors shadow flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -747,33 +684,33 @@ export default function PropertyOnboarding({ onOnboardProperty }: PropertyOnboar
         <div className="lg:col-span-4 space-y-6">
           {/* FAQ panel */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2.5">
+            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2.5">
               <HelpCircle className="w-4 h-4 text-slate-500" />
               Onboarding Checklist
             </h3>
 
-            <div className="space-y-3.5 text-xs text-slate-600">
+            <div className="space-y-3.5 text-sm text-slate-600">
               <div className="flex gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold font-mono text-[10px] flex items-center justify-center shrink-0">1</span>
+                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold font-mono text-sm flex items-center justify-center shrink-0">1</span>
                 <div>
                   <strong className="text-slate-800">Submit Strata Verification</strong>
-                  <p className="text-[10.5px] text-slate-400 mt-0.5">Strata documents are reviewed within 24 hours to whitelisting accessory parcels.</p>
+                  <p className="text-sm text-slate-400 mt-0.5">Strata documents are reviewed within 24 hours to whitelisting accessory parcels.</p>
                 </div>
               </div>
 
               <div className="flex gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold font-mono text-[10px] flex items-center justify-center shrink-0">2</span>
+                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold font-mono text-sm flex items-center justify-center shrink-0">2</span>
                 <div>
                   <strong className="text-slate-800">Receive ESP32 Bollard</strong>
-                  <p className="text-[10.5px] text-slate-400 mt-0.5">We dispatch a plug-and-play battery-powered smart parking bollard directly to your guardhouse.</p>
+                  <p className="text-sm text-slate-400 mt-0.5">We dispatch a plug-and-play battery-powered smart parking bollard directly to your guardhouse.</p>
                 </div>
               </div>
 
               <div className="flex gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold font-mono text-[10px] flex items-center justify-center shrink-0">3</span>
+                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold font-mono text-sm flex items-center justify-center shrink-0">3</span>
                 <div>
                   <strong className="text-slate-800">Activate IoT Link</strong>
-                  <p className="text-[10.5px] text-slate-400 mt-0.5">Simply stick the device to your bay, scan the pairing QR code, and open schedule leasing!</p>
+                  <p className="text-sm text-slate-400 mt-0.5">Simply stick the device to your bay, scan the pairing QR code, and open schedule leasing!</p>
                 </div>
               </div>
             </div>

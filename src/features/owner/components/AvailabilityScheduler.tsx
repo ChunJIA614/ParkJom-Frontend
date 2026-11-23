@@ -1,12 +1,10 @@
 import { Popover } from '@base-ui/react/popover';
 import SystemSelect from '@/components/ui/SystemSelect';
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
-  Ban,
   CalendarDays,
   CalendarRange,
-  Car,
   Check,
   CheckCircle2,
   CircleHelp,
@@ -22,7 +20,6 @@ import {
   ShieldCheck,
   Trash2,
   UploadCloud,
-  Users,
   Umbrella,
   Accessibility,
   Zap,
@@ -55,6 +52,7 @@ import type {
 import { computeClientSpotRecommendation } from '../api/dynamicPricingApi';
 import AiPricingAdvisorCard from './AiPricingAdvisorCard';
 import AvailabilityRangeEditor, { type AvailabilityRangeDraft } from './AvailabilityRangeEditor';
+import BookedDateDetails from './BookedDateDetails';
 
 /**
  * Local owner parking workspace storage.  The shape is deliberately JSON
@@ -110,9 +108,7 @@ export interface AvailabilitySchedulerProps {
   bays: ParkingBay[];
   initialParkingSpotId?: number;
   initialSection?: 'setup' | 'timetable';
-  rangeEditorOpen: boolean;
-  onOpenRangeEditor: (parkingSpotId: number) => void;
-  onCloseRangeEditor: () => void;
+  initialRangeEditorOpen?: boolean;
   onScheduleChange?: () => void;
   bookings?: Booking[];
   onDeleteParking?: (parkingSpotId: number) => Promise<ParkingActionResult>;
@@ -131,33 +127,25 @@ function newRangeDraft(date: string): AvailabilityRangeDraft {
 const statusMeta: Record<ParkingDayStatus, {
   label: string;
   shortLabel: string;
-  icon: typeof CheckCircle2;
   cell: string;
-  badge: string;
   dot: string;
 }> = {
   available: {
     label: 'Available for booking',
     shortLabel: 'Open',
-    icon: CheckCircle2,
     cell: 'text-emerald-700',
-    badge: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     dot: 'bg-emerald-500',
   },
   unavailable: {
     label: 'Not available for booking',
     shortLabel: 'Closed',
-    icon: Ban,
     cell: 'text-slate-500',
-    badge: 'border-slate-200 bg-slate-100 text-slate-600',
     dot: 'bg-slate-400',
   },
   booked: {
     label: 'Booked by commuter',
     shortLabel: 'Booked',
-    icon: Lock,
     cell: 'text-blue-700',
-    badge: 'border-blue-200 bg-blue-50 text-blue-700',
     dot: 'bg-blue-500',
   },
 };
@@ -447,10 +435,6 @@ function formatLongDate(key: string): string {
   }).format(dateFromKey(key));
 }
 
-function formatShortDate(key: string): string {
-  return new Intl.DateTimeFormat('en-MY', { day: 'numeric', month: 'short' }).format(dateFromKey(key));
-}
-
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -478,14 +462,13 @@ function bayLabel(bay: ParkingBay): string {
   return `${bay.bayNumber || bay.parkingLabel || `Spot #${bay.parkingSpotId}`} · ${bay.propertyName || `Property #${bay.propertyId}`}`;
 }
 
-function ParkingSectionHeading({ title, description, headingRef }: {
+function ParkingSectionHeading({ title, description }: {
   title: string;
   description: string;
-  headingRef?: React.Ref<HTMLHeadingElement>;
 }) {
   return (
     <div className="space-y-1">
-      <h2 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">{title}</h2>
+      <h2 className="text-lg font-bold tracking-tight text-slate-950 dark:text-white sm:text-xl">{title}</h2>
       <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 sm:text-sm">{description}</p>
     </div>
   );
@@ -562,9 +545,7 @@ export default function AvailabilityScheduler({
   bays,
   initialParkingSpotId,
   initialSection = 'setup',
-  rangeEditorOpen,
-  onOpenRangeEditor,
-  onCloseRangeEditor,
+  initialRangeEditorOpen = false,
   onScheduleChange,
   bookings = [],
   onDeleteParking,
@@ -581,7 +562,9 @@ export default function AvailabilityScheduler({
     const now = dateFromKey(todayKey);
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [selectedDate, setSelectedDate] = useState(todayKey);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [rangeEditorOpen, setRangeEditorOpen] = useState(initialRangeEditorOpen);
+  const [dayDraft, setDayDraft] = useState<Partial<AvailabilityRangeDraft>>({});
   const [setupStep, setSetupStep] = useState<SetupStep>(1);
   const [completedSetupSteps, setCompletedSetupSteps] = useState<Set<SetupStep>>(() => new Set());
   const [setupDraft, setSetupDraft] = useState<Partial<ReturnType<typeof toSetupForm>>>({});
@@ -596,48 +579,40 @@ export default function AvailabilityScheduler({
   const [publishing, setPublishing] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [draggedPhotoIndex, setDraggedPhotoIndex] = useState<number | null>(null);
-  const [rangeDraft, setRangeDraft] = useState(() => newRangeDraft(todayKey));
+  const [rangeForm, setRangeForm] = useState(() => newRangeDraft(todayKey));
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const [calendarTimeZone, setCalendarTimeZone] = useState('Asia/Kuala_Lumpur');
-  const [daySaving, setDaySaving] = useState(false);
-  const [dayMessage, setDayMessage] = useState<string | null>(null);
-  const [dayError, setDayError] = useState<string | null>(null);
   const [deletingSpot, setDeletingSpot] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const pendingImageFilesRef = useRef<Map<string, File>>(new Map());
   const calendarRequestRef = useRef(0);
-  const timetableHeadingRef = useRef<HTMLHeadingElement>(null);
-  const wasRangeEditorOpen = useRef(rangeEditorOpen);
   const prefersReducedMotion = useReducedMotion();
 
-  const activeBay = rangeEditorOpen && initialParkingSpotId
-    ? bays.find((bay) => bay.parkingSpotId === initialParkingSpotId)
-    : bays.find((bay) => String(bay.parkingSpotId) === selectedBayId) ?? bays[0];
+  const activeBay = bays.find((bay) => String(bay.parkingSpotId) === selectedBayId) ?? bays[0];
   const activeSpotId = activeBay ? String(activeBay.parkingSpotId) : '';
   const activeSpot = activeSpotId ? workspace.spots[activeSpotId] : undefined;
   const activeSetup = setupFromSpot(activeSpot, activeBay);
   const setupForm = { ...toSetupForm(activeSetup), ...setupDraft };
   const aiPricingRecommendation = useMemo(() => {
-    if (!activeBay || section !== 'setup' || setupStep !== 3 || rangeEditorOpen) return null;
+    if (!activeBay || section !== 'setup' || setupStep !== 3) return null;
     const candidateDaily = setupForm.dailyRate ? Number(setupForm.dailyRate) : null;
     return computeClientSpotRecommendation(
       activeBay,
       candidateDaily && Number.isFinite(candidateDaily) && candidateDaily > 0 ? candidateDaily : null,
     );
-  }, [activeBay, section, setupStep, rangeEditorOpen, setupForm.dailyRate]);
+  }, [activeBay, section, setupStep, setupForm.dailyRate]);
   const displayedMonth = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, '0')}`;
   const setupBusy = setupSaving
     || imagesUploading
     || imagesReordering
     || imageDeletingId !== null
     || publishing
-    || availabilitySaving
-    || daySaving;
+    || availabilitySaving;
 
   useEffect(() => {
     setWorkspace((current) => mergeWorkspaceWithBays(current, bays));
@@ -657,11 +632,6 @@ export default function AvailabilityScheduler({
     setSection(initialSection);
   }, [initialSection]);
 
-  useLayoutEffect(() => {
-    if (wasRangeEditorOpen.current && !rangeEditorOpen) timetableHeadingRef.current?.focus({ preventScroll: true });
-    wasRangeEditorOpen.current = rangeEditorOpen;
-  }, [rangeEditorOpen]);
-
   useEffect(() => {
     if (!selectedBayId) return;
     setSetupDraft({});
@@ -672,14 +642,13 @@ export default function AvailabilityScheduler({
     setPendingPhotoCount(0);
     setSelectedPhotoIndex(null);
     setDraggedPhotoIndex(null);
-    setSelectedDate(todayKey);
-    setRangeDraft(newRangeDraft(todayKey));
+    setSelectedDate(null);
+    setDayDraft({});
+    setRangeForm(newRangeDraft(todayKey));
+    setRangeEditorOpen(initialRangeEditorOpen);
     setBulkMessage(null);
     setBulkError(null);
     setCalendarError(null);
-    setDaySaving(false);
-    setDayMessage(null);
-    setDayError(null);
   }, [selectedBayId]);
 
   useEffect(() => {
@@ -1091,8 +1060,7 @@ export default function AvailabilityScheduler({
       confirmText: 'Delete Image',
       cancelText: 'Cancel',
       variant: 'danger',
-      icon: 'trash',
-    });
+      });
     if (!confirmed) return;
 
     const token = user?.token ?? '';
@@ -1233,56 +1201,65 @@ export default function AvailabilityScheduler({
     }
   };
 
-  const selectDate = (date: string) => {
-    setSelectedDate(date);
-    setDayMessage(null);
-    setDayError(null);
-  };
-
-  const changeMonth = (offset: number) => {
-    const nextMonth = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + offset, 1);
-    const selectedDay = dateFromKey(selectedDate).getDate();
-    const daysInNextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
-    setMonthCursor(nextMonth);
-    setSelectedDate(localDateKey(new Date(
-      nextMonth.getFullYear(),
-      nextMonth.getMonth(),
-      Math.min(selectedDay, daysInNextMonth),
-    )));
-    setDayMessage(null);
-    setDayError(null);
-  };
-
-  const goToCurrentMonth = () => {
-    const currentMonth = dateFromKey(todayKey);
-    setMonthCursor(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1));
-    setSelectedDate(todayKey);
-    setDayMessage(null);
-    setDayError(null);
-  };
-
-  const changeRangeDraft = (changes: Partial<AvailabilityRangeDraft>) => {
-    setRangeDraft((current) => ({ ...current, ...changes }));
+  const clearSaveFeedback = () => {
     setBulkError(null);
     setBulkMessage(null);
   };
 
+  const selectDate = (date: string | null) => {
+    if (availabilitySaving) return;
+    setSelectedDate(date);
+    setRangeEditorOpen(false);
+    setDayDraft({});
+    clearSaveFeedback();
+  };
+
+  const changeMonth = (offset: number) => {
+    if (availabilitySaving) return;
+    setMonthCursor(new Date(monthCursor.getFullYear(), monthCursor.getMonth() + offset, 1));
+    if (!rangeEditorOpen) selectDate(null);
+  };
+
+  const goToCurrentMonth = () => {
+    if (availabilitySaving) return;
+    const currentMonth = dateFromKey(todayKey);
+    setMonthCursor(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1));
+    selectDate(todayKey);
+  };
+
+  const toggleRangeEditor = () => {
+    if (!rangeEditorOpen) {
+      const date = selectedDate && selectedDate >= todayKey ? selectedDate : todayKey;
+      setRangeForm(newRangeDraft(date));
+    }
+    setRangeEditorOpen(!rangeEditorOpen);
+    clearSaveFeedback();
+  };
+
+  const changeAvailabilityDraft = (changes: Partial<AvailabilityRangeDraft>) => {
+    if (rangeEditorOpen) setRangeForm((current) => ({ ...current, ...changes }));
+    else setDayDraft((current) => ({ ...current, ...changes }));
+    clearSaveFeedback();
+  };
+
   const bulkUpdate = async () => {
-    if (!activeSpotId || !activeBay || availabilitySaving || bulkMessage || rangeDateError || rangeHoursError || rangeSelectionError) return;
+    if (!activeSpotId || !activeBay || availabilitySaving || calendarLoading || calendarUnavailable) return;
+    if (!rangeEditorOpen && (!selectedDate || selectedDay?.status === 'booked')) return;
+    if (rangeDateError || rangeHoursError || rangeSelectionError) return;
     const token = user?.token;
     if (!token) {
       setBulkError('Your session has expired. Sign in again to save availability.');
       return;
     }
 
-    const { status, start, end, fromTime, toTime, dayPattern } = rangeDraft;
+    const { status, start, end, fromTime, toTime, dayPattern } = availabilityDraft;
     const opensDates = status === 'available';
     setAvailabilitySaving(true);
-    setBulkError(null);
+    clearSaveFeedback();
     try {
       const response = opensDates
         ? await createParkingAvailabilityRules(token, activeBay.parkingSpotId, {
-            rules: [{ fromDate: start, toDate: end, fromTime, toTime, dayPattern }],
+            rules: openDateRanges.map(({ start, end }) => ({ fromDate: start, toDate: end, fromTime, toTime, dayPattern })),
           })
         : await closeParkingAvailabilityDates(token, activeBay.parkingSpotId, { fromDate: start, toDate: end });
       const body = await response.json().catch(() => null) as (ParkingAvailabilityRulesResponse & {
@@ -1299,12 +1276,12 @@ export default function AvailabilityScheduler({
         const days = { ...spot.days };
         matchingRangeDates.forEach((date) => {
           if (statusFor(spot, date).status !== 'booked') {
-            days[date] = { ...days[date], status, ownerOverride: undefined };
+            days[date] = { status, configuredHours: opensDates ? [{ from: fromTime, to: toTime }] : [] };
           }
         });
         return { ...current, spots: { ...current.spots, [activeSpotId]: { ...spot, days } } };
       });
-      setBulkMessage(body.message || (opensDates ? 'Opening hours saved.' : 'Dates closed.'));
+      setBulkMessage(opensDates ? 'Opening hours saved.' : rangeEditorOpen ? 'Dates closed.' : 'Date closed.');
       await fetchAvailabilityCalendar();
     } catch (error) {
       setBulkError(error instanceof Error ? error.message : 'Unable to save availability. Try again.');
@@ -1313,94 +1290,17 @@ export default function AvailabilityScheduler({
     }
   };
 
-  const applySelectedDayStatus = async (nextStatus: 'available' | 'unavailable') => {
-    if (!activeSpotId || !activeBay || availabilitySaving || daySaving) {
-      return;
-    }
-    const currentDay = statusFor(workspace.spots[activeSpotId], selectedDate);
-    if (currentDay.status === 'booked') {
-      setDayError('Booked dates are locked until the booking is released by the backend.');
-      setDayMessage(null);
-      return;
-    }
-    if (currentDay.status === nextStatus) {
-      setDayMessage(null);
-      setDayError(null);
-      return;
-    }
-
-    setDaySaving(true);
-    setDayMessage(null);
-    setDayError(null);
-    try {
-      const token = user?.token ?? '';
-      if (!token) throw new Error('Your owner session is missing an authorization token.');
-
-      if (nextStatus === 'available') {
-        const cleanTime = (t: string | undefined, fallback: string) => {
-          if (!t) return fallback;
-          const match = t.trim().match(/^([01]\d|2[0-3]):[0-5]\d/);
-          return match ? match[0] : fallback;
-        };
-        const ruleFrom = cleanTime(currentDay.configuredHours?.[0]?.from, rangeDraft.fromTime);
-        const ruleTo = cleanTime(currentDay.configuredHours?.[0]?.to, rangeDraft.toTime);
-        if (ruleFrom >= ruleTo) {
-          throw new Error('Opening time must be earlier than closing time.');
-        }
-
-        const response = await createParkingAvailabilityRules(token, activeBay.parkingSpotId, {
-          rules: [{
-            fromDate: selectedDate,
-            toDate: selectedDate,
-            fromTime: ruleFrom,
-            toTime: ruleTo,
-            dayPattern: 'Everyday',
-          }],
-        });
-        const rawBody = await response.json().catch(() => null);
-        const body = rawBody as (ParkingAvailabilityRulesResponse & { errors?: Record<string, string[]>; title?: string }) | null;
-        if (!response.ok || !body?.success || !Array.isArray(body.data)) {
-          const detail = body?.message
-            || (body?.errors ? Object.values(body.errors).flat().join(' ') : null)
-            || body?.title;
-          throw new Error(detail || `Unable to open this date (${response.status}).`);
-        }
-      } else {
-        const response = await closeParkingAvailabilityDates(token, activeBay.parkingSpotId, {
-          fromDate: selectedDate,
-          toDate: selectedDate,
-        });
-        const rawBody = await response.json().catch(() => null);
-        const body = rawBody as (ParkingAvailabilityRulesResponse & { errors?: Record<string, string[]>; title?: string }) | null;
-        if (!response.ok || !body?.success) {
-          const detail = body?.message
-            || (body?.errors ? Object.values(body.errors).flat().join(' ') : null)
-            || body?.title;
-          throw new Error(detail || `Unable to close this date (${response.status}).`);
-        }
-      }
-
-      updateWorkspace((current) => {
-        const spot = current.spots[activeSpotId] ?? normaliseSpot(undefined, activeBay);
-        const existingDay = statusFor(spot, selectedDate);
-        const updatedDay: OwnerParkingDay = nextStatus === 'unavailable'
-          ? { ...existingDay, status: 'unavailable', ownerOverride: undefined }
-          : { ...existingDay, status: 'available', ownerOverride: undefined };
-        return {
-          ...current,
-          spots: {
-            ...current.spots,
-            [activeSpotId]: { ...spot, days: { ...spot.days, [selectedDate]: updatedDay } },
-          },
-        };
-      });
-      setDayMessage(`${formatShortDate(selectedDate)} is now ${statusMeta[nextStatus].shortLabel.toLowerCase()}.`);
-      await fetchAvailabilityCalendar();
-    } catch (error) {
-      setDayError(error instanceof Error ? error.message : `Unable to mark this date ${statusMeta[nextStatus].shortLabel.toLowerCase()}.`);
-    } finally {
-      setDaySaving(false);
-    }
+  const selectedDay = selectedDate ? statusFor(activeSpot, selectedDate) : undefined;
+  const configuredHours = selectedDay?.configuredHours?.[0];
+  const calendarUnavailable = !rangeEditorOpen && Boolean(calendarError);
+  const availabilityDraft: AvailabilityRangeDraft = rangeEditorOpen ? rangeForm : {
+    start: selectedDate ?? '',
+    end: selectedDate ?? '',
+    dayPattern: 'Everyday',
+    fromTime: configuredHours?.from.slice(0, 5) || DEFAULT_RANGE_HOURS.fromTime,
+    toTime: configuredHours?.to.slice(0, 5) || DEFAULT_RANGE_HOURS.toTime,
+    status: 'available',
+    ...dayDraft,
   };
 
   const calendarDays = useMemo(() => {
@@ -1411,10 +1311,6 @@ export default function AvailabilityScheduler({
 
   const calendarStartOffset = monthCursor.getDay();
 
-  const selectedDay = statusFor(activeSpot, selectedDate);
-  const selectedDayMeta = statusMeta[selectedDay.status];
-  const SelectedDayIcon = selectedDayMeta.icon;
-  const selectedDayIsPast = dateKeyIsPast(selectedDate);
   const monthStats = useMemo(() => {
     let available = 0;
     let unavailable = 0;
@@ -1428,26 +1324,33 @@ export default function AvailabilityScheduler({
     return { available, unavailable, booked };
   }, [activeSpot, calendarDays]);
 
-  const rangeDates = useMemo(
-    () => rangeEditorOpen ? inclusiveDateKeys(rangeDraft.start, rangeDraft.end) : [],
-    [rangeEditorOpen, rangeDraft.start, rangeDraft.end],
-  );
+  const { start, end, fromTime, toTime, dayPattern, status } = availabilityDraft;
+  const rangeDates = useMemo(() => inclusiveDateKeys(start, end), [start, end]);
   let rangeDateError: string | null = null;
-  if (!rangeDraft.start || !rangeDraft.end) rangeDateError = 'Enter a start date and an end date.';
-  else if (rangeDraft.start > rangeDraft.end) rangeDateError = 'End date must be on or after the start date.';
-  else if (rangeDates.length > MAX_BULK_DAYS) rangeDateError = `Choose a range of ${MAX_BULK_DAYS} days or fewer.`;
+  if (!start || !end) rangeDateError = 'Enter a start date and an end date.';
+  else if (start > end) rangeDateError = 'End date must be on or after the start date.';
+  else if (rangeDates.length > MAX_BULK_DAYS) rangeDateError = 'Choose a range of ' + MAX_BULK_DAYS + ' days or fewer.';
   else if (!rangeDates.length) rangeDateError = 'Enter valid dates.';
 
-  const opensRangeDates = rangeDraft.status === 'available';
-  const matchingRangeDates = rangeDateError ? [] : opensRangeDates
-    ? rangeDates.filter((date) => dateMatchesDayPattern(date, rangeDraft.dayPattern))
-    : rangeDates;
+  const opensRangeDates = status === 'available';
+  const matchingRangeDates = rangeDateError ? [] : rangeDates.filter(
+    (date) => !opensRangeDates || dateMatchesDayPattern(date, dayPattern),
+  );
+  const editableDates = matchingRangeDates.filter((date) => statusFor(activeSpot, date).status !== 'booked');
+  const openDateRanges: { start: string; end: string }[] = [];
+  for (const date of editableDates) {
+    // Saving replaces all rules inside each submitted interval, including unselected days.
+    const previous = openDateRanges.at(-1);
+    if (previous && localDateKey(addDays(dateFromKey(previous.end), 1)) === date) previous.end = date;
+    else openDateRanges.push({ start: date, end: date });
+  }
+
   let rangeHoursError: string | null = null;
   if (opensRangeDates) {
     const validTime = /^([01]\d|2[0-3]):[0-5]\d$/;
-    if (!validTime.test(rangeDraft.fromTime) || !validTime.test(rangeDraft.toTime)) {
+    if (!validTime.test(fromTime) || !validTime.test(toTime)) {
       rangeHoursError = 'Enter an opening time and a closing time.';
-    } else if (rangeDraft.fromTime >= rangeDraft.toTime) {
+    } else if (fromTime >= toTime) {
       rangeHoursError = 'Closing time must be later than opening time.';
     }
   }
@@ -1455,40 +1358,17 @@ export default function AvailabilityScheduler({
   let rangeSelectionError: string | null = null;
   if (!rangeDateError) {
     if (!matchingRangeDates.length) rangeSelectionError = 'This range has no weekdays. Choose other dates or select Every day.';
-    else if (matchingRangeDates.every((date) => statusFor(activeSpot, date).status === 'booked')) rangeSelectionError = 'All selected dates are booked.';
+    else if (!editableDates.length) rangeSelectionError = 'All selected dates are booked.';
+    else if (!opensRangeDates && editableDates.length < matchingRangeDates.length) rangeSelectionError = 'This range includes a booked date. Choose a different range.';
   }
 
   if (!activeBay) {
     return (
       <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
         <CalendarDays className="mx-auto h-10 w-10 text-slate-300" aria-hidden="true" />
-        <h2 className="mt-3 text-sm font-bold text-slate-800">{rangeEditorOpen ? 'Parking spot unavailable' : 'No parking spots to configure'}</h2>
-        {rangeEditorOpen ? (
-          <button type="button" onClick={onCloseRangeEditor} className="mt-2 min-h-11 rounded-lg px-2 text-sm font-semibold text-blue-700 hover:underline focus-visible:outline-2 dark:text-blue-300">Back to timetable</button>
-        ) : (
-          <p className="mt-1 text-xs text-slate-500">Register a parking spot first, then return here to add setup details and a timetable.</p>
-        )}
+        <h2 className="mt-3 text-sm font-bold text-slate-800">No parking spots to configure</h2>
+        <p className="mt-1 text-xs text-slate-500">Register a parking spot first, then return here to add setup details and a timetable.</p>
       </div>
-    );
-  }
-
-  if (rangeEditorOpen) {
-    return (
-      <AvailabilityRangeEditor
-        spotLabel={bayLabel(activeBay)}
-        timeZone={calendarTimeZone}
-        draft={rangeDraft}
-        matchingDays={matchingRangeDates.length}
-        dateError={rangeDateError}
-        hoursError={rangeHoursError}
-        selectionError={rangeSelectionError}
-        saveError={bulkError}
-        savedMessage={bulkMessage}
-        saving={availabilitySaving}
-        onChange={changeRangeDraft}
-        onBack={onCloseRangeEditor}
-        onSave={() => void bulkUpdate()}
-      />
     );
   }
 
@@ -1543,7 +1423,7 @@ export default function AvailabilityScheduler({
           <button id="parking-timetable-tab" type="button" role="tab" aria-selected={section === 'timetable'} aria-controls="parking-timetable-panel" onClick={() => setSection('timetable')} style={{ minHeight: 0 }} className={`h-8 rounded-lg px-3 text-xs font-bold transition-colors active:scale-[0.98] sm:h-9 ${section === 'timetable' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}><span className="inline-flex items-center gap-1.5"><CalendarRange className="h-3.5 w-3.5" aria-hidden="true" /> Timetable</span></button>
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:order-1">
-          <div className="min-w-32 flex-1 sm:flex-none">
+          <div className="w-56 max-w-full shrink-0">
             <p className="text-[11px] text-slate-500 dark:text-slate-400">Editing parking spot</p>
             <p className="mt-0.5 break-words text-sm font-semibold text-slate-900 dark:text-white sm:text-base">
               {activeBay.propertyName || `Property #${activeBay.propertyId}`} · {activeBay.parkingLabel || activeBay.bayNumber || `Spot #${activeBay.parkingSpotId}`}
@@ -1582,8 +1462,7 @@ export default function AvailabilityScheduler({
                       confirmText: 'Remove spot',
                       cancelText: 'Cancel',
                       variant: 'danger',
-                      icon: 'warning',
-                    });
+                                      });
                     if (!confirmed) return;
                     setDeletingSpot(true);
                     try {
@@ -1595,8 +1474,7 @@ export default function AvailabilityScheduler({
                           title: 'Parking Spot Removed',
                           message: res.message || `"${bayLabel(activeBay)}" (Spot #${activeBay.parkingSpotId}) has been removed successfully.`,
                           variant: 'success',
-                          icon: 'success',
-                          buttonText: 'Done',
+                                                buttonText: 'Done',
                         });
                       }
                     } finally {
@@ -2047,26 +1925,19 @@ export default function AvailabilityScheduler({
         </motion.section>
       ) : (
         <motion.section id="parking-timetable-panel" role="tabpanel" aria-labelledby="parking-timetable-tab" key="timetable" initial={prefersReducedMotion ? false : calmMotion.initial} animate={calmMotion.animate} exit={prefersReducedMotion ? undefined : calmMotion.exit} transition={prefersReducedMotion ? { duration: 0.15 } : calmMotion.transition} className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-            <ParkingSectionHeading
-              headingRef={timetableHeadingRef}
-              title="Availability timetable"
-              description="Select a day to view or change its availability."
-            />
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <div className="min-w-0 text-xs" aria-live="polite">
-                {calendarLoading ? (
-                  <span className="inline-flex items-center gap-2 font-semibold text-blue-700"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Loading {displayedMonth} availability…</span>
-                ) : calendarError ? (
-                  <span role="alert" className="inline-flex items-center gap-2 font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{calendarError}</span>
-                ) : (
-                  <span className="text-slate-500">Time zone: {calendarTimeZone}</span>
-                )}
-              </div>
-              <button type="button" onClick={() => void fetchAvailabilityCalendar()} disabled={calendarLoading} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-[var(--workspace-text-secondary)] hover:bg-black/5 hover:text-[var(--workspace-text)] focus-visible:outline-2 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-white/10">
-                <RefreshCw className={`size-3.5 ${calendarLoading ? 'motion-safe:animate-spin' : ''}`} aria-hidden="true" /> Refresh
-              </button>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <div className="min-w-0 text-xs" aria-live="polite">
+              {calendarLoading ? (
+                <span className="inline-flex items-center gap-2 font-semibold text-blue-700"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Loading {displayedMonth} availability…</span>
+              ) : calendarError ? (
+                <span role="alert" className="inline-flex items-center gap-2 font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{calendarError}</span>
+              ) : (
+                <span className="text-slate-500">Time zone: {calendarTimeZone}</span>
+              )}
             </div>
+            <button type="button" onClick={() => void fetchAvailabilityCalendar()} disabled={calendarLoading || availabilitySaving} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-[var(--workspace-text-secondary)] hover:bg-black/5 hover:text-[var(--workspace-text)] focus-visible:outline-2 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-white/10">
+              <RefreshCw className={`size-3.5 ${calendarLoading ? 'motion-safe:animate-spin' : ''}`} aria-hidden="true" /> Refresh
+            </button>
           </div>
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.75fr)]">
@@ -2074,50 +1945,64 @@ export default function AvailabilityScheduler({
               <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <button type="button" onClick={() => changeMonth(-1)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="View previous month" title="View previous month">
+                    <button type="button" onClick={() => changeMonth(-1)} disabled={availabilitySaving} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="View previous month" title="View previous month">
                       <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                     </button>
                     <h3 className="min-w-36 text-center text-sm font-bold text-slate-900" aria-live="polite">{new Intl.DateTimeFormat('en-MY', { month: 'long', year: 'numeric' }).format(monthCursor)}</h3>
-                    <button type="button" onClick={() => changeMonth(1)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="View next month" title="View next month">
+                    <button type="button" onClick={() => changeMonth(1)} disabled={availabilitySaving} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="View next month" title="View next month">
                       <ChevronRight className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5"><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{monthStats.available} open</span><span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{monthStats.unavailable} closed</span><span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{monthStats.booked} booked</span></div>
                 </div>
-                <button type="button" onClick={goToCurrentMonth} className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-bold text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Today</button>
+                <button type="button" onClick={goToCurrentMonth} disabled={availabilitySaving} className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-bold text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Today</button>
               </div>
-              <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{Array.from({ length: calendarStartOffset }, (_, index) => <span key={`calendar-offset-${index}`} aria-hidden="true" />)}{calendarDays.map((day) => { const key = localDateKey(day); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={false} aria-selected={selected} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-0.5 py-2 sm:px-1 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-primary text-primary-foreground' : key === todayKey ? 'ring-1 ring-inset ring-primary text-primary' : 'text-slate-800'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[0.6875rem]! font-semibold leading-none sm:text-xs! ${meta.cell} ${past ? 'opacity-55' : ''}`}><span className={`hidden h-1.5 w-1.5 shrink-0 rounded-full sm:block ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
-              <div className="mt-3 flex justify-end border-t border-border pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const date = selectedDate < todayKey ? todayKey : selectedDate;
-                    changeRangeDraft(newRangeDraft(date));
-                    onOpenRangeEditor(activeBay.parkingSpotId);
-                  }}
-                  disabled={setupBusy || deletingSpot}
-                  className="inline-flex min-h-11! items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-primary hover:bg-[var(--parkjom-action-soft)] disabled:opacity-50"
-                >
-                  <CalendarRange className="size-4" aria-hidden="true" /> Edit date range
-                </button>
-              </div>
+              <div className="mt-4 grid grid-cols-7 gap-0 text-center">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="border-b border-slate-200 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{day}</span>)}{Array.from({ length: calendarStartOffset }, (_, index) => <span key={`calendar-offset-${index}`} aria-hidden="true" />)}{calendarDays.map((day) => { const key = localDateKey(day); const dayState = statusFor(activeSpot, key); const meta = statusMeta[dayState.status]; const past = dateKeyIsPast(key); const selected = !rangeEditorOpen && key === selectedDate; const locked = dayState.status === 'booked'; return <button key={key} type="button" onClick={() => selectDate(key)} disabled={availabilitySaving} aria-pressed={selected} aria-current={key === todayKey ? 'date' : undefined} className={`group relative flex min-h-14 flex-col items-center justify-start gap-1.5 border-0 bg-transparent px-0.5 py-2 sm:px-1 text-center transition-colors duration-150 hover:bg-slate-50/70 active:bg-slate-100/80 disabled:hover:bg-transparent focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 sm:min-h-[86px] ${past ? 'cursor-default' : ''}`} aria-label={`${formatLongDate(key)}: ${meta.label}${locked ? ', locked' : ''}`} title={`${formatLongDate(key)} · ${meta.label}${locked ? ' · booked dates cannot be changed' : ' · select to inspect'}`}><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-semibold transition-colors ${selected ? 'bg-primary text-primary-foreground' : key === todayKey ? 'ring-1 ring-inset ring-primary text-primary' : 'text-slate-800'} ${past && !selected && key !== todayKey ? 'text-slate-300' : ''}`}>{day.getDate()}</span><span className={`mt-auto flex min-h-4 max-w-full items-center justify-center gap-1 text-[0.6875rem]! font-semibold leading-none sm:text-xs! ${meta.cell} ${past ? 'opacity-55' : ''}`}><span className={`hidden h-1.5 w-1.5 shrink-0 rounded-full sm:block ${meta.dot}`} aria-hidden="true" /><span className="truncate">{meta.shortLabel}</span>{locked && <Lock className="hidden h-2.5 w-2.5 shrink-0 sm:block" aria-hidden="true" />}</span></button>; })}</div>
             </div>
 
-             <aside className="workspace-panel space-y-4 p-4 md:sticky md:top-28 md:self-start md:p-5">
-              <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Selected day</p><h3 className="mt-1 text-sm font-bold text-slate-900">{formatLongDate(selectedDate)}</h3></div>
-              <div className={`rounded-2xl border p-4 ${selectedDayMeta.badge}`} aria-live="polite"><div className="flex items-center gap-2"><SelectedDayIcon className="h-4 w-4" aria-hidden="true" /><span className="text-xs font-bold">{selectedDay.status === 'booked' ? 'Booked · locked' : selectedDayMeta.label}</span>{daySaving && <RefreshCw className="ml-auto h-3.5 w-3.5 animate-spin" aria-label="Saving day status" />}</div>{selectedDay.status === 'booked' && <p className="mt-2 text-xs leading-relaxed">This date is locked because one commuter already has the booking.</p>}{selectedDay.status !== 'booked' && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => void applySelectedDayStatus('available')} disabled={daySaving} aria-pressed={selectedDay.status === 'available'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'available' ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Check className="h-4 w-4" aria-hidden="true" /> Open</button><button type="button" onClick={() => void applySelectedDayStatus('unavailable')} disabled={daySaving} aria-pressed={selectedDay.status === 'unavailable'} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 ${selectedDay.status === 'unavailable' ? 'border-slate-400 bg-slate-200 text-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Ban className="h-4 w-4" aria-hidden="true" /> Closed</button></div>}</div>
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold text-slate-700">Configured hours</span><span className="text-[9px] font-semibold text-slate-400">{calendarTimeZone}</span></div>
-                {selectedDay.configuredHours?.length ? (
-                  <div className="mt-2 flex flex-wrap gap-2">{selectedDay.configuredHours.map((hours, index) => <span key={`${hours.from}-${hours.to}-${index}`} className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-700">{hours.from}–{hours.to}</span>)}</div>
-                ) : (
-                  <p className="mt-2 text-[10px] leading-relaxed text-slate-500">No opening hours are configured for this date.</p>
-                )}
-              </div>
-              {dayError && <p role="alert" className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-600"><AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />{dayError}</p>}
-              {dayMessage && <SaveTick message={dayMessage} />}
-              {selectedDay.status === 'booked' && <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3"><div className="flex items-center gap-2 text-[11px] font-bold text-slate-700"><Users className="h-3.5 w-3.5 text-blue-600" aria-hidden="true" /> Commuter booking</div><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Name</span><span className="text-right font-semibold text-slate-700">{selectedDay.booking?.commuterName || 'Booking details unavailable'}</span></div><div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Vehicle</span><span className="inline-flex items-center gap-1 text-right font-semibold text-slate-700"><Car className="h-3 w-3" aria-hidden="true" />{selectedDay.booking?.vehicle || '—'}</span></div>{selectedDay.booking?.commuterPhone && <div className="flex items-center justify-between gap-2 text-[10px]"><span className="text-slate-500">Contact</span><span className="font-semibold text-slate-700">{selectedDay.booking.commuterPhone}</span></div>}</div>}
-              <div className="rounded-xl border border-slate-100 p-3 text-[10px] leading-relaxed text-slate-500"><strong className="text-slate-700">One booking per day.</strong> Once a commuter books this spot, the day remains locked until the backend handles cancellation or reopening.</div>
+            <aside aria-label="Availability editor" className="workspace-panel min-w-0 space-y-4 p-4 md:sticky md:top-28 md:self-start md:p-5">
+              <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <h3 className="min-w-0 text-base font-semibold text-slate-900 dark:text-white" aria-live="polite">
+                  {rangeEditorOpen ? 'Edit availability' : selectedDate ? formatLongDate(selectedDate) : 'Pick a date'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={toggleRangeEditor}
+                  disabled={setupBusy || deletingSpot}
+                  aria-pressed={rangeEditorOpen}
+                  className="ml-auto inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 text-sm font-semibold text-primary hover:bg-[var(--parkjom-action-soft)] aria-pressed:bg-[var(--parkjom-action-soft)] disabled:opacity-50"
+                >
+                  <CalendarRange className="size-4" aria-hidden="true" /> Date range
+                </button>
+              </header>
+
+              {!rangeEditorOpen && selectedDate && selectedDay?.status === 'booked' ? (
+                <BookedDateDetails
+                  key={activeSpotId + ':' + selectedDate}
+                  token={user?.token}
+                  parkingSpotId={activeBay.parkingSpotId}
+                  date={selectedDate}
+                  hours={selectedDay.configuredHours ?? []}
+                  timeZone={calendarTimeZone}
+                />
+              ) : (rangeEditorOpen || selectedDate) && (
+                <AvailabilityRangeEditor
+                  rangeMode={rangeEditorOpen}
+                  timeZone={calendarTimeZone}
+                  draft={availabilityDraft}
+                  dayIsOpen={selectedDay?.status === 'available'}
+                  dateError={rangeDateError}
+                  hoursError={rangeHoursError}
+                  selectionError={rangeSelectionError}
+                  saveError={bulkError}
+                  savedMessage={bulkMessage}
+                  saving={availabilitySaving}
+                  loading={calendarLoading}
+                  calendarUnavailable={calendarUnavailable}
+                  onChange={changeAvailabilityDraft}
+                  onSave={() => void bulkUpdate()}
+                />
+              )}
             </aside>
           </div>
 

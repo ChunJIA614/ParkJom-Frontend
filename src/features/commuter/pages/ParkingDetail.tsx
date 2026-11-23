@@ -5,18 +5,19 @@ import SystemSelect from '@/components/ui/SystemSelect';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, Navigation, ShieldCheck,
-  Car, Wifi, CreditCard,
+  Car, CreditCard,
   Loader2, Calendar, AlertTriangle,
-  Heart, Copy, Check,
+  Heart, Check,
   ChevronLeft, ChevronRight, MessageSquare, Pencil, Star, Trash2,
   Share2, Flag, X, LayoutGrid, RotateCcw, Clock, Lock,
 } from 'lucide-react';
+import { BookingReceipt, confirmBookingCancellation } from '../components/BookingReceipt';
 import DashboardHeader from '@/components/layout/DashboardHeader';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/features/auth/context/AuthContext';
-import { showConfirm } from '@/components/common/ModalProvider';
+import { showAlert, showConfirm } from '@/components/common/ModalProvider';
 import type { Booking, ParkingSpot, PublicParkingSpotImage } from '../types';
-import { loadJourneySession, saveJourneySession } from '../lib/journeySession';
+import { clearJourneySession, loadJourneySession, saveJourneySession } from '../lib/journeySession';
 import { getWalkingRoute } from '@/services/walkingRoutes';
 import {
   planMultimodalJourney,
@@ -34,8 +35,10 @@ import {
 } from '@/services/pedestrianWalkingService';
 import { getTransitStops } from '@/services/gtfsApi';
 import {
+  cancelBooking,
   confirmBooking,
   createBookingQuote,
+  evaluateBookingCancellationEligibility,
   getBookingAvailability,
   type BookingAvailabilityResponse,
   type BookingQuote,
@@ -79,6 +82,7 @@ import {
 // ── Types ──
 type DetailTab = 'reserve' | 'forecast' | 'route';
 interface MockParkingSpot extends ParkingSpot {
+  description?: string | null;
   createdAt?: string | number | null;
   stationLatitude?: number | null;
   stationLongitude?: number | null;
@@ -282,6 +286,7 @@ export default function ParkingDetail() {
           parkingLabel: d.parkingLabel || 'Bay',
           propertyId: d.propertyId,
           propertyName: d.propertyName,
+          description: d.description,
           address: d.address,
           latitude,
           longitude,
@@ -337,6 +342,7 @@ export default function ParkingDetail() {
   const [dateSelectionError, setDateSelectionError] = useState<string | null>(null);
   const [pendingCopilotPrefill, setPendingCopilotPrefill] = useState<{ startDate: string; endDate: string } | null>(null);
   const [quote, setQuote] = useState<BookingQuote | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<ConfirmedBooking | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
@@ -352,7 +358,6 @@ export default function ParkingDetail() {
   const graceStartTimeRef = useRef<number>(0);
   const activeVehicle = useMemo(() => vehicles.find((item) => item.vehicleId === selectedVehicleId), [vehicles, selectedVehicleId]);
   const [reservationReady, setReservationReady] = useState(false);
-  const [copiedRef, setCopiedRef] = useState(false);
   const [isFavorite, setIsFavorite] = useState(() => Boolean(spot && user?.userId && isParkingFavorite(user.userId, spot.parkingSpotId)));
   const [isFavoriteLoading, setIsFavoriteLoading] = useState(false);
   const [isFavoriteUpdating, setIsFavoriteUpdating] = useState(false);
@@ -1123,6 +1128,12 @@ export default function ParkingDetail() {
       const booking: Booking = {
         id: confirmation.data.bookingReference,
         bookingId: confirmation.data.bookingId,
+        bookingReference: confirmation.data.bookingReference,
+        bookedDays: quote.bookedDays,
+        ratePerDay: quote.ratePerDay,
+        platformFee: quote.platformFee,
+        rentalSubtotal: quote.rentalSubtotal,
+        createdAt: confirmation.data.createdAt,
         spot: parkingSpot,
         startTime: new Date(`${quote.startDate}T00:00:00`),
         endTime: new Date(`${quote.endDate}T00:00:00`),
@@ -1243,175 +1254,54 @@ export default function ParkingDetail() {
     startGracePeriodBooking();
   };
 
+  async function cancelConfirmedBooking() {
+    if (!user?.token || !confirmedBooking || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      if (!await confirmBookingCancellation()) return;
+      const response = await cancelBooking(user.token, { bookingId: confirmedBooking.bookingId, cancellationReason: 'Cancelled by commuter' });
+      const session = loadJourneySession(user.userId);
+      if (session?.booking.bookingId === confirmedBooking.bookingId) clearJourneySession(user.userId);
+      setConfirmedBooking({ ...confirmedBooking, bookingStatus: 'Cancelled' });
+      void showAlert({ title: 'Booking cancelled', message: response.message, variant: 'success' });
+    } catch (error) {
+      void showAlert({ title: 'Could not cancel booking', message: error instanceof Error ? error.message : 'Try again later.', variant: 'danger' });
+    } finally {
+      setIsCancelling(false);
+    }
+  }
+
   if (reservationReady) {
-    const spotPhoto = displayPhotos[0];
+    const status = confirmedBooking?.bookingStatus || 'Confirmed';
+    const canUsePass = ['confirmed', 'active'].includes(status.toLowerCase());
+    const cancellation = confirmedBooking && status.toLowerCase() === 'confirmed'
+      ? evaluateBookingCancellationEligibility({ status: 'Upcoming', createdAt: confirmedBooking.createdAt }) : null;
+    const latitude = spot.lat || spot.latitude;
+    const longitude = spot.lng || spot.longitude;
     return (
-      <div className="page-shell text-[#1d1d1f] dark:text-white">
-        <DashboardHeader
-          role="commuter"
-          user={user}
+      <div className="page-shell min-h-screen text-foreground">
+        <DashboardHeader role="commuter" user={user}
           onSignOut={() => { logout(); navigate('/'); }}
-          onBrandClick={() => navigate('/commuter', { replace: true, state: { activeTab: 'home' } })}
+          onBrandClick={() => navigate('/commuter?tab=home', { replace: true })} />
+        <BookingReceipt
+          backLabel="Back to dashboard"
+          onBack={() => navigate('/commuter?tab=home')}
+          onParkingPass={canUsePass ? () => navigate('/commuter?tab=active') : undefined}
+          onCancel={cancellation?.canCancel ? () => void cancelConfirmedBooking() : undefined}
+          cancelling={isCancelling}
+          cancellationUnavailableReason={cancellation?.reason}
+          data={{
+            title: spot.propertyName || spot.name || spot.address, status,
+            photo: displayPhotos[0], bay: spot.parkingLabel, station: stationName || spot.station,
+            startDate: quote?.startDate || '—', endDate: quote?.endDate || '—',
+            days: quote?.bookedDays, rate: quote?.ratePerDay, total: quote?.renterTotal ?? 0,
+            reference: confirmedBooking?.bookingReference,
+            plate: vehicles.find(vehicle => vehicle.vehicleId === selectedVehicleId)?.plate,
+            address: spot.address,
+            platformFee: quote?.platformFee,
+            directions: latitude && longitude || spot.address ? 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(latitude && longitude ? latitude + ',' + longitude : spot.address) : undefined,
+          }}
         />
-        <main className="max-w-xl mx-auto px-4 py-8 md:py-12">
-          {/* Back link */}
-          <button
-            type="button"
-            onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })}
-            className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-[#6e6e73] dark:text-[#A1A1AA] hover:text-[#111] dark:hover:text-white cursor-pointer transition"
-          >
-            <ArrowLeft size={15} /> Back to dashboard
-          </button>
-
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-3xl border border-black/[0.08] dark:border-white/10 overflow-hidden shadow-xl">
-            {/* Minimalist Hero Image Card (Airbnb Style) */}
-            <div className="relative aspect-[16/9] w-full overflow-hidden bg-slate-100 dark:bg-white/5 border-b border-black/[0.06] dark:border-white/10">
-              {spotPhoto && <img
-                src={spotPhoto}
-                onError={() => hideFailedPhoto(spotPhoto)}
-                alt={spot.propertyName || spot.name || 'Parking bay'}
-                className="h-full w-full object-cover"
-              />}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-              <div className="absolute top-4 left-4">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500 text-white shadow-sm backdrop-blur-md">
-                  <CheckCircle2 size={13} /> Booking Confirmed
-                </span>
-              </div>
-              <div className="absolute bottom-4 left-4 right-4 text-white">
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-white/20 backdrop-blur-md mb-1.5">
-                  Bay {spot.parkingLabel}
-                </span>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight drop-shadow-xs">
-                  {spot.propertyName || spot.name || spot.address}
-                </h1>
-                <p className="text-xs text-white/80 flex items-center gap-1 mt-0.5">
-                  <MapPin size={12} className="shrink-0" />
-                  <span>{stationName ? `Near ${stationName}` : spot.station || 'Klang Valley'}</span>
-                  {spot.distanceToStation > 0 && <span>· {spot.distanceToStation.toFixed(2)} km</span>}
-                </p>
-              </div>
-            </div>
-
-            <div className="p-6 md:p-8 space-y-6">
-              {/* Airbnb Signature Twin-Box (Dates & Times) */}
-              <div className="grid grid-cols-2 rounded-2xl border border-black/[0.08] dark:border-white/10 divide-x divide-black/[0.08] dark:divide-white/10 bg-[#F9F9FB] dark:bg-white/[0.03] overflow-hidden">
-                <div className="p-4">
-                  <span className="block text-[10px] font-bold text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider">
-                    Check-in Date
-                  </span>
-                  <span className="block text-sm sm:text-base font-bold text-[#111] dark:text-white mt-1">
-                    {quote?.startDate}
-                  </span>
-                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] mt-0.5">
-                    From 12:00 AM (Full Day)
-                  </span>
-                </div>
-                <div className="p-4">
-                  <span className="block text-[10px] font-bold text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider">
-                    Check-out Date
-                  </span>
-                  <span className="block text-sm sm:text-base font-bold text-[#111] dark:text-white mt-1">
-                    {quote?.endDate}
-                  </span>
-                  <span className="block text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] mt-0.5">
-                    {quote?.bookedDays} Day{quote?.bookedDays === 1 ? '' : 's'} Total
-                  </span>
-                </div>
-              </div>
-
-              {/* Access & Smart Gate Instructions */}
-              <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-[#F5F5F7]/80 dark:bg-[#18181C] p-4 sm:p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="p-2 rounded-xl bg-white dark:bg-white/[0.08] text-[#007AFF] shadow-2xs">
-                      <Wifi size={16} />
-                    </span>
-                    <div>
-                      <h3 className="text-xs font-bold text-[#111] dark:text-white">Smart Barrier Access</h3>
-                      <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA]">Automatic IoT gate release upon arrival</p>
-                    </div>
-                  </div>
-                  {vehicles.find(v => v.vehicleId === selectedVehicleId)?.plate && (
-                    <span
-                      className="max-w-[160px] truncate font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-white dark:bg-white/10 border border-black/[0.06] dark:border-white/10 text-[#111] dark:text-white"
-                      title={vehicles.find(v => v.vehicleId === selectedVehicleId)?.plate}
-                    >
-                      {vehicles.find(v => v.vehicleId === selectedVehicleId)?.plate}
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] leading-relaxed">
-                  Drive up to the bay bollard. Use your Parking Pass or ALPR camera scanner to unlock in 1 tap.
-                </p>
-                <a
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${spot.lat || spot.latitude},${spot.lng || spot.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex w-full items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold border border-black/[0.08] dark:border-white/14 bg-white dark:bg-[#242429] text-[#111] dark:text-white hover:bg-[#F5F5F7] dark:hover:bg-[#2C2C32] transition"
-                >
-                  <Navigation size={14} className="text-[#007AFF]" />
-                  Open Navigation (Google Maps)
-                </a>
-              </div>
-
-              {/* Price Breakdown Receipt */}
-              <div className="space-y-2.5 pt-2">
-                <div className="flex items-center justify-between text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
-                  <span>RM {quote?.ratePerDay.toFixed(2)} × {quote?.bookedDays} days</span>
-                  <span className="font-medium text-[#111] dark:text-white">RM {quote?.renterTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs text-[#6e6e73] dark:text-[#A1A1AA]">
-                  <span>ParkJom Service & Smart Access Fee</span>
-                  <span className="text-[#34C759] font-medium">Included</span>
-                </div>
-                <div className="border-t border-black/[0.08] dark:border-white/10 pt-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-[#111] dark:text-white">Total Paid</span>
-                  <span className="text-xl font-bold text-[#111] dark:text-white">RM {quote?.renterTotal.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* Booking Reference Pill */}
-              <div className="flex items-center justify-between rounded-xl bg-[#F5F5F7] dark:bg-[#18181C] px-3.5 py-2.5 border border-black/[0.06] dark:border-white/10 text-xs">
-                <div>
-                  <span className="block text-[10px] text-[#6e6e73] dark:text-[#A1A1AA] uppercase tracking-wider font-semibold">Booking Reference</span>
-                  <span className="font-mono font-bold text-xs text-[#111] dark:text-white">{confirmedBooking?.bookingReference}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirmedBooking?.bookingReference) {
-                      navigator.clipboard.writeText(confirmedBooking.bookingReference);
-                      setCopiedRef(true);
-                      setTimeout(() => setCopiedRef(false), 2000);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#007AFF] hover:underline cursor-pointer"
-                >
-                  {copiedRef ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
-                </button>
-              </div>
-
-              {/* Actions */}
-              <div className="space-y-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => navigate('/commuter', { state: { activeTab: 'active' } })}
-                  className="w-full min-h-12 rounded-xl bg-[#007AFF] dark:bg-[#0071E3] hover:bg-[#0066d6] dark:hover:bg-[#0077ED] text-white text-[13px] font-semibold transition-all shadow-md active:scale-[0.99] cursor-pointer"
-                >
-                  Continue to my parking pass
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/commuter', { state: { activeTab: 'home' } })}
-                  className="w-full min-h-10 rounded-xl bg-transparent hover:bg-[#F5F5F7] dark:hover:bg-white/[0.06] text-[#6e6e73] dark:text-[#A1A1AA] text-xs font-semibold transition cursor-pointer"
-                >
-                  Return to Dashboard
-                </button>
-              </div>
-            </div>
-          </div>
-        </main>
       </div>
     );
   }
@@ -1531,7 +1421,7 @@ export default function ParkingDetail() {
           <div className="workspace-panel mb-6 grid min-h-32 place-content-center justify-items-center gap-1 p-5 text-center">
             <Car size={28} className="mb-1 text-muted-foreground" aria-hidden="true" />
             <p className="font-semibold">No bay photo available</p>
-            {spot.parkingLabel && <p className="text-sm text-muted-foreground">Bay {spot.parkingLabel}</p>}
+            {spot.parkingLabel && <p className="text-sm text-muted-foreground">{spot.parkingLabel}</p>}
           </div>
         )}
 
@@ -1549,7 +1439,7 @@ export default function ParkingDetail() {
           <div className="w-full space-y-8">
             <section className="space-y-3" aria-labelledby="parking-bay-heading">
               <h2 id="parking-bay-heading" className="text-xl font-semibold">
-                {spot.parkingLabel ? `Bay ${spot.parkingLabel}` : 'Private parking bay'}
+                {spot.parkingLabel ? `${spot.parkingLabel}` : 'Private parking bay'}
               </h2>
               <div aria-label="Parking location">
                 {spot.address && (
@@ -1601,9 +1491,11 @@ export default function ParkingDetail() {
                   {hostingDuration && <p className="mt-0.5 text-sm text-[#6e6e73] dark:text-[#A1A1AA]">{hostingDuration}</p>}
                 </div>
               </div>
-              <p className="text-sm text-[#5f6368] dark:text-[#A1A1AA] leading-relaxed">
-                Your reservation reserves this bay and connects directly to the barrier gate so it opens when you arrive.
-              </p>
+              {spot.description?.trim() && (
+                <p className="whitespace-pre-line break-words text-sm leading-relaxed text-[#5f6368] dark:text-[#A1A1AA]">
+                  {spot.description.trim()}
+                </p>
+              )}
             </div>
 
             <div className="h-px bg-[#e8eaed] dark:bg-white/10" />

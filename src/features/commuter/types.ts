@@ -169,6 +169,7 @@ export interface PublicParkingSpotImage {
 }
 
 export interface PublicParkingSpotDetail {
+  description?: string | null;
   parkingSpotId: number;
   propertyId: number;
   propertyName: string;

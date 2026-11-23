@@ -3,6 +3,7 @@ import type {
   CreatePublicParkingLotInput,
   PublicParkingCheckoutStripeResponse,
   PublicParkingLot,
+  PublicParkingLotDetail,
   PublicParkingSession,
 } from '../types';
 
@@ -36,8 +37,8 @@ export async function fetchPublicLots(includeAll: boolean = false): Promise<Publ
   return res.json();
 }
 
-export async function fetchPublicLot(id: number): Promise<PublicParkingLot> {
-  const res = await apiRequest(`/api/public-parking/lots/${id}`);
+export async function fetchPublicLot(id: number, signal?: AbortSignal): Promise<PublicParkingLotDetail> {
+  const res = await apiRequest(`/api/public-parking/lots/${id}`, { signal, cache: 'no-store' });
   if (!res.ok) {
     const err = await readApiError(res, 'Failed to fetch parking lot details');
     throw new Error(err);

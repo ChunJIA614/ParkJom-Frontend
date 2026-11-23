@@ -1315,7 +1315,7 @@ export default function CommuterMap({
       {
         lat: destLat,
         lng: destLng,
-        name: targetSpot.name || `Bay ${targetSpot.parkingLabel}`,
+        name: targetSpot.name || `${targetSpot.parkingLabel}`,
         address: targetSpot.address,
       }
     )
@@ -2457,7 +2457,7 @@ export default function CommuterMap({
               </div>
               <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-white/10 flex items-center justify-between gap-1.5 text-[10px]">
                 <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                  {spots.length} bay{spots.length === 1 ? '' : 's'} in range
+                  {spots.length} {spots.length === 1 ? '' : 's'} in range
                 </span>
                 <span className="text-[9.5px] text-slate-400 dark:text-[#71717a]">
                   ≤ {distanceRadius < 1000 ? `${distanceRadius}m` : `${distanceRadius / 1000}km`}
@@ -2518,7 +2518,7 @@ export default function CommuterMap({
                 </div>
                 <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/50">
                   <span>Your Reserved Bay</span>
-                  <span>Bay {activeBookingSpot.parkingLabel}</span>
+                  <span>{activeBookingSpot.parkingLabel}</span>
                 </div>
                 {activeBookingSpot.address && (
                   <p className="mt-1 text-[11px] text-slate-500 dark:text-[#A1A1AA] leading-tight line-clamp-2">
@@ -2613,7 +2613,7 @@ export default function CommuterMap({
                   <div className="flex items-center justify-between gap-1">
                     <strong className="text-slate-900 dark:text-white text-[12px] truncate">{formatShortSpotName(spot.name)}</strong>
                     <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[9.5px] font-bold px-1 py-0.2 rounded border border-emerald-200 dark:border-emerald-800/50 shrink-0">
-                      Bay {spot.parkingLabel}
+                      {spot.parkingLabel}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-1 text-slate-600 dark:text-[#D4D4D8] mt-1 font-semibold text-[10px]">

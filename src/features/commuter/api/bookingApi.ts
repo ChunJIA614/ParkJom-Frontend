@@ -331,7 +331,7 @@ export interface BookingIsCompleteData {
   canReview: boolean;
 }
 
-export function evaluateBookingCancellationEligibility(booking: Booking): {
+export function evaluateBookingCancellationEligibility(booking: Pick<Booking, 'status' | 'createdAt' | 'hasOpenedBollard' | 'checkedInAt' | 'canCancel'>): {
   canCancel: boolean;
   reason: string | null;
 } {

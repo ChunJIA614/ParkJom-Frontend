@@ -20,7 +20,6 @@ export interface ParkingBay {
   propertyName: string;
   stationName: string;
   bayNumber: string;
-  level: string;
   status: 'Active' | 'Approved' | 'Pending Verification' | 'Rejected' | 'Blocked';
   hourlyRate: number;
   verificationDocName?: string;
