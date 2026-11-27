@@ -1,5 +1,6 @@
 import { parseTimestamp, displayDateKey } from '@/lib/dateTime';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   AlertCircle,
   RefreshCw,
@@ -18,6 +19,7 @@ import BottomNav from '@/components/layout/BottomNav';
 import {
   OWNER_BOTTOM_NAV_ITEMS,
   OWNER_SEARCH_ITEMS,
+  OWNER_SIDEBAR_GROUPS,
   type OwnerView,
 } from '../lib/ownerNavigation';
 import PageTransition from '@/components/ui/PageTransition';
@@ -170,6 +172,8 @@ export default function OwnerDashboard() {
     localStorage.setItem('parkjom_owner_view', activeView);
   }, [activeView]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     () => localStorage.getItem('parkjom_owner_sidebar_collapsed') === 'true',
   );
@@ -739,14 +743,94 @@ export default function OwnerDashboard() {
 
       </div>
 
+      <AnimatePresence>
+        {mobileMoreOpen && (
+          <>
+            <div
+              className="md:hidden fixed inset-0 z-[49]"
+              onClick={() => setMobileMoreOpen(false)}
+              aria-hidden="true"
+            />
+            <motion.div
+              role="menu"
+              aria-label="More navigation options"
+              initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: 10, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', damping: 26, stiffness: 360 }}
+              style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }}
+              className="md:hidden fixed right-3 z-[55] w-60 origin-bottom-right rounded-2xl border border-black/[0.08] dark:border-white/[0.12] bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.16)] dark:shadow-[0_12px_36px_rgba(0,0,0,0.5)] p-1.5"
+            >
+              {OWNER_SIDEBAR_GROUPS
+                .map((group) => ({
+                  ...group,
+                  items: group.items.filter(
+                    (item) => !OWNER_BOTTOM_NAV_ITEMS.some((navItem) => navItem.id === item.id),
+                  ),
+                }))
+                .filter((group) => group.items.length > 0)
+                .map((group, groupIndex) => (
+                  <div
+                    key={group.label}
+                    className={groupIndex > 0 ? 'mt-1 pt-1 border-t border-black/[0.06] dark:border-white/[0.08]' : ''}
+                  >
+                    <p className="px-2.5 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#8e8e93] dark:text-[#71717a]">
+                      {group.label}
+                    </p>
+                    <div className="flex flex-col gap-0.5">
+                      {group.items.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = activeView === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMobileMoreOpen(false);
+                              setActiveView(item.id as OwnerView);
+                            }}
+                            className={`w-full flex items-center justify-between gap-2.5 rounded-xl px-2.5 py-2.5 text-left text-[13px] transition-colors cursor-pointer ${
+                              isActive
+                                ? 'bg-[#0071e3]/10 dark:bg-[#0a84ff]/20 text-[#0071e3] dark:text-[#409cff] font-semibold'
+                                : 'text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.07] font-medium'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5 min-w-0">
+                              <Icon size={17} strokeWidth={isActive ? 2.2 : 1.9} className="shrink-0" aria-hidden="true" />
+                              <span className="truncate">{item.label}</span>
+                            </span>
+                            {item.badge != null && item.badge !== '' && (
+                              <span
+                                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                                  isActive
+                                    ? 'bg-[#0071e3]/15 dark:bg-[#0a84ff]/30 text-[#0071e3] dark:text-[#409cff]'
+                                    : 'bg-black/[0.06] dark:bg-white/[0.1] text-[#6e6e73] dark:text-[#a1a1a6]'
+                                }`}
+                              >
+                                {item.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <BottomNav
         items={OWNER_BOTTOM_NAV_ITEMS}
-        activeId={OWNER_BOTTOM_NAV_ITEMS.some((item) => item.id === activeView) ? activeView : 'more'}
+        activeId={mobileMoreOpen || !OWNER_BOTTOM_NAV_ITEMS.some((item) => item.id === activeView) ? 'more' : activeView}
         onChange={(id) => {
           if (id === 'more') {
-            setIsSidebarOpen(true);
+            setMobileMoreOpen((prev) => !prev);
             return;
           }
+          setMobileMoreOpen(false);
           setActiveView(id as OwnerView);
         }}
       />

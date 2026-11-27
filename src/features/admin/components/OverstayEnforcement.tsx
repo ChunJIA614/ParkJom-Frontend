@@ -347,7 +347,7 @@ export default function OverstayEnforcement({
             <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Live Grace Period Window</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-800/50">
               <Activity className="h-3 w-3" />
-              {worker?.isRunning ? 'Cron Endpoint Active' : 'Active System Policy'}
+              {worker?.isRunning ? 'Cron Active' : 'Policy Active'}
             </span>
           </div>
           <div className="flex items-baseline gap-2">

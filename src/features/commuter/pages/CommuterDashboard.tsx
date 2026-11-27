@@ -66,7 +66,6 @@ import CommuterMap from '../components/CommuterMap';
 import ParkingPass from '../components/ParkingPass';
 import ParkingSearchSheet from '../components/ParkingSearchSheet';
 import TransitHubSheet from '../components/TransitHubSheet';
-import LinearJourneyNavigator from '../components/LinearJourneyNavigator';
 import {
   DEFAULT_BROWSE_FILTERS,
   countActiveBrowseFilters,
@@ -74,8 +73,6 @@ import {
   matchesPublicLotFilters,
   type BrowseFiltersState,
 } from '../lib/browseFilters';
-import type { DrivingRouteResult } from '@/services/drivingRouteService';
-import type { MultimodalPlanResult } from '@/services/multimodalRoutingService';
 import type { StationNearbyParkingSpot } from '@/services/gtfsApi';
 import {
   calculateWalkingMinutes,
@@ -420,6 +417,8 @@ export default function CommuterDashboard() {
     setSelectedSpot(null);
   };
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const mobileMoreMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('parkjom_commuter_sidebar_collapsed') === 'true',
   );
@@ -434,13 +433,6 @@ export default function CommuterDashboard() {
     cctv: false,
   });
   const [mobileTransitTab, setMobileTransitTab] = useState<'map' | 'transit' | 'bays'>('map');
-  const [transitWorkspaceMode, setTransitWorkspaceMode] = useState<'explore' | 'navigation'>('explore');
-  const [navigationRoutes, setNavigationRoutes] = useState<{
-    drivingRoute: DrivingRouteResult | null;
-    linearPlan: MultimodalPlanResult | null;
-    targetSpot: ParkingSpot | null;
-  }>({ drivingRoute: null, linearPlan: null, targetSpot: null });
-  const [navigationJourneyTab, setNavigationJourneyTab] = useState<'drive' | 'transit'>('drive');
   const [selectedBusRoute, setSelectedBusRoute] = useState<string | null>(null);
   const [spotTypeFilter, setSpotTypeFilter] = useState<string>('all');
   const [selectedSpot, setSelectedSpot] = useState<ParkingSpot | null>(null);
@@ -1230,7 +1222,6 @@ export default function CommuterDashboard() {
       setNearbySpots(nearbySpotCache[cacheKey]);
       setNearbyError(null);
       setIsNearbyLoading(false);
-      setSelectedSpot(null);
       return;
     }
 
@@ -1254,7 +1245,6 @@ export default function CommuterDashboard() {
           ...previousCache,
           [cacheKey || getStationCacheKey(selectedStation || '', selectedStationCoords.lat, selectedStationCoords.lng, distanceFilter)]: fetchedSpots,
         }));
-        setSelectedSpot(null);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setNearbySpots([]);
@@ -1361,6 +1351,7 @@ export default function CommuterDashboard() {
   };
 
   const handleSheetParkingSpotSelect = (spot: StationNearbyParkingSpot) => {
+    setMobileTransitTab('map');
     const existing = lensSpots.find((s) => s.parkingSpotId === spot.parkingSpotId);
     if (existing) {
       setSelectedSpot(existing);
@@ -1373,8 +1364,8 @@ export default function CommuterDashboard() {
       propertyId: spot.propertyId,
       propertyName: spot.propertyName,
       address: spot.address,
-      latitude: selectedStationCoords?.lat || 0,
-      longitude: selectedStationCoords?.lng || 0,
+      latitude: 0,
+      longitude: 0,
       stationName: selectedStation,
       distanceToStation: Number((spot.distanceMeters / 1000).toFixed(2)),
       timeToStationInMinutes: calculateWalkingMinutes(spot.distanceMeters, { isStationDestination: true }),
@@ -1386,14 +1377,35 @@ export default function CommuterDashboard() {
       name: spot.propertyName,
       pricePerHour: 0,
       distance: Math.round(spot.distanceMeters),
-      lat: selectedStationCoords?.lat || 0,
-      lng: selectedStationCoords?.lng || 0,
+      lat: 0,
+      lng: 0,
       available: spot.availabilityStatus.toLowerCase() === 'available',
       type: 'Condo Bay',
       owner: `Property #${spot.propertyId}`,
     };
     setSelectedSpot(syntheticSpot);
   };
+
+  useEffect(() => {
+    if (!selectedSpot || resolveSpotCoordinates(selectedSpot)) return;
+    const controller = new AbortController();
+    const spotId = selectedSpot.parkingSpotId || selectedSpot.id;
+    void getPublicParkingSpot(spotId, controller.signal).then(({ data }) => {
+      if (controller.signal.aborted || !data) return;
+      const coordinates = resolveSpotCoordinates(data);
+      if (!coordinates) return;
+      setSelectedSpot(current => current?.id === selectedSpot.id ? {
+        ...current,
+        latitude: coordinates.lat,
+        longitude: coordinates.lng,
+        lat: coordinates.lat,
+        lng: coordinates.lng,
+      } : current);
+    }).catch(() => {
+      // The directions panel retains its address-only state when location is unavailable.
+    });
+    return () => controller.abort();
+  }, [selectedSpot?.id]);
 
   const handleCommuterBrandClick = () => {
     setActiveTab('home');
@@ -2642,7 +2654,7 @@ export default function CommuterDashboard() {
           {activeTab === 'map' && (
             <div className="space-y-3">
               {/* Mobile View Switcher */}
-              <div role="group" aria-label="Transit views" className="workspace-panel flex gap-1 p-1 text-sm font-semibold lg:hidden">
+              {!selectedSpot && <div role="group" aria-label="Transit views" className="workspace-panel flex gap-1 p-1 text-sm font-semibold lg:hidden">
                 <button
                   type="button"
                   onClick={() => setMobileTransitTab('transit')}
@@ -2653,7 +2665,7 @@ export default function CommuterDashboard() {
                       : 'text-slate-500 dark:text-[#A1A1AA] hover:text-slate-800 dark:hover:text-white'
                   }`}
                 >
-                  {transitWorkspaceMode === 'navigation' ? 'Directions' : 'Stations'}
+                  Stations
                 </button>
                 <button
                   type="button"
@@ -2679,22 +2691,10 @@ export default function CommuterDashboard() {
                 >
                   Bays ({lensSpots.length})
                 </button>
-              </div>
+              </div>}
 
               <div className="map-lens">
-                {/* 1. DEDICATED LEFT WORKSPACE PANEL: TRANSIT HUB (Explore) OR JOURNEY NAVIGATOR (Navigation) */}
-                <div className={`map-lens__gtfs ${mobileTransitTab !== 'transit' ? 'hidden lg:block' : ''}`}>
-                  {transitWorkspaceMode === 'navigation' ? (
-                    <div className="h-full overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs bg-white">
-                      <LinearJourneyNavigator
-                        plan={navigationRoutes.linearPlan}
-                        drivingRoute={navigationRoutes.drivingRoute}
-                        journeyTab={navigationJourneyTab}
-                        onChangeJourneyTab={setNavigationJourneyTab}
-                        onClose={() => setTransitWorkspaceMode('explore')}
-                      />
-                    </div>
-                  ) : (
+                {!selectedSpot && <div className={`map-lens__gtfs ${mobileTransitTab !== 'transit' ? 'hidden lg:block' : ''}`}>
                     <TransitHubSheet
                       initialLineFilter={locationParams.get('line')}
                       userLocation={currentLocation}
@@ -2709,11 +2709,10 @@ export default function CommuterDashboard() {
                       onSelectParkingSpot={handleSheetParkingSpotSelect}
                       onOpenParkingDetail={(spot) => openParkingDetail(spot)}
                     />
-                  )}
-                </div>
+                </div>}
 
                 {/* 2. EXPANSIVE FULL-WIDTH MAP CANVAS */}
-                <div className={`map-lens__map relative ${mobileTransitTab !== 'map' ? 'hidden lg:block' : ''}`}>
+                <div className={`map-lens__map relative ${selectedSpot ? 'lg:!col-span-full' : ''} ${!selectedSpot && mobileTransitTab !== 'map' ? 'hidden lg:block' : ''}`}>
                   <CommuterMap
                     spots={lensSpots}
                     onStationSelect={handleMapStationSelect}
@@ -2731,48 +2730,19 @@ export default function CommuterDashboard() {
                     selectedBusRoute={selectedBusRoute}
                     onBusRouteSelect={setSelectedBusRoute}
                     activeBookingSpot={activeBooking?.spot}
-                    activeBooking={activeBooking}
-                    workspaceMode={transitWorkspaceMode}
-                    onNavigate={() => {
-                      setTransitWorkspaceMode('navigation');
-                      setMobileTransitTab('transit');
+                    onExitNavigation={() => {
+                      setSelectedSpot(null);
+                      setMobileTransitTab('map');
                     }}
-                    onExitNavigation={() => setTransitWorkspaceMode('explore')}
-                    onRoutesCalculated={setNavigationRoutes}
+                    onOpenBayDetails={(spot) => openParkingDetail(spot)}
                     publicLots={publicLots}
                     onPublicLotClick={openPublicLotDetail}
                   />
 
-                  {/* Desktop Parking Pass Card Overlay (Apple Maps Style) */}
-                  {selectedSpot && (
-                    <div className="hidden lg:block absolute bottom-4 left-4 z-[1000] w-84 max-w-[calc(100%-2rem)] shadow-2xl animate-in fade-in-0 duration-200">
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSpot(null)}
-                          className="absolute top-3 right-3 z-10 p-1 rounded-full bg-black/40 hover:bg-black/60 text-white/80 hover:text-white transition cursor-pointer"
-                          aria-label="Close parking pass"
-                        >
-                          <X size={14} />
-                        </button>
-                        <ParkingPass
-                          spot={selectedSpot}
-                          vehiclePlate={vehicles.find((vehicle) => vehicle.active)?.plate}
-                          onReserve={() => openParkingDetail(selectedSpot)}
-                          compact
-                          stationName={selectedStation}
-                          stationCoords={selectedStationCoords}
-                          isNearbyLoading={isNearbyLoading}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Desktop Public Parking Pass Card Overlay */}
                 </div>
 
                 {/* 3. MOBILE-ONLY NEARBY BAYS TAB */}
-                {mobileTransitTab === 'bays' && (
+                {!selectedSpot && mobileTransitTab === 'bays' && (
                   <div className="map-lens__rail lg:!hidden flex">
                     <aside className="map-lens__results nearby-sheet" aria-label="Nearby parking bays">
                       <div className="nearby-sheet__header">
@@ -2853,7 +2823,7 @@ export default function CommuterDashboard() {
                               onClick={() => setSelectedSpot(spot)}
                               className={`nearby-bay ${lensSelectedSpot?.id === spot.id ? 'is-selected' : ''}`}
                             >
-                              <span className="nearby-bay__mark">P</span>
+                              <span className="nearby-bay__mark"><Car size={16} aria-hidden="true" /></span>
                               <div className="nearby-bay__content min-w-0">
                                 <strong>{spot.name}</strong>
                                 <span>Bay {spot.parkingLabel} · {(spot.distanceToStation ?? 0).toFixed(2)} km · {(spot.distanceToStation ?? 0) > 0 ? calculateWalkingMinutes((spot.distanceToStation ?? 0) * 1000, { isStationDestination: true }) : (spot.timeToStationInMinutes ? Math.round(spot.timeToStationInMinutes) : 0)} min</span>
@@ -2906,10 +2876,9 @@ export default function CommuterDashboard() {
 
               {/* Hidmo-Style Mobile Floating "List" Pill */}
               {mobileTransitTab === 'map' &&
-                transitWorkspaceMode !== 'navigation' &&
                 !selectedSpot &&
                 !selectedBusRoute && (
-                  <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5.65rem+var(--parkjom-safe-bottom))] z-[1040] lg:hidden pointer-events-auto">
+                  <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5.65rem+var(--parkjom-safe-bottom))] z-[40] lg:hidden pointer-events-auto">
                     <button
                       type="button"
                       onClick={() => setActiveTab('home')}
@@ -2939,15 +2908,10 @@ export default function CommuterDashboard() {
                 onNavigateToMap={(booking) => {
                   setActiveBooking(booking);
                   setSelectedSpot(booking.spot);
-                  if (booking.spot.latitude && booking.spot.longitude) {
-                    setSelectedStation(booking.spot.stationName || booking.spot.station || '');
-                    setSelectedStationCoords({
-                      lat: booking.spot.latitude,
-                      lng: booking.spot.longitude,
-                    });
-                  }
+                  setSelectedStation(booking.spot.stationName || booking.spot.station || '');
+                  setSelectedStationCoords(null);
+                  setSelectedStationId(null);
                   setActiveTab('map');
-                  setTransitWorkspaceMode('navigation');
                   setMobileTransitTab('map');
                 }}
                 onOpenSupport={() => {
@@ -3555,14 +3519,95 @@ export default function CommuterDashboard() {
 
       {showCopilot && <CopilotLauncher mobileLauncher={mobileCopilotLauncher} />}
 
+      <AnimatePresence>
+        {mobileMoreOpen && (
+          <>
+            <div
+              className="md:hidden fixed inset-0 z-[49]"
+              onClick={() => setMobileMoreOpen(false)}
+              aria-hidden="true"
+            />
+            <motion.div
+              ref={mobileMoreMenuRef}
+              role="menu"
+              aria-label="More navigation options"
+              initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: 10, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.96 }}
+              transition={prefersReducedMotion ? { duration: 0 } : { type: 'spring', damping: 26, stiffness: 360 }}
+              style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }}
+              className="md:hidden fixed right-3 z-[55] w-60 origin-bottom-right rounded-2xl border border-black/[0.08] dark:border-white/[0.12] bg-white/95 dark:bg-[#1c1c1e]/95 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.16)] dark:shadow-[0_12px_36px_rgba(0,0,0,0.5)] p-1.5"
+            >
+              {commuterSidebarGroups
+                .map((group) => ({
+                  ...group,
+                  items: group.items.filter(
+                    (item) => !['map', 'home', 'active', 'wallet'].includes(item.id),
+                  ),
+                }))
+                .filter((group) => group.items.length > 0)
+                .map((group, groupIndex) => (
+                  <div
+                    key={group.label}
+                    className={groupIndex > 0 ? 'mt-1 pt-1 border-t border-black/[0.06] dark:border-white/[0.08]' : ''}
+                  >
+                    <p className="px-2.5 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#8e8e93] dark:text-[#71717a]">
+                      {group.label}
+                    </p>
+                    <div className="flex flex-col gap-0.5">
+                      {group.items.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = activeTab === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMobileMoreOpen(false);
+                              handleNavigateTab(item.id as CommuterTab);
+                            }}
+                            className={`w-full flex items-center justify-between gap-2.5 rounded-xl px-2.5 py-2.5 text-left text-[13px] transition-colors cursor-pointer ${
+                              isActive
+                                ? 'bg-[#0071e3]/10 dark:bg-[#0a84ff]/20 text-[#0071e3] dark:text-[#409cff] font-semibold'
+                                : 'text-[#1d1d1f] dark:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/[0.07] font-medium'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5 min-w-0">
+                              <Icon size={17} strokeWidth={isActive ? 2.2 : 1.9} className="shrink-0" aria-hidden="true" />
+                              <span className="truncate">{item.label}</span>
+                            </span>
+                            {item.badge != null && item.badge !== '' && (
+                              <span
+                                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                                  isActive
+                                    ? 'bg-[#0071e3]/15 dark:bg-[#0a84ff]/30 text-[#0071e3] dark:text-[#409cff]'
+                                    : 'bg-black/[0.06] dark:bg-white/[0.1] text-[#6e6e73] dark:text-[#a1a1a6]'
+                                }`}
+                              >
+                                {item.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <BottomNav
         items={buildCommuterBottomNavItems(!!activeBooking || upcomingBookings.length > 0)}
-        activeId={['profile', 'history', 'favorites', 'support', 'publicPay'].includes(activeTab) ? 'more' : activeTab}
+        activeId={mobileMoreOpen || ['profile', 'history', 'favorites', 'support', 'publicPay'].includes(activeTab) ? 'more' : activeTab}
         onChange={(id) => {
           if (id === 'more') {
-            setSidebarOpen(true);
+            setMobileMoreOpen((prev) => !prev);
             return;
           }
+          setMobileMoreOpen(false);
           handleNavigateTab(id as CommuterTab);
         }}
       />

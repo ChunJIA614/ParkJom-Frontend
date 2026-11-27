@@ -19,7 +19,6 @@ import {
   Scale,
   Search,
   Send,
-  ShieldCheck,
   X,
   XCircle,
 } from 'lucide-react';
@@ -512,7 +511,7 @@ export default function FinanceSettlement({
       <AdminPageHeader
         headingId="finance-title"
         title="Financial settlement"
-        description="Clear Malaysian bank payouts (DuitNow / IBG), sync escrow balances, export accounting journals, and reconcile Stripe receipts."
+        description="Clear DuitNow/IBG payouts, sync escrow, export journals, and reconcile Stripe receipts."
         isLoading={tabBusy}
         onRefresh={() => void refreshAll()}
       >
@@ -553,16 +552,10 @@ export default function FinanceSettlement({
         </div>
       )}
 
-      {/* Top 3 Live Financial Hub Cards */}
+      {/* Top 3 Financial Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Live Platform Commission</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-800/50">
-              <ShieldCheck className="h-3 w-3" />
-              Active System Policy
-            </span>
-          </div>
+          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Platform Commission</span>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-extrabold text-blue-600 dark:text-blue-400">
               {activeCommission === null ? '—' : `${activeCommission}%`}
@@ -577,13 +570,7 @@ export default function FinanceSettlement({
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Automated IBG &amp; DuitNow Batches</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-800/50">
-              <Landmark className="h-3 w-3" />
-              Active · Twice Weekly
-            </span>
-          </div>
+          <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">IBG &amp; DuitNow Batches</span>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-900 dark:text-white">
               {summary ? `${summary.pendingWithdrawalsCount} queued` : '—'}
@@ -599,7 +586,7 @@ export default function FinanceSettlement({
 
         <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Escrow &amp; Ledger Stream</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">Escrow &amp; Ledger</span>
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${statusPillTone(summary?.reconciliationHealth ?? 'Matched')}`}>
               <Scale className="h-3 w-3" />
               {summary?.reconciliationHealth ?? 'Matched'}

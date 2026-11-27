@@ -1558,7 +1558,7 @@ export default function ParkingDetail() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="text-base sm:text-lg font-bold text-[#111] dark:text-white">
-                        Select Booking Dates
+                        Select booking dates
                       </h3>
                       <p className="text-xs text-[#5f6368] dark:text-[#A1A1AA]">
                         {!user?.token
@@ -1571,38 +1571,15 @@ export default function ParkingDetail() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      {startDate && (
-                        <button
-                          type="button"
-                          onClick={clearSelectedDates}
-                          className="mr-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/[0.08] hover:text-[#111] dark:hover:text-white transition cursor-pointer"
-                        >
-                          Clear dates
-                        </button>
-                      )}
+                    {startDate && (
                       <button
                         type="button"
-                        aria-label="Previous month"
-                        disabled={isAvailabilityLoading || calendarMonth <= minimumCalendarMonth}
-                        onClick={() => setCalendarMonth((current) => addMonths(current, -1))}
-                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#007AFF] hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                        onClick={clearSelectedDates}
+                        className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[#6e6e73] dark:text-[#A1A1AA] hover:bg-slate-100 dark:hover:bg-white/[0.08] hover:text-[#111] dark:hover:text-white transition cursor-pointer"
                       >
-                        <ChevronLeft size={18} />
+                        Clear dates
                       </button>
-                      <span className="text-xs font-bold text-[#111] dark:text-white px-2">
-                        {calendarMonth.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Next month"
-                        disabled={isAvailabilityLoading}
-                        onClick={() => setCalendarMonth((current) => addMonths(current, 1))}
-                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#dadce0] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#007AFF] hover:text-[#007AFF] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                      >
-                        <ChevronRight size={18} />
-                      </button>
-                    </div>
+                    )}
                   </div>
 
                   {!user?.token && (
@@ -1640,80 +1617,130 @@ export default function ParkingDetail() {
                     </div>
                   )}
 
-                  {/* Unboxed Calendar Grid */}
+                  {/* Unboxed Circular Calendar Grid */}
                   <div className="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-[#FBFBFC] dark:bg-white/[0.02] p-4 sm:p-5">
-                    <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#71717A] pb-2 border-b border-black/[0.04] dark:border-white/[0.06]" aria-hidden="true">
-                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}
+                    <div className="flex items-center justify-between gap-2 pb-3 mb-2">
+                      <button
+                        type="button"
+                        aria-label="Previous month"
+                        disabled={isAvailabilityLoading || calendarMonth <= minimumCalendarMonth}
+                        onClick={() => setCalendarMonth((current) => addMonths(current, -1))}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-black/[0.08] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#111827]/30 hover:text-[#111827] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="text-sm sm:text-base font-bold text-[#111] dark:text-white tracking-tight">
+                        {calendarMonth.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Next month"
+                        disabled={isAvailabilityLoading}
+                        onClick={() => setCalendarMonth((current) => addMonths(current, 1))}
+                        className="flex h-8 w-8 items-center justify-center rounded-full border border-black/[0.08] dark:border-white/12 bg-white dark:bg-[#242429] text-[#5f6368] dark:text-[#A1A1AA] transition hover:border-[#111827]/30 hover:text-[#111827] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-7 gap-1.5">
+                    <div className="grid grid-cols-7 text-center text-xs font-bold uppercase tracking-wider text-[#9ca3af] dark:text-[#71717A] pb-2 border-b border-black/[0.06] dark:border-white/[0.08]" aria-hidden="true">
+                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => <span key={idx}>{day}</span>)}
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-7 gap-y-1.5">
                       {calendarDateKeys.map((dateKey, index) => {
-                        if (!dateKey) return <span key={`empty-${index}`} className="min-h-10 sm:min-h-11" aria-hidden="true" />;
+                        if (!dateKey) return <span key={`empty-${index}`} className="h-10 sm:h-11" aria-hidden="true" />;
 
                         const isAvailable = isDateAvailable(dateKey);
                         const isStart = dateKey === startDate;
                         const isEnd = dateKey === endDate;
                         const isEndpoint = isStart || isEnd;
+                        const isRangeActive = Boolean(startDate && endDate && startDate !== endDate);
                         const isInCalendarSpan = Boolean(startDate && endDate && dateKey > startDate && dateKey < endDate);
                         const isInRangeOpen = isInCalendarSpan && isAvailable;
                         const isPast = dateKey < minimumBookingDate;
                         const isToday = dateKey === toDateInput(today);
                         const isDisabled = isPast || !isAvailable || isAvailabilityLoading;
+                        const colIndex = index % 7;
+
                         return (
-                          <button
-                            key={dateKey}
-                            type="button"
-                            disabled={isDisabled}
-                            title={
-                              isEndpoint && !isAvailable
-                                ? `${formatDateKey(dateKey)} (Unavailable)`
-                                : isEndpoint
-                                  ? `${formatDateKey(dateKey)} (${isStart ? 'Booking Start' : 'Booking End'})`
-                                  : isInRangeOpen
-                                    ? `${formatDateKey(dateKey)} (Available · Included in booking)`
-                                    : isAvailable
-                                      ? `${formatDateKey(dateKey)} (Available)`
-                                      : `${formatDateKey(dateKey)} (Unavailable / Booked)`
-                            }
-                            aria-label={`${formatDateKey(dateKey)}${isAvailable ? ', available' : ', unavailable'}${isEndpoint ? ', selected' : isInRangeOpen ? ', in booking range' : ''}`}
-                            aria-pressed={isEndpoint && isAvailable}
-                            onClick={() => handleDateSelection(dateKey)}
-                            className={`relative flex min-h-10 sm:min-h-11 items-center justify-center rounded-xl text-xs sm:text-[13px] font-semibold transition select-none ${
-                              isEndpoint && !isAvailable
-                                ? 'cursor-not-allowed bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 line-through'
-                                : isEndpoint
-                                  ? 'cursor-pointer bg-[#007AFF] dark:bg-[#0071E3] text-white shadow-sm font-bold'
-                                  : isInRangeOpen
-                                    ? 'cursor-pointer bg-[#e8f0fe] dark:bg-blue-950/60 text-[#0066d6] dark:text-blue-200 font-semibold'
-                                    : isAvailable && !isDisabled
-                                      ? 'cursor-pointer bg-white dark:bg-[#1E1E22] text-[#111] dark:text-white ring-1 ring-[#e8eaed] dark:ring-white/10 hover:bg-[#e8f0fe] dark:hover:bg-[#2C2C32] hover:text-[#0066d6] dark:hover:text-white'
-                                      : 'cursor-not-allowed bg-transparent text-[#c7c7cc] dark:text-[#3F3F46]'
-                            } ${isToday && !isEndpoint ? 'ring-2 ring-[#007AFF]/30 dark:ring-[#0071E3]/50' : ''}`}
-                          >
-                            {dateFromKey(dateKey).getDate()}
-                            {isAvailable && !isEndpoint && (
-                              <span className="absolute bottom-1 h-1 w-1 rounded-full bg-[#34c759] dark:bg-[#30D158]" aria-hidden="true" />
+                          <div key={dateKey} className="relative flex h-10 sm:h-11 items-center justify-center">
+                            {isRangeActive && isStart && isAvailable && colIndex < 6 && (
+                              <span
+                                className="pointer-events-none absolute inset-y-0.5 left-1/2 right-0 bg-black/[0.08] dark:bg-white/[0.14]"
+                                aria-hidden="true"
+                              />
                             )}
-                          </button>
+                            {isRangeActive && isEnd && isAvailable && colIndex > 0 && (
+                              <span
+                                className="pointer-events-none absolute inset-y-0.5 left-0 right-1/2 bg-black/[0.08] dark:bg-white/[0.14]"
+                                aria-hidden="true"
+                              />
+                            )}
+                            {isInRangeOpen && (
+                              <span
+                                className={`pointer-events-none absolute inset-y-0.5 inset-x-0 bg-black/[0.08] dark:bg-white/[0.14] ${
+                                  colIndex === 0 ? 'rounded-l-full' : ''
+                                } ${colIndex === 6 ? 'rounded-r-full' : ''}`}
+                                aria-hidden="true"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              disabled={isDisabled}
+                              title={
+                                isEndpoint && !isAvailable
+                                  ? `${formatDateKey(dateKey)} (Not Available)`
+                                  : isEndpoint
+                                    ? `${formatDateKey(dateKey)} (${isStart ? 'Booking Start' : 'Booking End'})`
+                                    : isInRangeOpen
+                                      ? `${formatDateKey(dateKey)} (Available · Included in booking)`
+                                      : isAvailable && !isPast
+                                        ? `${formatDateKey(dateKey)} (Available)`
+                                        : `${formatDateKey(dateKey)} (Not Available)`
+                              }
+                              aria-label={`${formatDateKey(dateKey)}${isAvailable && !isPast ? ', available' : ', not available'}${isEndpoint ? ', selected' : isInRangeOpen ? ', in booking range' : ''}`}
+                              aria-pressed={isEndpoint && isAvailable}
+                              onClick={() => handleDateSelection(dateKey)}
+                              className={`relative z-10 flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full text-sm sm:text-base font-semibold transition select-none ${
+                                isEndpoint && !isAvailable
+                                  ? 'cursor-not-allowed bg-transparent text-slate-400/80 dark:text-zinc-600 line-through'
+                                  : isEndpoint
+                                    ? 'cursor-pointer bg-[#111827] dark:bg-white text-white dark:text-[#111827] shadow-sm font-bold'
+                                    : isInRangeOpen
+                                      ? 'cursor-pointer bg-transparent text-[#111827] dark:text-white font-semibold hover:bg-black/[0.06] dark:hover:bg-white/[0.12]'
+                                      : isAvailable && !isDisabled
+                                        ? 'cursor-pointer bg-emerald-100/85 dark:bg-emerald-950/60 text-emerald-950 dark:text-emerald-100 hover:bg-emerald-200/85 dark:hover:bg-emerald-900/70'
+                                        : 'cursor-not-allowed bg-transparent text-slate-400/80 dark:text-zinc-600'
+                              } ${isToday && !isEndpoint && !isDisabled ? 'ring-2 ring-[#111827]/35 dark:ring-white/45 ring-offset-1 ring-offset-[#FBFBFC] dark:ring-offset-[#18181B]' : ''}`}
+                            >
+                              {dateFromKey(dateKey).getDate()}
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
 
-                    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-[#6e6e73] dark:text-[#A1A1AA] pt-3 border-t border-black/[0.04] dark:border-white/[0.06]">
-                      <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#34c759] dark:bg-[#30D158]" /> Available</span>
-                      <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#007AFF] dark:bg-[#0071E3]" /> Selected</span>
-                      <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#c7c7cc] dark:bg-[#52525B]" /> Unavailable / Booked</span>
+                    <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs sm:text-sm font-medium text-[#6e6e73] dark:text-[#A1A1AA] pt-3 border-t border-black/[0.06] dark:border-white/[0.08]">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-full bg-emerald-100 dark:bg-emerald-950/80 ring-1 ring-emerald-300/80 dark:ring-emerald-700/60" />
+                        Available
+                      </span>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-full bg-slate-300/70 dark:bg-zinc-700" />
+                        Not Available
+                      </span>
                     </div>
                   </div>
 
                   {/* Range selection notices */}
                   {startDate && !endDate && !dateSelectionError && (
-                    <div className="flex items-center justify-between gap-3 rounded-xl bg-[#f0f7ff] dark:bg-blue-950/30 p-3 border border-[#007AFF]/20 dark:border-blue-500/30">
-                      <p className="text-xs font-medium text-[#007AFF] dark:text-[#3894FF]">Choose a consecutive end date, or reserve for 1 day.</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-[#f0f7ff] dark:bg-blue-950/30 p-3 border border-[#007AFF]/20 dark:border-blue-500/30">
+                      <p className="text-sm sm:text-base font-medium text-[#007AFF] dark:text-[#3894FF]">Choose a consecutive end date, or reserve for 1 day.</p>
                       <button
                         type="button"
                         onClick={() => handleDateSelection(startDate)}
-                        className="shrink-0 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] transition active:scale-95 cursor-pointer shadow-xs"
+                        className="shrink-0 rounded-lg bg-[#007AFF] dark:bg-[#0071E3] px-4 py-3 text-sm font-semibold text-white hover:bg-[#0066d6] dark:hover:bg-[#0077ED] transition active:scale-95 cursor-pointer shadow-xs"
                       >
                         Book 1 day ({formatDateKey(startDate)})
                       </button>
@@ -1736,7 +1763,7 @@ export default function ParkingDetail() {
                   )}
 
                   {selectedStartAvailability?.timeRanges.length ? (
-                    <p className="text-xs text-[#6e6e73] dark:text-[#A1A1AA]">Hours on {formatDateKey(startDate)}: {selectedStartAvailability.timeRanges.map((range) => `${range.from}–${range.to}`).join(', ')}</p>
+                    <p className="rounded-xl border border-black/10 dark:border-white/15 bg-slate-50 dark:bg-white/5 p-4 text-base font-medium text-[#333] dark:text-[#E4E4E7]">Hours on {formatDateKey(startDate)}: {selectedStartAvailability.timeRanges.map((range) => `${range.from}–${range.to}`).join(', ')}</p>
                   ) : null}
 
                   {(dateSelectionError || dateValidationError) && (
